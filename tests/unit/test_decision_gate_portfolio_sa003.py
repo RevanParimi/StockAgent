@@ -271,11 +271,13 @@ def _chain(market, monkeypatch, tmp_path, *, tatamotors_bar=None, then_mode=None
         gf.generate_forecast("TATAMOTORS", sector="automobile")
     except gf.InsufficientDataError as exc:
         forecast_error = exc
-    # Five correct calls this cycle: the accuracy an ADD needs.
+    # Five correct calls this cycle: the accuracy an ADD needs. The latest is the
+    # review day's own, so its regime is that entry's (FIX-025: an entry from an
+    # earlier day alone would ask the market-wide record, and hold the ADD).
     store = PredictionStore("TATAMOTORS", sector="automobile", base_dir=str(pred_dir))
     store.save_feedback_log(DailyFeedbackLog(
         ticker="TATAMOTORS", cycle_id=store.cycle_id_for(TODAY), entries=[
-            FeedbackEntry(day=i, date=(TODAY - timedelta(days=i)).isoformat(),
+            FeedbackEntry(day=i, date=(TODAY - timedelta(days=i - 1)).isoformat(),
                           predicted_close=100.0, actual_close=101.0, price_error_pct=1.0,
                           predicted_verdict="BUY", actual_direction="UP",
                           direction_correct=True)

@@ -9,7 +9,7 @@ volatile, below 14 calm; a Nifty 5-session move beyond ±1.0% is the FII
 proxy; global stress needs 2 of Brent 5-session >= +8%, USD/INR 5-session
 >= +1.5%, S&P 500 last session <= -2%. Deployment: 80% in calm labels, 50%
 in RISK_OFF, nothing in MACRO_CRISIS; 2 new positions a day; ₹10 L floor
-over 12 positions, so one asks for ₹83,333.33.
+of equity over 12 positions, so one asks for ₹80,000 of ₹12 L.
 
 Independent invariants:
 - the card's acceptance shapes, through the real detector (Yahoo faked by
@@ -72,7 +72,7 @@ def _world(monkeypatch, tmp_path):
         "AUTOPILOT_ENABLED": True, "AUTOPILOT_DEPLOY_IDLE_CASH": True,
         "AUTOPILOT_DEPLOY_MAX_NEW_PER_DAY": 2, "AUTOPILOT_DEPLOY_TARGET_PCT": dict(story.TARGETS),
         "PORTFOLIO_MIN_HOLDINGS": 10, "PORTFOLIO_TARGET_HOLDINGS": 12,
-        "PORTFOLIO_MAX_HOLDINGS": 15, "PORTFOLIO_MIN_INVESTED_INR": 1_000_000.0,
+        "PORTFOLIO_MAX_HOLDINGS": 15,
         "PORTFOLIO_OVERRIDES": {}, "DECISION_GATE_MODE": "record",
         "PREDICTION_DATA_DIR": str(tmp_path / "pred"), "RL_REGIME_STICKY_ENABLED": True,
         "RL_REGIME_CALM_DAYS": 3, "DISCOVERY_REDIVE_AFTER_DAYS": 30,
@@ -205,7 +205,7 @@ def test_control_a_live_crisis_is_recorded_and_opens_nothing(tmp_path, monkeypat
 
 def test_with_india_vix_dark_nothing_opens_and_the_reason_names_it(tmp_path, monkeypatch):
     """The same crisis with Yahoo's ^INDIAVIX empty. Before FIX-023 the VIX
-    read 17.0 and the day was recorded RISK_OFF, which bought 2 × 83 shares
+    read 17.0 and the day was recorded RISK_OFF, which bought two positions
     (RV2). Now the VIX has no value: with the Nifty at -3.0%, a VIX below 14
     gives NORMAL and one above 22 MACRO_CRISIS, so the label is open; the
     state keeps Thursday's NORMAL and the day opens nothing."""
@@ -263,14 +263,14 @@ def test_a_detector_exception_records_the_day_unavailable(tmp_path, monkeypatch)
 def test_a_real_vix_of_exactly_17_is_a_live_reading(tmp_path, monkeypatch):
     """VIX 17.0 answered: 14 <= 17 <= 22 with the Nifty -3.0% is RISK_OFF.
     Target 50% of ₹12 L = ₹6,00,000 against ₹3,60,000 invested: two buys of
-    floor(83,333.33 / 1,000) = 83 × ₹1,000 (the daily limit), invested
-    ₹5,26,000 = 43.8%."""
+    floor(80,000 / 1,000) = 80 × ₹1,000 (the daily limit), invested
+    ₹5,20,000 = 43.3%."""
     _yahoo(monkeypatch, vix=_flat(17.0), nifty=_nifty_falling(), **_calm_globals())
     _review(FRI)
     assert state.label_recorded_for(FRI.isoformat()) == "RISK_OFF"
     txns, rec = _deploy_on(tmp_path, monkeypatch)
-    assert story._buys(txns) == [("I0", 83.0, 1000.0), ("I1", 83.0, 1000.0)]
-    assert rec["invested_after_pct"] == 43.8
+    assert story._buys(txns) == [("I0", 80.0, 1000.0), ("I1", 80.0, 1000.0)]
+    assert rec["invested_after_pct"] == 43.3
 
 
 # ---------------------------------------------------------------------------
@@ -469,7 +469,7 @@ def test_a_close_carried_forward_from_before_the_dive_opens_nothing(tmp_path, mo
 def test_a_carried_forward_bar_after_the_dive_keeps_record_mode(tmp_path, monkeypatch):
     """THUX was dived on Thu 29 Oct; Monday's bar is missing, so its close is
     Friday's: after the dive, so SA-003's record mode buys as before
-    (83 × ₹1,000, dated 2 Nov) and notes the bar. (FIX-024: a dive dated
+    (80 × ₹1,000, dated 2 Nov) and notes the bar. (FIX-024: a dive dated
     Friday itself counts as made after Friday's close, so it is refused:
     tests/unit/test_analysis_time_fix024.py.)"""
     store, _ = story._pipeline_world(tmp_path, monkeypatch, [], 1_200_000.0,
@@ -483,7 +483,7 @@ def test_a_carried_forward_bar_after_the_dive_keeps_record_mode(tmp_path, monkey
     pipeline.run_post_review_pipeline(MON)
     buys = [t for t in store.load_transactions() if t.side == "BUY"]
     assert [(t.date, t.symbol, t.qty, t.price) for t in buys] == \
-        [("2026-11-02", "THUX", 83.0, 1000.0)]
+        [("2026-11-02", "THUX", 80.0, 1000.0)]
     assert "its close is from bar 2026-10-30, not the review session" in buys[0].note
 
 

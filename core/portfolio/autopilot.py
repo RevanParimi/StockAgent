@@ -20,7 +20,9 @@ SELL's note.
 
 SA-049: a buy that opens a position also needs NSE's daily surveillance
 report to list the stock as active and under no ASM or GSM stage
-(`sizing.surveillance_issue`; owner, 1 Nov 2026). With idle-cash deployment
+(`sizing.surveillance_issue`; owner, 1 Nov 2026), and so does a top-up (FIX-025;
+owner, 4 Nov 2026): the shares are kept, and the digest says why no more were
+bought. With idle-cash deployment
 on (core/portfolio/deployment.py), the run then opens new positions from the
 day's buy candidates up to the market regime's target invested share, at
 most `autopilot.deploy_max_new_per_day` a day. Each BUY's note starts
@@ -265,6 +267,7 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
                   sector_lookup: dict[str, str] | None,
                   shelf_index: dict | None = None,
                   surveillance: Callable[[], Report] | None = None,
+                  top_ups_skipped: list[dict] | None = None,
                   ) -> list[TransactionRecord]:
     from core.discovery.shelf import close_before_dive
     txns: list[TransactionRecord] = []
@@ -379,6 +382,15 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
                 last_add, review_date) < settings.AUTOPILOT_ADD_COOLDOWN_TD:
             logger.info("[autopilot] ADD %s skipped: cooldown", rec.symbol)
             continue
+        # FIX-025: more money into a stock passes the check a new position
+        # does. Nothing is sold, and no BUY means the cooldown does not move.
+        watched = sizing.surveillance_issue(rec.symbol, surveillance())
+        if watched:
+            logger.info("[autopilot] ADD %s skipped: %s", rec.symbol, watched)
+            if top_ups_skipped is not None:
+                top_ups_skipped.append({"symbol": rec.symbol,
+                                        "why": f"top-up skipped: {watched}"})
+            continue
         tranche = h.adj_qty * price * settings.AUTOPILOT_ADD_TRANCHE_PCT / 100.0
         size = sizing.size_buy(portfolio, closes, symbol=rec.symbol, sector=h.sector,
                                price=price, wanted=tranche, floor_cash=floor_cash,
@@ -410,15 +422,15 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
 
 
 def _last_sales(store: PortfolioStore, this_run: list[TransactionRecord]) -> dict[str, date]:
-    """Each symbol's latest sale, from the ledger and this run's own sells."""
+    """Each symbol's latest sale, from the ledger and this run's own sells, on
+    the day it was decided (`sale_day`)."""
+    from core.discovery.shelf import sale_day
     out: dict[str, date] = {}
     for t in [*store.load_transactions(limit=2000), *this_run]:
         if t.side == "SELL":
-            try:
-                day = date.fromisoformat(t.date)
-            except ValueError:
-                continue
-            out[t.symbol] = max(day, out.get(t.symbol, day))
+            day = sale_day(t)
+            if day is not None:
+                out[t.symbol] = max(day, out.get(t.symbol, day))
     return out
 
 
@@ -428,11 +440,11 @@ def _deploy_check(idea, symbol: str, portfolio: Portfolio, sold: dict[str, date]
     """(outcome, why, the buy's inputs) for one candidate before sizing; the
     outcome is "" when it may be bought. Mirrors a SWITCH buy leg's checks,
     plus the deep dive's own data gate and the re-buy rule."""
-    from core.discovery.shelf import close_before_dive, last_dived
+    from core.discovery.shelf import close_before_dive, last_dived, sold_since_dive
     if _find(portfolio, symbol) is not None:
         return "held", "already held", {}
     sale, dived = sold.get(symbol), last_dived(idea)
-    if sale is not None and (dived is None or sale >= dived):
+    if sold_since_dive(idea, sale):
         return "sold", (f"sold on {sale.isoformat()}, after its deep dive of "
                         f"{dived.isoformat() if dived else 'unknown date'}; waits for a new "
                         "deep dive"), {}
@@ -482,6 +494,7 @@ def _deploy_idle_cash(portfolio: Portfolio, closes: dict[str, float],
     max_new = max(0, int(settings.AUTOPILOT_DEPLOY_MAX_NEW_PER_DAY))
     day = review_date.isoformat()
     equity = sizing.total_equity(portfolio, closes)
+    position_inr = b.position_inr(equity)
     invested_before = invested = sizing.holdings_value(portfolio, closes)
     holdings_before = len(portfolio.holdings)
     regime = deployment.recorded_regime(review_date)
@@ -513,7 +526,7 @@ def _deploy_idle_cash(portfolio: Portfolio, closes: dict[str, float],
             price = ctx["price"]
             sector = idea.sector or _sector_of(symbol, None)
             size = sizing.size_buy(portfolio, closes, symbol=symbol, sector=sector,
-                                   price=price, wanted=b.position_inr, floor_cash=floor_cash,
+                                   price=price, wanted=position_inr, floor_cash=floor_cash,
                                    charge=costs.buy_charge)
             if size.qty < 1:
                 outcome = "size"
@@ -607,7 +620,8 @@ def execute_advice(store: PortfolioStore, portfolio: Portfolio,
     fetched before the lock (one missing is fetched here); `surveillance`
     returns NSE's surveillance report, read once (default: read here when a
     buy first needs it); `report`, when given, receives the deployment
-    record under "deployment"."""
+    record under "deployment" and the top-ups NSE's report refused under
+    "top_ups_skipped"."""
     if not settings.AUTOPILOT_ENABLED:
         return []
     day = review_date.isoformat()
@@ -634,9 +648,12 @@ def execute_advice(store: PortfolioStore, portfolio: Portfolio,
         sell_txns, switch_proceeds = _execute_sells(portfolio, advice, closes,
                                                     existing_ids)
         existing_ids |= {t.txn_id for t in sell_txns}
+        top_ups_skipped: list[dict] = []
         buy_txns = _execute_buys(portfolio, advice, closes, existing_ids,
                                  switch_proceeds, review_date, store, sector_lookup,
-                                 shelf_index, surveillance)
+                                 shelf_index, surveillance, top_ups_skipped)
+        if report is not None and top_ups_skipped:
+            report["top_ups_skipped"] = top_ups_skipped
         txns = sell_txns + buy_txns
         if deployment.active(portfolio):
             existing_ids |= {t.txn_id for t in buy_txns}

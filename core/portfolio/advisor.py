@@ -252,6 +252,13 @@ def build_signals(
                 if e.thesis_review is not None:
                     sig.thesis_intact = e.thesis_review.thesis_intact
                     break
+            # FIX-025: with no entry of its own for the day, the label above is
+            # an older day's; the market-wide record decides whether it may add.
+            day = review_date.isoformat()
+            if entries[-1].date != day:
+                from core.intelligence.regime.state import label_recorded_for, unrecorded_reason
+                if label_recorded_for(day) is None:
+                    sig.regime_unavailable = unrecorded_reason(day)
     except Exception as exc:
         logger.warning("[advisor] feedback read failed for %s (non-fatal): %s",
                        holding.symbol, exc)

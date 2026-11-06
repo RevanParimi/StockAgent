@@ -461,18 +461,18 @@ portfolio:
     long_term_exemption_inr: 125000   # per financial year, once
     long_term_after_months: 12
     cess_pct: 4.0                # health and education cess on the tax
-  # The breadth idle-cash deployment works toward in a calm market
-  # (autopilot.deploy_idle_cash; core/portfolio/deployment.py). Each new
-  # position asks for min_invested_inr / target_holdings (₹83,333), always
-  # within advisor.max_position_pct, the sector cap and the cash floor. In
-  # RISK_OFF the floor relaxes to the regime's target share; in MACRO_CRISIS
-  # nothing new is bought. A floor that cannot be reached is recorded, never
-  # forced.
-  min_holdings: 10               # at least, not exactly
-  target_holdings: 12            # what deployment aims for (owner, 12 Oct 2026)
+  # The holdings idle-cash deployment works with (autopilot.deploy_idle_cash;
+  # core/portfolio/deployment.py). The analysis's BUY ideas that pass the checks
+  # decide how many stocks are held, up to max_holdings; the regime's share of
+  # equity decides how much is invested. A new position asks for the NORMAL
+  # share of equity over target_holdings (80% ÷ 12 ≈ 6.7%: ₹80,000 of ₹12 L,
+  # ₹3,33,333 of ₹50 L), in every regime, always within advisor.max_position_pct,
+  # the sector cap and the cash floor.
+  min_holdings: 10               # a soft minimum in calm regimes: reported when not met, never forces a buy
+  target_holdings: 12            # sets a position's size (owner, 12 Oct 2026); not a limit on holdings
   max_holdings: 15               # stops over-dilution
-  min_invested_inr: 1000000      # ₹10 L working in a calm market
-  # Per portfolio (user id): any of the four keys above, and deploy_idle_cash.
+  # Per portfolio (user id): any of the three keys above, deploy_idle_cash, and
+  # deploy_target_invested_pct, whose regimes replace those it names.
   # Example: {primary: {deploy_idle_cash: true}} switches deployment on for
   # one portfolio only.
   overrides: {}

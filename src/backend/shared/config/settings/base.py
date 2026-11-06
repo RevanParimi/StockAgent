@@ -891,13 +891,13 @@ PORTFOLIO_WEEKLY_REVIEW_WEEKDAY: int = cfg("portfolio.weekly_review_weekday", fa
 # fails the trade loudly (core/portfolio/costs.py) instead of charging nothing.
 PORTFOLIO_COSTS: dict = cfg("portfolio.costs", fallback={})
 PORTFOLIO_TAX: dict = cfg("portfolio.tax", fallback={})
-# SA-049: the breadth idle-cash deployment works toward in a calm market
+# SA-049, FIX-025: the holdings idle-cash deployment works with
 # (core/portfolio/deployment.py). `overrides` maps a portfolio's user id to its
-# own values of these four keys and of autopilot.deploy_idle_cash.
+# own values of these three keys, of autopilot.deploy_idle_cash and of
+# autopilot.deploy_target_invested_pct.
 PORTFOLIO_MIN_HOLDINGS: int = int(cfg("portfolio.min_holdings", fallback=10))
 PORTFOLIO_TARGET_HOLDINGS: int = int(cfg("portfolio.target_holdings", fallback=12))
 PORTFOLIO_MAX_HOLDINGS: int = int(cfg("portfolio.max_holdings", fallback=15))
-PORTFOLIO_MIN_INVESTED_INR: float = float(cfg("portfolio.min_invested_inr", fallback=1_000_000.0))
 PORTFOLIO_OVERRIDES: dict = dict(cfg("portfolio.overrides", fallback={}) or {})
 
 ADVISOR_ENABLED: bool = bool(cfg("advisor.enabled", env="ADVISOR_ENABLED", fallback=True))

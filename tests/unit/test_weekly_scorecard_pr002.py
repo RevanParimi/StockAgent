@@ -506,11 +506,11 @@ def test_expectancy_flag_needs_three_week_ends_with_trades():
     assert flag(row_for(W10, txns=txns), "expectancy")["status"] == R.NOT_ENOUGH
 
 
-# -- breadth floor (configured by SA-049) -----------------------------------------
+# -- the holdings aimed for (configured by SA-049, a soft minimum since FIX-025) ------
 
 @pytest.mark.parametrize("configured, floor", [(None, None), (10, {"min_holdings": 10}),
                                                 ("ten", None)])
-def test_the_breadth_floor_is_shown_only_once_configured(monkeypatch, configured, floor):
+def test_the_holdings_aimed_for_are_shown_only_once_configured(monkeypatch, configured, floor):
     import backend.shared.config.settings.loader as loader
     monkeypatch.setattr(loader, "cfg", lambda path, fallback=None, env=None:
                         configured if path == "portfolio.min_holdings" else fallback)
@@ -518,7 +518,7 @@ def test_the_breadth_floor_is_shown_only_once_configured(monkeypatch, configured
     row = R.build_row(week=R.covered_week(W10), txns=[], points=[point("2026-03-06", 100.0, 100.0)],
                       audit_rows=[], close_on=flat_nifty, holdings=2, floor=R._floor())
     text = next(l for l in row["lines"] if l.get("label") == "Breadth")["text"]
-    assert ("Floor: 10 holdings." in text) is (floor is not None)
+    assert ("Aimed for: at least 10 holdings." in text) is (floor is not None)
     assert text.startswith("2 holdings, 100% of the money invested (6 Mar).")
 
 

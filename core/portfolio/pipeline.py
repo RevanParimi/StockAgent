@@ -404,7 +404,7 @@ def run_post_review_pipeline(review_date: date) -> dict:
             from core.portfolio import autopilot
             shelf_sectors = {i.symbol: i.sector for i in shelf_ideas
                              if getattr(i, "sector", "")}
-            if deploying or any(a.verdict == "SWITCH" for a in advice):
+            if deploying or any(a.verdict in ("SWITCH", "ADD") for a in advice):
                 surveillance()                    # SA-049: read before the lock
             txns = autopilot.execute_advice(
                 store, portfolio, advice, closes, review_date,
@@ -461,7 +461,8 @@ def run_post_review_pipeline(review_date: date) -> dict:
         try:
             store.save_digest(build_digest(user_id, review_date, advice, portfolio,
                                            closes, transactions=txns,
-                                           deployment=run_report.get("deployment")))
+                                           deployment=run_report.get("deployment"),
+                                           top_ups_skipped=run_report.get("top_ups_skipped")))
         except Exception as exc:
             logger.warning("[portfolio_pipeline] digest failed for %s: %s", user_id, exc)
 

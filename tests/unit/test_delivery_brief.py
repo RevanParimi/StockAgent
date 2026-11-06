@@ -53,6 +53,28 @@ def _mk_store(tmp_path, with_digest=True):
     return store
 
 
+def test_a_top_up_nse_refused_says_so_beside_add_more(tmp_path, monkeypatch):
+    """FIX-025: the digest's row keeps its ADD verdict, and the brief must not
+    read as if shares were bought."""
+    why = "top-up skipped: under LT-ASM in NSE's surveillance report of 2026-11-03"
+    store = _mk_store(tmp_path, with_digest=False)
+    store.save_digest({**_digest(), "holdings": [
+        {"symbol": "RAILCO", "verdict": "ADD", "close": 800.0, "pnl_pct": 100.0,
+         "reason": "envelope up", "notes": [], "top_up_skipped": why},
+        {"symbol": "PLAIN", "verdict": "ADD", "close": 100.0, "pnl_pct": 1.0,
+         "reason": "envelope up", "notes": []}]})
+    monkeypatch.setattr(br, "_narrate_brief", lambda b: "h")
+    monkeypatch.setattr(br, "_read_regime", lambda: {})
+    monkeypatch.setattr(br, "_overnight_items", lambda on, recent: ([], {}))
+    monkeypatch.setattr(br, "_shelf_events_since", lambda since: [])
+    monkeypatch.setattr(br, "_earnings_soon", lambda symbols, on: [])
+    monkeypatch.setattr(br, "_ipo_watch", lambda on=None: [])
+    monkeypatch.setattr(br, "upcoming_lockin_alerts", lambda on, symbols=None: [])
+    brief = br.build_morning_brief("u1", date(2026, 7, 9), store=store)
+    assert [f["reason"] for f in brief["advisor_flags"]] == [f"envelope up ({why})", "envelope up"]
+    assert f"RAILCO  Add more — envelope up ({why})" in br.render_brief_text(brief)
+
+
 def test_build_brief_assembles_sections(tmp_path, monkeypatch):
     store = _mk_store(tmp_path)
     monkeypatch.setattr(br, "_narrate_brief", lambda b: "Deterministic headline.")

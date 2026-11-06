@@ -24,34 +24,30 @@ did not answer; no new positions". A label made of fallback values, or the
 detector's NORMAL default after an exception, is never recorded as a day's
 regime.
 
-**The breadth floor (calm regimes only).** Deployment works toward at least
-`portfolio.min_holdings` holdings and `portfolio.min_invested_inr` invested,
-and aims for `portfolio.target_holdings`; it never holds more than
-`portfolio.max_holdings`. Each new position asks for
-`min_invested_inr / target_holdings`, and SA-050's sizing rule keeps it
-within the position cap, its sector's cap and the cash floor. In RISK_OFF
-the floor relaxes to the regime's share. `portfolio.overrides` gives one
-portfolio its own values, and its own switch.
+**The rules decide how much; the ideas decide how many (owner, 4 Nov 2026).**
+The target is the regime's share and nothing else, so it grows when the user
+adds money. A new position asks for a share of equity, the NORMAL share over
+`portfolio.target_holdings` (80% ÷ 12 ≈ 6.7%), in every regime: RISK_OFF only
+stops sooner. SA-050's sizing rule keeps it within the position cap, its
+sector's cap and the cash floor. Holdings are as many as the ideas that pass
+the checks, up to `portfolio.max_holdings`. `portfolio.overrides` gives one
+portfolio its own values, its own regime shares and its own switch.
 
-**Example (12 Oct decisions).** ₹12 L equity in NORMAL: 80% is ₹9.6 L, so the
-₹10 L floor governs and the target is ₹10 L (83%). Each position asks for
-₹10 L ÷ 12 = ₹83,333. From 2 holdings, at most `deploy_max_new_per_day` (2)
-open a day, so 12 are held after 5 review days, and buying stops: 12
-holdings, the target, with about 83% invested. In RISK_OFF the same
-portfolio stops opening positions at 50% (₹6 L) and never sells to get there.
+**Examples.** ₹12 L in NORMAL: the target is ₹9.6 L and a position asks for
+₹80,000, so 12 ideas at ₹1,000 end at 80 shares each and exactly the target.
+₹50 L in NORMAL: a position asks for ₹3,33,333, or 333 shares at ₹1,000; twelve
+come to ₹39.96 L, ₹4,000 short of the ₹40 L target, so a thirteenth opens and
+₹43.29 L is invested. In RISK_OFF ₹12 L stops at ₹6 L, and nothing is ever sold
+to get there.
 
-**When to open another position** (`stop_reason`): never at
-`max_holdings`; always below the holdings floor in force; otherwise while
-invested is below the target, unless `target_holdings` are held and the
-regime's own share is already met. At or above the holdings floor, a buy
-can therefore pass the target by at most one position; below it, buying
-continues toward the floor within the caps and the cash floor (from 9
-holdings at 86% in ₹12 L, a tenth position takes invested to 93%).
+**When to open another position** (`stop_reason`): never at `max_holdings` or
+past the day's limit; otherwise while invested is below the target. A buy
+therefore passes the target by at most one position, in every regime.
 
-**An unreachable floor is recorded, never forced**: "invested floor
-unreachable: equity ₹9,99,611 is below the ₹10,00,000 floor plus the ₹10,000
-cash floor"; "holdings floor unreachable: 6 qualifying ideas". No cap is
-breached to meet it.
+**The soft minimum.** `portfolio.min_holdings` is an aim in calm regimes, never
+a reason to buy: the record says when it is not met and why ("8 holdings, below
+the 10 aimed for: only 8 qualifying ideas"; "9 holdings, below the 10 aimed for:
+target reached").
 
 Pure apart from `recorded_regime` and `regime_gap`, which read the regime
 state file.
@@ -94,17 +90,20 @@ class Breadth:
     min_holdings: int
     target_holdings: int
     max_holdings: int
-    min_invested_inr: float
+    shares: dict[str, float]    # target invested share of equity, by regime label
 
-    @property
-    def position_inr(self) -> float:
-        """What one new position asks for."""
-        return self.min_invested_inr / max(1, self.target_holdings)
+    def position_inr(self, equity: float) -> float:
+        """What one new position asks for at `equity`: the NORMAL share of it
+        over the holdings aimed for, whatever today's regime. No NORMAL share
+        configured asks for nothing, so nothing opens."""
+        share = max(0.0, float(self.shares.get("NORMAL") or 0.0))
+        return equity * share / 100.0 / max(1, self.target_holdings)
 
 
 def breadth(user_id: str) -> Breadth:
     """`portfolio.*` and `autopilot.deploy_idle_cash`, with any key the
-    portfolio's own entry in `portfolio.overrides` sets in their place."""
+    portfolio's own entry in `portfolio.overrides` sets in their place. Its
+    `deploy_target_invested_pct` replaces only the regimes it names."""
     own = (settings.PORTFOLIO_OVERRIDES or {}).get(user_id) or {}
 
     def pick(key, default):
@@ -116,7 +115,9 @@ def breadth(user_id: str) -> Breadth:
         min_holdings=int(pick("min_holdings", settings.PORTFOLIO_MIN_HOLDINGS)),
         target_holdings=int(pick("target_holdings", settings.PORTFOLIO_TARGET_HOLDINGS)),
         max_holdings=int(pick("max_holdings", settings.PORTFOLIO_MAX_HOLDINGS)),
-        min_invested_inr=float(pick("min_invested_inr", settings.PORTFOLIO_MIN_INVESTED_INR)),
+        shares={**settings.AUTOPILOT_DEPLOY_TARGET_PCT,
+                **{str(k).strip().upper(): float(v)
+                   for k, v in (pick("deploy_target_invested_pct", {}) or {}).items()}},
     )
     if not b.min_holdings <= b.target_holdings <= b.max_holdings:
         logger.warning("[deployment] %s: holdings settings out of order (min %d, target %d, "
@@ -154,39 +155,28 @@ class Target:
     regime: str | None
     share_pct: float | None    # the regime's target share of equity; None = no target
     invested_inr: float        # rupees deployment works toward; 0 = open nothing
-    min_holdings: int          # the holdings floor in force; 0 when relaxed
+    min_holdings: int          # the soft minimum in force; 0 outside calm regimes
     closed: str                # why no position opens at all; "" when one may
-    notes: tuple[str, ...]     # a floor that cannot be reached
 
 
 def target(regime: str | None, equity: float, b: Breadth, floor_cash: float,
            gap: str = "") -> Target:
-    """What deployment works toward today, at `equity` (total equity). `gap`
-    says why there is no `regime` (`regime_gap`)."""
+    """What deployment works toward today, at `equity` (total equity): the
+    regime's share, within equity less the cash floor. `gap` says why there
+    is no `regime` (`regime_gap`)."""
     if not regime:
         return Target(None, None, 0.0, 0,
                       f"{gap or 'no market regime recorded for the review day'}; "
-                      "no new positions", ())
-    share = settings.AUTOPILOT_DEPLOY_TARGET_PCT.get(regime)
+                      "no new positions")
+    share = b.shares.get(regime)
     if share is None:
         return Target(regime, None, 0.0, 0,
-                      f"no target set for market regime {regime}: no new positions", ())
+                      f"no target set for market regime {regime}: no new positions")
     if share <= 0:
         return Target(regime, float(share), 0.0, 0,
-                      f"market regime {regime}: no new positions, cash held on purpose", ())
-    want = share / 100.0 * equity
-    floor_holdings, notes = 0, []
-    if regime in CALM:
-        want = max(want, b.min_invested_inr)
-        floor_holdings = b.min_holdings
-    room = max(0.0, equity - floor_cash)
-    if want > room:
-        if regime in CALM and b.min_invested_inr > room:
-            notes.append(f"invested floor unreachable: equity {inr(equity)} is below the "
-                         f"{inr(b.min_invested_inr)} floor plus the {inr(floor_cash)} "
-                         "cash floor")
-        want = room
-    return Target(regime, float(share), want, floor_holdings, "", tuple(notes))
+                      f"market regime {regime}: no new positions, cash held on purpose")
+    want = min(share / 100.0 * equity, max(0.0, equity - floor_cash))
+    return Target(regime, float(share), want, b.min_holdings if regime in CALM else 0, "")
 
 
 def _pct(part: float, whole: float) -> float:
@@ -202,19 +192,14 @@ def stop_reason(t: Target, b: Breadth, *, equity: float, invested: float, holdin
         return "no equity above the cash floor to invest"
     if holdings >= b.max_holdings:
         return f"{holdings} holdings, the maximum of {b.max_holdings}"
-    share_met = t.share_pct is not None and invested >= t.share_pct / 100.0 * equity
-    if holdings < t.min_holdings or (
-            invested < t.invested_inr and not (holdings >= b.target_holdings and share_met)):
-        if opened >= max_new:
-            return (f"{opened} new position{'s' if opened != 1 else ''} today, "
-                    f"the daily limit of {max_new}")
-        return ""
     if invested >= t.invested_inr:
         return (f"regime {t.regime}, target reached: {_pct(invested, equity):.1f}% invested "
                 f"against a target of {_pct(t.invested_inr, equity):.1f}% "
                 f"({inr(t.invested_inr)})")
-    return (f"regime {t.regime}, target reached: {holdings} holdings, the target of "
-            f"{b.target_holdings}, with {_pct(invested, equity):.1f}% invested")
+    if opened >= max_new:
+        return (f"{opened} new position{'s' if opened != 1 else ''} today, "
+                f"the daily limit of {max_new}")
+    return ""
 
 
 def counted(outcomes: list[dict]) -> list[str]:
@@ -224,6 +209,26 @@ def counted(outcomes: list[dict]) -> list[str]:
             for k, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
 
 
+def below_aim(t: Target, *, holdings: int, invested: float, stop: str, outcomes: list[dict]) -> str:
+    """The soft minimum's sentence, "" when it is met or not in force. It
+    reports and never buys: "8 holdings, below the 10 aimed for: only 8
+    qualifying ideas"."""
+    if not t.min_holdings or holdings >= t.min_holdings:
+        return ""
+    qualifying = sum(o["outcome"] in ("bought", "waiting") for o in outcomes)
+    waiting = sum(o["outcome"] == "waiting" for o in outcomes)
+    if t.invested_inr > 0 and invested >= t.invested_inr:
+        why = "target reached"
+    elif holdings + waiting >= t.min_holdings or (stop and not outcomes):
+        why = stop      # enough ideas wait behind the daily limit, or none was looked at
+    elif qualifying:
+        why = f"only {qualifying} qualifying idea{'s' if qualifying != 1 else ''}"
+    else:
+        why = "no qualifying idea"
+    return (f"{holdings} holding{'s' if holdings != 1 else ''}, below the {t.min_holdings} "
+            f"aimed for: {why}")
+
+
 def run_record(*, on: date, t: Target, b: Breadth, equity: float, invested_before: float,
                invested_after: float, holdings_before: int, holdings_after: int,
                cash_after: float, outcomes: list[dict], stop: str) -> dict:
@@ -231,11 +236,10 @@ def run_record(*, on: date, t: Target, b: Breadth, equity: float, invested_befor
     for the cash left idle, why. Kept in the day's digest."""
     qualifying = sum(o["outcome"] in ("bought", "waiting") for o in outcomes)
     reasons = [stop] if stop else ["no further qualifying idea"]
-    reasons += list(t.notes)
-    if t.min_holdings and holdings_before + qualifying < t.min_holdings:
-        reasons.append(f"holdings floor unreachable: {qualifying} qualifying idea"
-                       f"{'s' if qualifying != 1 else ''}, {holdings_after} holdings "
-                       f"against at least {t.min_holdings}")
+    aim = below_aim(t, holdings=holdings_after, invested=invested_after, stop=stop,
+                    outcomes=outcomes)
+    if aim:
+        reasons.append(aim)
     reasons += counted(outcomes)
     return {
         "date": on.isoformat(),
@@ -246,7 +250,7 @@ def run_record(*, on: date, t: Target, b: Breadth, equity: float, invested_befor
         "min_holdings": t.min_holdings,
         "target_holdings": b.target_holdings,
         "max_holdings": b.max_holdings,
-        "position_inr": round(b.position_inr, 2),
+        "position_inr": round(b.position_inr(equity), 2),
         "equity": round(equity, 2),
         "invested_before_pct": round(_pct(invested_before, equity), 1),
         "invested_after_pct": round(_pct(invested_after, equity), 1),

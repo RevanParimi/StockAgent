@@ -16,6 +16,8 @@ def render_digest_text(digest: dict) -> str:
         row = f"{h.get('verdict', '?')}: {h.get('symbol', '?')}"
         if h.get("reason"):
             row += f" — {h['reason']}"
+        if h.get("top_up_skipped"):
+            row += f" ({h['top_up_skipped']})"
         lines.append(row)
     esc = digest.get("escalations") or []
     if esc:

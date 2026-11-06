@@ -5,21 +5,21 @@ from the fixture's own numbers, never asked of the code under test. The
 worked examples run without trading costs (SA-048's charges are pinned by
 test_trading_costs_sa048.py); the property test runs on the configured rates.
 
-Settings these examples assume (the owner's decisions of 12 Oct and 1 Nov):
-target invested share 80% in NORMAL-like regimes, 50% in RISK_OFF, none in
-MACRO_CRISIS; 2 new positions a day; at least 10 holdings, aim 12, at most
-15; ₹10 L invested; so a new position asks for ₹10,00,000 / 12 = ₹83,333.33.
-Caps: position 10%, sector 30% of total equity; cash floor ₹10,000.
+Settings these examples assume (the owner's decisions of 12 Oct, 1 Nov and
+4 Nov): target invested share 80% in NORMAL-like regimes, 50% in RISK_OFF, none
+in MACRO_CRISIS; 2 new positions a day; a soft minimum of 10 holdings, at most
+15; so a new position asks for 80% of equity / 12: ₹66,666.67 of ₹10 L, ₹80,000
+of ₹12 L. Caps: position 10%, sector 30% of total equity; cash floor ₹10,000.
+FIX-025's table is pinned in test_deployment_follows_money_fix025.py.
 
 Independent invariants:
 - the card's acceptance fixtures (the 27 Sep shape, a crisis, target reached,
   no qualifying idea, SA-003 enforce and record, the same day twice, the
-  switch off, the breadth floor and the D1/D2 decisions);
+  switch off, the holdings settings and the D1/D2 decisions);
 - a property test over random regimes, shelves and portfolios: nothing new in
   a crisis or without a regime, no cap breached, cash at or above its floor,
-  at most N a day, never above the maximum holdings, and, at or above the
-  holdings floor, the invested share never past the target by more than one
-  position (below it, a case pins how far buying goes);
+  at most N a day, never above the maximum holdings, and the invested share
+  never past the target by more than one position;
 - issue time: the 16:30 run books at the close of the session it reviews, so
   an idea dived after that session (Saturday's dives on Monday's run, which
   reviews Friday) is neither deployed nor a SWITCH destination until a run
@@ -87,12 +87,14 @@ def _pinned(monkeypatch):
         "AUTOPILOT_ENABLED": True, "AUTOPILOT_DEPLOY_IDLE_CASH": True,
         "AUTOPILOT_DEPLOY_MAX_NEW_PER_DAY": 2, "AUTOPILOT_DEPLOY_TARGET_PCT": dict(TARGETS),
         "PORTFOLIO_MIN_HOLDINGS": 10, "PORTFOLIO_TARGET_HOLDINGS": 12,
-        "PORTFOLIO_MAX_HOLDINGS": 15, "PORTFOLIO_MIN_INVESTED_INR": 1_000_000.0,
+        "PORTFOLIO_MAX_HOLDINGS": 15,
         "PORTFOLIO_OVERRIDES": {}, "DECISION_GATE_MODE": "record",
     }.items():
         monkeypatch.setattr(settings, name, value)
     dg._warned.clear()
     monkeypatch.setattr(ap, "_today_ist", lambda: TODAY)
+    # A trade's stamp: 16:30 IST on D, no later than any day these runs review.
+    monkeypatch.setattr(ap, "_now_iso", lambda: "2026-07-13T11:00:00+00:00")
     monkeypatch.setattr(ap, "promote_symbol", lambda *a, **k: {"status": "ok"})
     _regime(monkeypatch, "NORMAL")
     _report(monkeypatch)
@@ -199,41 +201,38 @@ def _sep27(tmp_path, monkeypatch):
 
 
 def test_the_27_sep_shape_buys_two_today_and_the_third_tomorrow(tmp_path, monkeypatch):
-    """Target: 80% of ₹10 L is ₹8 L; the ₹10 L floor raises it to ₹10 L, but
-    only ₹9,90,000 sits above the ₹10,000 cash floor, so the target is
-    ₹9,90,000 (99.0%) and the invested floor is recorded unreachable.
-    Each position asks for ₹83,333.33:
-      P1 floor(83,333.33 / 500) = 166 shares = ₹83,000 (8.3% of equity);
-      P2 floor(83,333.33 / 250) = 333 shares = ₹83,250 (8.3%).
+    """Target: 80% of ₹10 L = ₹8,00,000 (80.0%).
+    Each position asks for 80% × ₹10 L ÷ 12 = ₹66,666.67:
+      P1 floor(66,666.67 / 500) = 133 shares = ₹66,500 (6.65% of equity);
+      P2 floor(66,666.67 / 250) = 266 shares = ₹66,500.
     Then 2 new positions, the daily limit; P3 qualifies and waits.
-    Invested ₹1,90,000 (19.0%) → ₹2,73,000 (27.3%) → ₹3,56,250 (35.6%);
-    cash ₹8,10,000 − 83,000 − 83,250 = ₹6,43,750.
-    Next day P1 and P2 are held; P3: floor(83,333.33 / 1,000) = 83 shares
-    = ₹83,000, invested ₹4,39,250 (43.9%), cash ₹5,60,750."""
+    Invested ₹1,90,000 (19.0%) → ₹2,56,500 (25.65%) → ₹3,23,000 (32.3%);
+    cash ₹8,10,000 − 66,500 − 66,500 = ₹6,77,000.
+    Next day P1 and P2 are held; P3: floor(66,666.67 / 1,000) = 66 shares
+    = ₹66,000, invested ₹3,89,000 (38.9%), cash ₹6,11,000."""
     s, ideas = _sep27(tmp_path, monkeypatch)
     marks = {"AAA": 100.0, "BBB": 100.0}
     txns, rec = _run(s, ideas, dict(marks))
 
-    assert _buys(txns) == [("P1", 166.0, 500.0), ("P2", 333.0, 250.0)]
-    assert txns[0].note == ("deploy_idle_cash: discovery idea, conviction 0.90; regime NORMAL, "
-                            "target 99.0% invested (₹9,90,000); invested 19.0% before, "
-                            "27.3% after")
-    assert txns[1].note.endswith("invested 27.3% before, 35.6% after")
+    assert _buys(txns) == [("P1", 133.0, 500.0), ("P2", 266.0, 250.0)]
+    assert txns[0].note.startswith("deploy_idle_cash: discovery idea, conviction 0.90; regime "
+                                   "NORMAL, target 80.0% invested (₹8,00,000); invested 19.0% "
+                                   "before, 25.")
+    assert txns[1].note.endswith("% before, 32.3% after")
     assert all(t.verdict == "DEPLOY" and t.source == "autopilot" for t in txns)
     assert txns[0].reason == "why P1"
     p = s.load()
-    assert p.cash_deployable == 643_750.0
+    assert p.cash_deployable == 677_000.0
     for t in txns:
         assert t.qty * t.price / 1_000_000 <= 0.10
     assert (rec["regime"], rec["target_share_pct"], rec["target_inr"], rec["target_pct"]) == \
-        ("NORMAL", 80.0, 990_000.0, 99.0)
-    assert (rec["invested_before_pct"], rec["invested_after_pct"]) == (19.0, 35.6)
+        ("NORMAL", 80.0, 800_000.0, 80.0)
+    assert (rec["invested_before_pct"], rec["invested_after_pct"]) == (19.0, 32.3)
     assert (rec["holdings_before"], rec["holdings_after"], rec["bought"]) == (2, 4, ["P1", "P2"])
+    assert rec["position_inr"] == 66_666.67
     assert rec["reasons"] == [
         "2 new positions today, the daily limit of 2",
-        "invested floor unreachable: equity ₹10,00,000 is below the ₹10,00,000 floor plus "
-        "the ₹10,000 cash floor",
-        "holdings floor unreachable: 3 qualifying ideas, 4 holdings against at least 10",
+        "4 holdings, below the 10 aimed for: only 3 qualifying ideas",
         "1 idea qualifying but not bought today",
     ]
     assert _outcomes(rec)["P3"] == (
@@ -241,9 +240,9 @@ def test_the_27_sep_shape_buys_two_today_and_the_third_tomorrow(tmp_path, monkey
 
     day2 = D + timedelta(days=1)
     txns2, rec2 = _run(s, ideas, {**marks, "P1": 500.0, "P2": 250.0}, on=day2)
-    assert _buys(txns2) == [("P3", 83.0, 1000.0)]
-    assert txns2[0].note.endswith("invested 35.6% before, 43.9% after")
-    assert s.load().cash_deployable == 560_750.0
+    assert _buys(txns2) == [("P3", 66.0, 1000.0)]
+    assert txns2[0].note.endswith("invested 32.3% before, 38.9% after")
+    assert s.load().cash_deployable == 611_000.0
     assert _outcomes(rec2)["P1"] == ("held", "already held")
     assert rec2["bought"] == ["P3"]
 
@@ -324,7 +323,7 @@ def test_no_qualifying_idea_records_each_ideas_reason(tmp_path, monkeypatch):
                           "the review session"),
         "WATCHED": ("surveillance", "under LT-ASM in NSE's surveillance report of 2026-07-10"),
         "NOPRICE": ("price", "no close for the review session"),
-        "HUGE": ("size", "₹83,333 of a new position's budget is less than one share at "
+        "HUGE": ("size", "₹66,667 of a new position's budget is less than one share at "
                          "₹200,000"),
         "BUSY": ("size", "the 30% cap on pharma leaves room for less than one share at ₹500"),
         "SOLD": ("sold", "sold on 2026-07-10, after its deep dive of 2026-07-08; waits for a "
@@ -333,8 +332,7 @@ def test_no_qualifying_idea_records_each_ideas_reason(tmp_path, monkeypatch):
     assert rec["reasons"][0] == "no further qualifying idea"
     assert "2 ideas withheld by the data gate" in rec["reasons"]
     assert "1 idea above entry band" in rec["reasons"]
-    assert "holdings floor unreachable: 0 qualifying ideas, 2 holdings against at least 10" \
-        in rec["reasons"]
+    assert "2 holdings, below the 10 aimed for: no qualifying idea" in rec["reasons"]
 
 
 @pytest.mark.parametrize("mode", ["enforce", "record"])
@@ -349,7 +347,7 @@ def test_sa003_an_abstained_idea_is_never_bought_in_enforce(tmp_path, monkeypatc
         assert txns == []
         assert {o["outcome"] for o in rec["ideas"]} == {"gate"}
     else:
-        assert _buys(txns) == [("ABST", 83.0, 1000.0), ("UNV", 83.0, 1000.0)]
+        assert _buys(txns) == [("ABST", 80.0, 1000.0), ("UNV", 80.0, 1000.0)]
         assert txns[0].note.endswith("record mode: the data gate would withhold it: its deep "
                                      "dive's data gate is abstain (not verified as actionable)")
         assert txns[1].note.endswith(
@@ -438,12 +436,12 @@ def test_the_switch_is_off_in_the_shipped_config():
     assert {k: float(v) for k, v in cfg("autopilot.deploy_target_invested_pct").items()} \
         == TARGETS
     assert (cfg("autopilot.deploy_max_new_per_day"), cfg("portfolio.min_holdings"),
-            cfg("portfolio.target_holdings"), cfg("portfolio.max_holdings"),
-            cfg("portfolio.min_invested_inr")) == (2, 10, 12, 15, 1_000_000)
+            cfg("portfolio.target_holdings"), cfg("portfolio.max_holdings")) == (2, 10, 12, 15)
+    assert cfg("portfolio.min_invested_inr", fallback=None) is None
 
 
 # ---------------------------------------------------------------------------
-# The breadth floor and the 12 Oct decisions
+# The holdings settings and the 12 Oct decisions
 # ---------------------------------------------------------------------------
 
 def _ideas_at_1000(n, conviction=0.9):
@@ -461,10 +459,10 @@ def _one_day(s, ideas, on, held_marks):
 def test_d1_two_lakh_deposit_then_twelve_holdings_within_six_days(tmp_path, monkeypatch):
     """The 27 Sep holdings (₹1,90,000) with ₹8,10,000 cash; the owner deposits
     ₹2,00,000 through the real route: equity ₹12,00,000, cash ₹10,10,000.
-    Target max(80% × 12 L, 10 L) = ₹10,00,000. Each buy: 83 × ₹1,000 = ₹83,000.
-    Two a day: holdings 4, 6, 8, 10, 12 after five days; invested
-    1,90,000 + 10 × 83,000 = ₹10,20,000 (85.0%), at least ₹10 L. Day six:
-    target reached. Cash ₹10,10,000 − 8,30,000 = ₹1,80,000."""
+    Target 80% × 12 L = ₹9,60,000. Each buy: 80 × ₹1,000 = ₹80,000. Two a day:
+    holdings 4, 6, 8, 10, 12 after five days. After nine buys ₹9,10,000 is
+    invested, still below; the tenth makes 1,90,000 + 10 × 80,000 = ₹9,90,000
+    (82.5%). Day six: target reached. Cash ₹10,10,000 − 8,00,000 = ₹2,10,000."""
     _app_store(tmp_path, monkeypatch)
     s = PortfolioStore(user_id="primary", base_dir=str(tmp_path))
     p = s.load()
@@ -482,67 +480,66 @@ def test_d1_two_lakh_deposit_then_twelve_holdings_within_six_days(tmp_path, monk
     counts = []
     for day in _weekdays(D, 6):
         txns, rec = _one_day(s, ideas, day, held)
-        assert all(t.qty == 83.0 and t.value == 83_000.0 for t in txns)
+        assert all(t.qty == 80.0 and t.value == 80_000.0 for t in txns)
         counts.append(len(s.load().holdings))
     assert counts == [4, 6, 8, 10, 12, 12]
-    assert rec["reasons"][0] == ("regime NORMAL, target reached: 85.0% invested against a "
-                                 "target of 83.3% (₹10,00,000)")
+    assert rec["reasons"][0] == ("regime NORMAL, target reached: 82.5% invested against a "
+                                 "target of 80.0% (₹9,60,000)")
     marks = {**held, **{i.symbol: 1000.0 for i in ideas}}
-    assert sizing.holdings_value(s.load(), marks) == 1_020_000.0
-    assert s.load().cash_deployable == 180_000.0
-    assert sizing.weights(s.load(), marks).position_pct["I00"] == pytest.approx(83_000 / 12_000)
+    assert sizing.holdings_value(s.load(), marks) == 990_000.0
+    assert s.load().cash_deployable == 210_000.0
+    assert sizing.weights(s.load(), marks).position_pct["I00"] == pytest.approx(80_000 / 12_000)
 
 
 def test_d2_fourteen_ideas_stop_at_twelve_holdings(tmp_path, monkeypatch):
     """₹12 L cash, 14 ideas, no daily limit in the way (N = 20): 12 buys of
-    83 × ₹1,000 = ₹83,000, invested ₹9,96,000 = 83.0%. Twelve held and the
-    regime's 80% (₹9,60,000) met: target reached; two wait."""
+    80 × ₹1,000 = ₹80,000 make ₹9,60,000, exactly the regime's 80%: target
+    reached; two wait."""
     monkeypatch.setattr(settings, "AUTOPILOT_DEPLOY_MAX_NEW_PER_DAY", 20)
     s = _store(tmp_path, [], cash=1_200_000.0)
     ideas = _ideas_at_1000(14)
     _prices(monkeypatch, {i.symbol: 1000.0 for i in ideas})
     txns, rec = _run(s, ideas, {})
-    assert _buys(txns) == [(f"I{k:02d}", 83.0, 1000.0) for k in range(12)]
-    assert rec["reasons"][0] == ("regime NORMAL, target reached: 12 holdings, the target of "
-                                 "12, with 83.0% invested")
+    assert _buys(txns) == [(f"I{k:02d}", 80.0, 1000.0) for k in range(12)]
+    assert rec["reasons"][0] == ("regime NORMAL, target reached: 80.0% invested against a "
+                                 "target of 80.0% (₹9,60,000)")
     assert [o["outcome"] for o in rec["ideas"]][-2:] == ["waiting", "waiting"]
-    assert s.load().cash_deployable == 204_000.0
+    assert s.load().cash_deployable == 240_000.0
 
 
 def test_d2_never_more_than_fifteen_holdings(tmp_path, monkeypatch):
-    """₹30 L cash, 16 ideas, N = 20: the target is 80% = ₹24 L, so buying
-    goes past 12 holdings, and stops at the maximum: 15 × ₹83,000 = ₹12,45,000."""
+    """₹30 L cash, 16 ideas at ₹1,30,000, N = 20. A position asks for
+    80% × 30 L ÷ 12 = ₹2,00,000, which buys one share. The target is ₹24 L, but
+    15 × ₹1,30,000 = ₹19,50,000 (65%) stops at the maximum."""
     monkeypatch.setattr(settings, "AUTOPILOT_DEPLOY_MAX_NEW_PER_DAY", 20)
     s = _store(tmp_path, [], cash=3_000_000.0)
-    ideas = _ideas_at_1000(16)
-    _prices(monkeypatch, {i.symbol: 1000.0 for i in ideas})
+    ideas = [_idea(f"I{k:02d}", 130_000.0, round(0.9 - k * 0.01, 2), f"sector{k:02d}")
+             for k in range(16)]
+    _prices(monkeypatch, {i.symbol: 130_000.0 for i in ideas})
     txns, rec = _run(s, ideas, {})
     assert len(txns) == 15 and len(s.load().holdings) == 15
+    assert {t.qty for t in txns} == {1.0} and s.load().cash_deployable == 1_050_000.0
     assert rec["reasons"][0] == "15 holdings, the maximum of 15"
     assert _outcomes(rec)["I15"][0] == "waiting"
 
 
-def test_below_the_holdings_floor_a_position_opens_past_the_target(tmp_path, monkeypatch):
-    """NORMAL, ₹12 L: 9 holdings of 115 × ₹1,000 (₹1,15,000 each, three to a
-    sector: ₹3,45,000 = 28.75%), ₹10,35,000 invested (86.25%), ₹1,65,000
-    cash. Target max(80% × 12 L, 10 L) = ₹10,00,000, already met; but 9 < 10
-    holdings, so one position opens: 83 × ₹1,000 = ₹83,000, invested
-    ₹11,18,000 = 93.2% (₹1,18,000 past the target, more than one ₹83,333
-    position). At 10 holdings the floor is met and invested is past the
-    target, so the second idea waits."""
+def test_below_the_soft_minimum_nothing_opens_past_the_target(tmp_path, monkeypatch):
+    """NORMAL, ₹12 L: 9 holdings of 115 × ₹1,000 (₹1,15,000 each), ₹10,35,000
+    invested (86.25%), ₹1,65,000 cash. Target 80% × 12 L = ₹9,60,000, already
+    met. 9 < 10 holdings is only reported: nothing is bought, and no idea is
+    looked at."""
     s = _store(tmp_path, [_h(f"H{k}", 115, 1000.0, ("banking", "power", "metals")[k % 3])
                           for k in range(9)], cash=165_000.0)
     ideas = _ideas_at_1000(2)
     _prices(monkeypatch, {i.symbol: 1000.0 for i in ideas})
     txns, rec = _run(s, ideas, {f"H{k}": 1000.0 for k in range(9)})
-    assert _buys(txns) == [("I00", 83.0, 1000.0)]
-    assert (rec["target_inr"], rec["invested_before_pct"], rec["invested_after_pct"]) == \
-        (1_000_000.0, 86.2, 93.2)
-    assert _outcomes(rec)["I01"][0] == "waiting"
-    assert s.load().cash_deployable == 82_000.0
+    assert txns == [] and rec["ideas"] == []
+    assert (rec["target_inr"], rec["invested_after_pct"]) == (960_000.0, 86.2)
+    assert rec["reasons"][1] == "9 holdings, below the 10 aimed for: target reached"
+    assert s.load().cash_deployable == 165_000.0
 
 
-def test_only_six_qualifying_ideas_buys_six_and_records_the_floor(tmp_path, monkeypatch):
+def test_only_six_qualifying_ideas_buys_six_and_says_so(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "AUTOPILOT_DEPLOY_MAX_NEW_PER_DAY", 10)
     s = _store(tmp_path, [], cash=1_200_000.0)
     ideas = _ideas_at_1000(6)
@@ -551,56 +548,59 @@ def test_only_six_qualifying_ideas_buys_six_and_records_the_floor(tmp_path, monk
     assert len(txns) == 6
     assert rec["reasons"][:2] == [
         "no further qualifying idea",
-        "holdings floor unreachable: 6 qualifying ideas, 6 holdings against at least 10"]
+        "6 holdings, below the 10 aimed for: only 6 qualifying ideas"]
 
 
-def test_risk_off_relaxes_the_floor_to_half(tmp_path, monkeypatch):
-    """RISK_OFF from all cash (₹12 L): target 50% = ₹6 L; no holdings floor.
-    83,000 a buy: 7 buys = ₹5,81,000 is still below, the 8th makes
-    ₹6,64,000 (55.3%), past the target by less than one position."""
+def test_risk_off_stops_at_half_with_the_same_size_of_position(tmp_path, monkeypatch):
+    """RISK_OFF from all cash (₹12 L): target 50% = ₹6 L; the soft minimum is
+    not in force. A position is the calm size, 80% × 12 L ÷ 12 = ₹80,000: 7
+    buys = ₹5,60,000 is still below, the 8th makes ₹6,40,000 (53.3%), past the
+    target by less than one position."""
     monkeypatch.setattr(settings, "AUTOPILOT_DEPLOY_MAX_NEW_PER_DAY", 20)
     _regime(monkeypatch, "RISK_OFF")
     s = _store(tmp_path, [], cash=1_200_000.0)
     ideas = _ideas_at_1000(20)
     _prices(monkeypatch, {i.symbol: 1000.0 for i in ideas})
     txns, rec = _run(s, ideas, {})
-    assert len(txns) == 8
-    assert rec["reasons"][0] == ("regime RISK_OFF, target reached: 55.3% invested against a "
-                                 "target of 50.0% (₹6,00,000)")
+    assert [t.qty for t in txns] == [80.0] * 8
+    assert rec["reasons"] == ["regime RISK_OFF, target reached: 53.3% invested against a "
+                              "target of 50.0% (₹6,00,000)", "12 ideas qualifying but not bought "
+                              "today"]
     assert rec["min_holdings"] == 0
 
 
-def test_the_floor_and_holdings_come_from_config_with_no_code_change(tmp_path, monkeypatch):
-    """min 5, target 6, max 8, ₹6 L: a position asks for ₹1,00,000 = 100
-    shares at ₹1,000 (8.3% of ₹12 L). The regime's 80% (₹9,60,000) is never
-    met inside 8 holdings, so it stops at the maximum: ₹8,00,000 invested."""
+def test_the_holdings_settings_come_from_config_with_no_code_change(tmp_path, monkeypatch):
+    """min 5, target 10, max 8, ₹12 L: a position asks for 80% × 12 L ÷ 10 =
+    ₹96,000 = 96 shares at ₹1,000. The regime's 80% (₹9,60,000) is never met
+    inside 8 holdings (₹7,68,000), so it stops at the maximum."""
     monkeypatch.setattr(settings, "AUTOPILOT_DEPLOY_MAX_NEW_PER_DAY", 20)
-    for name, value in (("PORTFOLIO_MIN_HOLDINGS", 5), ("PORTFOLIO_TARGET_HOLDINGS", 6),
-                        ("PORTFOLIO_MAX_HOLDINGS", 8), ("PORTFOLIO_MIN_INVESTED_INR", 600_000.0)):
+    for name, value in (("PORTFOLIO_MIN_HOLDINGS", 5), ("PORTFOLIO_TARGET_HOLDINGS", 10),
+                        ("PORTFOLIO_MAX_HOLDINGS", 8)):
         monkeypatch.setattr(settings, name, value)
     s = _store(tmp_path, [], cash=1_200_000.0)
     ideas = _ideas_at_1000(10)
     _prices(monkeypatch, {i.symbol: 1000.0 for i in ideas})
     txns, rec = _run(s, ideas, {})
-    assert [t.qty for t in txns] == [100.0] * 8
+    assert [t.qty for t in txns] == [96.0] * 8
     assert rec["reasons"][0] == "8 holdings, the maximum of 8"
 
 
 def test_a_portfolio_override_switches_and_sizes_one_portfolio(tmp_path, monkeypatch):
-    """Global switch off; portfolio u opts in with min 2, target 4, max 5 and
-    ₹4 L: ₹1,00,000 a position, 5 bought. Portfolio v has no override and
-    buys nothing; portfolio w opts out while the global switch is on."""
+    """Global switch off; portfolio u opts in with min 2, target 4, max 5: a
+    position asks for 80% × 12 L ÷ 4 = ₹2,40,000, which the 10% cap holds to
+    ₹1,20,000, 5 bought. Portfolio v has no override and buys nothing;
+    portfolio w opts out while the global switch is on."""
     monkeypatch.setattr(settings, "AUTOPILOT_DEPLOY_IDLE_CASH", False)
     monkeypatch.setattr(settings, "AUTOPILOT_DEPLOY_MAX_NEW_PER_DAY", 20)
     monkeypatch.setattr(settings, "PORTFOLIO_OVERRIDES", {
         "u": {"deploy_idle_cash": True, "min_holdings": 2, "target_holdings": 4,
-              "max_holdings": 5, "min_invested_inr": 400_000},
+              "max_holdings": 5},
         "w": {"deploy_idle_cash": False}})
     ideas = _ideas_at_1000(10)
     _prices(monkeypatch, {i.symbol: 1000.0 for i in ideas})
     u = _store(tmp_path, [], cash=1_200_000.0, name="u")
     txns, rec = _run(u, ideas, {})
-    assert [t.qty for t in txns] == [100.0] * 5 and rec["reasons"][0] == \
+    assert [t.qty for t in txns] == [120.0] * 5 and rec["reasons"][0] == \
         "5 holdings, the maximum of 5"
     v = _store(tmp_path, [], cash=1_200_000.0, name="v")
     assert _run(v, ideas, {}) == ([], None)
@@ -648,7 +648,7 @@ def test_an_unlisted_or_suspended_stock_is_not_bought(tmp_path, monkeypatch):
     s, ideas = _sep27(tmp_path, monkeypatch)
     _report(monkeypatch, status={"P1": "S"}, unlisted=("P2",))
     txns, rec = _run(s, ideas, {"AAA": 100.0, "BBB": 100.0})
-    assert _buys(txns) == [("P3", 83.0, 1000.0)]
+    assert _buys(txns) == [("P3", 66.0, 1000.0)]
     assert _outcomes(rec)["P1"] == ("surveillance", "status S, not active, in NSE's "
                                                     "surveillance report of 2026-07-10")
     assert _outcomes(rec)["P2"] == ("surveillance",
@@ -764,8 +764,8 @@ def test_mondays_run_waits_for_a_saturday_dive_and_tuesdays_buys_it_at_mondays_c
         tmp_path, monkeypatch, caplog):
     """₹12 L all cash; NEWX first dived on Sat 31 Oct at ₹1,000. Monday's run
     (review Fri 30 Oct) buys nothing and logs why NEWX was not offered.
-    Tuesday's run (review Mon 2 Nov) buys floor(₹83,333.33 / ₹1,000) = 83
-    shares = ₹83,000, dated Monday, at Monday's close."""
+    Tuesday's run (review Mon 2 Nov) buys floor(₹80,000 / ₹1,000) = 80
+    shares = ₹80,000, dated Monday, at Monday's close."""
     import logging
     import core.portfolio.pipeline as pipeline
     monkeypatch.setattr(settings, "DISCOVERY_REDIVE_AFTER_DAYS", 30)
@@ -779,7 +779,7 @@ def test_mondays_run_waits_for_a_saturday_dive_and_tuesdays_buys_it_at_mondays_c
             "waits for a review of a later session'") in caplog.text
     pipeline.run_post_review_pipeline(MON)
     assert [(t.date, t.symbol, t.qty, t.price, t.verdict) for t in store.load_transactions()
-            if t.side == "BUY"] == [("2026-11-02", "NEWX", 83.0, 1000.0, "DEPLOY")]
+            if t.side == "BUY"] == [("2026-11-02", "NEWX", 80.0, 1000.0, "DEPLOY")]
 
 
 def test_a_saturday_dive_is_no_switch_destination_on_mondays_run(tmp_path, monkeypatch):
@@ -849,12 +849,12 @@ def _csv(**rows):
 def test_any_status_but_active_in_the_report_refuses(tmp_path, monkeypatch):
     """13 Jul's report lists P1 with status "I" (not one NSE is known to use:
     anything but "A" refuses), P2 suspended ("S") and P3 active. Only P3 is
-    bought: 83 × ₹1,000."""
+    bought: 66 × ₹1,000."""
     s, ideas = _sep27(tmp_path, monkeypatch)
     _archive(monkeypatch, tmp_path, {"REG1_IND130726.csv": _csv(
         P1=("I", "100"), P2=("S", "100"), P3=("A", "100"))})
     txns, rec = _run(s, ideas, {"AAA": 100.0, "BBB": 100.0})
-    assert _buys(txns) == [("P3", 83.0, 1000.0)]
+    assert _buys(txns) == [("P3", 66.0, 1000.0)]
     assert _outcomes(rec)["P1"] == ("surveillance", "status I, not active, in NSE's "
                                                     "surveillance report of 2026-07-13")
     assert _outcomes(rec)["P2"][1].startswith("status S, not active")
@@ -871,7 +871,7 @@ def test_the_cached_report_serves_only_its_own_day(tmp_path, monkeypatch):
                       cached=("2026-07-10", {"P1": "A", "P2": "A", "P3": "A"}))
     txns, rec = _run(s, ideas, {"AAA": 100.0, "BBB": 100.0})
     assert client.asked == ["REG1_IND130726.csv"]
-    assert _buys(txns) == [("P2", 333.0, 250.0), ("P3", 83.0, 1000.0)]
+    assert _buys(txns) == [("P2", 266.0, 250.0), ("P3", 66.0, 1000.0)]
     assert _outcomes(rec)["P1"] == ("surveillance", "under ST-ASM in NSE's surveillance "
                                                     "report of 2026-07-13")
 
@@ -908,8 +908,8 @@ def test_property_random_days_keep_every_rule(tmp_path, monkeypatch):
         held stock;
       - every BUY at most 10% of total equity after it, its sector at most
         30%, its price inside its idea's band, and cash at or above the floor;
-      - from at or above the holdings floor in force, invested never passes
-        the target (from the run's start) by more than one position;
+      - invested never passes the target (from the run's start) by more than
+        one position, in any regime and at any number of holdings;
       - every idea not bought has a reason, and a day that ends below the
         target with idle cash says why.
     The counters prove the cases were exercised."""
@@ -968,13 +968,12 @@ def test_property_random_days_keep_every_rule(tmp_path, monkeypatch):
             assert sec <= 0.30 * eq_after + 1e-6, (seed, x.symbol)
             i = idea_of[x.symbol]
             assert i.invalidation_level < x.price <= i.entry_high, seed
-            assert x.qty * x.price <= b.position_inr + 1e-6, seed
+            assert x.qty * x.price <= b.position_inr(eq0) + 1e-6, seed
             seen["capped"] += "capped by" in x.note
         if buys:
             assert after.cash_deployable >= floor - 0.005, seed
             inv_after = sizing.holdings_value(after, run_marks)
-            if len(before.holdings) >= t.min_holdings:
-                assert inv_after <= max(t.invested_inr, inv0) + b.position_inr + 1e-6, seed
+            assert inv_after <= max(t.invested_inr, inv0) + b.position_inr(eq0) + 1e-6, seed
         seen["buys"] += len(buys)
         if rec is not None:
             assert rec["reasons"], seed
@@ -1455,29 +1454,29 @@ def test_the_27_sep_shape_through_the_pipeline(tmp_path, monkeypatch):
     result = pipeline.run_post_review_pipeline(D)
     assert result["status"] == "completed"
     txns = store.load_transactions()
-    assert _buys(txns) == [("P1", 166.0, 500.0), ("P2", 333.0, 250.0)]
+    assert _buys(txns) == [("P1", 133.0, 500.0), ("P2", 266.0, 250.0)]
     digest = store.load_latest_digest()
     assert digest["deployment"]["bought"] == ["P1", "P2"]
     assert digest["deployment"]["reasons"][0] == "2 new positions today, the daily limit of 2"
-    assert "Idle cash: bought P1, P2; invested 19.0% → 35.6% against a target of 99.0% " \
+    assert "Idle cash: bought P1, P2; invested 19.0% → 32.3% against a target of 80.0% " \
            "(NORMAL)." in render_digest_text(digest)
     point = store.load_value_history()[-1]
     assert (point["date"], point["total_equity"], point["cash"]) == \
-        (D.isoformat(), 1_000_000.0, 643_750.0)
+        (D.isoformat(), 1_000_000.0, 677_000.0)
     assert sorted(e.symbol for e in emitted if e.kind == "autopilot_trade") == ["P1", "P2"]
 
 
 def test_a_portfolio_with_no_holdings_still_deploys(tmp_path, monkeypatch):
     """All cash (₹12 L): the pipeline used to skip a portfolio with no
-    holdings. Two buys of 83 × ₹1,000."""
+    holdings. Two buys of 80 × ₹1,000."""
     import core.portfolio.pipeline as pipeline
     monkeypatch.setattr(ap, "_today_ist", lambda: D)
     ideas = _ideas_at_1000(3)
     store, _ = _pipeline_world(tmp_path, monkeypatch, [], 1_200_000.0, ideas,
                                {i.symbol: 1000.0 for i in ideas})
     pipeline.run_post_review_pipeline(D)
-    assert _buys(store.load_transactions()) == [("I00", 83.0, 1000.0), ("I01", 83.0, 1000.0)]
-    assert store.load_value_history()[-1]["market_value"] == 166_000.0
+    assert _buys(store.load_transactions()) == [("I00", 80.0, 1000.0), ("I01", 80.0, 1000.0)]
+    assert store.load_value_history()[-1]["market_value"] == 160_000.0
 
 
 def test_with_the_switch_off_a_portfolio_with_no_holdings_is_skipped(tmp_path, monkeypatch):

@@ -5,8 +5,8 @@ Every expected figure is worked by hand in the test's docstring or comments
 from the fixture's own numbers, never asked of the code under test.
 
 Fixture rules (pinned by FIX-023's autouse world, imported below): record
-mode; deployment on, 80% in calm labels, 2 new positions a day, ₹10 L over
-12 positions, so one asks for ₹83,333.33; a watchlist band is 97-102% of the
+mode; deployment on, 80% in calm labels, 2 new positions a day, 80% of equity
+over 12 positions, so one asks for ₹80,000 of ₹12 L; a watchlist band is 97-102% of the
 close it is set from; NSE's 15:30 IST close.
 
 Independent invariants:
@@ -187,11 +187,13 @@ def test_a_switch_leg_waits_for_a_close_after_the_analysis(tmp_path, monkeypatch
     assert xs.switch_buy_lands(SessionClose(505.0, TUE, "agree"), TUE, w) is True
 
 
-def _watch_pipeline(tmp_path, monkeypatch, run_at):
-    """The real pipeline over a user with ₹12 L cash and the watchlist BUY of
-    W (₹505 at every close asked), its readers faked; the day's regime NORMAL."""
+def _watch_pipeline(tmp_path, monkeypatch, run_at, holdings=(), cash=1_200_000.0, prices=None):
+    """The real pipeline over a user with ₹12 L cash (or `holdings` and `cash`)
+    and the watchlist BUY of W (₹505 at every close asked, or `prices`), its
+    readers faked; the day's regime NORMAL."""
     _watch_rules(monkeypatch)
-    store, _ = story._pipeline_world(tmp_path, monkeypatch, [], 1_200_000.0, [], {"W": 505.0})
+    store, _ = story._pipeline_world(tmp_path, monkeypatch, list(holdings), cash, [],
+                                     prices or {"W": 505.0})
     p = store.load()
     p.watchlist = [WatchlistItem(symbol="W", sector="pharma", added="2026-10-01", source="user")]
     store.save(p)
@@ -215,7 +217,7 @@ def _buys(store):
 def test_deployment_waits_for_the_session_after_an_evening_analysis(tmp_path, monkeypatch):
     """RV5 through the real pipeline and deployment. Tuesday's run (review
     Mon 2 Nov) buys nothing: W is not offered. Wednesday's run (review Tue 3
-    Nov) buys floor(₹83,333.33 / ₹505) = 165 shares, dated Tuesday."""
+    Nov) buys floor(₹80,000 / ₹505) = 158 shares, dated Tuesday."""
     store = _watch_pipeline(tmp_path, monkeypatch, MON_2000_IST)
     for review, run_day in ((MON, TUE), (TUE, WED)):
         monkeypatch.setattr(ap, "_today_ist", lambda d=run_day: d)
@@ -223,17 +225,17 @@ def test_deployment_waits_for_the_session_after_an_evening_analysis(tmp_path, mo
         pipeline.run_post_review_pipeline(review)
         if review == MON:
             assert _buys(store) == []
-    assert _buys(store) == [("2026-11-03", "W", 165.0, 505.0, "DEPLOY")]
+    assert _buys(store) == [("2026-11-03", "W", 158.0, 505.0, "DEPLOY")]
 
 
 def test_deployment_buys_a_morning_analysis_at_that_days_close(tmp_path, monkeypatch):
     """W analysed Mon 11:00 IST, its band ₹485-510 from Friday's ₹500:
-    Tuesday's run (review Monday) buys 165 × ₹505, dated Monday."""
+    Tuesday's run (review Monday) buys 158 × ₹505, dated Monday."""
     store = _watch_pipeline(tmp_path, monkeypatch, MON_1100_IST)
     monkeypatch.setattr(ap, "_today_ist", lambda: TUE)
     state.update_sticky_regime("NORMAL", MON.isoformat())
     pipeline.run_post_review_pipeline(MON)
-    assert _buys(store) == [("2026-11-02", "W", 165.0, 505.0, "DEPLOY")]
+    assert _buys(store) == [("2026-11-02", "W", 158.0, 505.0, "DEPLOY")]
 
 
 def test_deployment_refuses_an_idea_decided_after_its_close_even_if_offered(tmp_path,
@@ -393,8 +395,112 @@ def test_an_established_day_adds_as_before(tmp_path, monkeypatch):
     holding, sig = _add_ready(ps, sp)
     assert sig.regime_unavailable == ""
     rec = decide(sig, holding, "balanced")
-    assert (rec.verdict, rec.triggers, rec.regime_unavailable) == \
-        ("ADD", ["add_bullish_healthy"], "")
+    assert (rec.verdict, rec.triggers, rec.regime_unavailable, rec.notes) == \
+        ("ADD", ["add_bullish_healthy"], "", [])
+
+
+# ---------------------------------------------------------------------------
+# FIX-025 (routed from this story's review: L2, T3)
+# ---------------------------------------------------------------------------
+
+def _next_day_signals(tmp_path, monkeypatch, *, mark=None):
+    """A holding reviewed on the established day, with no entry of its own for
+    the next: its failed or skipped review wrote nothing. `mark` runs on the
+    next day's market-wide state. The signals are set where ADD would fire."""
+    end = date.today()
+    ps, entry, sp = _full_review(monkeypatch, tmp_path, vix=f23._flat(15.0, end),
+                                 nifty=f23._flat(24_000.0, end), **f23._calm_globals(end))
+    assert entry.regime_unavailable == ""
+    next_day = sp.REVIEW_DATE + timedelta(days=1)
+    if mark:
+        mark(next_day.isoformat())
+    holding = story._h(sp.TICKER, 100, 100.0, sp.SECTOR)
+    portfolio = Portfolio(user_id="u", holdings=[holding], cash_deployable=90_000.0)
+    sig = build_signals(holding, portfolio, next_day, ps, {}, close=100.0)
+    return holding, next_day.isoformat(), sig.model_copy(update={
+        "envelope_direction": "UP", "direction_accuracy_7d": 0.70, "position_weight_pct": 5.0,
+        "price_fresh": True, "forecast_gate": "actionable"})
+
+
+def test_no_entry_of_its_own_on_a_dark_day_holds_the_add(tmp_path, monkeypatch):
+    """The review's L2: the older entry is established, but the market-wide
+    state marks today unavailable, so the ADD is held and says so."""
+    holding, day, sig = _next_day_signals(
+        tmp_path, monkeypatch,
+        mark=lambda d: state.record_unavailable_day(d, "India VIX did not answer", ""))
+    assert sig.regime_unavailable == f"market regime unavailable for {day}: India VIX did not answer"
+    rec = decide(sig, holding, "balanced")
+    assert (rec.verdict, rec.notes) == ("HOLD", ["REGIME_UNAVAILABLE"])
+    assert rec.regime_unavailable == sig.regime_unavailable
+
+
+def test_no_entry_of_its_own_and_no_regime_recorded_holds_the_add(tmp_path, monkeypatch):
+    """No other review recorded the day at all: nothing says the market is calm."""
+    holding, day, sig = _next_day_signals(tmp_path, monkeypatch)
+    assert sig.regime_unavailable == f"no market regime recorded for {day}"
+    assert decide(sig, holding, "balanced").verdict == "HOLD"
+
+
+def test_no_entry_of_its_own_on_an_established_day_still_adds(tmp_path, monkeypatch):
+    """The control: another ticker's review established today, so the holding's
+    older entry costs it nothing."""
+    holding, _, sig = _next_day_signals(
+        tmp_path, monkeypatch, mark=lambda d: state.update_sticky_regime("NORMAL", d))
+    assert sig.regime_unavailable == ""
+    rec = decide(sig, holding, "balanced")
+    assert (rec.verdict, rec.notes) == ("ADD", [])
+
+
+def test_an_entry_of_its_own_for_the_day_never_asks_the_market_wide_record(tmp_path, monkeypatch):
+    """The holding's own established entry for the day decides: the market-wide
+    state is not read (here it would answer "no label"), and the ADD fires."""
+    end = date.today()
+    ps, entry, sp = _full_review(monkeypatch, tmp_path, vix=f23._flat(15.0, end),
+                                 nifty=f23._flat(24_000.0, end), **f23._calm_globals(end))
+    assert entry.date == sp.DATE_STR
+    asked: list = []
+    monkeypatch.setattr(state, "label_recorded_for", lambda day: asked.append(day))
+    holding, sig = _add_ready(ps, sp)
+    assert asked == [] and sig.regime_unavailable == ""
+    assert decide(sig, holding, "balanced").verdict == "ADD"
+
+
+def _stop_breach(tmp_path, monkeypatch, run_at, folder):
+    """AAA 1,000 × ₹100 now ₹70 (−30%, past any ATR stop), ₹9,00,000 cash,
+    deployment off, so only a SWITCH can buy; W the only idea."""
+    monkeypatch.setattr(settings, "AUTOPILOT_DEPLOY_IDLE_CASH", False)
+    return _watch_pipeline(tmp_path / folder, monkeypatch, run_at,
+                           holdings=[story._h("AAA", 1000, 100.0, "it_sector")], cash=900_000.0,
+                           prices={"AAA": 70.0, "W": 505.0})
+
+
+def _review(store, monkeypatch, session, run_day):
+    monkeypatch.setattr(ap, "_today_ist", lambda d=run_day: d)
+    state.update_sticky_regime("NORMAL", session.isoformat())
+    pipeline.run_post_review_pipeline(session)
+    return {r.symbol: (r.verdict, r.switch_candidate) for r in store.load_advice()}
+
+
+def test_a_real_switch_buys_a_morning_analysis_at_that_days_close(tmp_path, monkeypatch):
+    """The review's T3, with no hand-made advice: a real stop breach, the real
+    decide and the real executor. W analysed Mon 11:00 IST: Monday's close was
+    struck after it. The ₹70,000 of AAA's sale buys floor(70,000 / 505) = 138
+    shares of W, dated Monday."""
+    store = _stop_breach(tmp_path, monkeypatch, MON_1100_IST, "morning")
+    assert _review(store, monkeypatch, MON, TUE) == {"AAA": ("SWITCH", "W")}
+    assert _buys(store) == [("2026-11-02", "W", 138.0, 505.0, "SWITCH")]
+
+
+def test_a_real_switch_waits_for_the_close_after_an_evening_analysis(tmp_path, monkeypatch):
+    """W analysed Mon 20:00 IST. Monday's review offers it no longer: a plain EXIT.
+    In a fresh copy, Tuesday's review offers it: the SWITCH buys 138 at Tuesday's
+    close, dated Tuesday."""
+    store = _stop_breach(tmp_path, monkeypatch, MON_2000_IST, "monday")
+    assert _review(store, monkeypatch, MON, TUE) == {"AAA": ("EXIT", "")}
+    assert _buys(store) == []
+    store = _stop_breach(tmp_path, monkeypatch, MON_2000_IST, "tuesday")
+    assert _review(store, monkeypatch, TUE, WED) == {"AAA": ("SWITCH", "W")}
+    assert _buys(store) == [("2026-11-03", "W", 138.0, 505.0, "SWITCH")]
 
 
 def test_a_dark_day_after_a_day_already_established_keeps_that_days_label(tmp_path,

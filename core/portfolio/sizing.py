@@ -225,8 +225,9 @@ def entry_check(price: float, idea) -> tuple[bool, str]:
 
 
 def surveillance_issue(symbol: str, report: tuple[dict | None, str | None]) -> str:
-    """Why a position may not be opened in `symbol` under NSE's daily
-    Surveillance Indicator report, or "" when it may (owner, 1 Nov 2026).
+    """Why a position may not be opened in `symbol`, nor one topped up, under
+    NSE's daily Surveillance Indicator report, or "" when it may (owner, 1 and
+    4 Nov 2026).
 
     `report` is (securities, as_of) as services/data/fetchers/surveillance
     `surveillance_list` returns it. The stock must be listed as active ("A")

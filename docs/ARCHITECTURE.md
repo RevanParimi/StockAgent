@@ -211,6 +211,6 @@ These items are planned, not implemented
   checks, provider-credit alerts, a read-only status fetcher and an outside
   witness for missed jobs.
 - **Portfolio economics.** Idle-cash deployment is built and ships off; the
-  owner switches it on after a ₹2 L paper deposit.
+  owner switches it on.
 - **Interface.** Verifiable learning evidence and honest unavailable or demo
   states.

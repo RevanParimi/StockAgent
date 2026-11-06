@@ -6,9 +6,9 @@ scheduler job and POST /discovery/run. Every stage is individually
 non-fatal: a dark data feed degrades the screen, it never kills the cycle.
 
 PR-004: the week's analyst budget (DISCOVERY_DEEP_DIVE_COUNT calls) goes
-first to re-dives of shelf ideas that are unverified or older than
-DISCOVERY_REDIVE_AFTER_DAYS, leaving the IPO slots free, then to IPO
-candidates, then to the screen's ranks.
+first to re-dives of shelf ideas the autopilot sold since their latest dive,
+that are unverified or that are older than DISCOVERY_REDIVE_AFTER_DAYS,
+leaving the IPO slots free, then to IPO candidates, then to the screen's ranks.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from core.discovery.deep_dive import run_deep_dives
 from core.discovery.guards import GUARD_SOURCES
 from core.discovery.paper_lane import run_paper_reviews
 from core.discovery.screen import load_latest_screen, run_screen
-from core.discovery.shelf import ShelfStore
+from core.discovery.shelf import ShelfStore, autopilot_sales, no_longer_held, sold_since_dive
 from services.data.fetchers.bhavcopy import load_listing, refresh_listing, sync_recent
 from services.data.fetchers.bulk_block import refresh_bulk_block
 from services.data.fetchers.surveillance import market_classification
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "run_discovery_cycle", "run_deep_dives", "run_paper_reviews",
-    "run_screen", "load_latest_screen", "ShelfStore",
+    "run_screen", "load_latest_screen", "ShelfStore", "autopilot_sales", "no_longer_held",
     "sync_recent", "refresh_bulk_block", "refresh_listing", "load_listing",
     "market_classification", "refresh_insider_trades",
     "refresh_ipo_cache", "build_ipo_candidates", "upcoming_lockin_alerts",
@@ -100,15 +100,32 @@ def run_discovery_cycle(on: date | None = None) -> dict:
     # PR-004: shelf hygiene before any new idea. Re-dives come first in the
     # budget but never take the IPO slots.
     shelf_store = ShelfStore()
-    hygiene: dict = {"not_companies": {}, "classified": [], "redive": []}
+    hygiene: dict = {"not_companies": {}, "classified": [], "redive": [], "sold_candidates": []}
     redive_cands: list[DiscoveryCandidate] = []
+    # FIX-025: a sold stock's idea goes first. An unread ledger costs that
+    # priority, never the week's other re-dives.
+    sold: dict = {}
+    try:
+        sold = autopilot_sales()
+    except Exception as exc:
+        logger.warning("[discovery] autopilot sales unread (non-fatal): %s", exc)
+        errors.append(f"autopilot sales unread: {exc}")
+    sold_out: set[str] = set()
+    try:
+        sold_out = no_longer_held(sold)
+    except Exception as exc:
+        logger.warning("[discovery] holdings unread (non-fatal): %s", exc)
+        errors.append(f"holdings unread, so no sold stock is dived as a new idea: {exc}")
     try:
         hygiene["not_companies"] = shelf_store.drop_non_companies(listing)
         hygiene["classified"] = shelf_store.backfill_classification(market_classification)
-        due = shelf_store.redive_due(on)
+        due = shelf_store.redive_due(on, sold)
         room = max(0, settings.DISCOVERY_DEEP_DIVE_COUNT - len(ipo_cands))
-        redive_cands = [DiscoveryCandidate(symbol=i.symbol, close=0.0, composite=0.0,
-                                           flags=["redive"]) for i in due[:room]]
+        hygiene["redive_sold"] = [i.symbol for i in due if sold_since_dive(i, sold.get(i.symbol))]
+        redive_cands = [DiscoveryCandidate(
+            symbol=i.symbol, close=0.0, composite=0.0,
+            flags=["redive", "sold"] if i.symbol in hygiene["redive_sold"] else ["redive"])
+            for i in due[:room]]
         hygiene["redive"] = [c.symbol for c in redive_cands]
         hygiene["redive_deferred"] = [i.symbol for i in due[room:]]
     except Exception as exc:
@@ -128,6 +145,13 @@ def run_discovery_cycle(on: date | None = None) -> dict:
     if recent:
         hygiene["recently_dived"] = sorted({c.symbol for c in new_cands} & recent)
         new_cands = [c for c in new_cands if c.symbol not in recent]
+    # FIX-025: a stock the autopilot bought stays managed after its sale, which
+    # would keep it from a dive for good. Once no portfolio holds it, it takes
+    # its rank in the screen like any other stock.
+    if sold_out:
+        hygiene["sold_candidates"] = sorted({c.symbol for c in new_cands} & sold_out)
+        new_cands = [c.model_copy(update={"flags": [*c.flags, "sold"]}) if c.symbol in sold_out
+                     else c for c in new_cands]
     try:
         dives = run_deep_dives(redive_cands + new_cands, on=on)
     except Exception as exc:

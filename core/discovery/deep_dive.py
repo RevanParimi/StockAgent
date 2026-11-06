@@ -9,8 +9,9 @@ below X").
 
 LLM cost cap: at most DISCOVERY_DEEP_DIVE_COUNT analyst calls per weekly
 run, a failed call included. Skipped BEFORE any call: a symbol NSE does not
-list as a company, a managed symbol, and one already on the shelf unless the
-candidate is a re-dive (flag "redive", PR-004).
+list as a company, a managed symbol unless the autopilot sold it (flag "sold",
+FIX-025), and one already on the shelf unless the candidate is a re-dive (flag
+"redive", PR-004).
 """
 from __future__ import annotations
 
@@ -118,9 +119,10 @@ def infer_sector(symbol: str, classification: dict | None = None) -> str:
 
     A key decides the graph (automobile, banking_bfsi, it_sector and
     renewable_energy have native graphs; every other key runs the generic
-    graph) and the prediction-store directory. It is read only for a stock
-    with no managed record: a managed stock's own sector always wins
-    (`candidates.holding_sector`), and the deep dive skips managed stocks."""
+    graph) and the prediction-store directory. When a stock is bought, its
+    managed record's sector always wins over this key
+    (`candidates.holding_sector`); the deep dive reaches a managed stock only
+    once the autopilot has sold it."""
     symbol = symbol.strip().upper()
     try:
         from backend.sectors.registry import TICKER_SECTOR
@@ -183,7 +185,8 @@ def run_deep_dives(
 
     No call is made for a symbol NSE does not list as a company (`listing`,
     default the cached one; no listing means no symbol can be verified, so
-    nothing is dived), for a managed symbol, for a repeat, or for one already
+    nothing is dived), for a managed symbol unless the candidate is flagged
+    "sold" (the autopilot sold it, FIX-025), for a repeat, or for one already
     on the shelf unless the candidate is flagged "redive". Every answered
     call is returned, an abstained one included in either gate mode: the
     dive memo remembers it, the shelf refuses a new idea from it under the
@@ -213,7 +216,10 @@ def run_deep_dives(
         if len(attempted) >= limit:
             break
         redive = "redive" in cand.flags
-        if cand.symbol in managed or (cand.symbol in shelved and not redive):
+        # FIX-025: a stock the autopilot bought stays managed after its sale,
+        # and a new dive is all that can bring it back.
+        sold = "sold" in cand.flags
+        if (cand.symbol in managed and not sold) or (cand.symbol in shelved and not redive):
             logger.debug("[deep_dive] %s skipped (managed/shelved)", cand.symbol)
             continue
         if cand.symbol in attempted:

@@ -1067,7 +1067,7 @@ def scorecard_lines(row: dict) -> list[dict]:
             else "Not recorded for this week.")
     floor = b.get("floor") or {}
     if floor.get("min_holdings"):
-        text += f" Floor: {floor['min_holdings']} holdings."
+        text += f" Aimed for: at least {floor['min_holdings']} holdings."
     lines.append({"kind": "line", "label": "Breadth", "text": text})
     hp = row["holding_period"]
     if hp["closed"] and hp["median_sessions"] is not None:
@@ -1112,7 +1112,8 @@ def render_scorecard_text(row: dict | None) -> list[str]:
 # -- I/O wrapper ----------------------------------------------------------------------
 
 def _floor() -> dict | None:
-    """The breadth floor, once configured (portfolio.min_holdings)."""
+    """The holdings aimed for, once configured (portfolio.min_holdings: a soft
+    minimum, FIX-025)."""
     from backend.shared.config.settings.loader import cfg
     value = cfg("portfolio.min_holdings", fallback=None)
     try:

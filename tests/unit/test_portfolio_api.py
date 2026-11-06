@@ -122,6 +122,21 @@ def test_run_advisor_returns_202(client, monkeypatch):
     assert resp.status_code == 202
 
 
+@pytest.mark.parametrize("hour, status", [(11, 422), (16, 202)])
+def test_run_advisor_with_no_date_defaults_to_today_and_the_same_rule(client, monkeypatch, hour,
+                                                                      status):
+    """FIX-025 (FIX-024's review, T1): with no review_date the session is today,
+    and the rule above holds for it too: refused at 11:00 IST, run at 16:00."""
+    _ist_now(monkeypatch, hour, 0)
+    ran = []
+    monkeypatch.setattr(papi, "run_post_review_pipeline", lambda d: ran.append(d))
+    resp = client.post("/portfolio/run-advisor")
+    assert resp.status_code == status
+    assert ran == ([] if status == 422 else [date.today()])
+    if status == 422:
+        assert "has not closed yet (15:30 IST)" in resp.json()["detail"]
+
+
 @pytest.mark.parametrize("hour, minute", [(11, 0), (15, 29)])
 def test_run_advisor_refuses_a_session_that_has_not_closed(client, monkeypatch, hour, minute):
     """FIX-024: before 15:30 IST, today's close does not exist; the run would

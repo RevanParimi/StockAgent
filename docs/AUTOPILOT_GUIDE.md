@@ -39,7 +39,7 @@ Three rules hold throughout:
      1   sync_corp_actions        splits, bonuses, dividends BEFORE any rule
      -   shelf ideas and their session closes (candidate prices, once per run)
      -   NSE's surveillance report, read once a run before any lock, when a
-         SWITCH or a deployment may buy
+         SWITCH, a top-up or a deployment may buy
      2   refresh_events_calendar  results dates for held symbols (stale cache on failure)
      3   for each holding:
            session_close            the session's close and the bar it came from
@@ -357,8 +357,8 @@ A buy paid from cash moves money into a holding, so E does not change but for
 the buy's charges (section 9). A buy of X is the smallest of:
 
 - the amount asked for (the ADD tranche, the SWITCH proceeds, or a new
-  idle-cash position's ₹83,333: `portfolio.min_invested_inr /
-  portfolio.target_holdings`);
+  idle-cash position's share of equity: the NORMAL share of E ÷
+  `portfolio.target_holdings`, ₹80,000 of ₹12 L);
 - `0.10 × E − pos`, the position's room (`advisor.max_position_pct`);
 - `0.30 × E − sector`, its sector's room (`advisor.max_sector_pct`);
 - `cash − 10,000`, the cash above the floor.
@@ -382,7 +382,12 @@ How cash moves:
 
 - **A SWITCH** puts one sale's proceeds into a buy candidate (section 3: a
   fresh shelf idea or the user's own watchlist BUY), inside its entry band.
-- **ADD tops up a stock already held.**
+- **ADD tops up a stock already held.** NSE's surveillance report must clear it,
+  as for a new position (above); no report, no top-up. A refused top-up keeps the
+  shares, writes no BUY, so its cooldown does not start, and the digest and the
+  morning brief say why: "top-up skipped: under LT-ASM in NSE's surveillance
+  report of 2026-11-03". The cooldown is checked first, so a stock inside it does
+  not read the report.
 - **Idle-cash deployment**, when it is on for the portfolio, opens new
   positions from the same candidates up to the market regime's target
   (below). With it off, a plain EXIT's proceeds and whatever a cap or a
@@ -405,7 +410,9 @@ and the BUY's note says so.
 [deployment.py](../core/portfolio/deployment.py) decides how much may be
 invested; `_deploy_idle_cash` in autopilot.py buys. Off unless
 `autopilot.deploy_idle_cash` is on, globally or for the portfolio in
-`portfolio.overrides.<user id>` (which can also set the four breadth keys).
+`portfolio.overrides.<user id>` (which can also set `min_holdings`,
+`target_holdings`, `max_holdings` and the regimes of
+`autopilot.deploy_target_invested_pct` it names).
 The steps, after the day's sells, switch legs and ADDs:
 
 1. **Target.** The daily review's sticky regime label recorded for the review
@@ -416,18 +423,16 @@ The steps, after the day's sells, switch legs and ADDs:
    <day>: India VIX did not answer; no new positions" (FIX-023). Its share
    of total equity, `autopilot.deploy_target_invested_pct`: 80% in NORMAL,
    RISK_ON, MOMENTUM_EXTENDED and OVERSOLD; 50% in RISK_OFF; 0 in MACRO_CRISIS
-   (no new positions). In a calm regime the target is at least
-   `portfolio.min_invested_inr` (₹10 L) and the holdings floor is
-   `portfolio.min_holdings` (10); in RISK_OFF neither applies. The target never
-   exceeds equity less the cash floor; when the ₹10 L floor does not fit, the
-   run records "invested floor unreachable".
+   (no new positions). The target never exceeds equity less the cash floor.
 2. **When to open another.** Never at `portfolio.max_holdings` (15) or after
-   `autopilot.deploy_max_new_per_day` (2) today. Otherwise while holdings are
-   below the floor in force, or invested is below the target, unless
-   `portfolio.target_holdings` (12) are held and the regime's own share is met.
+   `autopilot.deploy_max_new_per_day` (2) today. Otherwise while invested is
+   below the target, so a buy passes it by at most one position.
+   `portfolio.min_holdings` (10) is a soft minimum in calm regimes: reported
+   when not met, never a reason to buy.
 3. **Candidates**, the day's buy candidates (section 3: each decided
    before the review session's close), highest conviction first: not held;
-   not sold on or after its latest deep dive; a close struck after its
+   not sold on or after its latest deep dive (`shelf.sold_since_dive`; the
+   sale counts from the day the run decided it, `shelf.sale_day`); a close struck after its
    latest deep dive or watchlist analysis, in either gate mode
    (`shelf.close_before_dive`: "close of 2026-10-30 is before the deep dive
    of 2026-10-31", "analysis of 2026-11-02 20:00 IST is after the close of
@@ -435,20 +440,22 @@ The steps, after the day's sells, switch legs and ADDs:
    actionable deep dive, a close dated the session, a resolved identity:
    `enforce` withholds, `record` buys and notes it); NSE's surveillance
    report; inside the entry
-   band; at least one share under the shared rule, asking for
-   `min_invested_inr / target_holdings` (₹83,333).
+   band; at least one share under the shared rule, asking for the NORMAL
+   share of the run's equity ÷ `portfolio.target_holdings` (`Breadth.position_inr`),
+   in every regime.
 4. **The buy.** A `BUY` with verdict `DEPLOY`, `advice_ref`
    `<date>|<symbol>|deploy_idle_cash` (so a re-run dedupes), the idea's thesis
    as `reason`, and a note such as `deploy_idle_cash: discovery idea,
-   conviction 0.90; regime NORMAL, target 83.3% invested (₹10,00,000);
-   invested 15.8% before, 22.8% after`. The stock is promoted as held.
+   conviction 0.90; regime NORMAL, target 80.0% invested (₹9,60,000);
+   invested 15.8% before, 22.5% after`. The stock is promoted as held.
 5. **The record.** `execute_advice(..., report=)` receives it, and the
    pipeline puts it in the day's digest as `deployment`: regime, target (share,
    rupees and % of equity), invested before and after, holdings before and
    after, what was bought, each other idea's `outcome` (`held`, `sold`, `gate`,
    `price`, `before_dive`, `surveillance`, `band`, `invalidated`, `size`,
-   `ledger`, `waiting`) and `why`, and `reasons`: why buying stopped, any unreachable
-   floor, and the counts ("3 ideas above entry band"). The digest's text adds
+   `ledger`, `waiting`) and `why`, and `reasons`: why buying stopped, the soft
+   minimum when it is not met ("6 holdings, below the 10 aimed for: only 6
+   qualifying ideas"), and the counts ("3 ideas above entry band"). The digest's text adds
    an "Idle cash:" line.
 6. **Failure.** The step runs on a deep copy of the portfolio and the closes,
    kept only when it completes. If it raises, nothing is bought, the day's
@@ -456,13 +463,14 @@ The steps, after the day's sells, switch legs and ADDs:
    `{"error": "deployment failed: …"}`. A surveillance report that cannot be
    read counts as no report: no new position opens.
 
-**Example (₹12 L after the owner's ₹2 L deposit).** ₹1.9 L in two holdings,
-₹10.1 L cash, 12 qualifying ideas at ₹1,000 in their own sectors. Target:
-max(80% × 12 L, 10 L) = ₹10 L. Each buy: 83 shares, ₹83,000. Two a day: 4,
-6, 8, 10, 12 holdings over five review days, ₹10.2 L invested (85%); day six
-records "regime NORMAL, target reached: 85.0% invested against a target of
-83.3% (₹10,00,000)". In RISK_OFF from all cash the same ideas stop at 8 buys
-(₹6.64 L, 55.3%), one position past the ₹6 L target.
+**Example (₹10 L).** ₹1.9 L in two holdings, ₹8.1 L cash, 12 qualifying ideas
+at ₹1,000 in their own sectors. Target: 80% × 10 L = ₹8 L. Each buy: 66 shares,
+₹66,000. Two a day: 4, 6, 8, 10, 12 holdings over five review days, ₹8.5 L
+invested (85%); day six records "regime NORMAL, target reached: 85.0% invested
+against a target of 80.0% (₹8,00,000)". In RISK_OFF from all cash the same ideas
+stop at 8 buys (₹5.28 L, 52.8%), one position past the ₹5 L target. With ₹50 L all cash and 15 ideas,
+each buy is 333 shares and buying stops at 13 holdings, 86.6% invested: twelve
+come to ₹39.96 L, just short of ₹40 L.
 
 **The pipeline** reviews a deploying portfolio with no holdings (one that is
 not deploying is still skipped), fetches the candidates' closes before the
@@ -709,9 +717,8 @@ give it envelopes, reviews and a dossier.
 | `AUTOPILOT_DEPLOY_IDLE_CASH` (`autopilot.deploy_idle_cash`) | false | Idle-cash deployment (section 7) |
 | `AUTOPILOT_DEPLOY_MAX_NEW_PER_DAY` (`autopilot.deploy_max_new_per_day`) | 2 | New positions a day |
 | `AUTOPILOT_DEPLOY_TARGET_PCT` (`autopilot.deploy_target_invested_pct`) | NORMAL, RISK_ON, MOMENTUM_EXTENDED, OVERSOLD 80 · RISK_OFF 50 · MACRO_CRISIS 0 | Target share of total equity in stocks, by sticky regime; a label not listed opens nothing |
-| `PORTFOLIO_MIN_HOLDINGS`, `PORTFOLIO_TARGET_HOLDINGS`, `PORTFOLIO_MAX_HOLDINGS` (`portfolio.min_holdings`, `.target_holdings`, `.max_holdings`) | 10, 12, 15 | The breadth deployment works toward (the floor in calm regimes only) |
-| `PORTFOLIO_MIN_INVESTED_INR` (`portfolio.min_invested_inr`) | 1000000 | Invested floor in calm regimes; a new position asks for it ÷ target holdings |
-| `PORTFOLIO_OVERRIDES` (`portfolio.overrides`) | {} | Per portfolio (user id): any of the four keys above and `deploy_idle_cash` |
+| `PORTFOLIO_MIN_HOLDINGS`, `PORTFOLIO_TARGET_HOLDINGS`, `PORTFOLIO_MAX_HOLDINGS` (`portfolio.min_holdings`, `.target_holdings`, `.max_holdings`) | 10, 12, 15 | A soft minimum in calm regimes (reported, never forces a buy); sets a new position's size (the NORMAL share of equity ÷ it); the most ever held |
+| `PORTFOLIO_OVERRIDES` (`portfolio.overrides`) | {} | Per portfolio (user id): any of the three keys above, `deploy_idle_cash`, and `deploy_target_invested_pct`, whose regimes replace those it names |
 | `advisor.max_position_pct` | 10.0 | ADD eligibility, the `POSITION_LARGE` note and every buy's post-trade position cap, of total equity |
 | `advisor.max_sector_pct` | 30.0 | The `SECTOR_CONCENTRATION_HIGH` note, the weekly flag and every buy's post-trade sector cap, of total equity |
 | `advisor.atr_period`, `advisor.stop_atr_mult`, `advisor.stop_buckets` | 20, 3.0, large [8, 12] · mid [12, 18] · small [15, 22] | Stops |
@@ -735,8 +742,9 @@ run is hermetic (KT section 13). A quick loop:
 |---|---|
 | `test_autopilot_schemas.py`, `test_autopilot_store.py`, `test_autopilot_settings.py` | Transaction records and `Holding.sell`, ledger append and read, defaults |
 | `test_autopilot_executor_sells.py`, `…_adds.py`, `…_switch.py` | Verdict rules, gating byte-identity, run marker, dedupe, stale-date refusal, sizing, SWITCH legs, value points |
+| `test_deployment_follows_money_fix025.py` | The target and a position's size follow the money, the soft minimum never forces a buy (a brute-force grid and a ₹50,000 to ₹5 crore property test), a top-up checks NSE's report, a sold stock's re-dive and the one round trip a week, the day a sale counts from, a stock sold with no idea left coming back through the screen, the ₹10 L book |
 | `test_sizing_rule_sa050.py` | The shared sizing and entry rule: hand-worked caps, floor and band cases, the 11 Oct weights, a random-portfolio property test and a switch through the pipeline |
-| `test_deploy_idle_cash_sa049.py` | Idle-cash deployment: the 27 Sep shape over two days, a crisis, no regime, target reached, every non-buy reason, SA-003 in both modes, re-runs, the switch off, the breadth floor (₹2 L deposit to 12 holdings, 14 and 16 ideas, 6 ideas, RISK_OFF, config and per-portfolio overrides), churn, surveillance, the sector key, a random-day property test, whole shares in paisa, the switch alert's matching, a holding added during the run, the DEPOSIT route, the exit benchmark, a failing deployment step that keeps the day's sells, and the pipeline end to end |
+| `test_deploy_idle_cash_sa049.py` | Idle-cash deployment: the 27 Sep shape over two days, a crisis, no regime, target reached, every non-buy reason, SA-003 in both modes, re-runs, the switch off, the holdings settings (₹2 L deposit to 12 holdings, 14 and 16 ideas, 6 ideas, RISK_OFF, config and per-portfolio overrides), churn, surveillance, the sector key, a random-day property test, whole shares in paisa, the switch alert's matching, a holding added during the run, the DEPOSIT route, the exit benchmark, a failing deployment step that keeps the day's sells, and the pipeline end to end |
 | `test_regime_inputs_fix023.py` | The regime deployment trusts: inputs read as of the review session, a missing input with no value, a day whose label the live inputs do not establish opening nothing (the reason names the inputs), the hysteresis on dark days, a detector exception; and no position opened at a close from before its idea's latest dive, in either gate mode |
 | `test_autopilot_pipeline.py`, `test_portfolio_pipeline.py`, `test_scheduler_portfolio_hook.py` | The pipeline steps, digest trades and the `switch_buy_skipped` alert |
 | `test_autopilot_isolation.py` | Executor writes stay inside `data/portfolio/<user>/` |
@@ -778,9 +786,10 @@ encode the two constraints most likely to fail silently.
 - Switching idle-cash deployment on: FIX-023 (a regime label built on a
   fallback input opens no position), FIX-024 (an idea analysed after a
   session's close is not bought at that close) and FIX-025 (deployment follows
-  the money and the ideas) first, then the owner's ₹2 L deposit, a read
-  of the paper lane's record, then `portfolio.overrides.primary.deploy_idle_cash`
-  (SA-049's rollout).
+  the money and the ideas) first, then a read of the paper lane's record, then
+  `portfolio.overrides.primary.deploy_idle_cash` (SA-049's rollout).
+- A sold stock leaving the daily review (FIX-028): today a stock the autopilot
+  bought stays managed after its sale.
 - The tax estimate at each lot's own cost (FIX-022).
 - A safe `identity_reconcile apply` (SA-008 change 1).
 - Learning from executed advice remains future work: every autopilot row

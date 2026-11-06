@@ -14,8 +14,9 @@ PR-004, enough diverse, checked ideas to fill 12 holdings:
   with no known market sector is not capped: a missing classification is
   not a sector, and lumping unknowns together is the "generic" label again.
 - An idea is re-dived once its latest deep dive is older than
-  DISCOVERY_REDIVE_AFTER_DAYS, and first of all when it was shelved before
-  the data gate existed. A re-dive refreshes the idea in place, or drops it
+  DISCOVERY_REDIVE_AFTER_DAYS, sooner when it was shelved before the data gate
+  existed, and first of all when the autopilot sold its stock since its latest
+  dive (FIX-025). A re-dive refreshes the idea in place, or drops it
   with the reason when its analysis is not actionable or its conviction
   falls below the floor. The rotation clock counts from the latest dive, so
   an idea that keeps passing its monthly re-dive stays; one that fails is
@@ -65,6 +66,66 @@ def last_dived(idea) -> date | None:
         except ValueError:
             continue
     return None
+
+
+def sale_day(txn) -> date | None:
+    """The IST day a ledger sale was decided, None when undatable. The 16:30
+    run dates its sale by the session it reviews, so its stamp can be the later
+    day: a sale booked at Friday's close by Monday's run is Monday's, after a
+    deep dive dated Saturday, which could not have known of it. A sale the user
+    entered keeps its own date: an import stamps it long after the fact."""
+    days = []
+    try:
+        days.append(date.fromisoformat(str(txn.date)[:10]))
+    except ValueError:
+        pass
+    if txn.source == "autopilot":
+        try:
+            decided = datetime.fromisoformat(str(txn.ts).replace("Z", "+00:00"))
+        except ValueError:
+            decided = None
+        if decided is not None and decided.tzinfo is not None:
+            days.append(decided.astimezone(IST).date())
+    return max(days, default=None)
+
+
+def sold_since_dive(idea, sale: date | None) -> bool:
+    """Whether a sale on `sale` came on or after the idea's latest deep dive.
+    The one rule behind two things: the stock is not bought back
+    (autopilot._deploy_check), and its idea is re-dived first
+    (`ShelfStore.redive_due`). An undatable dive counts as before the sale."""
+    if sale is None:
+        return False
+    dived = last_dived(idea)
+    return dived is None or sale >= dived
+
+
+def autopilot_sales() -> dict[str, date]:
+    """Each stock's latest exit by the autopilot, across the portfolios the
+    scheduler runs. A sale the user made by hand is left out: it says nothing
+    about the idea's case. So is a TRIM that leaves shares: the stock is still
+    held, and no re-dive could bring it back."""
+    from core.portfolio.store import active_user_ids
+    out: dict[str, date] = {}
+    for user_id in active_user_ids():
+        for txn in PortfolioStore(user_id=user_id).load_transactions(limit=2000):
+            if txn.side == "SELL" and txn.source == "autopilot" and txn.holding_qty_after <= 1e-9:
+                day = sale_day(txn)
+                if day is not None:
+                    out[txn.symbol] = max(day, out.get(txn.symbol, day))
+    return out
+
+
+def no_longer_held(symbols) -> set[str]:
+    """Those of `symbols` that no portfolio the scheduler runs holds now. No
+    symbols reads no portfolio."""
+    symbols = set(symbols)
+    if not symbols:
+        return set()
+    from core.portfolio.store import active_user_ids
+    held = {h.symbol for user_id in active_user_ids()
+            for h in PortfolioStore(user_id=user_id).load().holdings}
+    return symbols - held
 
 
 def _age(iso, on: date) -> int:
@@ -330,23 +391,29 @@ class ShelfStore:
             self.save(shelf)
         return {"refreshed": refreshed, "dropped": dropped, "capped": capped}
 
-    def redive_due(self, on: date) -> list[ShelfIdea]:
-        """Active ideas to re-dive, most urgent first: those shelved before
-        the data gate existed (no gate status), then those whose latest dive
-        is older than DISCOVERY_REDIVE_AFTER_DAYS, each oldest dive first.
-        An idea that rotates out this run (its latest dive more than
-        DISCOVERY_STALE_DAYS old) is left to rotate. [] when re-dives are off
-        (0)."""
+    def redive_due(self, on: date, sold: dict[str, date] | None = None) -> list[ShelfIdea]:
+        """Active ideas to re-dive, most urgent first, each group oldest dive
+        first: those whose stock was sold on or after their latest dive
+        (`sold` maps a symbol to its latest autopilot sale), since a re-dive is
+        all that can bring them back; those shelved before the data gate
+        existed (no gate status); then those whose latest dive is older than
+        DISCOVERY_REDIVE_AFTER_DAYS. An idea that rotates out this run (its
+        latest dive more than DISCOVERY_STALE_DAYS old) is left to rotate. []
+        when re-dives are off (0). Example: analysed 24 Oct and sold 27 Oct,
+        an idea is due on Sat 31 Oct, not Sat 28 Nov."""
         days = settings.DISCOVERY_REDIVE_AFTER_DAYS
         if days <= 0:
             return []
+        sold = sold or {}
         active = [i for i in self.load().ideas if i.status == "active"
                   and _dive_age(i, on) <= settings.DISCOVERY_STALE_DAYS]
         oldest = lambda i: last_dived(i) or date.min       # noqa: E731
-        pre_gate = sorted((i for i in active if not i.data_gate), key=oldest)
-        stale = sorted((i for i in active if i.data_gate and not dive_is_fresh(i, on)),
+        was_sold = [i for i in active if sold_since_dive(i, sold.get(i.symbol))]
+        rest = [i for i in active if not sold_since_dive(i, sold.get(i.symbol))]
+        pre_gate = sorted((i for i in rest if not i.data_gate), key=oldest)
+        stale = sorted((i for i in rest if i.data_gate and not dive_is_fresh(i, on)),
                        key=oldest)
-        return pre_gate + stale
+        return sorted(was_sold, key=oldest) + pre_gate + stale
 
     # -- the dive memo --------------------------------------------------------
 

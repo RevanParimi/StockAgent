@@ -129,6 +129,9 @@ surveillance report, and a stock the autopilot sold is re-analysed the next Satu
 be accepted before deployment is switched on (3 points). FIX-026 lets the deep dive's own
 LLM call name a new stock's sector from our list instead of fixed Yahoo tables, and flags an
 empty, unknown or disputed reading in the weekly summary and the watchdog (3 points).
+FIX-028, added on 2026-11-06 from FIX-025's implementation (routing delegated), comes after FIX-027:
+a stock the autopilot sold keeps its daily review for good, and sold stocks fill the managed list's
+cap of 40. Measure the list before switch-on (2 points).
 FIX-027, added on 2026-11-05 from FIX-024's fresh review (routing delegated), comes after FIX-026.
 The 16:30 run on day T can re-forecast before it advises, from a live analysis anchored on T's
 close, and books the resulting ADD or sale at the previous session's close. It is not a precondition
@@ -163,6 +166,7 @@ points).
 | 24 | [FIX-025](stories/FIX-025.md) | P1 | 3 | Deployment follows the money and the ideas; a top-up checks NSE's report too | FIX-024 |
 | 25 | [FIX-026](stories/FIX-026.md) | P1 | 3 | The analysis names a new stock's sector from our list; an empty or unknown sector is flagged | FIX-024 |
 | 26 | [FIX-027](stories/FIX-027.md) | P1 | 3 | A decision booked at a session's close reads nothing from after that close | FIX-024 |
+| 26a | [FIX-028](stories/FIX-028.md) | P2 | 2 | A sold stock leaves the daily review | FIX-025 |
 | 27 | [PR-005](stories/PR-005.md) | P1 | 6 | An investment case for every position | PR-006 |
 | 28 | [PR-013](stories/PR-013.md) | P2 | 2 | Show where losses come from and what waiting costs | PR-002, PR-009 |
 | 29 | [PR-007](stories/PR-007.md) | P1 | 3 | Plain, fact-grounded buy and sell explanations | PR-005, PR-006 |

@@ -909,7 +909,10 @@ def build_morning_brief(
         held = [r["symbol"] for r in digest.get("holdings", [])]
         advisor_flags = [
             {"symbol": r["symbol"], "verdict": r["verdict"],
-             "reason": r.get("reason", ""), "notes": r.get("notes", []),
+             # FIX-025: "Add more" with the reason no shares were bought.
+             "reason": (f"{r.get('reason', '')} ({r['top_up_skipped']})".strip()
+                        if r.get("top_up_skipped") else r.get("reason", "")),
+             "notes": r.get("notes", []),
              "switch_candidate": r.get("switch_candidate", "")}
             for r in digest.get("holdings", [])
             if r.get("verdict") not in ("HOLD", "NO_DATA")

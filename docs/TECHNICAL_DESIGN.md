@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-11-05 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-11-06 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `e6b037a2a49cae95017a68b76329dd11df6dd587`
+**Code inspected:** `b065da303cf18988d8fc50732b8bb95bf31121fa`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -37,8 +37,12 @@ triggered no production job, backfill or notification.
 
 Production runs `0f0d7f6` (FIX-023 and FIX-024, code `e6b037a`), deployed at
 about 14:19 IST on 5 November 2026 (the deployment list showed it SUCCESS and
-`/health` answered 200), with idle-cash deployment off. The table gives the
-configuration that differs from the repository and
+`/health` answered 200), with idle-cash deployment off. The inspected code adds
+FIX-025: deployment follows the money and the ideas, a top-up checks NSE's
+surveillance report, and a sold stock's idea goes first in Saturday's re-dives
+(sections 6 and 8). It is committed but not yet deployed, and counts as running
+only once a read-only check of the deployment list and `/health` confirms that
+deploy. The table gives the configuration that differs from the repository and
 the state of each operational control.
 
 | Area | State in production | Evidence |
@@ -1137,8 +1141,11 @@ in either gate mode with the note `REGIME_UNAVAILABLE`. The record's
 VIX did not answer", and so does the fallback narrative; the LLM's line gets
 only the code (**Planned:** PR-007). A holding whose own review wrote no entry
 for the day has only an older label, so the market-wide record decides: no
-label recorded for that day holds the ADD the same way. The crisis exit still
-reads the kept label, since a sale is never blocked by a missing input. EXIT may
+label recorded for that day holds the ADD the same way. A label recorded for
+that day does not yet replace the older one, so such a holding can still add
+on a recorded RISK_OFF or MACRO_CRISIS day (**Planned:** FIX-029). The crisis
+exit still reads the kept label, since a sale is never blocked by a missing
+input. EXIT may
 become SWITCH when an eligible replacement exists. A holding-age rule can
 soften certain TRIM actions to HOLD; it does not override EXIT. These are
 product rules, not individualized tax or investment advice.
@@ -1817,7 +1824,10 @@ dives is first offered by Tuesday's run, which reviews Monday (Monday's run
 reviews Friday). A watchlist BUY analysed on Monday at 20:00 IST, after
 results filed that evening, is first offered by Wednesday's run, at
 Tuesday's close; one analysed at 11:00 IST is offered by Tuesday's run, at
-Monday's close. A dive from the owner's manual discovery run on a weekday
+Monday's close. A stock in the daily review usually has a newer analysis by
+then, made after the session the run reviews, so it is usually not offered
+(**Planned:** FIX-029). A dive from the owner's manual discovery run on a
+weekday
 evening waits for the next session the same way. The list reads only the
 latest analysis, so one made after the close that is no longer a BUY takes the
 stock off that close's offer. Each must:
@@ -1827,8 +1837,10 @@ stock off that close's offer. Each must:
   day the run decided it, which can be later than the session it is booked at:
   Monday's run books at Friday's close, after Saturday's dive, so that dive
   cannot free the stock. A stock the autopilot sold is first in line for the
-  next Saturday's re-dive (section 8), so a round trip happens at most once a
-  week, each side paying its costs;
+  next Saturday's re-dive (section 8), so through a shelf idea a round trip
+  happens at most once a week, each side paying its costs. A SWITCH leg does
+  not read this rule, and for a stock on the user's own watchlist a newer
+  analysis counts as a new dive (**Planned:** FIX-029);
 - be priced at a close struck after its latest deep dive or analysis, by
   the same rule, in either gate mode (`close_before_dive` in
   [`shelf.py`](../core/discovery/shelf.py)). When the review session's bar
@@ -3376,9 +3388,10 @@ section 10) are part of the current design.
 | [SA-049](planning/PI-2026-09/stories/SA-049.md) | Put idle cash to work in normal markets | Done | 6 Portfolio; 8 Discovery | SA-050, SA-051 |
 | [FIX-023](planning/PI-2026-09/stories/FIX-023.md) | Deployment buys only on a regime read from live inputs, as of the review session | Done | 6 Portfolio; 5 Learning | SA-049 |
 | [FIX-024](planning/PI-2026-09/stories/FIX-024.md) | A buy waits for an analysis made before its close; an unknown regime adds nothing | Done | 6 Portfolio; 8 Discovery | FIX-023 |
-| [FIX-025](planning/PI-2026-09/stories/FIX-025.md) | Deployment follows the money and the ideas; a top-up checks NSE's report too | Open | 6 Portfolio; 8 Discovery | FIX-024 |
+| [FIX-025](planning/PI-2026-09/stories/FIX-025.md) | Deployment follows the money and the ideas; a top-up checks NSE's report too | Done | 6 Portfolio; 8 Discovery | FIX-024 |
 | [FIX-027](planning/PI-2026-09/stories/FIX-027.md) | A decision booked at a session's close reads nothing from after that close | Open | 6 Portfolio | FIX-024 |
 | [FIX-028](planning/PI-2026-09/stories/FIX-028.md) | A sold stock leaves the daily review | Open | 6 Portfolio; 8 Discovery | FIX-025 |
+| [FIX-029](planning/PI-2026-09/stories/FIX-029.md) | Every door to a buy reads the same facts: the day's regime, the sale and the verdict | Open | 6 Portfolio; 8 Discovery | FIX-025 |
 | [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Done | 6 Portfolio | None |
 | [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Done | 7 Marksheets; 10 Interface | None |
 | [FIX-006](planning/PI-2026-09/stories/FIX-006.md) | An anonymous watchlist read never falls back to the owner | Open | 10 Interface | None |

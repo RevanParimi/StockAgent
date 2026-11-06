@@ -132,6 +132,11 @@ empty, unknown or disputed reading in the weekly summary and the watchdog (3 poi
 FIX-028, added on 2026-11-06 from FIX-025's implementation (routing delegated), comes after FIX-027:
 a stock the autopilot sold keeps its daily review for good, and sold stocks fill the managed list's
 cap of 40. Measure the list before switch-on (2 points).
+FIX-029, added on 2026-11-06 from FIX-025's fresh review (routing delegated), comes after FIX-028:
+a holding with no review entry can top up on a recorded bad day, a SWITCH can buy a stock sold the
+day before, the daily review mostly shuts the watchlist route, and a shelf idea's verdict is not
+read. Recommended before switch-on, not a precondition. A stock on the owner's own watchlist comes
+back by the same bound as a shelf idea, the owner's choice of 2026-11-06 (3 points).
 FIX-027, added on 2026-11-05 from FIX-024's fresh review (routing delegated), comes after FIX-026.
 The 16:30 run on day T can re-forecast before it advises, from a live analysis anchored on T's
 close, and books the resulting ADD or sale at the previous session's close. It is not a precondition
@@ -167,6 +172,7 @@ points).
 | 25 | [FIX-026](stories/FIX-026.md) | P1 | 3 | The analysis names a new stock's sector from our list; an empty or unknown sector is flagged | FIX-024 |
 | 26 | [FIX-027](stories/FIX-027.md) | P1 | 3 | A decision booked at a session's close reads nothing from after that close | FIX-024 |
 | 26a | [FIX-028](stories/FIX-028.md) | P2 | 2 | A sold stock leaves the daily review | FIX-025 |
+| 26b | [FIX-029](stories/FIX-029.md) | P1 | 3 | Every door to a buy reads the same facts: the day's regime, the sale and the verdict | FIX-025 |
 | 27 | [PR-005](stories/PR-005.md) | P1 | 6 | An investment case for every position | PR-006 |
 | 28 | [PR-013](stories/PR-013.md) | P2 | 2 | Show where losses come from and what waiting costs | PR-002, PR-009 |
 | 29 | [PR-007](stories/PR-007.md) | P1 | 3 | Plain, fact-grounded buy and sell explanations | PR-005, PR-006 |

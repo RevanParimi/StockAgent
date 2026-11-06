@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-05 (updated about 14:02 IST)
+# Current handoff - 2026-11-06 (updated about 22:28 IST)
 
 ## Also 22 Oct (about 22:30 IST to 00:30 IST 23 Oct): FIX-013, LLM tier switch, committed and pushed (separate conversation)
 
@@ -105,6 +105,124 @@ Docs only; nothing committed, pushed, deployed or configured.
   section 11.
 
 ## START HERE — resume checklist, in order
+
+**FIX-025 COMMITTED; push held to the 00:10 window** (6 Nov, about 22:27-22:28 IST, session stockagent-main-02, at the
+owner's "ya, commit and push and 2,3 go as per recommendation"; peers idle). Built in a temporary worktree, so the
+working tree was not touched until the end:
+
+- **`b065da3`, the code:** exactly the 33 reviewed files: `kt_manifest.py verify FIX-025-manifest.json --rev b065da3`
+  gives 0 mismatches (`33b944df`).
+- **The docs commit:** the receipt's edits 1–9, with both receipts, the manifest, the FIX-029 card, PR-007's routed
+  section, the PI README, STATE and HANDOFF. **Beyond the receipt, docs only:** the owner's answers on the FIX-025 and
+  FIX-029 cards, and edit 7's last sentence carries the M4 choice.
+- **The owner's answers:**
+  - `portfolio.max_holdings` stays at 15 for now, and is raised in config when money is added. No deposit is planned,
+    and it does not limit today's ₹10 L book. ₹40 L arriving on 12 holdings would stop at 15 holdings, 37.0% invested.
+  - FIX-029's M4 is **Option A**: a stock the autopilot sold is not offered from the watchlist until the Saturday after
+    the sale, however new its analysis is.
+- **Push held.** At about 22:30 IST on Friday, the 23:00–00:00 nightly jobs and the 23:30 backup fall inside the ~2 h a
+  push needs. A background waiter (`analysis_data/fix025_commit/push_waiter.py`) pushes in 00:10–05:30 IST on Saturday
+  7 Nov, after a fetch shows origin at `0f0d7f6`. If it did not, main is 2 ahead of origin: push in a window at the
+  owner's word. Then record the deploy (uncommitted, for the next docs commit, whose commit-time edits are KT section 1
+  and the guide's FIX-025 status lines).
+- **Deploying changes production with the switch off** (the implementation receipt's Rollout section). FIX-025
+  production is `pending_deployment`; its first look is guide 06-K, 06-L and 07-O's production lines. The switch stays
+  off, and FIX-028's measurement comes first.
+- Next `continue`, in a new conversation: **FIX-026**'s implementation; then FIX-027, FIX-028, FIX-029.
+
+**FIX-025 fresh review → ACCEPTED** (6 Nov, about 20:02–21:12 IST, session
+stockagent-main-02 [191c47], a conversation opened with a read-only board question and then "continue"; peers
+idle). Receipt: [FIX-025-review](evidence/FIX-025-review.md). STATE: FIX-025 `done` with a `review` entry,
+production `pending_deployment`; new [FIX-029](stories/FIX-029.md) `todo`; `active_task` null; `next_task` FIX-026.
+Nothing was committed, pushed, deployed or configured; no production state, log or network was read.
+
+- **Input verified** at the start and the end: manifest `33b944df` (33 files, 0 mismatches), diff `dabc7e34`
+  (245,518 B, 32 paths) against HEAD `0f0d7f6` (`analysis_data/fix025_review/rv_digest.py`).
+- **Evidence:** reviewer cases 67 passed + 10 strict xfail, with every xfail confirmed at its assertion; 40 of 40 reviewer
+  mutants caught by the tracked tests; full suite 6,160 passed / 12 skipped / 1 xfailed / 1 failed (25m43s, 20:41-21:07, pytest rc 1; the failure is WinError 5 on a temp-folder rename in test_store_migration_sa009, code FIX-025 does not touch, and that file then passed 5 of 5 runs alone); `check_kt_docs` `[]`; `check_broad_except` OK (148);
+  PDF 68 pages carries the KT's digest.
+- **Findings, none from FIX-025's change. New [FIX-029](stories/FIX-029.md) (P1, 3 points, after FIX-028):**
+  - **M1, medium:** a holding with no review entry can top up on a recorded RISK_OFF or MACRO_CRISIS day, since L2 acts
+    only on "no label". Live with the switch off.
+  - **M2, medium:** a SWITCH can buy a stock sold the day before with no new dive; the re-buy rule is only in
+    deployment's check. Live with the switch off.
+  - **M3, medium, fails safe:** a watchlist stock in the daily review is offered only after two reviews in a row skip
+    their analysis, since the list reads the newest analysis and the review writes one after the close.
+  - **M4, low today, owner decides:** a stock on the owner's own watchlist can come back three sessions after its sale.
+    M3 mostly hides it, and fixing M3 makes it normal. Options are on the card.
+  - **L1, low:** a shelf idea's verdict is not read. Measured: 0 of 1,364 local analyses disagreed, before FIX-013.
+- **L2, L3 -> PR-007:** a same-day re-run rewrites the digest without the top-up's reason, and the page shows ADD without
+  it. **L4:** "at most once a week" holds for a shelf idea only: commit-time edits.
+- **FIX-025 is accepted and NOT committed. Commit only at the owner's word:** the 33 reviewed files byte-exact, then the
+  receipt's section "Commit-time edits" with its 9 edits. Push in a job-free window. Deploying changes production with
+  the switch off (the implementation receipt's Rollout section). The switch stays off; FIX-028's measurement comes
+  before it.
+- **Owner answered the same evening:** `portfolio.max_holdings` (15), and FIX-029's M4 (the entry above).
+- **Next `continue`, in a new conversation: FIX-026's implementation.**
+
+**FIX-025: the owner's answers applied; back at `review_required`** (6 Nov, about 08:50–10:20 IST,
+same session, before any review). Nothing was committed, pushed, deployed or configured; no production
+state or network was read. The review input below replaces the one of 5 Nov.
+
+- **A thirteenth position is fine** ("no position is a hard rule, its all about investments turning
+  inti profits"): F25-D5 stands.
+- **No ₹2 L deposit** ("even the 2L"): SA-049's rollout loses that step; the deposit action stays. The
+  docs' example is now the ₹10 L book: 66 shares at ₹1,000, ten buys, ₹8.5 L (85%).
+- **A stock sold after its idea left the shelf** ("3 - do as per suggested"; no suggestion had been
+  written, so F25-D14 is the implementer's pick under the delegation): once the autopilot has sold it
+  and no portfolio holds it, the managed skip no longer applies and it takes its rank in the screen
+  like any other stock (`hygiene.sold_candidates`). It jumps no queue.
+- **Asked, not assumed:** `portfolio.max_holdings` (15) stays, as the owner agreed on 4 Nov, until the
+  owner says otherwise. It binds only when money arrives on a full book or holdings have shrunk.
+- **Routed:** [FIX-028](stories/FIX-028.md), after FIX-027: a sold stock keeps its daily review for good,
+  sold stocks fill the managed cap of 40, and a buy past the cap gets no review. Measure the list
+  before switch-on.
+- **Evidence:** story file 86 tests; 52 mutants of 5 Nov (one retired, now the intended code), 15 new, all caught, one after a test was strengthened; 6 older ones re-run; full suite 6,161 passed / 12 skipped / 1 xfailed / 0 failed (18m23s; a first run on 6 Nov had 1 failure, my own: the new flagging read every candidate on every cycle, fixed); `check_broad_except` OK (148, unchanged);
+  `check_kt_docs` errors `[]`; PDF 68 pages.
+- **Review input:** manifest
+  [FIX-025-manifest.json](evidence/FIX-025-manifest.json) `33b944df` (33 files); diff `dabc7e34`
+  (245,518 B, 32 paths) against HEAD `0f0d7f6`, end tree `4ac1d131` (`analysis_data/fix025/digest.py`).
+- **Next `continue`, in a new conversation: FIX-025's fresh review** (REVIEW.md).
+
+**FIX-025 IMPLEMENTED -> `review_required`** (5 Nov, about 14:30–16:20 IST, session
+stockagent-main-77 [636bf2], a new conversation opened with "continue"). Receipt:
+[FIX-025-implementation](evidence/FIX-025-implementation.md). STATE: FIX-025 `review_required`
+with an `implementation` entry; `active_task` and `next_task` FIX-025 (the fresh review).
+Nothing was committed, pushed, deployed or configured; no production state or network was read.
+
+- **D1, D2:** the regime's share is the target; `min_invested_inr` is gone; a position asks for
+  the NORMAL share of equity ÷ `target_holdings`; 10 holdings is a soft minimum that never buys.
+  ₹12 L: 80 shares at ₹1,000, ten buys to 82.5%. ₹50 L: 333 shares, thirteen buys to 86.6%, where
+  SA-049 stopped at 15 holdings and 25%. ₹10.2 L at 86%: nothing bought, "9 holdings, below the
+  10 aimed for: target reached".
+- **D3:** a top-up NSE's report refuses keeps the shares and starts no cooldown; the log, digest
+  and brief say "top-up skipped: under LT-ASM in NSE's surveillance report of <date>". This
+  applies with the switch off, so deploying it changes production.
+- **D4:** a stock the autopilot sold since its latest dive is first in Saturday's re-dives
+  (`hygiene.redive_sold`). At most one round trip a week. Its cost is not on the scorecard:
+  routed to PR-013.
+- **Beyond the card, for the review to rule on:** F25-D12, a sale counts from the day the run
+  decided it (a sale booked at Friday's close by Monday's run could otherwise be bought back on
+  a Saturday dive that predates it); F25-D13, a sold stock is dived though it stays managed
+  (`run_deep_dives` skipped it, so D4 alone would have done nothing for its own population).
+- **Routed:** L2, T1, T2, T3 done.
+- **Evidence:** story file 66 tests; 52 mutants, all caught (3 survivors of the first pass closed); full suite 6,141 passed / 12 skipped / 1 xfailed / 0 failed (19m16s; a first run had 7 fixture failures from L2 and one WinError 5 rename flake, test_cli_round_trip, which passed alone);
+  `check_broad_except` OK (148, unchanged); `check_kt_docs` errors `[]`; PDF 67 pages.
+- **Review input:** replaced on 6 Nov, above.
+
+**FIX-023 and FIX-024 PUSHED AND DEPLOYED** (5 Nov, 14:05–14:18:50 IST, session stockagent-main-31, at the
+owner's "ya commit and push"; this record is uncommitted):
+
+- Pushed `c5165a1..0f0d7f6` at about 14:05:41 IST, after a fetch showed origin at `c5165a1`.
+- Railway deploy `56676660` was created at 14:05:46, not queued, and reached SUCCESS by 14:18:50; the
+  public `/health` answered 200 at 14:18:53.
+- **Full suite on the pushed tree:** 6,066 passed / 12 skipped / 1 xfailed / 0 failed (12m35s, 14:06-14:18 IST), git status unchanged.
+- **Deployment's switch is off**, and stays off until FIX-025. Production changes in the SWITCH leg, the exit
+  shadow, the ADD gate and the regime record. FIX-023 and FIX-024 production are `pending_observation`.
+  - First read-only look, after the 16:30 review of 5 Nov: guide 07-G's production line (counts and fields only).
+- **Commit-time edits for the next docs commit:**
+  - KT section 1: production runs `0f0d7f6` (FIX-023 and FIX-024, code `e6b037a`), deployed on 5 Nov.
+  - Guide 07-G status: "deployed 5 Nov 2026".
 
 **FIX-023 and FIX-024 COMMITTED** (5 Nov, about 14:02-14:02 IST, session stockagent-main-31, at the owner's
 "ya commit and push"; peer -64 idle). Built in a temporary worktree, so the working tree was not

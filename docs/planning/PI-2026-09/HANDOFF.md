@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-06 (updated about 22:28 IST)
+# Current handoff - 2026-11-07 (updated about 06:20 IST)
 
 ## Also 22 Oct (about 22:30 IST to 00:30 IST 23 Oct): FIX-013, LLM tier switch, committed and pushed (separate conversation)
 
@@ -105,6 +105,45 @@ Docs only; nothing committed, pushed, deployed or configured.
   section 11.
 
 ## START HERE — resume checklist, in order
+
+**Working from another device** (the owner, 7 Nov: the next `continue` starts there). Pull `main` first. Git carries
+the code, the docs, STATE and this file. These stay on the laptop:
+
+- **`analysis_data/` (ignored):** raw diagnostics and review tooling. FIX-027's and FIX-029's cards name reviewer cases in it
+  (`fix024_review/test_rv_fix024.py`, `fix025_review/test_rv_fix025.py`); if they are not there, write the cases from the
+  cards' examples. FIX-026's card names nothing in it.
+- **`.env`, the `.stockai` venv, `node_modules` (Playwright, for the PDF) and `railway link`:** set up per device. Tests run
+  through the venv.
+- **The assistant's local notes.** What they hold that the repository's rules do not:
+  - **Every push to `main` redeploys, docs-only too.** The deploy of 7 Nov took about 27 minutes. Push only at the owner's
+    word, about 2 h clear of the jobs in KT section 9; safest 00:10–06:20 IST. Read the IST clock first. On the 1st, never
+    before the 09:00 monthly forecast. Push with `git -c credential.username=RevanParimi push origin main`.
+  - **KT, ARCHITECTURE and CODEBASE describe the current design:** no story notes, no commit, review or deploy history.
+    Production facts go only in KT section 1.
+  - **The owner decides from plain worked examples.** Optional technical calls are delegated: decide, record, tell.
+  - **STATE.json is spliced, never re-dumped,** and repository files are written as LF bytes.
+  - **Deleting lines from `milestones.yaml`** needs the owner's approval each time.
+  - **Owner setup waits for rollout:** Railway alerts, the OpenRouter key limit, Healthchecks.io with Telegram, SA-007's
+    backup bucket. Remind the owner then.
+
+**FIX-025 PUSHED AND DEPLOYED** (7 Nov, 00:10–00:37 IST, session stockagent-main-02, at the owner's word; this
+record is in the docs commit after `bed0a0a`):
+
+- Pushed `0f0d7f6..bed0a0a` at 00:10:18 IST by the waiter, after a fetch showed origin at `0f0d7f6`.
+- Railway deploy `b5d01545` was created at 00:10:18, not queued, was DEPLOYING by 00:18:05 and reached SUCCESS by
+  00:36:58; the public `/health` answered 200 at 00:36:58. `56676660` is REMOVED. The DEPLOYING phase took about 19
+  minutes; the logs were not read, so why is not known. It fell inside the job-free window.
+- **Full suite on the pushed tree:** 6,161 passed / 12 skipped / 1 xfailed / 0 failed, pytest rc 0, 13m17s, 22:29-22:42 IST on 6 Nov, status clean before and after (analysis_data/fix025_commit/full_suite.txt).
+- **Deployment's switch is off, and stays off;** FIX-028's measurement comes first. Production now changes with it off:
+  a top-up of a stock under a measure stops, every top-up stops on a day with no report from the last 7 days, a holding
+  with no review entry on a day with no recorded regime adds nothing, a sold stock's idea goes first on Saturday, and a
+  stock sold with no idea left takes its screen rank. FIX-025 production is `pending_observation`.
+  - First read-only looks: guide 06-K and 06-L after the Saturday 7 Nov discovery run, and 07-O after the next 16:30
+    review (counts and fields only).
+- **The same docs commit** (the owner's "commit and push", 7 Nov) holds KT section 1 and its edition, the guide's 06-K,
+  06-L, 07-G and 07-O status lines, and the PDF. No code changed. Its push was held to about 06:40 IST, past the 06:30
+  `ops_watchdog`, and redeploys the same code.
+- Next `continue`, in a new conversation: **FIX-026**'s implementation.
 
 **FIX-025 COMMITTED; push held to the 00:10 window** (6 Nov, about 22:27-22:28 IST, session stockagent-main-02, at the
 owner's "ya, commit and push and 2,3 go as per recommendation"; peers idle). Built in a temporary worktree, so the

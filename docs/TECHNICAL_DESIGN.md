@@ -1,6 +1,6 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-11-06 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-11-07 · **Audience:** engineers and teammates learning the product
 
 **Code inspected:** `b065da303cf18988d8fc50732b8bb95bf31121fa`
 
@@ -35,15 +35,10 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs `0f0d7f6` (FIX-023 and FIX-024, code `e6b037a`), deployed at
-about 14:19 IST on 5 November 2026 (the deployment list showed it SUCCESS and
-`/health` answered 200), with idle-cash deployment off. The inspected code adds
-FIX-025: deployment follows the money and the ideas, a top-up checks NSE's
-surveillance report, and a sold stock's idea goes first in Saturday's re-dives
-(sections 6 and 8). It is committed but not yet deployed, and counts as running
-only once a read-only check of the deployment list and `/health` confirms that
-deploy. The table gives the configuration that differs from the repository and
-the state of each operational control.
+Production runs code `b065da3` (FIX-025), deployed at about 00:37 IST on
+7 November 2026 (the deployment list showed it SUCCESS and `/health` answered
+200), with idle-cash deployment off. The table gives the configuration that
+differs from the repository and the state of each operational control.
 
 | Area | State in production | Evidence |
 |---|---|---|

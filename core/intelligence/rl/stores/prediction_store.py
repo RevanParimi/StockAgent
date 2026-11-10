@@ -227,7 +227,8 @@ class PredictionStore:
             data = self._read_json(target)
             return PredictionEnvelope(**data) if data is not None else None
         except Exception as exc:
-            logger.warning("[PredictionStore] archived envelope unreadable (%s): %s", path, exc)
+            logger.warning("[PredictionStore] archived envelope unreadable (%s): %s", path, exc,
+                           exc_info=True)
             return None
 
     def archive_envelope(self, cycle_id: str | None = None) -> str | None:

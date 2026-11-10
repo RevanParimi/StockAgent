@@ -188,10 +188,11 @@ class LateReforecast(BaseModel):
 
 
 def reforecasts_after_close(env, review_date: date) -> list:
-    """The envelope's re-forecasts made after session `review_date`'s close
-    (15:30 IST, itself included, as `close_before_decision` has it), in order. One with no time (stored before FIX-027) counts as
-    made before it; one whose time cannot be read counts as after, as it
-    cannot be shown to be before."""
+    """The envelope's re-forecasts made at or after session `review_date`'s
+    close (15:30 IST, the close itself included, as `close_before_decision`
+    has it), in order. One with no time (stored before FIX-027) counts as made
+    before it; one whose time cannot be read counts as after, as it cannot be
+    shown to be before."""
     from core.intelligence.rl.nse_calendar import IST, session_close_at
     closed = session_close_at(review_date)
     late = []
@@ -234,16 +235,14 @@ def envelope_at_close(env, review_date: date, store: VerdictStore):
 
 
 def _drift_direction(env, review_date: date, close: float) -> str:
-    """UP | DOWN | FLAT drift of `env`'s remaining rows from `close`; "" when none."""
-    try:
-        remaining = [f for f in env.daily_forecasts if f.date >= review_date.isoformat()]
-        if not remaining or not close:
-            return ""
-        drift_pct = (remaining[-1].predicted_close - close) / close * 100
-        band = settings.ADVISOR_ENVELOPE_FLAT_BAND_PCT
-        return "UP" if drift_pct > band else "DOWN" if drift_pct < -band else "FLAT"
-    except Exception:
+    """UP | DOWN | FLAT drift of `env`'s remaining rows from `close`; "" when
+    none. Called inside build_signals' envelope read, whose handler covers it."""
+    remaining = [f for f in env.daily_forecasts if f.date >= review_date.isoformat()]
+    if not remaining or not close:
         return ""
+    drift_pct = (remaining[-1].predicted_close - close) / close * 100
+    band = settings.ADVISOR_ENVELOPE_FLAT_BAND_PCT
+    return "UP" if drift_pct > band else "DOWN" if drift_pct < -band else "FLAT"
 
 def build_signals(
     holding: Holding,

@@ -110,7 +110,6 @@ def _review_session_close(ticker: str, review_date: date) -> float | None:
     bar is not available, so the re-forecast is skipped and the envelope stays.
     Example: Monday's close is 1,000 and Tuesday's 1,100; Tuesday's review of
     Monday anchors on 1,000."""
-    from core.intelligence.rl.nse_calendar import now_ist
     if review_date >= now_ist().date():
         return _fetch_actual_close(ticker)
     from core.intelligence.rl.workflows.daily_review import _fetch_session_close
@@ -652,7 +651,10 @@ def regenerate_envelope(
     Archives the superseded envelope first (via PredictionStore.archive_envelope()).
     Past days' forecasts (date <= review_date) are kept byte-identical; only
     days strictly after review_date are replaced with a fresh price path
-    anchored on today's actual close.
+    anchored on review_date's own close (`_review_session_close`: the most
+    recent close when review_date is today). The event records when it ran
+    (ReforecastEvent.at), so a decision booked at an earlier close does not
+    read the new path (FIX-027, core/portfolio/advisor.envelope_at_close).
 
     NEVER raises — returns None on:
       - RL_REFORECAST_ENABLED == False (no side effects)
@@ -671,7 +673,8 @@ def regenerate_envelope(
               | "preopen_shock" | "manual" | ...
     review_date : the trading date that triggered this re-forecast (defaults
               to today). Forecast rows with date <= review_date are preserved
-              unchanged; rows with date > review_date are regenerated.
+              unchanged; rows with date > review_date are regenerated, from
+              that session's close.
     """
     if not getattr(settings, "RL_REFORECAST_ENABLED", True):
         return None
@@ -732,8 +735,8 @@ def regenerate_envelope(
             )
             return None
 
-        # Fresh baseline close — the new MC paths anchor on today's actual
-        # close, not the month-start base_close.
+        # Fresh baseline close: the new MC paths anchor on the review
+        # session's own close (FIX-027), not the month-start base_close.
         base_close = _review_session_close(ticker, review_date)
         if base_close is None:
             logger.warning(

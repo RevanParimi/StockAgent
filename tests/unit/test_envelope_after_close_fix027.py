@@ -101,7 +101,8 @@ def _decide(holding, sig):
 
 
 # ---------------------------------------------------------------------------
-# The example, through the real re-forecast and the real advisor
+# The example, through the real advisor. `_reforecast` writes the envelope file
+# as regenerate_envelope does; the end-to-end tests below use the real one.
 # ---------------------------------------------------------------------------
 
 def test_tuesday_1100_does_not_add_at_mondays_1000(tmp_path, monkeypatch):
@@ -135,15 +136,15 @@ def test_tuesday_900_with_a_broken_thesis_does_not_sell_at_mondays_1000(tmp_path
     rec = _decide(holding, sig)
     assert rec.verdict == "HOLD"
     assert not {"thesis_break", "shock_reforecast"} & set(rec.triggers)
-    # Wednesday's decision (reviewing Tuesday, close 900) reads that same
-    # re-forecast as it stands: it was made before Tuesday's 15:30? No: 16:45 is
-    # after Tuesday's close too, so Wednesday's close also may not read it.
+    # Wednesday's run reviews Tuesday (close 900). The re-forecast ran at
+    # Tuesday 16:45, after Tuesday's 15:30 close too, so Tuesday's decision
+    # may not read it either.
     _h, sig_tue = _signals(_verdicts(tmp_path, monkeypatch), review=TUE, close=900.0,
                            thesis_intact=False)
     assert sig_tue.envelope_direction != "DOWN"
     # Thursday's run reviews Wednesday: the re-forecast (Tue 16:45) is before
-    # Wednesday's close, so it counts: the 900 path ends at 900, close 900: FLAT
-    # against Wednesday's own close, and DOWN against a 1,000 close.
+    # Wednesday's close, so it counts. Its path ends at 900; against a
+    # Wednesday close of 1,000 that is -10%, DOWN, and the sale fires.
     _h, sig_wed = _signals(_verdicts(tmp_path, monkeypatch), review=WED, close=1000.0,
                            thesis_intact=False)
     assert sig_wed.envelope_after_close == ""
@@ -363,3 +364,57 @@ def test_one_clock_for_reforecasts_and_new_positions():
         after = bool(reforecasts_after_close(env, MON))
         refused = bool(close_before_decision(MON, at, True, "re-forecast"))
         assert after == refused, minutes
+
+
+# ---------------------------------------------------------------------------
+# End to end: the real regenerate_envelope writes the event and the archive,
+# and the real advisor reads them back through VerdictStore
+# ---------------------------------------------------------------------------
+
+def _real_round_trip(tmp_path, monkeypatch, at_day: date, at_hour: int):
+    """Monday's envelope ends at 1,000 (FLAT). The real re-forecast of Monday
+    runs at `at_day` `at_hour`:45 with a +40% monthly profile, anchored on
+    Monday's 1,000: its path ends at about 1,040 over the four remaining
+    rows (+4%, UP). Returns the new envelope, the holding and Monday's
+    signals set where ADD would fire."""
+    from core.intelligence.rl.algorithms.price_interpolator import ForecastProfile
+    import core.intelligence.rl.nse_calendar as cal
+    monkeypatch.setattr(settings, "PREDICTION_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(gf.settings, "RL_REFORECAST_ENABLED", True)
+    monkeypatch.setattr(gf.settings, "RL_REFORECAST_MAX_PER_MONTH", 2)
+    _store(tmp_path).save_envelope(_envelope(1000.0))
+    rf._patch_pipeline(monkeypatch, tmp_path, base_close=1000.0)
+    monkeypatch.setattr(gf.PriceInterpolator, "get_profile", lambda self, **kw: ForecastProfile(
+        monthly_return_pct=40.0, path_shape="linear", confidence_band_daily_pct=1.0,
+        reasoning="test", source="llm"))
+    monkeypatch.setattr(gf, "_review_session_close", _real_review_session_close)
+    monkeypatch.setattr(dr, "_fetch_session_close",
+                        lambda ticker, on: SessionClose(close=1000.0, bar_date=on, source="agree"))
+    stamp = datetime(at_day.year, at_day.month, at_day.day, at_hour, 45, tzinfo=IST)
+    monkeypatch.setattr(gf, "now_ist", lambda: stamp)
+    monkeypatch.setattr(cal, "now_ist", lambda: stamp)
+    out = gf.regenerate_envelope(ticker=TICKER, sector=SECTOR, reason="shock",
+                                 trigger="external_shock", review_date=MON)
+    assert out is not None
+    holding, sig = _signals(VerdictStore(TICKER, sector=SECTOR))
+    return out, holding, sig
+
+
+def test_end_to_end_a_reforecast_after_the_close_is_not_read(tmp_path, monkeypatch):
+    out, holding, sig = _real_round_trip(tmp_path, monkeypatch, TUE, 16)
+    assert out.reforecast_history[-1].at == _at(TUE, 16, 45)
+    assert out.reforecast_history[-1].archived_file
+    assert out.daily_forecasts[-1].predicted_close > 1010.0       # the new path is UP
+    assert sig.envelope_direction == "FLAT"                        # Monday's archived path
+    assert sig.envelope_late_direction == "UP"
+    assert "after the close of 2026-06-08" in sig.envelope_after_close
+    assert "not available" not in sig.envelope_after_close         # the archive was read
+    rec = _decide(holding, sig)
+    assert rec.verdict == "HOLD" and "ENVELOPE_AFTER_CLOSE" in rec.notes
+
+
+def test_end_to_end_a_reforecast_before_the_close_is_read(tmp_path, monkeypatch):
+    """The same re-forecast at Monday 10:45, before Monday's close: read, UP, ADD."""
+    out, holding, sig = _real_round_trip(tmp_path, monkeypatch, MON, 10)
+    assert sig.envelope_after_close == "" and sig.envelope_direction == "UP"
+    assert _decide(holding, sig).verdict == "ADD"

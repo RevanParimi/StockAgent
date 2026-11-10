@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-11-07 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-11-10 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `b065da303cf18988d8fc50732b8bb95bf31121fa`
+**Code inspected:** `794968ecadd4a72872322f01519e9f7016069286`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,9 +35,12 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs code `b065da3` (FIX-025), deployed at about 00:37 IST on
-7 November 2026 (the deployment list showed it SUCCESS and `/health` answered
-200), with idle-cash deployment off. The table gives the configuration that
+Production runs code `c94dc17` (FIX-026, and FIX-027 ahead of its fresh
+review), deployed at about 13:20 IST on 10 November 2026 (the deployment list
+showed it SUCCESS; `/health` was not read), with idle-cash deployment off. The
+inspected revision adds only review fixes to it (a traceback on one log line,
+one error handler removed, tests); it is committed, not yet deployed at this
+edition. The table gives the configuration that
 differs from the repository and the state of each operational control.
 
 | Area | State in production | Evidence |
@@ -1225,7 +1228,9 @@ fresh verdict each month.
 **Example.** A stock is bought at ₹500 for its order book. On day 4 the market
 falls 2% and the stock 4%, to ₹480. The miss triggers a review, the review
 says "not intact", and the re-forecast path ends at ₹470, so the price-path
-rule EXITs at a 4% loss. The evidence rule finds no negative event, a BUY as
+rule EXITs at a 4% loss. The re-forecast runs the next afternoon, after the
+close, so the sale is booked at the first close after it, two sessions on;
+the 4% assumes the stock is still at ₹480 then. The evidence rule finds no negative event, a BUY as
 the latest analysis, ₹480 above the ₹455 invalidation level and 4 sessions
 held, so it HOLDs. A path ending at ₹478 would not have fired the price-path
 rule: that is within 1% of ₹480.
@@ -3439,7 +3444,7 @@ section 10) are part of the current design.
 | [FIX-023](planning/PI-2026-09/stories/FIX-023.md) | Deployment buys only on a regime read from live inputs, as of the review session | Done | 6 Portfolio; 5 Learning | SA-049 |
 | [FIX-024](planning/PI-2026-09/stories/FIX-024.md) | A buy waits for an analysis made before its close; an unknown regime adds nothing | Done | 6 Portfolio; 8 Discovery | FIX-023 |
 | [FIX-025](planning/PI-2026-09/stories/FIX-025.md) | Deployment follows the money and the ideas; a top-up checks NSE's report too | Done | 6 Portfolio; 8 Discovery | FIX-024 |
-| [FIX-026](planning/PI-2026-09/stories/FIX-026.md) | The analysis names a new stock's sector from our list; an empty or unknown sector is flagged | Open | 8 Discovery; 4 Research | FIX-024 |
+| [FIX-026](planning/PI-2026-09/stories/FIX-026.md) | The analysis names a new stock's sector from our list; an empty or unknown sector is flagged | Done | 8 Discovery; 4 Research | FIX-024 |
 | [FIX-027](planning/PI-2026-09/stories/FIX-027.md) | A decision booked at a session's close reads nothing from after that close | Open | 6 Portfolio | FIX-024 |
 | [FIX-028](planning/PI-2026-09/stories/FIX-028.md) | A sold stock leaves the daily review | Open | 6 Portfolio; 8 Discovery | FIX-025 |
 | [FIX-029](planning/PI-2026-09/stories/FIX-029.md) | Every door to a buy reads the same facts: the day's regime, the sale and the verdict | Open | 6 Portfolio; 8 Discovery | FIX-025 |

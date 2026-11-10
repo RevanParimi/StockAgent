@@ -1,11 +1,21 @@
-# Current handoff - 2026-11-10 (FIX-027 implemented, fresh review next)
+# Current handoff - 2026-11-10 (FIX-027 deployed before its fresh review; review next)
 
-## 10 Nov: FIX-027 implemented (`review_required`)
+## 10 Nov: FIX-027 implemented, committed with FIX-026, deployed; review fixes
 
-Owner chose **Wait** for sales (after seeing the cost of booking at the later close). Receipt:
-[evidence/FIX-027-implementation.md](evidence/FIX-027-implementation.md). Targeted 861 tests pass; full suite not run;
-production probe not run. FIX-026 (accepted) is still uncommitted in the tree, together with FIX-027's edits: commit
-awaits the owner's word. Next `continue`, in a new conversation: **FIX-027's fresh review**; then FIX-028, FIX-029.
+- **FIX-027** (`review_required`): a decision booked at a session's close reads the envelope as it stood
+  at that close. The owner chose **Wait** for sales after seeing the cost of booking at the later close.
+  Receipt: [evidence/FIX-027-implementation.md](evidence/FIX-027-implementation.md).
+- **Committed and deployed at the owner's word, before FIX-027's fresh review (recorded deviation).**
+  `c94dc17` carries FIX-026 (accepted) and FIX-027. Pushed about 13:15 IST; Railway `4b6382e2` SUCCESS
+  13:20 IST. The switch stays off.
+- **Same-conversation review** (the owner switched to Opus 5.5 and asked): the full suite at `c94dc17`
+  failed 2 guard tests, FIX-026's commit-time edits were skipped, and living docs and these files were
+  stale. Fixed in `794968e` (code and tests, no behaviour change) and the docs commit after it. Full suite
+  after the fixes: 6,257 passed, 12 skipped, 1 xfailed, 0 failed.
+- **Production checks:** FIX-026, guide 06-M after Saturday 14 Nov's discovery run. FIX-027, guide 06-N's
+  production line after the first run that follows a re-forecast. FIX-027's counts probe is not run.
+- **Next `continue`, in a new conversation: FIX-027's fresh review.** Input: FIX-027's files in
+  `git diff 412645f..794968e` (list in STATE `review_input`); then FIX-028, FIX-029.
 
 # Earlier handoff - 2026-11-09 (after FIX-026's fresh review)
 

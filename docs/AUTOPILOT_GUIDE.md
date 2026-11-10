@@ -154,6 +154,14 @@ The cascade is **EXIT → TRIM → ADD → HOLD**; the first that fires wins.
 | HOLD | Nothing above |
 | SWITCH | An EXIT becomes SWITCH when a buy candidate qualifies (below) |
 
+"Envelope" in these rules is the envelope as it stood at the close the decision is booked at.
+A re-forecast made at or after that close (the next afternoon's review, or that morning's
+pre-open check) counts only for later closes: an ADD only its path would allow is held with the
+note `ENVELOPE_AFTER_CLOSE`, and a sale it alone would fire waits. Example: Monday closes at
+₹1,000; at 16:45 on Tuesday the review of Monday re-forecasts a path ending at ₹900 and says the
+thesis is broken. The runs that review Monday and Tuesday do not sell on it; the run that reviews
+Wednesday does, at Wednesday's close.
+
 **Buy candidates.** At each review the autopilot may buy only from this
 portfolio's candidates
 (`core/discovery/candidates.py`):

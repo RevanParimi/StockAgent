@@ -1425,11 +1425,20 @@ their Monte Carlo bands (section 4).
 - runs a fresh analysis with the decision weights. An abstaining analysis is
   recorded, and in `enforce` mode the re-forecast stops with the envelope
   unchanged;
-- anchors new Monte Carlo paths on the latest close for the rows after
-  `review_date` only, keeping their dates and continuing the day numbers.
-  Rows on or before `review_date` are kept byte for byte;
+- anchors new Monte Carlo paths on `review_date`'s own close for the rows
+  after `review_date` only, keeping their dates and continuing the day
+  numbers. When `review_date` is today (the pre-open check, a manual run) that
+  is the latest close; for the 16:30 review of the previous session it is that
+  session's close, and the re-forecast is skipped when that session's bar is
+  not available. Rows on or before `review_date` are kept byte for byte;
 - updates the envelope's count, history, profile, learning mode, gate and
-  instrument. New rows carry their own stamps.
+  instrument. New rows carry their own stamps, and the history event records
+  when it ran (`at`, IST).
+
+The portfolio advisor reads a re-forecast only for decisions booked at closes
+before it ran: for an earlier close it reads the archive made before the
+re-forecast (core/portfolio/advisor.py `envelope_at_close`; TECHNICAL_DESIGN
+section 6).
 
 **Triggers** in the daily review, after step 7a, live cycle only, first
 match wins:

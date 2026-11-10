@@ -2,11 +2,12 @@
 services/api/routes/delivery_api.py
 ====================================
 Compass Phase C — M4 delivery endpoints: latest brief / weekly review,
-manual triggers, alert tail, web-push subscription management.
+manual triggers, alert tail, outbox dead-letter view (SA-006), web-push
+subscription management.
 
 Auth (M0.1): brief/weekly/alerts reads need a logged-in user (identity from
-the bearer session — user_id params removed, IDOR); run-* triggers are
-owner-or-machine (require_owner).
+the bearer session — user_id params removed, IDOR); run-* triggers and the
+outbox view are owner-or-machine (require_owner).
 """
 from __future__ import annotations
 
@@ -90,12 +91,25 @@ async def run_weekly_now(
     return {"status": "accepted", "monitor": "/delivery/weekly/latest"}
 
 
-@router.get("/alerts", summary="Recent emitted alerts (sent-log tail)")
+@router.get("/alerts", summary="The caller's recent alerts (sent-log tail)")
 async def alerts_tail(
     limit: int = Query(default=50, ge=1, le=500),
     user: dict = Depends(get_current_user),
 ) -> dict:
-    return {"alerts": load_recent_alerts(limit=limit)}
+    # FIX-008: the sent-log holds every account's records; a member must not
+    # read the owner's operator notices or another account's advisor alerts.
+    return {"alerts": load_recent_alerts(limit=limit, user_id=user["user_id"])}
+
+
+@router.get("/outbox", summary="Outbox counts, dead letters and retries (owner)")
+async def outbox_status(
+    limit: int = Query(default=20, ge=1, le=200),
+    _owner: dict = Depends(require_owner),
+) -> dict:
+    # SA-006: the dead-letter view. "accepted" is transport acceptance, not
+    # receipt; the report says so. No payloads, recipients or user ids.
+    from core.delivery.outbox import outbox_report
+    return outbox_report(limit=limit)
 
 
 @router.get("/push/public-key", summary="VAPID application server key for the browser")

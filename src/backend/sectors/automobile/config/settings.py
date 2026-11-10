@@ -33,9 +33,15 @@ AGENT_WEIGHTS: dict[str, float] = {
 # ---------------------------------------------------------------------------
 # Tracked tickers (NSE symbols without .NS suffix)
 # ---------------------------------------------------------------------------
+# Also the exact-match short cut in BaseSectorOrchestrator._resolve_ticker: a
+# ticker listed here is never "resolved" by the LLM, whose prompt lists
+# TATAMOTORS as a known OEM. SA-008 (owner decision, 2026-09-29): the
+# passenger-vehicle company is tracked as its own listing, TMPV; TATAMOTORS
+# stays listed so it short-cuts to its quarantined identity, not to a guess.
 TICKERS: list[str] = [
     t.strip() for t in
-    os.getenv("AUTO_TICKERS", "MARUTI,TATAMOTORS,M&M,HEROMOTOCO,BAJAJ-AUTO,EICHERMOT,TVSMOTORS,ASHOKLEY").split(",")
+    os.getenv("AUTO_TICKERS",
+              "MARUTI,TATAMOTORS,TMPV,M&M,HEROMOTOCO,BAJAJ-AUTO,EICHERMOT,TVSMOTORS,ASHOKLEY").split(",")
     if t.strip()
 ]
 

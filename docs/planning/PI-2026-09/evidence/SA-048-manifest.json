@@ -1,0 +1,130 @@
+{
+  "story": "SA-048",
+  "phase": "implementation",
+  "head": "FIX-021 docs commit on e7e3165",
+  "date": "2026-10-31",
+  "note": "re-recorded after FIX-021 was committed, before any review; supersedes 3a4ea0e9, whose KT, guide and PDF sat on FIX-021 uncommitted reviewed bytes",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "config.yaml",
+      "git_blob": "be6a994d8d892dcb42e556d478f38a8fd9397ecb",
+      "sha256": "e7cb7d6d447ec5a7251ddff141e29f4a902a800bdc518fce54068524e59fef5a"
+    },
+    {
+      "path": "core/portfolio/autopilot.py",
+      "git_blob": "639f66f6248d684e671ba1bac61760a41856dd04",
+      "sha256": "8d1967caf9e0e8282dfe98f0ebbe6468a7c3328cd4c0838e90afcb492a853972"
+    },
+    {
+      "path": "core/portfolio/costs.py",
+      "git_blob": "f8915be2d011374482bfab6ef30ce6244140c574",
+      "sha256": "8a9ccb48fc54120742ca3df3445239ea3ebdd16f0f5120aba2d934b2b5f5eb19"
+    },
+    {
+      "path": "core/portfolio/pipeline.py",
+      "git_blob": "149897fa5e452dbeae9e0a3cd1db77184073581f",
+      "sha256": "a639a9db175e26a4dfa0b600c7305fcd47df2639c09ae4de7b10e5f8230df6ef"
+    },
+    {
+      "path": "core/portfolio/sizing.py",
+      "git_blob": "8e2b7ed0c0443fbc6233e45f90b0f04ec9ced9ac",
+      "sha256": "76143c18270983b001d17488f928f21bd4df2d01364c95d99035520e24cfe9a9"
+    },
+    {
+      "path": "core/portfolio/store.py",
+      "git_blob": "60139a245d82166b48fbb46ab1d912c4fe36d976",
+      "sha256": "7462bc0d4ff78809ffcb0f6d56e10de17e5b3d937a1038e96e4ebf664620ce02"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "git_blob": "afb525cbec2b7e43618e956a31c37b6925166dd2",
+      "sha256": "91783832c346860d151d7a2441b8950420eaf348928fa22f6a44488cd531aea0"
+    },
+    {
+      "path": "docs/AUTOPILOT_GUIDE.md",
+      "git_blob": "d87eb98e2938b50d0e6f8c2b8e2dcb2436bd2e95",
+      "sha256": "91cfbe5467c27764afb2c077635cdc591736b1a78dd252d79c4f197bc1778bb4"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "48e2c2186d2e196edbe2b221947861e436e6eb29",
+      "sha256": "d5bfcd59f0f9142f0eff0dc5bca485a424c6e0d6c2819f28b4c26f9ffeaf5b4b"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "eafa99fd17bcafa552ab7cfd8854e7ba88bb37a5",
+      "sha256": "83c0d9a3b958e6aff322c2dec5f41b8271f1f130f9cd66cf5d9140b07e1d21ac"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "a1a3aba024ba5c0cd531f62180c83b244e8449b2",
+      "sha256": "ff4a4bf82e7d197ef6acee851eb5f21f01b3dfd8bcde28e056b1f9bfb401bd26"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "a0f71fe1094f1c7c2d652766412aa14805c1aff8",
+      "sha256": "98c4d1f499d29de41acbc17e5080ffc6f51f6b99f7f70c5ffea91172b2331ac8"
+    },
+    {
+      "path": "services/api/routes/portfolio_api.py",
+      "git_blob": "a784490df1f4f5ffbc6cdd784ffbc526a43f4223",
+      "sha256": "c873fb38c0ac3f746c1359ad8a5a479cf792461b3b397f3c64bc4bfcb7bfacd0"
+    },
+    {
+      "path": "src/backend/shared/config/settings/base.py",
+      "git_blob": "aa002520f48834a256caaf4a26f3a3b24f88eb61",
+      "sha256": "34d020cc39947c5978e4ef94a7f624f63c840056c9eb45b3a6b5394731a4a1bf"
+    },
+    {
+      "path": "src/backend/shared/schemas/portfolio.py",
+      "git_blob": "18c4aebb0e14c23386ae48213c043f684c698127",
+      "sha256": "7b11d7848c3580f922928d608e08ddc078c236c83a4e55b1fc03f10d7d34215b"
+    },
+    {
+      "path": "src/frontend/prototypes/UI_SPEC.md",
+      "git_blob": "31bd68e0076ce779bf7ac31cc24e78370763164a",
+      "sha256": "4a5c128f0c533e4b645efce3aa004e7dcb7eb6fc7823d6e9dff6f45662f3a40b"
+    },
+    {
+      "path": "src/frontend/prototypes/portfolio.jsx",
+      "git_blob": "0401376c957f5ab8549a2dd2d761c9c749370626",
+      "sha256": "4275b3c838cd4f99da2fc1db3f11b5cacfc16a05307a231bc1b2cb64e563f054"
+    },
+    {
+      "path": "tests/frontend/no_invented_figures.test.mjs",
+      "git_blob": "9b041e8a8cb7447e788103e248a7785fa984417c",
+      "sha256": "dab9f9184a2469829274f42200223061a8f1729c39e7ebbb9dbf6356d902ee61"
+    },
+    {
+      "path": "tests/unit/test_autopilot_api.py",
+      "git_blob": "4eb81d1470d55e018d07b1da0b82799bf0a02ab1",
+      "sha256": "ffd8b6e46ccb79bc068130a2b84d753ae446185235dbbbae74bb19787e4a90ac"
+    },
+    {
+      "path": "tests/unit/test_autopilot_executor_adds.py",
+      "git_blob": "04ef7f1dd728ae56bed2a04518c87e376c0061c5",
+      "sha256": "f89dd9380dc50db68a1d1b5a05cfdd654054f57e82a4b17d2193626c02469359"
+    },
+    {
+      "path": "tests/unit/test_autopilot_executor_sells.py",
+      "git_blob": "f50ce5caee4ce096da5b797eb6b87f6ad443a5d2",
+      "sha256": "e77d22097f9f09b88b4d14c90048e8d8b816dc1bef94733f840ed05e197a8321"
+    },
+    {
+      "path": "tests/unit/test_portfolio_vs_nifty_sa051.py",
+      "git_blob": "2b80551e5fd62d4c19cfdd712f20d62dd542adfd",
+      "sha256": "5023ab051d253eb37a86fbe5fa06991b7f758a70a9e252e8937c156ecf92e33b"
+    },
+    {
+      "path": "tests/unit/test_sizing_rule_sa050.py",
+      "git_blob": "8aaa90ec6e8d86cf90f69261646e6b6a182fc882",
+      "sha256": "652f6e3c17283e31abdd123dc514ee32ca47c963df515891cef52229c7fedba0"
+    },
+    {
+      "path": "tests/unit/test_trading_costs_sa048.py",
+      "git_blob": "c2581c9e1038c70492c1e46e630bf84b4313d504",
+      "sha256": "4079be049fc11f6e66eb606a5fc6613eb6699af85f3e82ab7804be3628dc91ed"
+    }
+  ]
+}

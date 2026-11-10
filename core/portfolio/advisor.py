@@ -7,17 +7,33 @@ The LLM only narrates (narrator.py) — it never decides.
 Verdict precedence (explicit, non-negotiable): EXIT > TRIM > ADD > HOLD.
 Tax-deferral may soften a TRIM into WAIT_FOR_LTCG; it must NEVER suppress or
 delay an EXIT — capital protection outranks tax optimisation, always.
+
+SA-003 data gate: ADD and a SWITCH's buy leg add risk, so they need a close
+dated the review session and a forecast issued on actionable data. `decide`
+takes the blocks explicitly (`add_blocks`, `blocked_candidates`); the
+pipeline decides whether to pass them (enforce) or only record them (record).
+EXIT and TRIM are never blocked: missing data must not trap a position.
+
+PR-009 exit rule: `decide(exit_rule="legacy")` sells on `thesis_break` (a
+price-path miss judged "not intact" with a falling path); `exit_rule="evidence"`
+sells on `case_broken` instead (`case_broken_reasons`: a material negative
+NSE filing or rule-typed disclosure, a recent actionable SELL run after the
+buy, or the invalidation price), and only after ADVISOR_MIN_HOLD_SESSIONS.
+Every other rule, the stops included, is the same code under both. The
+pipeline picks the acting rule (core/portfolio/exit_shadow.py).
 """
 from __future__ import annotations
 
 import hashlib
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from core.config import settings
+from backend.shared.pipeline import decision_gate as dg
 from backend.shared.schemas.portfolio import AdviceRecord, Holding, Portfolio
+from core.portfolio import sizing
 from services.data.verdict_store import VerdictStore  # plane boundary (Atlas C2)
 from services.data.fetchers.corporate_events import next_results_event
 
@@ -35,16 +51,65 @@ class AdvisorSignals(BaseModel):
     unrealised_pnl_pct: float              # vs adj_avg_price, dividend-inclusive
     holding_age_days: int
     regime_label: str = "NORMAL"
+    # FIX-024: why regime_label is not established for its review day, as the
+    # deployment record says it ("market regime unavailable for 2026-10-30:
+    # India VIX did not answer"); "" when it is. Holds ADD in either gate mode.
+    regime_unavailable: str = ""
     thesis_intact: bool | None = None      # latest ThesisReview outcome, None = never reviewed
     reforecast_reason: str = ""            # latest reforecast event reason this cycle
     envelope_direction: str = "FLAT"       # UP | DOWN | FLAT remaining-forecast drift
+    # FIX-027: set when a re-forecast was made after the review session's close.
+    # `envelope_direction` then reads the envelope as it stood at that close (the
+    # archive made before the first such re-forecast), and the later path's drift
+    # is kept here only so an ADD it alone would allow is named, never taken.
+    envelope_after_close: str = ""
+    envelope_late_direction: str = ""
     confidence_trend: float = 0.0          # last remaining conf − first remaining conf
     reversion_prior: float = 0.0
     direction_accuracy_7d: float | None = None
+    # SA-050: shares of total equity (holdings at market plus cash), the
+    # denominator every cap uses (core/portfolio/sizing.py)
     position_weight_pct: float = 0.0
+    sector_weight_pct: float = 0.0
     earnings_in_days: int | None = None    # trading-day distance to next results event
     confidence: float = 0.5                # mean remaining envelope confidence
     peak_close_since_entry: float | None = None   # max close since buy_date (trailing stop)
+    # SA-003: is `close` the review session's own bar? (the pipeline sets these
+    # from pricing.session_close; a carried-forward close is not fresh)
+    price_fresh: bool = True
+    price_bar_date: str = ""
+    # SA-003: gate of the forecast rows the envelope signals came from —
+    # abstain if any came from an abstained analysis, UNKNOWN ("") if any was
+    # issued before the gate existed, NO_FORECAST when no row was read.
+    forecast_gate: str = "none"
+    forecast_run_ids: list[str] = Field(default_factory=list)
+    # SA-008: why `close` cannot be judged against this holding's cost basis
+    # ("" = it can): the symbol's identity is unresolved, or its price basis
+    # changed (a demerger, a relisting) since the basis the cost was booked on.
+    identity_issue: str = ""
+
+
+class ExitEvidence(BaseModel):
+    """What the evidence exit rule reads for one holding on one review day
+    (PR-009). `core/portfolio/exit_shadow.exit_evidence` assembles it and keeps
+    only what was published for this symbol on or before the review day."""
+    sessions_held: int | None = None       # exchange sessions after the buy, up to the review day
+    # High-materiality negative company events published in the last
+    # CASE_EVENT_SESSIONS sessions from a source in CASE_EVENT_SOURCES:
+    # {"id", "published_at", "category", "what", "source"}.
+    negative_events: list[dict] = Field(default_factory=list)
+    # The same, from any other source (a news article): watched, never a sale.
+    watch_events: list[dict] = Field(default_factory=list)
+    # The latest actionable analysis run on a later IST day than the buy and
+    # within RESEARCH_VERDICT_SESSIONS sessions up to the review day.
+    research_verdict: str = ""
+    research_run_at: str = ""              # its run time, naive UTC as the score history keeps it
+    # In the review day's price basis, the close's; 0.0 = none known, or a
+    # level whose basis could not be established (the gap names why).
+    invalidation_level: float = 0.0
+    invalidation_level_at_dive: float = 0.0   # the shelf idea's level, in its deep dive's rupees
+    invalidation_source: str = ""          # which shelf idea, and any bonus or split applied to it
+    gaps: list[str] = Field(default_factory=list)   # a source that could not be read
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +178,72 @@ def compute_stop_pct(atr_pct_value: float, cap_bucket: str, risk_profile: str) -
 # Signal assembly from existing RL artifacts
 # ---------------------------------------------------------------------------
 
+class LateReforecast(BaseModel):
+    """FIX-027: what the advisor found when a re-forecast was made after the
+    review session's close: `why` for the record, and the envelope as it is
+    now (`current`), whose path the decision may not act on."""
+    model_config = {"arbitrary_types_allowed": True}
+    why: str
+    current: object
+
+
+def reforecasts_after_close(env, review_date: date) -> list:
+    """The envelope's re-forecasts made at or after session `review_date`'s
+    close (15:30 IST, the close itself included, as `close_before_decision`
+    has it), in order. One with no time (stored before FIX-027) counts as made
+    before it; one whose time cannot be read counts as after, as it cannot be
+    shown to be before."""
+    from core.intelligence.rl.nse_calendar import IST, session_close_at
+    closed = session_close_at(review_date)
+    late = []
+    for ev in env.reforecast_history:
+        if not getattr(ev, "at", ""):
+            continue
+        try:
+            at = datetime.fromisoformat(ev.at)
+            if at.tzinfo is None:
+                at = at.replace(tzinfo=IST)
+        except ValueError:
+            late.append(ev)
+            continue
+        if at >= closed:
+            late.append(ev)
+    return late
+
+
+def envelope_at_close(env, review_date: date, store: VerdictStore):
+    """(envelope, late): the envelope a decision at `review_date`'s close may
+    read. With no re-forecast after that close: the envelope itself and None.
+    With one: the archive made before the first such re-forecast (the
+    envelope as it stood), with a `LateReforecast` naming it; when that
+    archive cannot be read the envelope is None, so no path is read at all
+    (direction FLAT: an ADD does not fire, and a sale needs its other triggers).
+    Example: Monday's close; Tuesday 16:45 the review of Monday re-forecast
+    from a rise. Monday's decision reads the path archived at 16:45, not the
+    new one. An envelope re-forecast last week is read as it is."""
+    late = reforecasts_after_close(env, review_date)
+    if not late:
+        return env, None
+    first = late[0]
+    when = first.at or first.date
+    why = (f"the {first.reason} re-forecast of {when} is after the close of "
+           f"{review_date.isoformat()}")
+    archived = store.load_archived_envelope(first.archived_file) if first.archived_file else None
+    if archived is None:
+        why += " and the envelope before it is not available"
+    return archived, LateReforecast(why=why, current=env)
+
+
+def _drift_direction(env, review_date: date, close: float) -> str:
+    """UP | DOWN | FLAT drift of `env`'s remaining rows from `close`; "" when
+    none. Called inside build_signals' envelope read, whose handler covers it."""
+    remaining = [f for f in env.daily_forecasts if f.date >= review_date.isoformat()]
+    if not remaining or not close:
+        return ""
+    drift_pct = (remaining[-1].predicted_close - close) / close * 100
+    band = settings.ADVISOR_ENVELOPE_FLAT_BAND_PCT
+    return "UP" if drift_pct > band else "DOWN" if drift_pct < -band else "FLAT"
+
 def build_signals(
     holding: Holding,
     portfolio: Portfolio,
@@ -122,10 +253,14 @@ def build_signals(
     close: float,
     ohlcv_df=None,
     market_cap_inr: float | None = None,
+    marks: dict[str, float] | None = None,
 ) -> AdvisorSignals:
     """Assemble the advisor's inputs from PredictionStore artifacts + the
     events calendar. Every sub-read is non-fatal — missing artifacts leave
-    conservative defaults in place."""
+    conservative defaults in place.
+
+    `marks` are the review's closes for every holding; the weights are shares
+    of total equity at those marks (a holding without one at its cost)."""
     sig = AdvisorSignals(
         symbol=holding.symbol,
         sector=holding.sector,
@@ -140,18 +275,23 @@ def build_signals(
     )
     sig.peak_close_since_entry = peak_close_since(
         ohlcv_df, date.fromisoformat(holding.buy_date))
-    # Position weight vs portfolio market value
+    # SA-050: position and sector weight against total equity
     try:
-        total = sum(h.adj_qty * h.adj_avg_price for h in portfolio.holdings)
-        if total > 0:
-            sig.position_weight_pct = round(
-                holding.adj_qty * holding.adj_avg_price / total * 100, 2
-            )
+        # unrounded, so the notes compare exactly what the caps compare
+        w = sizing.weights(portfolio, {**(marks or {}), holding.symbol: close})
+        sig.position_weight_pct = w.position_pct.get(holding.symbol, 0.0)
+        sig.sector_weight_pct = w.sector_pct.get(holding.sector, 0.0)
     except Exception:
         pass
     # Envelope state
     try:
         env = store.load_envelope(store.cycle_id_for(review_date))
+        if env:
+            env, late = envelope_at_close(env, review_date, store)
+            if late is not None:
+                sig.envelope_after_close = late.why
+                sig.envelope_late_direction = _drift_direction(
+                    late.current, review_date, close)
         if env and env.daily_forecasts:
             remaining = [f for f in env.daily_forecasts if f.date >= review_date.isoformat()]
             if remaining:
@@ -164,6 +304,9 @@ def build_signals(
                 sig.confidence = round(
                     sum(f.confidence for f in remaining) / len(remaining), 4
                 )
+                sig.forecast_gate = forecast_rows_gate([f.data_gate for f in remaining])
+                sig.forecast_run_ids = sorted({f.source_run_id for f in remaining
+                                               if f.source_run_id})
             sig.reversion_prior = env.conviction_streak.reversion_prior
             if env.reforecast_history:
                 sig.reforecast_reason = env.reforecast_history[-1].reason
@@ -176,6 +319,9 @@ def build_signals(
         entries = log.entries if log else []
         if entries:
             sig.regime_label = entries[-1].regime_label
+            if entries[-1].regime_unavailable:
+                sig.regime_unavailable = (f"market regime unavailable for {entries[-1].date}: "
+                                          f"{entries[-1].regime_unavailable}")
             last7 = entries[-7:]
             sig.direction_accuracy_7d = round(
                 sum(1 for e in last7 if e.direction_correct) / len(last7), 4
@@ -184,6 +330,13 @@ def build_signals(
                 if e.thesis_review is not None:
                     sig.thesis_intact = e.thesis_review.thesis_intact
                     break
+            # FIX-025: with no entry of its own for the day, the label above is
+            # an older day's; the market-wide record decides whether it may add.
+            day = review_date.isoformat()
+            if entries[-1].date != day:
+                from core.intelligence.regime.state import label_recorded_for, unrecorded_reason
+                if label_recorded_for(day) is None:
+                    sig.regime_unavailable = unrecorded_reason(day)
     except Exception as exc:
         logger.warning("[advisor] feedback read failed for %s (non-fatal): %s",
                        holding.symbol, exc)
@@ -206,6 +359,67 @@ def build_signals(
 
 
 # ---------------------------------------------------------------------------
+# SA-003 data gate inputs
+# ---------------------------------------------------------------------------
+
+NO_FORECAST = "none"      # AdvisorSignals.forecast_gate when no forecast row was read
+
+
+def forecast_rows_gate(statuses: list[str]) -> str:
+    """One gate for a set of forecast rows: the worst of them. abstain beats
+    UNKNOWN beats degraded beats actionable; no rows is NO_FORECAST."""
+    present = set(statuses)
+    if not present:
+        return NO_FORECAST
+    if dg.ABSTAIN in present:
+        return dg.ABSTAIN
+    if any(not dg.is_actionable(s) for s in present):
+        return dg.UNKNOWN
+    return dg.DEGRADED if dg.DEGRADED in present else dg.ACTIONABLE
+
+
+def data_gate_blocks(
+    signals: AdvisorSignals,
+    shelf_ideas: list | None = None,
+    candidate_fresh: dict[str, bool] | None = None,
+    candidate_identity: dict[str, str] | None = None,
+) -> tuple[list[str], dict[str, str]]:
+    """
+    What the data gate would stop for one holding. Pure.
+
+    Returns (add_reasons, blocked_candidates):
+      add_reasons         why an ADD may not fire ([] = it may)
+      blocked_candidates  shelf symbol -> why it may not be a SWITCH destination
+
+    A candidate whose price was never fetched here is not blocked at advice
+    time; the autopilot checks its session price again before buying.
+    SA-008: `candidate_identity` maps a shelf symbol to why its identity is
+    not resolved; such a symbol is never a destination.
+    """
+    add_reasons: list[str] = []
+    if not signals.price_fresh:
+        add_reasons.append(
+            f"no close dated the review session: {signals.close:.2f} is from bar "
+            f"{signals.price_bar_date or 'undated'}")
+    if signals.forecast_gate == NO_FORECAST:
+        add_reasons.append("no forecast rows for the review session")
+    elif not dg.is_actionable(signals.forecast_gate):
+        add_reasons.append(dg.row_gate_reason(
+            signals.forecast_gate, ",".join(signals.forecast_run_ids)))
+    blocked: dict[str, str] = {}
+    for idea in shelf_ideas or []:
+        status = getattr(idea, "data_gate", dg.UNKNOWN)
+        if not dg.is_actionable(status):
+            blocked[idea.symbol] = (f"shelf idea data gate {status or 'unknown'} "
+                                    "(deep dive not verified as actionable)")
+        elif (candidate_identity or {}).get(idea.symbol):
+            blocked[idea.symbol] = f"identity: {candidate_identity[idea.symbol]}"
+        elif (candidate_fresh or {}).get(idea.symbol) is False:
+            blocked[idea.symbol] = "no close dated the review session"
+    return add_reasons, blocked
+
+
+# ---------------------------------------------------------------------------
 # Verdict engine
 # ---------------------------------------------------------------------------
 
@@ -216,6 +430,7 @@ TRIGGER_PLAIN = {
     "stop_breach": "the stop was breached",
     "trailing_stop_breach": "the trailing stop was breached",
     "thesis_break": "the thesis broke",
+    "case_broken": "the reason to own it broke",
     "shock_reforecast": "a shock forced a reforecast",
     "crisis_regime_bearish": "a crisis regime turned the forecast down",
     "trim_profit_confidence_decline":
@@ -242,9 +457,15 @@ def explain_triggers(triggers) -> str:
     return joined[0].upper() + joined[1:] + "."
 
 
-def _best_switch_candidate(signals: AdvisorSignals, shelf_ideas, sector_weights: dict,
-                           held_symbols: set[str] | None = None):
-    """SWITCH (spec §5.2): EXIT already fired AND an active shelf idea beats the
+def evaluate_switch_candidates(signals: AdvisorSignals, shelf_ideas,
+                               sector_weights: dict,
+                               held_symbols: set[str] | None = None,
+                               max_candidates: int = 5,
+                               blocked: dict[str, str] | None = None):
+    """Return (winner_or_None, evaluation_rows): the SWITCH destination, plus a
+    record of how each candidate was judged.
+
+    SWITCH (spec §5.2): EXIT already fired AND an active shelf idea beats the
     holding's mean remaining envelope confidence by >= ADVISOR_SWITCH_CONVICTION_GAP,
     in a sector strictly UNDERWEIGHT vs the exiting holding's sector. With no
     sector-weight context every idea fails the underweight check (conservative).
@@ -253,17 +474,6 @@ def _best_switch_candidate(signals: AdvisorSignals, shelf_ideas, sector_weights:
     what you hold is a top-up, not a rotation, and the underweight-sector test
     that justified the call was computed on a sector you already own. The
     reviewed symbol excludes itself without the caller having to say so.
-    """
-    return evaluate_switch_candidates(signals, shelf_ideas, sector_weights,
-                                      held_symbols)[0]
-
-
-def evaluate_switch_candidates(signals: AdvisorSignals, shelf_ideas,
-                               sector_weights: dict,
-                               held_symbols: set[str] | None = None,
-                               max_candidates: int = 5):
-    """Return (winner_or_None, evaluation_rows) — the same decision as
-    `_best_switch_candidate`, plus a record of how each candidate was judged.
 
     The rows are the point. The advisor acts on ~4% of its calls, so grading
     only the pairs it took never accumulates a sample; every pair it CONSIDERED
@@ -273,6 +483,10 @@ def evaluate_switch_candidates(signals: AdvisorSignals, shelf_ideas,
     Pure: no I/O, no clock. Candidates are the top `max_candidates` ACTIVE
     ideas by conviction — a dropped or promoted idea was never a candidate and
     yields no row at all.
+
+    SA-003: a symbol in `blocked` that passes every other test is declined
+    with reason "data_gate" — checked last, so that reason means "would have
+    qualified but for the data gate".
     """
     own_weight = sector_weights.get(signals.sector, 0.0)
     excluded = set(held_symbols or ()) | {signals.symbol}
@@ -290,6 +504,8 @@ def evaluate_switch_candidates(signals: AdvisorSignals, shelf_ideas,
             reason = "sector_not_underweight"
         elif idea.conviction - signals.confidence < settings.ADVISOR_SWITCH_CONVICTION_GAP:
             reason = "conviction_gap_too_small"
+        elif idea.symbol in (blocked or {}):
+            reason = "data_gate"
         else:
             qualified.append(idea)
         rows.append({"candidate": idea.symbol,
@@ -310,6 +526,70 @@ def evaluate_switch_candidates(signals: AdvisorSignals, shelf_ideas,
     return best, rows
 
 
+EXIT_RULES = ("legacy", "evidence")
+SELL_RESEARCH_VERDICTS = ("SELL", "STRONG SELL")
+# The event sources that can break the case on their own: an NSE filing, or a
+# disclosure typed by fixed rules (core/events/disclosures.py). A news article
+# never can: it is a secondary report of what may have happened. An NSE
+# filing's direction and materiality are the bulk-tier classifier's reading
+# too (core/events/classify.py), as a news article's are; a filing may sell
+# because the item itself is the company's primary disclosure. PR-012's
+# label-accuracy bench measures that reading (no routine filing may read as
+# high negative).
+CASE_EVENT_SOURCES = ("nse_announcement", "nse_board_meeting",
+                      "nse_insider", "nse_sast", "nse_pledge", "nse_shareholding")
+
+
+def case_broken_reasons(evidence: ExitEvidence | None, close: float) -> list[str]:
+    """Why the reason to own a holding broke, in plain words; [] when it did not.
+
+    Any one is enough:
+      1. a high-materiality negative company event published in the last
+         CASE_EVENT_SESSIONS sessions (already filtered into the evidence)
+         from a source in CASE_EVENT_SOURCES. An event from any other source
+         never counts here, whichever list it arrives in: a news article is a
+         watch item. No holding has an investment case yet, so any such event
+         counts; PR-005's case will narrow it to one that contradicts a pillar;
+      2. the latest actionable research verdict is SELL or STRONG SELL (only a
+         run after the buy and recent enough is in the evidence);
+      3. the close is at or below the invalidation level: the entry rule
+         (core/portfolio/sizing.py) refuses a buy there for the same reason.
+
+    Pure. The minimum holding period is applied by `decide`, not here, so the
+    shadow record can show a reason that broke while the rule still waited."""
+    if evidence is None:
+        return []
+    reasons = []
+    for event in evidence.negative_events:
+        if event.get("source") not in CASE_EVENT_SOURCES:
+            continue
+        day = str(event.get("published_at") or "")[:10]
+        reasons.append(f"negative {event.get('category', '')} event of {day}: "
+                       f"{event.get('what', '')}".strip())
+    verdict = evidence.research_verdict.strip().upper()
+    if verdict in SELL_RESEARCH_VERDICTS:
+        # The run's IST day, the day the freshness rule compares with the buy
+        # (`research_run_at` is naive UTC: 00:01 IST on 9 Oct is 8 Oct there).
+        from core.discovery.candidates import _ist_day
+        run_day = _ist_day(evidence.research_run_at)
+        reasons.append(f"research verdict {verdict} "
+                       f"({run_day.isoformat() if run_day else 'run time unknown'})")
+    level = evidence.invalidation_level
+    if level > 0 and close <= level:
+        reasons.append(f"close {close:.2f} at or below the invalidation level {level:.2f}"
+                       + (f" ({evidence.invalidation_source})"
+                          if evidence.invalidation_source else ""))
+    return reasons
+
+
+def case_broken_fires(evidence: ExitEvidence | None, close: float) -> bool:
+    """`case_broken` fires: a reason broke and the holding has been held at
+    least ADVISOR_MIN_HOLD_SESSIONS. An unknown holding period waits."""
+    return (evidence is not None and evidence.sessions_held is not None
+            and evidence.sessions_held >= settings.ADVISOR_MIN_HOLD_SESSIONS
+            and bool(case_broken_reasons(evidence, close)))
+
+
 def decide(
     signals: AdvisorSignals,
     holding: Holding,
@@ -317,14 +597,54 @@ def decide(
     shelf_ideas: list | None = None,
     sector_weights: dict[str, float] | None = None,
     held_symbols: set[str] | None = None,
+    *,
+    add_blocks: list[str] | None = None,
+    blocked_candidates: dict[str, str] | None = None,
+    identity_hold: str | None = None,
+    exit_rule: str = "legacy",
+    evidence: ExitEvidence | None = None,
 ) -> AdviceRecord:
+    """The verdict for one holding. `exit_rule` "legacy" sells on
+    `thesis_break`; "evidence" sells on `case_broken` (from `evidence`) in its
+    place. Nothing else differs between them. `add_blocks` (reasons ADD may not fire) and
+    `blocked_candidates` (SWITCH destinations the data gate refuses) are SA-003
+    inputs; when either stops an action it would otherwise take, the note
+    DATA_GATE is added. Neither can block EXIT or TRIM.
+
+    FIX-024: on a day whose regime the live inputs did not establish
+    (`signals.regime_unavailable`), an ADD the kept label would allow is held
+    with the note REGIME_UNAVAILABLE, in either gate mode: the label is the
+    last one established, not the day's. The crisis exit still reads the
+    kept label, since a sale is never blocked by a missing input.
+
+    SA-008: `identity_hold` (why the close is not this holding's price basis)
+    holds every verdict, EXIT and TRIM included, with the note IDENTITY. It is
+    the corp-action invariant again: a demerged parent's price is the
+    continuing entity's alone, so the unreconciled cost basis shows a loss
+    that never happened, and a stop fired on it would sell on a false signal.
+    An operator reconciles the holding (core/portfolio/identity_reconcile.py)."""
+    if exit_rule not in EXIT_RULES:
+        raise ValueError(f"unknown exit rule {exit_rule!r}; expected one of {EXIT_RULES}")
+    if identity_hold:
+        return AdviceRecord(
+            date=date.today().isoformat(), user_id="", symbol=signals.symbol,
+            verdict="HOLD", close=signals.close,
+            unrealised_pnl_pct=round(signals.unrealised_pnl_pct, 2),
+            stop_pct=signals.atr_stop_pct, triggers=[], notes=["IDENTITY"],
+            confidence=signals.confidence, switch_candidate="",
+            rationale_hash=hashlib.sha256(b"IDENTITY").hexdigest()[:16],
+        )
     triggers: list[str] = []
     notes: list[str] = []
+    data_gated = False
 
     # -- EXIT (spec §5.2, highest precedence) ------------------------------
     if signals.unrealised_pnl_pct <= -signals.atr_stop_pct:
         triggers.append("stop_breach")
-    if signals.thesis_intact is False and signals.envelope_direction == "DOWN":
+    if exit_rule == "evidence":
+        if case_broken_fires(evidence, signals.close):
+            triggers.append("case_broken")
+    elif signals.thesis_intact is False and signals.envelope_direction == "DOWN":
         triggers.append("thesis_break")
     if signals.reforecast_reason in ("external_shock", "thesis_break", "preopen_shock") \
             and signals.envelope_direction == "DOWN":
@@ -360,8 +680,21 @@ def decide(
             and signals.position_weight_pct < settings.ADVISOR_MAX_POSITION_PCT
             and (signals.direction_accuracy_7d or 0.0) >= settings.ADVISOR_ADD_MIN_DIRECTION_ACCURACY
         ):
-            triggers.append("add_bullish_healthy")
-            add_fired = True
+            if signals.regime_unavailable:
+                notes.append("REGIME_UNAVAILABLE")   # FIX-024: no new risk on a kept label
+            if add_blocks:
+                data_gated = True          # SA-003: no new risk on unverified data
+            if not signals.regime_unavailable and not add_blocks:
+                triggers.append("add_bullish_healthy")
+                add_fired = True
+        elif (signals.envelope_late_direction == "UP" and signals.envelope_after_close
+                and signals.regime_label not in ("MACRO_CRISIS", "RISK_OFF")
+                and signals.position_weight_pct < settings.ADVISOR_MAX_POSITION_PCT
+                and (signals.direction_accuracy_7d or 0.0)
+                >= settings.ADVISOR_ADD_MIN_DIRECTION_ACCURACY):
+            # FIX-027: an ADD only the path made after the session's close
+            # would allow is not taken; the note says so.
+            notes.append("ENVELOPE_AFTER_CLOSE")
 
     # -- Precedence: EXIT > TRIM > ADD > HOLD -------------------------------
     if exit_fired:
@@ -376,12 +709,15 @@ def decide(
     # -- SWITCH: EXIT + stronger shelf idea in an underweight sector (§5.2) --
     switch_candidate = ""
     if verdict == "EXIT" and shelf_ideas:
-        cand = _best_switch_candidate(signals, shelf_ideas, sector_weights or {},
-                                      held_symbols)
+        cand, switch_rows = evaluate_switch_candidates(
+            signals, shelf_ideas, sector_weights or {}, held_symbols,
+            blocked=blocked_candidates)
         if cand is not None:
             verdict = "SWITCH"
             triggers.append("switch_candidate_available")
             switch_candidate = cand.symbol
+        elif any(r["reason"] == "data_gate" for r in switch_rows):
+            data_gated = True              # SA-003: plain EXIT, no buy leg
 
     # -- LTCG softening: TRIM only, NEVER EXIT (spec §5.2) ------------------
     if verdict == "TRIM" and signals.thesis_intact is not False:
@@ -397,8 +733,14 @@ def decide(
         and signals.earnings_in_days <= settings.ADVISOR_EARNINGS_GAP_DAYS
     ):
         notes.append("EARNINGS_GAP_PROTECTION")
-    if signals.position_weight_pct >= settings.ADVISOR_SECTOR_CONCENTRATION_WARN_PCT:
+    # SA-050: both against total equity; "over" the cap, as the caps allow
+    # a weight up to and including it
+    if signals.position_weight_pct > settings.ADVISOR_MAX_POSITION_PCT:
+        notes.append("POSITION_LARGE")
+    if signals.sector_weight_pct > settings.ADVISOR_MAX_SECTOR_PCT:
         notes.append("SECTOR_CONCENTRATION_HIGH")
+    if data_gated:
+        notes.append("DATA_GATE")
 
     rationale = "|".join(sorted(triggers) + sorted(notes)) or "default_hold"
     return AdviceRecord(
@@ -414,4 +756,6 @@ def decide(
         confidence=signals.confidence,
         switch_candidate=switch_candidate,
         rationale_hash=hashlib.sha256(rationale.encode()).hexdigest()[:16],
+        regime_unavailable=signals.regime_unavailable,
+        envelope_after_close=signals.envelope_after_close if "ENVELOPE_AFTER_CLOSE" in notes else "",
     )

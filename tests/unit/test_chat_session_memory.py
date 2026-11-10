@@ -47,7 +47,7 @@ def _patch_llm(monkeypatch, captured):
         captured.append(list(messages))
         return _Resp("the-reply")
     monkeypatch.setattr(ui, "_chat_completion", fake_completion)
-    monkeypatch.setattr(ui, "_build_chat_context", lambda m: "ctx")
+    monkeypatch.setattr(ui, "_build_chat_context", lambda m, **kw: "ctx")  # kw: the caller's user_id (FIX-010)
     monkeypatch.setattr(
         "services.clients.llm_client.get_async_llm_client", lambda: object())
 

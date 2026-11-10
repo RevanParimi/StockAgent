@@ -1,5 +1,6 @@
 """Loader for config.yaml: precedence (env > yaml > fallback) and coercion."""
 import textwrap
+from pathlib import Path
 
 import pytest
 
@@ -16,6 +17,41 @@ def _fresh_loader(monkeypatch, tmp_path, yaml_text: str | None):
         cfg_file.write_text(textwrap.dedent(yaml_text), encoding="utf-8")
         monkeypatch.setenv("CONFIG_FILE", str(cfg_file))
     return importlib.reload(loader_mod)
+
+
+def _reload_real_loader(monkeypatch):
+    """Put the shared loader back on the real config.yaml: undo the test's
+    CONFIG_FILE first, then reload in place."""
+    import importlib
+    import backend.shared.config.settings.loader as loader_mod
+
+    monkeypatch.undo()
+    return importlib.reload(loader_mod)
+
+
+@pytest.fixture(autouse=True)
+def _restore_loader(monkeypatch):
+    """_fresh_loader reloads the one shared loader module in place, so without
+    this every later cfg() read in the run (base.py's included) kept seeing the
+    last throwaway YAML, and a test reading a shipped default passed or failed
+    by collection order (SA-005)."""
+    yield
+    _reload_real_loader(monkeypatch)
+
+
+def test_reload_is_undone_for_the_rest_of_the_run(monkeypatch, tmp_path):
+    import yaml
+    from backend.shared.config.settings import base
+
+    root = Path(__file__).resolve().parents[3]
+    shipped = yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8"))
+    _fresh_loader(monkeypatch, tmp_path, "decision_gate: {mode: enforce}")
+    # The leak mechanism: base.py's own cfg reads the reloaded module's YAML.
+    assert base.cfg("decision_gate.mode", fallback=None) == "enforce"
+
+    _reload_real_loader(monkeypatch)
+    assert base.cfg("decision_gate.mode", fallback=None) == shipped["decision_gate"]["mode"]
+    assert base.cfg("rl.learning_mode", fallback=None) == shipped["rl"]["learning_mode"]
 
 
 YAML = """

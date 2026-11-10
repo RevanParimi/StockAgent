@@ -20,15 +20,15 @@ import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const FRONTEND = process.env.SA_FRONTEND_ROOT || path.join(REPO, 'src', 'frontend', 'prototypes');
+export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+export const FRONTEND = process.env.SA_FRONTEND_ROOT || path.join(REPO, 'src', 'frontend', 'prototypes');
 export const ORIGIN = 'http://sa.test';
 export const PAGE_URL = `${ORIGIN}/harness.html`;
 export const LINK_ORIGIN = 'https://example.test';
 
 // CDN script URL -> node_modules file. Version-agnostic on purpose: the SRI
 // hash in index.html, not this table, decides whether the bytes are right.
-const CDN_FILES = [
+export const CDN_FILES = [
   [/^https:\/\/unpkg\.com\/react@[^/]+\/umd\/react\.development\.js$/, 'react/umd/react.development.js'],
   [/^https:\/\/unpkg\.com\/react-dom@[^/]+\/umd\/react-dom\.development\.js$/, 'react-dom/umd/react-dom.development.js'],
   [/^https:\/\/unpkg\.com\/@babel\/standalone@[^/]+\/babel\.min\.js$/, '@babel/standalone/babel.min.js'],
@@ -36,7 +36,7 @@ const CDN_FILES = [
   [/^https:\/\/cdn\.jsdelivr\.net\/npm\/dompurify@[^/]+\/dist\/purify\.min\.js$/, 'dompurify/dist/purify.min.js'],
 ];
 
-const CONTENT_TYPES = { '.js': 'text/javascript', '.jsx': 'text/babel', '.css': 'text/css',
+export const CONTENT_TYPES = { '.js': 'text/javascript', '.jsx': 'text/babel', '.css': 'text/css',
                         '.html': 'text/html', '.json': 'application/json' };
 
 function harnessHtml() {

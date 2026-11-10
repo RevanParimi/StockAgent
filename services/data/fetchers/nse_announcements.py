@@ -41,6 +41,7 @@ Public API
 ----------
 prefetch_nse_data(ticker)                 → dict  (stored in query.nse_data)
 format_nse_context(nse_data, agent_type)  → str   (injected into agent prompt)
+fetch_company_filings(nse, symbol, since, until) → dict  (the company-event feed)
 """
 
 from __future__ import annotations
@@ -49,7 +50,7 @@ import logging
 import pathlib
 import tempfile
 import time
-from datetime import datetime
+from datetime import date, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -308,6 +309,47 @@ def prefetch_nse_data(ticker: str) -> dict:
         close_nse(nse)  # exit() + rmtree(download_folder) — AUD-017
 
     return result
+
+
+def fetch_company_filings(nse, symbol: str, since: date, until: date) -> dict:
+    """
+    One company's NSE filings for the company-event feed (core/events):
+    the announcements filed from `since` to `until`, and its board-meeting
+    rows. NSE filters board meetings by the meeting day, not the filing day,
+    so every row is returned and the caller keeps those filed in its window.
+
+    Raw rows, and no key-registry writes: the feed reads fixed field names.
+    Without a date range NSE returns a symbol's whole history (2,017
+    announcements for MARUTI on 22 Oct 2026), so the range is always sent.
+    `nse` is an open client the caller owns and closes.
+
+    Returns {"announcements": [...], "board_meetings": [...], "error": str|None};
+    never raises. A failed endpoint leaves its list empty and names itself in
+    "error"; the other endpoint's rows are kept.
+    """
+    out: dict = {"announcements": [], "board_meetings": [], "error": None}
+    if symbol in NSE_SYMBOL_OVERRIDES:
+        out["error"] = "symbol_override"
+        return out
+    errors: list[str] = []
+    calls = (
+        ("announcements", lambda: nse.announcements(
+            symbol=symbol,
+            from_date=datetime.combine(since, datetime.min.time()),
+            to_date=datetime.combine(until, datetime.min.time()))),
+        ("board_meetings", lambda: nse.boardMeetings(symbol=symbol)),
+    )
+    for name, call in calls:
+        try:
+            raw = call()
+            items = raw if isinstance(raw, list) else (raw or {}).get("data", [])
+            out[name] = [i for i in items if isinstance(i, dict)] if isinstance(items, list) else []
+        except Exception as exc:
+            logger.warning("[NseIndiaApi] %s: %s fetch failed: %s", symbol, name, exc)
+            errors.append(f"{name}: {exc}"[:200])
+        time.sleep(_SLEEP_BETWEEN_CALLS)
+    out["error"] = "; ".join(errors) or None
+    return out
 
 
 # ---------------------------------------------------------------------------

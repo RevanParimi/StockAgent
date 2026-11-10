@@ -3,7 +3,7 @@
 Developer quick-reference for the StockAgent codebase. All entries verified against source files.
 Last full verification: **2026-07-18** (post audit Waves A–H — the Wave E deletion pass removed
 ~570 dead files, so trees you may remember from older commits are intentionally absent).
-For the system-level map (the three loops, all 16 scheduled jobs, data layout), start with
+For the system-level map (the three loops, the 24 scheduled job IDs, data layout), start with
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
@@ -33,7 +33,9 @@ StockAgent-main/
 │   │   │                          #  JSON_MODE_EXTRA_BODY, retry/deadline helpers)
 │   │   └── tavily_fetcher.py      # Tavily full-page extraction client
 │   ├── data/                      # Data persistence
-│   │   ├── backup.py              # Nightly volume backup: zip + 7-copy rotation + email off-site
+│   │   ├── backup.py              # Nightly volume backup: zip + manifest + 7-copy rotation + email
+│   │   ├── offsite.py             # Encrypted off-site copy (S3-compatible or mounted dir)
+│   │   ├── restore.py             # Restore drill + CLI (never restores over data/)
 │   │   ├── verdict_store.py       # Atlas C2 — VerdictStore facade (the ONLY user-plane importer
 │   │   │                          #  of the intelligence plane; delegates PredictionStore reads +
 │   │   │                          #  publishes ticker_verdicts projections — plane boundary, R1)
@@ -51,6 +53,7 @@ StockAgent-main/
 │   │   │                          # (Unified Sector Analyst — one-pass SectorDataBundle)
 │   │   └── fetchers/              # Market/news data fetchers (+ bhavcopy.py, bulk_block.py,
 │   │                              #  surveillance.py — discovery guard data; ipo.py — IPO lists;
+│   │                              #  nse_disclosures.py — insider, SAST, pledge, shareholding rows;
 │   │                              #  close_verifier.py — yfinance×NSE close cross-check +
 │   │                              #  poisoning detector + non-finite sanitizer, the RL loop's
 │   │                              #  price-integrity gate)
@@ -91,10 +94,13 @@ StockAgent-main/
 │   │       │   ├── settings/base.py   # Master settings file (all env vars)
 │   │       │   └── rag_config.py      # RAG-specific settings
 │   │       ├── data/              # Data helpers
+│   │       │   ├── instruments.py         # Instrument registry: dated identity + price basis
 │   │       ├── pipeline/          # THE analysis engine:
 │   │       │   ├── base_orchestrator.py   # resolve → bundle → analyse → aggregate
 │   │       │   ├── unified_analyst.py     # Unified Sector Analyst — one-call dimension scoring
 │   │       │   ├── signal_aggregator.py   # learned weights + conflict detection + LLM verdict
+│   │       │   ├── decision_gate.py       # Essential-data gate: actionable/degraded/abstain,
+│   │       │   │                          #  decision_gate.mode record|enforce, skip log
 │   │       │   ├── verdict_shadow.py      # observe-only threshold(composite) lane
 │   │       │   │                          #  → data/rl/verdict_shadow.jsonl (audit Wave G)
 │   │       │   ├── base_agent.py          # legacy per-dimension agent base (fallback pool)
@@ -106,14 +112,18 @@ StockAgent-main/
 │   └── frontend/
 │       └── prototypes/            # THE real frontend — vanilla-React JSX (Babel standalone),
 │                                  #  served statically at /app; PWA (sw.js + VAPID push).
-│                                  #  chat-markdown.js = the chat reply → HTML boundary (SA-001);
-│                                  #  browser test in tests/frontend/ (npm run test:frontend).
+│                                  #  chat-markdown.js = the chat reply → HTML boundary;
+│                                  #  demo-fixtures.js = sample data for ?demo=1 only (no
+│                                  #  screen falls back to it); operator screens owner-only;
+│                                  #  browser tests in tests/frontend/ (npm run test:frontend).
 │                                  #  (The old TypeScript/Vite src/frontend/web scaffold was
 │                                  #   deleted in audit Wave E — it was never the deployed UI.)
 ├── core/                          # Core intelligence layer (shared across sectors)
 │   ├── config/                    # Settings (config.yaml is the tunables source of truth)
 │   ├── utils/
-│   │   └── atomic_io.py           # mkstemp + os.replace atomic JSON/text writes (audit AUD-057)
+│   │   └── atomic_io.py           # mkstemp + os.replace atomic JSON/text writes (audit AUD-057);
+│   │                              #  replace_with_retry: Windows-only retry of a transient
+│   │                              #  PermissionError on the rename
 │   ├── intelligence/
 │   │   ├── rl/                    # Reinforcement learning feedback loop
 │   │   │   ├── agents/            # feedback_agent (direction scoring: NEUTRAL correct only on
@@ -124,10 +134,11 @@ StockAgent-main/
 │   │   │   ├── conviction/        # tracker.py (conviction streak)
 │   │   │   ├── eval/              # Read-only evaluation harness (metrics, synthetic, run_eval CLI)
 │   │   │   ├── stores/            # prediction_store.py, ledger_propagator.py (archival +
-│   │   │   │                      #  resurrection), offmarket_fetcher.py (bulk/block off-market)
+│   │   │   │                      #  resurrection), offmarket_fetcher.py (bulk/block off-market),
+│   │   │   │                      #  store_inventory.py + store_migration.py (store manifest, quarantine)
 │   │   │   ├── workflows/         # generate_forecast.py, daily_review.py (Step 8.5 = dossier
 │   │   │   │                      #  curator), preopen_check.py, month_end_validation.py,
-│   │   │   │                      #  sector_router.py
+│   │   │   │                      #  sector_router.py, review_outcomes.py (daily-review job counts)
 │   │   │   ├── nse_calendar.py    # NSE trading day calendar
 │   │   │   └── calendar_updater.py
 │   │   ├── regime/                # Market regime detection
@@ -139,8 +150,10 @@ StockAgent-main/
 │   │       └── enhancer.py        # Prompt enhancement with RL lessons
 │   ├── portfolio/                 # Compass Phase A: per-user virtual portfolio (see below)
 │   │   ├── store.py               # PortfolioStore — per-user JSON holdings/ledger/digest
-│   │   ├── pricing.py             # close_on() — yfinance + NSE cross-check entry pricing
+│   │   ├── pricing.py             # close_on() — yfinance + NSE cross-check entry pricing;
+│   │   │                          #  session_close() also names the bar's session
 │   │   ├── corp_actions.py        # Corp-action sync (splits/bonuses) into holdings
+│   │   ├── identity_reconcile.py  # Operator plan/apply for demerged or unresolved holdings
 │   │   ├── promotion.py           # Auto-promotion into managed_tickers.json universe
 │   │   ├── advisor.py             # Deterministic HOLD/ADD/TRIM/EXIT verdicts, ATR-scaled stops
 │   │   │                          #  + explain_triggers() (codes -> plain English, shared by
@@ -150,6 +163,8 @@ StockAgent-main/
 │   │   │                          #  so the brief can name the destination)
 │   │   ├── pipeline.py            # run_post_review_pipeline() orchestration entry point
 │   │   ├── autopilot.py           # Compass Autopilot: deterministic verdict executor (see below)
+│   │   ├── deployment.py          # Idle-cash deployment: breadth, the regime's target, the
+│   │   │                          #  stop rule and the run's record (switch ships off)
 │   │   ├── universe.py            # Atlas C4 — nightly Universe recompute (Job 16): user_instruments
 │   │   │                          #  refcounts → instruments demand tiers/cadence (no user_id, R1)
 │   │   └── retention.py           # Atlas C9 — nightly prune (Job 18): bounds ticker_verdicts /
@@ -157,26 +172,43 @@ StockAgent-main/
 │   ├── discovery/                 # Compass Phase B: weekly discovery funnel (see below)
 │   │   ├── __init__.py            # run_discovery_cycle() — single orchestration entry point
 │   │   ├── universe.py            # EQ-series + price-floor universe from the EOD window
-│   │   ├── guards.py              # Threshold gates (liquidity, T2T, circuits, ASM/GSM, float)
-│   │   ├── signals.py             # 5 live + 2 dark quant signals (pure pandas, zero LLM)
+│   │   ├── guards.py              # Threshold gates (liquidity, T2T, circuits, ASM/GSM and
+│   │   │                          #  suspension, float, promoter pledge); a source dark for
+│   │   │                          #  every symbol is one degraded check, not one per symbol
+│   │   ├── signals.py             # 6 quant signals (pure pandas, zero LLM); None = unavailable
+│   │   ├── insider.py             # insider_buying: every company's NSE insider filings, cached
 │   │   ├── screen.py              # Weighted percentile-rank composite → ScreenResult persistence
 │   │   ├── deep_dive.py           # Stage-3 LLM one-call dives + sector inference
 │   │   ├── shelf.py               # Discovery Shelf (cap/displace, stale rotation, promote)
 │   │   ├── paper_lane.py          # Paper envelopes + weekly paper reviews (ISOLATED lane)
 │   │   └── ipo_tracker.py         # Stage-2 IPO/new-listing scoring + lock-in calendar
+│   ├── events/                    # Daily company-event feed (Jobs company_events_am/_pm; KT §4).
+│   │   │                          #  Outside intelligence/: it reads users' holdings (R1)
+│   │   ├── feed.py                # run_event_feed(): tracked stocks → NSE filings + news →
+│   │   │                          #  classifier → store; caps, identity, same-day ingestion
+│   │   ├── sources.py             # NSE rows / Serper results → cited items (id, source date,
+│   │   │                          #  company mention check)
+│   │   ├── classify.py            # One bulk-tier call per batch + grounding (cited item, figures)
+│   │   ├── disclosures.py         # NSE insider/SAST/pledge/shareholding rows → events, by rules
+│   │   └── store.py               # EventStore: data/events/<SYMBOL>.jsonl, state.json, runs.jsonl,
+│   │                              #  ownership/<SYMBOL>.json (shareholding XBRL figures)
 │   ├── delivery/                  # Compass Phase C: M4 proactive delivery (see below)
 │   │   ├── channels.py            # web-push (pywebpush+VAPID) + SMTP email; PushStore;
 │   │   │                          #  send-then-record delivered flag; stale-sub pruning
 │   │   ├── alerts.py              # AlertEvent + delivered-aware deduped emit (alerts_sent.jsonl)
-│   │   │                          #  + emit_alerts_broadcast (fan-out to all subscribed users)
+│   │   │                          #  + emit_owner_alerts (operator notices: the owner only),
+│   │   │                          #  emit_alerts_broadcast (market notices: every subscriber)
+│   │   │                          #  and a per-account Inbox read (load_recent_alerts)
 │   │   │                          #  + optional title/headline/status/next_step/docs (Inbox card)
 │   │   │                          #  and render_alerts_html for the email body
 │   │   ├── ops_alerts.py          # Job crashed / zero-output / partial-output / reconcile-drift
-│   │   │                          #  operational alerts (audit AUD-039/084/090)
+│   │   │                          #  operational alerts (audit AUD-039/084/090); `detail`
+│   │   │                          #  names the missing tickers and why
 │   │   ├── brief.py               # Morning brief builder (08:50 IST job)
 │   │   ├── weekly.py              # Weekly review builder (Sun 18:00 IST job); switch
 │   │   │                          #  suggestions carry why-leave + the destination's thesis
-│   │   ├── index_watch.py         # Index constituent diff -> inclusion/exclusion alerts
+│   │   ├── index_watch.py         # Index constituent diff -> inclusion/exclusion alerts: each
+│   │   │                          #  account's own stocks to it (emit_alerts), shelf ideas to all
 │   │   └── outbox.py              # Atlas C7 (BP2) — durable delivery outbox: deliver() enqueues
 │   │                              #  per-channel rows when ATLAS_ENABLED; singleton-owner drainer
 │   │                              #  claims each atomically (queued→sending CAS) → send + backoff
@@ -192,14 +224,21 @@ StockAgent-main/
 │   ├── reasoning_bench.py         # Reasoning-tier model benchmark
 │   ├── gen_vapid_keys.py          # One-time VAPID keypair generation (web-push)
 │   ├── clean_ledger_errors.py     # One-off ledger repair utility
-│   └── seed_autopilot.py          # One-time Autopilot seed: equal-weight holdings + autopilot=True
-├── tests/                         # Test suite
+│   ├── seed_autopilot.py          # One-time Autopilot seed: equal-weight holdings + autopilot=True
+│   └── ci/check_broad_except.py   # CI guard: no new unlogged broad except; the
+│                                  #  grandfathered handlers are in broad_except_baseline.txt
+├── tests/                         # Test suite (how to run: tests/TEST_DOCUMENTATION.md)
+│   ├── conftest.py                # Shared fixtures; imports hermetic.py before any app code
+│   ├── hermetic.py                # Hermetic boundary: no .env, no outbound network (sockets,
+│   │                              #  DNS, curl_cffi), each test in an empty working directory,
+│   │                              #  checkout data/ logs/ outputs/ unreachable
 │   ├── api/                       # API-level tests
 │   ├── contract/                  # Cross-module contract tests (LLM migration, scheduler wiring)
 │   ├── fixtures/                  # Shared test fixtures
 │   ├── integration/               # Integration tests
 │   └── unit/                      # Unit tests
 ├── config/
+│   ├── instruments.yaml           # Instrument registry (ticker → symbol, basis, identity status)
 │   └── sector_toggles.json        # Enable/disable sectors at runtime
 ├── data/                          # Runtime data volume (see docs/ARCHITECTURE.md §11)
 │   └── logs/                      # THE log dir: every LOGS_DIR consumer defaults here
@@ -215,6 +254,8 @@ StockAgent-main/
 │                                  #  its COPY set is dead in prod by construction
 ├── docker-compose.yml
 ├── pyproject.toml
+├── .github/workflows/ci.yml       # CI: tests, guards and browser suite on Linux 3.11
+├── requirements-test.txt          # Pinned test-only tools (runtime set: requirements.txt)
 └── requirements.txt
 ```
 
@@ -236,8 +277,11 @@ StockAgent-main/
   `value_history.jsonl` (daily equity curve); executor writes stay inside
   `data/portfolio/<user>/` — never `data/rl/paper` or PredictionStore paths (isolation
   invariant, spec §8; sell + buy paths pinned by `tests/unit/test_autopilot_isolation.py`).
-  One designed exception: a SWITCH buy promotes the candidate into the managed universe
-  (`data/managed_tickers.json` via `core/portfolio/promotion.py`, mocked in that test).
+  One designed exception: a SWITCH or idle-cash buy promotes the candidate into the
+  managed universe (`data/managed_tickers.json` via `core/portfolio/promotion.py`,
+  mocked in that test). With `autopilot.deploy_idle_cash` on for a portfolio, the run
+  then opens new positions from the day's buy candidates up to the sticky regime's
+  target invested share (`core/portfolio/deployment.py`).
   Seeded one-time via `scripts/seed_autopilot.py`. Spec: docs/superpowers/specs/2026-07-10-compass-autopilot-design.md
 
 - `core/discovery/` — Compass Phase B: weekly quant discovery funnel (~2000 NSE
@@ -316,25 +360,25 @@ acts as owner (single-user passthrough).
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/ui/bootstrap` | None | All UI data in one call: agents, tickers, market summary, trending, categories, watchlist. |
+| GET | `/ui/bootstrap` | None | All UI data in one call: agents, tickers, market summary, trending, categories, watchlist, and `NIFTY50` (last close, its change on the close before, and that close's date; `null` when the fetch failed). Nothing is invented: a failed price is 0 with `hasData` false, a failed sector move is `null`, drivers and agent votes come only from analyses. |
 | GET | `/ui/agents?sector=automobile` | None | Agent definitions + current weights for a sector. |
-| PUT | `/ui/agents/weights?sector=automobile` | None | Persist user-adjusted agent weights. Weights 0.00–0.30, sum must be 0.95–1.05. |
+| PUT | `/ui/agents/weights?sector=automobile` | owner or machine key | Persist owner-adjusted agent weights. Weights 0.00–0.30, sum must be 0.95–1.05. |
 | GET | `/ui/agents/tasks` | None | Get persisted agent task enabled/disabled flags. |
-| PUT | `/ui/agents/tasks` | None | Persist task toggle state to `data/agent_tasks.json`. |
+| PUT | `/ui/agents/tasks` | owner or machine key | Persist task toggle state to `data/agent_tasks.json`. |
 | GET | `/ui/tickers` | None | All tickers with latest score + live yfinance price. |
 | GET | `/ui/trending` | None | Tickers ranked by score delta between last two analysis runs. |
-| GET | `/ui/market/summary` | None | Market pulse, driver cards, sector index changes, Nifty Auto sparkline. |
-| GET | `/ui/nifty-ranges?range=1M` | None | Nifty Auto sparkline for a time range: `1W`, `1M`, `3M`, `6M`, `1Y`. |
+| GET | `/ui/market/summary` | None | Market pulse, driver cards, sector index changes, Nifty Auto sparkline. Built from shared stocks only. |
+| GET | `/ui/nifty-ranges?range=1M` | None | The Nifty 50 over a calendar span (`1W`, `1M`, `3M`, `6M`, `1Y`): closes, last `value`, its date `asOf`, and `change`; `value`/`asOf`/`change` are `null` when the fetch failed. |
 | GET | `/ui/watchlist` | None | User watchlist with live prices. When `ATLAS_ENABLED`, the session user's `Portfolio.watchlist` (per-user); else the global `data/watchlist.json` (Atlas C5). |
 | PUT | `/ui/watchlist` | None → owner | Persist watchlist. When `ATLAS_ENABLED`, writes the session user's `Portfolio.watchlist`; else owner-only global `data/watchlist.json` (Atlas C5). |
-| GET | `/ui/search?q=<term>` | None | Ticker + thesis text search (falls back to yfinance lookup). |
+| GET | `/ui/search?q=<term>` | session optional | Ticker + thesis text search (falls back to yfinance lookup). A thesis match names only stocks the caller may see. |
 | GET | `/ui/categories` | None | Categories (EV, mass-market, etc.) with ticker lists. |
-| PUT | `/ui/categories/{key}/tickers` | None | Add/remove tickers from a category (body: `{add: [], remove: []}`). |
-| GET | `/ui/learnings` | None | RL-derived lesson cards and portfolio learning summary. |
+| PUT | `/ui/categories/{key}/tickers` | owner or machine key | Add/remove tickers from a category (body: `{add: [], remove: []}`). |
+| GET | `/ui/learnings` | session optional | `{items, since}`: dated verdict changes (a verdict that differs from the run before it; `turned-bullish`, `turned-bearish`, …) across the kept runs of each stock the caller may see (shared stocks plus the caller's own holdings and watchlist; an anonymous caller with sign-in required gets shared stocks only), newest first, at most 10; then forecast misses (`forecast-miss`), newest first, at most 5. `since` is the date of the oldest kept run among those stocks (`null` with none). Empty if the score history cannot be read. No money figure, summary rate or advice text. |
 | POST | `/ui/feedback` | session user | Atlas C8 (BP5) — record a user's accept/override/ignore on an advice card (`symbol`, `action`, optional `verdict_shown`/`override_direction`/`position_state`). Append-only to `feedback_events`; dormant no-op until `ATLAS_ENABLED`. |
-| POST | `/ui/chat/stream` | None | **Primary chat** — agentic streaming tool-loop (SSE). Deterministic intent pre-router pre-fetches screen+news for buy/sell/momentum queries; BULK-tier default with reasoning disabled, glm-5.2 escalation on failure; **45s per-turn wall-clock budget**, ≤4 upstream attempts per logical call, one budget-free final synthesis. Server-side session memory (`session_id`). Events: `intent`, `tool_result`, `token`, `done`. |
+| POST | `/ui/chat/stream` | None | **Primary chat** — agentic streaming tool-loop (SSE). Deterministic intent pre-router pre-fetches screen+news for buy/sell/momentum queries; runs on the FAST tier (`llm.model_fast`) with reasoning disabled, and after two tries that hit a rate limit or 5xx escalates to the REASONING tier (`llm.model_reasoning`, a different vendor); **45s per-turn wall-clock budget**, ≤4 upstream attempts per logical call, one budget-free final synthesis. Server-side session memory (`session_id`). Events: `intent`, `tool_result`, `token`, `done`. |
 | POST | `/ui/chat` | None | Non-streaming twin of the chat loop (blocking JSON reply; same server session memory — returns `session_id`, client-sent history is ignored). Frontend fallback. |
-| GET | `/ui/logs` · `/ui/logs/stream` | None | Recent server log lines (ring buffer) + SSE tail. |
+| GET | `/ui/logs` · `/ui/logs/stream` | owner or machine key | Recent server log lines (ring buffer) + SSE tail. Lines carry user ids and the buffer redacts nothing, so a member gets 403 and a caller without a session 401 before the buffer is read. The Logs screen reads the stream with `fetch` so the session header is sent. |
 
 ### Managed Tickers (`/ui/tickers/managed*`) — RL universe administration
 
@@ -377,7 +421,7 @@ Ticker path params are validated against the managed list *before* any store con
 | POST | `/scheduler/forecast?ticker=<sym>` | `X-Scheduler-Key` header | Generate 30-day prediction envelopes (full 9-agent pipeline). Returns 202, runs in background. |
 | POST | `/scheduler/daily-review?ticker=<sym>&review_date=<ISO>` | `X-Scheduler-Key` header | Run RL daily feedback loop for one date. Returns 202, runs in background. |
 | POST | `/scheduler/backfill?ticker=<sym>` | `X-Scheduler-Key` header | Backfill all past trading days this month. Returns 202, runs in background. |
-| GET | `/scheduler/status` | `X-Scheduler-Key` header | Full RL state for all configured tickers: envelope, feedback log, weight memory — plus `last_runs` (per-job last outcome from `data/scheduler_job_outcomes.json`: produced/expected counts, stragglers, pipeline result). |
+| GET | `/scheduler/status` | `X-Scheduler-Key` header | Full RL state for all configured tickers: envelope, feedback log, weight memory — plus `last_runs` (per-job last outcome from `data/scheduler_job_outcomes.json`: produced/expected counts, stragglers, pipeline result). `daily_review` adds `status` (ok/partial/failed/empty), `required`/`attempted`, the five outcome counts (completed/degraded/data_gated/skipped/failed), `missing`, `by_ticker`, `retried`/`runs`, `excluded`, `duplicates` and `pipeline_status`; `produced` counts only reviews that wrote feedback. |
 
 ### Portfolio — Compass Phase A (`/portfolio/*`)
 
@@ -390,12 +434,13 @@ All endpoints take an optional `user_id` query param (default `portfolio.default
 | DELETE | `/portfolio/holdings/{symbol}` | optional key | Remove holding; demotes from managed universe unless watchlisted. 404 if absent. |
 | POST | `/portfolio/watchlist` | optional key | Add watchlist symbol `{symbol, sector?, reason?}` — `sector` omitted → resolved via `SectorRegistry`; promotes with weekly cadence. |
 | DELETE | `/portfolio/watchlist/{symbol}` | optional key | Remove watchlist symbol; demotes unless held. |
-| POST | `/portfolio/import-csv` | optional key | Raw CSV body `symbol,sector,qty,avg_buy_price,buy_date`; blank price → real close on buy date; per-row errors reported. |
+| POST | `/portfolio/import-csv` | optional key | Raw CSV body `symbol,sector,qty,avg_buy_price,buy_date`; blank price → real close on buy date; per-row errors reported. With cash accounting on, each row is fresh capital like a manual add: `capital_in` rises by its cost and a `manual` BUY ledger row is written with no cash moved. |
 | GET | `/portfolio/advice?limit=<1-500>` | optional key | Advice-ledger tail (append-only JSONL of every verdict). |
 | GET | `/portfolio/digest/latest` | optional key | Latest EOD digest (404 until the advisor has run). |
 | POST | `/portfolio/run-advisor?review_date=<ISO>` | optional key | Manually trigger the post-review pipeline (corp-action sync → events → advisor → ledger → digest). 202, background. |
 | GET | `/portfolio/transactions?limit=<1-1000>` | optional key | Transaction audit trail, newest first — every Autopilot trade (source, verdict, qty/price, realized P&L). |
-| GET | `/portfolio/performance` | optional key | P&L summary + daily equity curve: cash, market value, total equity, day-change %, realized P&L, sourced from `value_history.jsonl` (falls back to a live mark when history is empty). |
+| POST | `/portfolio/deposit` | owner or machine key | Add paper capital to the caller's portfolio: body `{amount, reference}`; one `DEPOSIT` row dated that IST day, cash and `capital_in` up by the amount; idempotent on (date, amount, reference); 409 without cash accounting. |
+| GET | `/portfolio/performance` | optional key | P&L summary + daily equity curve: cash, market value, total equity, the in-stocks and cash shares of it, day-change %, realized P&L, sourced from `value_history.jsonl` (falls back to a live mark when history is empty). With cash accounting on, also the same deposits in the Nifty 50 under each value point, the gap since the first deposit, each chart range's money-weighted return beside the Nifty's, and the closed-trade record (`core/portfolio/results.py`). |
 
 The pipeline also runs automatically: `scheduler_api._review_task` event-triggers `core.portfolio.pipeline.run_post_review_pipeline` after every daily-review job completes (never clock-scheduled).
 
@@ -411,6 +456,12 @@ Auth mirrors the portfolio pattern (optional `X-Scheduler-Key`; lockdown deferre
 | POST | `/discovery/shelf/{symbol}/promote` | optional key | One-command promote a shelf idea to the watchlist (`source="discovery"`, weekly cadence). 404 if not an active idea. |
 | DELETE | `/discovery/shelf/{symbol}` | optional key | Drop a shelf idea (`reason="manual_api"`). 404 if not an active idea. |
 
+### Company events (`/events/*`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/events/{symbol}?since=<ISO day>&limit=<1-500>` | session | The company-event feed's stored events for one stock, newest first; `since` keeps events published on or after that IST day (an undated event never). A member reads only their own holdings and watchlist and the active shelf, and gets the same 404 for any other symbol whether or not it has events; the owner reads any. 422 for anything that is not an NSE symbol. |
+
 The cycle also runs automatically: scheduler Job 12 (`discovery_weekly`, Sat 12:30 IST) calls `core.discovery.run_discovery_cycle()`; Job 11 (`bhavcopy_daily_sync`, Mon-Fri 19:00 IST) keeps the EOD parquet cache topped up. Both are gated on `discovery.enabled`.
 
 ### Delivery — Compass Phase C (`/delivery/*`)
@@ -424,7 +475,7 @@ endpoints (`public-key` is public by design; `subscribe` carries no secrets).
 | GET | `/delivery/weekly/latest` | optional key | Latest weekly review (404 until one is built). |
 | POST | `/delivery/run-brief` | optional key | Build + deliver the morning brief now. 202, background. |
 | POST | `/delivery/run-weekly` | optional key | Build + deliver the weekly review now. 202, background. |
-| GET | `/delivery/alerts?limit=50` | optional key | Emitted-alert tail (deduped sent-log). |
+| GET | `/delivery/alerts?limit=50` | optional key | The caller's own alerts, newest first (deduped sent-log). |
 | GET | `/delivery/push/public-key` | none | VAPID application server key for the browser. |
 | POST | `/delivery/push/subscribe` | none | Store a web-push subscription (body = PushSubscription JSON). |
 | DELETE | `/delivery/push/subscribe?endpoint=` | none | Remove a web-push subscription. |
@@ -442,7 +493,7 @@ pipeline, the 08:45 pre-open check, and the Saturday discovery cycle.
 | GET | `/analytics/weight-drift` | None | Agent weight history time-series (WeightMemory snapshots) per ticker. |
 | GET | `/analytics/miss-breakdown` | None | Miss type counts per ticker and aggregated; includes chart colors. |
 | GET | `/analytics/conviction-outcomes` | None | Conviction streak bucketed accuracy + scatter points. |
-| GET | `/analytics/sector-comparison` | None | Cross-sector verdict distribution, avg score, best/worst ticker per sector. |
+| GET | `/analytics/sector-comparison` | None | Cross-sector verdict distribution, avg score, best/worst ticker per sector, over shared stocks only. |
 | GET | `/analytics/powerbi-feed` | None | OData v4 JSON feed for Power BI Web connector. |
 | GET | `/analytics/powerbi-feed/$metadata` | None | EDMX XML schema for Power BI OData connector. |
 
@@ -531,16 +582,19 @@ invisible to them. `CONFIG_FILE` env var points at an alternate YAML.
 
 ### LLM / OpenRouter (`config.yaml` → `llm.*`)
 
-Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-benchmarked
-2026-07-02). Retired: `qwen3-235b` (broke `json_object`), `qwen-2.5-72b` (2-4× cost of deepseek).
+Models are tiered: FAST, REASONING and BULK. Every call site disables provider reasoning, so a
+tier model must work with reasoning off, returning strict JSON where the call asks for it, and
+OpenRouter must report its reasoning as optional. Candidates are compared with `scripts/reasoning_bench.py` (the JSON battery) and
+`scripts/model_bench.py` (the real chat pipeline). `config.yaml` lists the rejected and retired
+models with the reason for each. There is no single `LLM_MODEL` setting: every call site names a
+tier, and `config.yaml` is the only place models are chosen.
 
 | Name | Default | Description |
 |------|---------|-------------|
 | `OPENROUTER_API_KEY` | `""` (required) | OpenRouter API key (.env only) |
-| `LLM_MODEL_FAST` | `qwen/qwen3.6-flash` | **FAST tier** — the agentic chat tool-loop |
-| `LLM_MODEL_REASONING` | `z-ai/glm-5.2` | **REASONING tier** — SignalAggregator verdict, RL FeedbackAgent / ThesisReviewer, and the Unified Sector Analyst for all four sectors (JSON-validated). Switched from qwen3.7-max 2026-07-06 (~45% cheaper, higher AA index, `scripts/reasoning_bench.py` + live analyst runs) |
-| `LLM_MODEL_BULK` | `deepseek/deepseek-v4-flash` | **BULK tier** — high-volume `json_object` scoring; $0.09/$0.18 per M, reasoning disabled via `JSON_MODE_EXTRA_BODY` |
-(The old `LLM_MODEL` back-compat alias was **deleted** in the 2026-07-16 cost wave — every call site names an explicit tier; `config.yaml` is the sole model-selection source.)
+| `LLM_MODEL_FAST` | `deepseek/deepseek-v4.1-flash-1017` | **FAST tier** — the agentic chat tool-loop and the pre-open shock rating (`json_object`, with `provider.require_parameters` so only a host that honours every parameter sent can serve it); a dated snapshot slug |
+| `LLM_MODEL_REASONING` | `xiaomi/mimo-v2.6-pro` | **REASONING tier** — SignalAggregator verdict, RL FeedbackAgent / ThesisReviewer, control lane, the Unified Sector Analyst for all four sectors (JSON-validated), and the chat fallback; a different vendor from FAST, so the fallback survives a provider-wide fault. Candidates are compared with `scripts/reasoning_bench.py` and `scripts/model_bench.py` |
+| `LLM_MODEL_BULK` | `deepseek/deepseek-v4-flash` | **BULK tier** — high-volume `json_object` scoring; $0.091/$0.182 per M, reasoning disabled via `JSON_MODE_EXTRA_BODY` |
 | `LLM_TEMPERATURE` | `0.2` | LLM sampling temperature |
 | `LLM_MAX_TOKENS` | `2048` | Max output tokens per LLM call |
 | `LLM_TIMEOUT_SECONDS` | `60` | Per-call LLM timeout |
@@ -593,9 +647,13 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `UNIFIED_SECTION_MAX_CHARS` | `2500` | Per-section cap in `SectorDataBundle` |
 | `UNIFIED_BUNDLE_MAX_CHARS` | `18000` | Total cap on the rendered bundle text passed to the analyst prompt |
 
-**Data health (B2, `config.yaml` → `observability.*`).** `SectorDataBundle.has_real_data` is `live >= 3` of 10 sections and its only consumer is a log line, so a prod SUZLON run that lost 3 of its 6 dimensions shipped a BUY logging `real_data=True`. Every unified run now writes one `data_health` row describing what it actually received — see the module table below. `has_real_data` is deliberately unchanged (it counts an `n/a` section as live; the record does not). Rollback: `observability.data_health_enabled: false`.
+**Data health (`config.yaml` → `observability.*`).** Every unified run writes one `data_health` row describing what it actually received — see the module table below. Every `_fetch_<section>` returns a `FetchResult` (`services/data/context/fetch_result.py`) whose producer states the status — `ok` / `cache_hit` / `stale` / `fallback` / `empty` / `n/a` / `failed:<Type>`, or `unverified` for untyped text — plus source, as-of and reason; a status is never read from the section's text. The row is `ok` only with every dimension scored and every applicable section verified and fresh; `essential_unusable` lists the unusable essential sections (`observability.data_health_essential_sections`), and `health_reasons` says why. Freshness bounds: `data_health_price_max_age_days` (7), `data_health_fundamentals_max_age_days` (200). A newest listed quarter without figures (NaN) makes fundamentals `fallback`, dated by the newest quarter with figures (`get_financials` `missing_values`). A bank-format statement (interest income and net interest income, no operating row) reads net interest income in the operating line's place. Rows carry `contract_version: 2`; older rows stay as written, and `normalize_health_row` labels them unknown provenance. `SectorDataBundle.has_real_data` (`live >= 3` of 10 sections, counting `n/a` as live) only feeds a log line and is not evidence. Rollback: `observability.data_health_enabled: false`.
 
-**Data-health contract v2 (SA-002, accepted 2026-09-26 after a rework; committed as `8413b59`).** B2 took a section's status from its text, so "Technical data unavailable for TATAMOTORS" and "[No results for: …]" read `ok`, and `health` looked at dimensions only. Every `_fetch_<section>` now returns a `FetchResult` (`services/data/context/fetch_result.py`) whose producer states the status — `ok` / `cache_hit` / `stale` / `fallback` / `empty` / `n/a` / `failed:<Type>`, or `unverified` for untyped text — plus source, as-of and reason. The row is `ok` only with every dimension scored and every applicable section verified and fresh; `essential_unusable` lists the unusable essential sections (`observability.data_health_essential_sections`), and `health_reasons` says why. Freshness bounds: `data_health_price_max_age_days` (7), `data_health_fundamentals_max_age_days` (200). A newest listed quarter without figures (NaN) makes fundamentals `fallback`, dated by the newest quarter with figures (`get_financials` `missing_values`). The prompt text is byte-identical. v1 rows stay as written; `normalize_health_row` labels them unknown provenance.
+**Decision gate (`config.yaml` → `decision_gate.*`).** `src/backend/shared/pipeline/decision_gate.py` turns the same section statuses and dimension counts into a typed `FinalReport.decision_gate`: `abstain` when an essential section is not `ok`/`cache_hit`, fewer than `decision_gate.min_dimensions_fraction` (0.5) of the dimensions scored, or the run built no bundle (legacy fallback); `degraded` (actionable) when only ordinary enrichment is missing; else `actionable`. It is computed whether or not the health row is recorded. Switch `decision_gate.mode` (env `DECISION_GATE_MODE`): `record` (checked in) changes nothing and logs what enforcement would stop to `data/logs/decision_gate.jsonl` (ticker-level, no user id); `enforce` makes an abstaining verdict `INSUFFICIENT DATA` (original in `withheld_verdict`), and then `generate_forecast` raises `InsufficientDataError`, `regenerate_envelope` returns None, `run_daily_review` returns `data_gated` before any write (graded row not actionable, close not from the session's bar, or re-run not actionable), `run_deep_dives` shelves nothing, and the advisor withholds ADD and SWITCH buy legs (`DATA_GATE` note, `AdviceRecord.data_gate`). EXIT/TRIM are never blocked. Unknown values fail closed to `enforce`. Forecast rows carry `data_gate` + `source_run_id`; `daily_review._fetch_session_close` / `pricing.session_close` return a `SessionClose(close, bar_date, source)`.
+
+**Instrument identity.** `config/instruments.yaml` (parsed by `src/backend/shared/data/instruments.py`) holds, per ticker, effective-dated segments naming the provider symbol, the price basis (a rename keeps it, a demerger or relisting starts a new one) and a status (`active` resolves; `unresolved`/`suspended`/`delisted` quarantine). A symbol other than the ticker's own listing needs `via` (alias with a reason; rename/demerger/relisting with evidence). Invalid records, uncovered dates and an unreadable registry fail closed (unresolved). `symbol_resolver.resolve_identity(ticker, on)` = registry → learned cache (a different-code learned mapping is unresolved) → naive `.NS`; `resolve_yf_symbol` is its symbol; `identity_break` compares bases; `nse_symbol` gives the close verifier the registry's NSE code; `heal_symbol` never heals a registered ticker. The gate: `decision_gate.apply_identity` abstains on an unresolved identity or on technicals whose provenance `symbol` (from `get_price_history`'s `df.attrs["symbol"]`) is not the identity's; `DecisionGate.identity` stamps the instrument, and forecast rows, envelopes and advice records carry it as `instrument`. `run_daily_review` adds stage `identity` (identity resolved and the row's basis the session's). The advisor holds (`IDENTITY` note, EXIT/TRIM included) a holding whose identity is unresolved or whose basis changed since purchase; unresolved SWITCH destinations and autopilot buy legs are refused. All of it acts through `decision_gate.mode`. `python -m core.portfolio.identity_reconcile plan|apply` is the operator path (read-only plan with a digest; apply needs the digest, backs up `portfolio.json`, writes `identity_reconciliations.jsonl`). TMPV is tracked as its own listing by the owner's decision of 2026-09-29 (automobile `TICKERS`, so the exact-match short cut skips the LLM; `TICKER_SECTOR`), and TATAMOTORS stays quarantined. Five configured codes NSE renamed (PVR, MCDOWELL-N, ZOMATO, LTIM, ICICIPRULI) are dated `rename` records citing NSE's circular: each keeps its ticker's basis and is priced and cross-checked under NSE's current code on every date. Two codes that no longer trade (GATI, INOXLEISUR) are `delisted` from the first day NSE suspended them, with no successors. A code is mapped only on exchange evidence, never on a company name. Tests read `tests/fixtures/instruments_empty.yaml` via `INSTRUMENT_REGISTRY_PATH` unless they point at the shipped file.
+
+**Prediction-store ownership.** A ticker's RL history belongs to `data/predictions/<managed sector>/<TICKER>/`, the store the scheduled forecast and review use; an unmanaged ticker has no owner. `services/api/server.py`'s startup self-heal uses each managed entry's sector, and the daily review rebuilds a missing weight file from `sector_router.get_sector_weights(sector)`. `store_inventory` reports every store's evidence and duplicates; `store_migration` moves stray stores into `data/prediction_quarantine/` and back, by rename, after re-checking their SHA-256s. Production's quarantine was applied on 2026-10-01 (KT section 1).
 
 ### Scheduler
 
@@ -620,6 +678,12 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `ANALYSE_DAILY_QUOTA` | `10` | Member daily on-demand pipeline runs (`POST /analyse` + `WS /ws/stream`); owner exempt; 0 = unlimited. **`config.yaml` key `analyse.daily_quota` only — no env override.** One run ≈ 8 LLM calls, hence tighter than chat |
 | `watchdog.enabled` | `true` | Master gate for the `ops_watchdog` job (06:30 IST daily). **`config.yaml` only — no env override.** |
 | `watchdog.prep_enabled` | `true` | Auto-run idempotent prep (e.g. the Atlas ETL) when a milestone's window is open. Set false for notify-only. |
+| `error_backlog.new_days` / `quiet_days` / `verify_days` | `2` / `7` / `7` | Operations backlog: an issue first seen (or back) this recently is new/regressed; absent this long is quiet, and an open issue's return after it regresses; a fix is verified after this long with no recurrence, once the archive covers the window |
+| `error_backlog.ack_quiet_days` | `35` | An acknowledged issue regresses only after this long quiet, longer than a monthly job's cadence |
+| `error_backlog.spike_baseline_days` / `spike_sigma` / `spike_min` | `14` / `3.0` / `10` | Spiking: today's or yesterday's count above the trailing mean + sigma·sd of its own baseline, and at least this many |
+| `error_backlog.retention_days` / `max_issues` | `90` / `2000` | Prune an inactive issue after this long unseen; table cap that never drops an active issue |
+| `error_backlog.daily_days` / `keep_ids` | `30` / `20` | Per-issue daily counts and run ids/tickers kept |
+| `error_backlog.batch_rows` / `max_rows_per_refresh` | `2000` / `20000` | `app_logs` rows per transaction / per read; the next read continues from the cursor |
 | `PORTFOLIO_MAX_MANAGED_TICKERS` | `40` | Auto-promotion cap — guards LLM spend; oldest watchlist-origin entry rotates out at cap |
 | `PORTFOLIO_WEEKLY_REVIEW_WEEKDAY` | `4` | Friday — watchlist-cadence names review this weekday only (held names review daily) |
 | `ADVISOR_ENABLED` | `true` | Master switch for the post-review advisor pipeline |
@@ -632,8 +696,8 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `ADVISOR_CONFIDENCE_DECLINE_THRESHOLD` | `0.05` | Remaining-envelope confidence drop that counts as declining (TRIM trigger) |
 | `ADVISOR_ENVELOPE_FLAT_BAND_PCT` | `1.0` | Remaining-forecast drift within ±this% = FLAT (neither ADD nor EXIT signal) |
 | `ADVISOR_ADD_MIN_DIRECTION_ACCURACY` | `0.60` | Last-7-reviews hit rate required for ADD |
-| `ADVISOR_MAX_POSITION_PCT` | `10.0` | Position weight cap gating ADD |
-| `ADVISOR_SECTOR_CONCENTRATION_WARN_PCT` | `30.0` | Weight threshold for the `SECTOR_CONCENTRATION_HIGH` note |
+| `ADVISOR_MAX_POSITION_PCT` | `10.0` | Position cap, of total equity: gates ADD, marks `POSITION_LARGE`, caps every autopilot buy after the trade |
+| `ADVISOR_MAX_SECTOR_PCT` | `30.0` | Sector cap, of total equity: marks `SECTOR_CONCENTRATION_HIGH` and the weekly flag, caps every autopilot buy after the trade |
 | `ADVISOR_LTCG_WAIT_MIN_MONTHS` | `10` | TRIM at age 10–12 months with intact thesis → `WAIT_FOR_LTCG` note (never softens EXIT) |
 | `ADVISOR_EARNINGS_GAP_DAYS` | `3` | Profitable + results within N trading days → `EARNINGS_GAP_PROTECTION` note |
 
@@ -644,21 +708,27 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `discovery.enabled` | `true` (base.py fallback `false`) | Master gate for scheduler Jobs 11/12 and the discovery funnel |
 | `discovery.history_days` | `550` | Rolling EOD window (~2.2yr; 12m momentum needs 252 sessions) |
 | `discovery.bhavcopy_dir` | `data/market_cache/bhavcopy` | Per-day parquet EOD cache root |
-| `discovery.data_dir` | `data/discovery` | `screens/`, `shelf.json`, `shelf_events.jsonl` |
+| `discovery.data_dir` | `data/discovery` | `screens/`, `shelf.json`, `shelf_events.jsonl`, `insider_trades.json` |
 | `discovery.paper_data_dir` | `data/rl/paper/predictions` | ISOLATED paper-lane store root (spec §6.3) |
 | `discovery.liquidity_floor_cr` | `5.0` | Median daily traded value floor (₹ cr) |
 | `discovery.float_mcap_floor_cr` | `500.0` | Free-float mcap floor (₹ cr) |
 | `discovery.min_price` | `20.0` | No penny stocks |
-| `discovery.max_promoter_pledge_pct` | `25.0` | Guard ships DARK in v1 (no free data source yet) |
+| `discovery.max_promoter_pledge_pct` | `25.0` | Promoter shares pledged, % of the promoter holding (NSE pledge data), above which a shortlisted stock is rejected (`promoter_pledge_high`) |
+| `discovery.pledge_guard` | `true` (base.py fallback `false`) | The pledge guard on; `false` records the one degraded check `promoter_pledge` |
 | `discovery.circuit_streak_max` | `3` | > N trailing upper-circuit days = operator pattern, rejected |
 | `discovery.shortlist_size` | `80` | Ranked names that get per-symbol guard checks |
 | `discovery.max_candidates` | `40` | ScreenResult size after guards |
-| `discovery.deep_dive_count` | `10` | Weekly unified-analyst calls (LLM cost cap) |
-| `discovery.shelf_size` | `10` | Max active shelf ideas (stronger idea displaces weakest) |
-| `discovery.stale_days` | `60` | Idea age without trigger → rotate out |
+| `discovery.deep_dive_count` | `20` | Weekly analyst calls, re-dives and IPO slots included, a failed call counted (LLM cost cap) |
+| `discovery.shelf_size` | `20` | Max active shelf ideas (stronger idea displaces weakest): 12 holdings plus rotation |
+| `discovery.max_ideas_per_sector` | `3` | Active ideas per market sector (Yahoo's classification); a 4th replaces the sector's weakest only if stronger; `0` = no cap |
+| `discovery.redive_after_days` | `30` | An idea whose latest dive is older is re-dived on Saturday and is not a buy candidate until then; also how long the dive memo keeps a rejected candidate from the budget; `0` = off |
+| `discovery.watchlist_buys` | `true` | A user's own watchlist stock whose latest analysis is a fresh, actionable BUY or STRONG BUY is a buy candidate for that user |
+| `discovery.stale_days` | `60` | An idea whose latest deep dive is older rotates out (a passed re-dive restarts the clock) |
 | `discovery.min_conviction` | `0.55` | Deep-dive final_score floor to reach the shelf |
 | `discovery.include_sme` | `false` | SME platform excluded (spec §6.2) |
-| `discovery.signal_weights` | momentum 0.30, delivery_surge 0.15, volume_breakout 0.15, bulk_block 0.15, high_52wk_rs 0.10, insider_buying 0.10, mf_holding 0.05 | Composite blend; **insider_buying + mf_holding are DARK in v1** — the screen renormalizes over live signals and reports dark ones in `ScreenResult.dark_signals` |
+| `discovery.signal_weights` | momentum 0.30, delivery_surge 0.15, volume_breakout 0.15, bulk_block 0.15, high_52wk_rs 0.10, insider_buying 0.10 | Relative weights of the composite; the screen renormalises over the available signals and names an unavailable one in `ScreenResult.dark_signals` (its reason in `degraded_checks`), never scoring it neutral. No mutual-fund signal (no source) |
+| `discovery.insider_window_days` | `28` | insider_buying: promoter and director open-market net buying over this window, from every company's NSE insider-trade filings |
+| `discovery.insider_max_documents` | `600` | New insider-filing XBRL documents read per discovery run; more leaves the signal unavailable that week |
 | `generic_graph.agent_weights` | business 0.14, fundamentals 0.18, valuation 0.14, technical 0.12, macro 0.12, risk 0.12, management 0.09, earnings 0.09 | Neutral 8-dimension weights for sectors without a native graph (sum 1.0) |
 
 ### Delivery + IPO Tracker — Compass Phase C (`config.yaml` → `delivery.*` / `discovery.ipo_*`)
@@ -667,7 +737,7 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 |---------|---------|-------------|
 | `delivery.enabled` | `true` (base.py fallback `false`) | Master gate: Jobs 13/14 + every channel send |
 | `delivery.data_dir` | `data/delivery` | `push_subscriptions.json`, `alerts_sent.jsonl` |
-| `delivery.email_enabled` | `false` | Needs `SMTP_HOST/PORT/USER/PASSWORD` + `DELIVERY_EMAIL_TO` in .env |
+| `delivery.email_enabled` | `false` | Needs `SMTP_HOST/PORT/USER/PASSWORD` (or `RESEND_API_KEY`) in .env; `DELIVERY_EMAIL_TO` is the single-user recipient only, never a fallback for an account |
 | `delivery.push_enabled` | `true` | Needs `VAPID_PRIVATE_KEY/PUBLIC_KEY/CLAIM_EMAIL` in .env (`scripts/gen_vapid_keys.py`) |
 | `audit.switch_min_n` | `30` | Independent (strided) pairs needed before the switch blocks give a verdict |
 | `audit.switch_horizon_td` | `10` | Horizon the switch blocks report on |
@@ -680,10 +750,14 @@ Models are tiered (2026-06-03 benchmark, `scripts/model_bench.py`; bulk re-bench
 | `advisor.switch_eval_max_candidates` | `5` | Top-N active shelf ideas by conviction evaluated per holding per run |
 | `delivery.alert_html_enabled` | `true` | HTML alert email body; `false` = plain text only (the Inbox card is unaffected) |
 | `delivery.index_watch` | NIFTY 50 / NEXT 50 / MIDCAP 150 / SMALLCAP 250 | Weekly constituent diff → inclusion/exclusion alerts |
-| `delivery.outbox_max_attempts` | `3` | BP2 outbox: sends before a row is dead-lettered (active only when `ATLAS_ENABLED`) |
+| `delivery.outbox_max_attempts` | `3` | BP2 outbox: sends before a TRANSIENT failure is dead-lettered; permanent failures stop after one (active only when `ATLAS_ENABLED`) |
 | `delivery.outbox_backoff_minutes` | `[1, 5, 30]` | BP2 outbox: per-attempt reschedule delay |
+| `delivery.outbox_retry_after_cap_minutes` | `360` | Longest provider `Retry-After` the outbox honours |
+| `delivery.outbox_sending_stale_minutes` | `60` | A `sending` row older than this was left by a stopped process: dead-lettered as unknown outcome, never re-sent |
 | `delivery.outbox_poll_seconds` | `30` | BP2 outbox: drainer loop interval |
-| `delivery.outbox_retention_days` | `30` | Prune delivered/dead outbox rows older than this (Atlas C9) |
+| `delivery.outbox_retention_days` | `30` | Prune delivered outbox rows older than this; dead rows only lose their payload (Atlas C9) |
+| `delivery.outbox_dead_letter_retention_days` | `180` | Prune dead-letter rows older than this |
+| `delivery.push_ttl_seconds` | `43200` | How long a push service holds an undelivered push (pywebpush default 0 drops it) |
 | `discovery.ipo_enabled` | `true` (fallback `false`) | Stage-2 IPO tracker in the Saturday cycle |
 | `discovery.ipo_listing_window_days` | `90` | Listings younger than this are candidates |
 | `discovery.ipo_max_deep_dives` | `2` | Reserved Stage-3 slots (WITHIN `deep_dive_count`) |
@@ -770,6 +844,28 @@ the plane and flag-off is the instant-rollback lever.
 | `EVENT_INGEST_MAX_EVENTS_PER_SCAN` | `3` | LLM/Tavily call cap per ticker per scan |
 | `EVENT_INGEST_TEXT_MAX_CHARS` | `6000` | Per-event text bundle truncation |
 
+A results or concall filing found by the company-event feed also runs this ingestor for its stock in the feed's run (below).
+
+### Company-event feed (`config.yaml` → `events.*`)
+
+| Name | Default | Description |
+|------|---------|-------------|
+| `EVENTS_ENABLED` | `true` (base.py fallback `false`) | Registers `company_events_am`/`_pm`; `false` is the rollback |
+| `EVENTS_DATA_DIR` | `data/events` | Event store root |
+| `EVENTS_MORNING` / `EVENTS_EVENING` | `08:15` / `18:30` | IST run times, Mon–Fri; NSE holidays skipped |
+| `EVENTS_MAX_SYMBOLS` | `60` | Stocks per run: held, then watched, then shelf |
+| `EVENTS_NEWS_QUERIES_PER_DAY` | `60` | Serper `/news` searches per IST day; each run may use half |
+| `EVENTS_NEWS_ARTICLES_PER_QUERY` | `5` | Articles per search |
+| `EVENTS_NEWS_RECENCY` | `qdr:d` | Serper recency bound (past 24 hours) |
+| `EVENTS_LOOKBACK_DAYS` | `7` | NSE filing window per run |
+| `EVENTS_MAX_ITEMS_PER_SYMBOL` | `24` | New items per stock per run, newest first |
+| `EVENTS_MAX_ITEMS_PER_CALL` | `12` | Items per classifier call (bulk tier) |
+| `EVENTS_SEEN_DAYS` | `30` | How long an item judged "not about this company" is not asked again |
+| `EVENTS_INGEST_ON_RESULTS` | `true` | A new qualifying NSE announcement runs the dossier ingestor that run |
+| `EVENTS_DISCLOSE_INSIDER` / `_SAST` / `_PLEDGE` / `_OWNERSHIP` | `true` (base.py fallbacks `false`) | `events.disclosures.*`: NSE insider trades, SAST Reg 29 filings, Reg 31 pledge events and the quarterly shareholding pattern, typed by rules; `false` switches one off |
+| `EVENTS_OWNERSHIP_MOVE_POINTS` | `1.0` | A promoter, FII, DII or mutual-fund share moving this many points quarter on quarter makes an `ownership` event |
+| `EVENTS_MAX_DOCUMENTS_PER_SYMBOL` | `10` | Insider-filing XBRL documents read per stock per run, newest first |
+
 ### Living Envelope (RL Phase 2.5)
 
 | Name | Default | Description |
@@ -842,19 +938,35 @@ All paths verified to exist. Paths are relative to project root.
 | `services/api/routes/stream.py` | WebSocket /ws/stream — real-time agent progress |
 | `services/api/routes/history.py` | GET /history — score history from SQLite |
 | `services/api/routes/ui_data.py` | All /ui/* routes (bootstrap, agents, tickers, chat, learnings, etc.) |
-| `services/api/routes/scheduler_api.py` | POST/GET /scheduler/* — RL trigger and status endpoints; event-triggers the portfolio advisor pipeline after daily reviews |
-| `services/api/routes/portfolio_api.py` | /portfolio/* — Compass Phase A: holdings, watchlist, CSV import, advice ledger, EOD digest; Autopilot: transactions audit trail, performance (P&L + equity curve) |
+| `services/api/routes/scheduler_api.py` | POST/GET /scheduler/* — RL trigger and status endpoints; event-triggers the portfolio advisor pipeline after daily reviews; `daily-review` refuses a future session or one not yet closed (15:30 IST) |
+| `services/api/routes/portfolio_api.py` | /portfolio/* — Compass Phase A: holdings, watchlist, CSV import, advice ledger, EOD digest; Autopilot: transactions audit trail, performance (P&L + equity curve), the owner's paper-capital deposit; `run-advisor` refuses a future session or one not yet closed (15:30 IST) |
 | `core/portfolio/pipeline.py` | `run_post_review_pipeline()` — corp-action sync → events refresh → advisor → ledger → digest, per user |
-| `core/portfolio/advisor.py` | Deterministic HOLD/ADD/TRIM/EXIT engine (EXIT>TRIM>ADD>HOLD), ATR-scaled stops, LTCG/earnings-gap notes, `explain_triggers()` |
-| `core/portfolio/autopilot.py` | `execute_advice()` — deterministic verdict executor (sells then buys, no LLM); `record_value_point()` — daily equity snapshot |
-| `services/data/fetchers/corporate_events.py` | NSE corp-actions feed + forward board-meetings calendar (degraded-mode safe) |
-| `data/portfolio/<user>/` | Per-user volume state: `portfolio.json`, `advice_ledger.jsonl`, `transactions.jsonl` (Autopilot audit trail), `value_history.jsonl` (daily equity curve), `digests/` |
+| `core/portfolio/corp_actions.py` | `sync_corp_actions()` — bonus/split/dividend adjustments to each holding before any advisor rule (idempotent by action key); returns each symbol's `ActionRecord` for the exit rule's invalidation level and its grading. The record reads each row in full or not at all: a bonus or split is a ratio only when every word is known (`_read_ratio`), else unparsed with rows naming both; `basis_changes` holds the demerger, scheme, consolidation, capital reduction and rights rows no ratio converts (`basis_change_kind`) and any row not wholly of a neutral kind (a dividend, meeting, vote, buy back, interest, redemption), as of no known kind; it also records how far back NSE's list reaches and how many rows it returned (`rows`). The sync applies holdings through `parse_action` alone |
+| `core/portfolio/advisor.py` | Deterministic HOLD/ADD/TRIM/EXIT engine (EXIT>TRIM>ADD>HOLD), ATR-scaled stops, LTCG/earnings-gap notes, `POSITION_LARGE` / `SECTOR_CONCENTRATION_HIGH` against total equity, `explain_triggers()`; `data_gate_blocks` / `decide(add_blocks=, blocked_candidates=)` withhold ADD and SWITCH destinations on a stale close or unverified forecast (never EXIT/TRIM); `signals.regime_unavailable` (from the feedback entry) holds ADD in either gate mode (note `REGIME_UNAVAILABLE`, the record's `regime_unavailable` names the day and why); `envelope_at_close` reads the envelope as it stood at the review session's close (a re-forecast whose `at` is at or after that close is replaced by the archive made before it), and an ADD only the later path allows is held (note `ENVELOPE_AFTER_CLOSE`, the record's `envelope_after_close`); `decide(identity_hold=)` holds every verdict (note `IDENTITY`) when the holding's identity is unresolved or its price basis changed since purchase; `decide(exit_rule=, evidence=)`: `legacy` sells on `thesis_break`, `evidence` on `case_broken` (`case_broken_reasons`: a high negative event from a `CASE_EVENT_SOURCES` source (an NSE filing or rule-typed disclosure; news is a watch item), an actionable SELL, the invalidation level; after `advisor.min_hold_sessions`) |
+| `core/portfolio/exit_shadow.py` | The two exit rules: `exit_rule_mode()` (`advisor.exit_rule`: legacy, shadow, evidence; unknown reads shadow), `EvidenceReader`/`exit_evidence` (events, score history and shelf as of the review day; `latest_actionable_verdict` counts a run after the buy day and at most `RESEARCH_VERDICT_SESSIONS` (22) sessions old), `level_in_basis` (the shelf idea's invalidation level in the review day's price basis, from the holding's applied actions and the sync's NSE `ActionRecord`, or unused with a named gap), `shadow_row` (both verdicts, the holding's buy date, the close's session and the decision's `benchmark` from `decision_benchmark`: `cash` for a plain EXIT or a SWITCH whose buy the executor would refuse (`switch_buy_lands`, asked by the pipeline before the autopilot runs), `nifty` for a SWITCH whose buy lands; one row per holding per review day in `exit_shadow.jsonl`), `first_disagreements` (one decision per holding, its first disagreeing day) / `grade_disagreements` (10- and 30-session result against the row's benchmark; `horizon_in_basis` puts the horizon close in the decision close's price basis with every bonus or split between, from NSE's action list read at grading, else the decision has no result that week, as it has across a change no ratio converts (`ActionRecord.basis_changes`) or a new basis the instrument registry records (`registry_break`, over `identity_break`); each ungraded grade's `no_result` is `lasting` (no later read can change it: an empty list, a change or unread row between the closes, a registry basis change) or `temporary` (a list not read, a missing or Yahoo-only close); the scorecard's lookups are `results.stock_quote_fn` and `results.corp_actions_fn`, which reads NSE's list with `read_corp_actions` under the code the close is read under, `symbol_resolver.nse_symbol`, None when it could not be read) / `gate_look` (the predeclared switch gate: a decision with a lasting gap is set aside, named; the rest right on half and a mean result of at least 0 at both horizons, "not worse"; a `better` label; more than `GATE_MAX_SET_ASIDE` (2) or `GATE_MAX_SET_ASIDE_PCT` (10%) set aside turns a pass into `cannot_judge`) / `scorecard_block` |
+| `core/portfolio/identity_reconcile.py` | `holding_identity_issue` / `symbol_identity_issue` (registry only, for the advisor and autopilot); operator CLI `plan` (read-only, digest) and `apply --approve <digest>` (refuses a changed plan, backs up `portfolio.json`, replaces a demerged holding with its recorded successors, logs `identity_reconciliations.jsonl`) |
+| `src/backend/shared/data/instruments.py` | Parses and validates `config/instruments.yaml` (fail closed); `registry_identity(ticker, on)` → `Identity(status, symbol, basis, via, source, reasons)`; `registry_bases`, `segment_on`; path `INSTRUMENT_REGISTRY_PATH` or `config/instruments.yaml` |
+| `core/portfolio/autopilot.py` | `execute_advice()` — deterministic verdict executor (sells, then buys, then idle-cash deployment when on; no LLM; every buy sized by `sizing`, a buy that opens a position only inside its shelf idea's entry band, every buy cleared by NSE's surveillance report, a skipped buy leg's reason on the SELL's note, a refused top-up's in the run's report for the digest); `surveillance_report()` — the report a buy is checked against (a test seam); `record_value_point()` — daily equity snapshot, naming holdings valued at cost in `at_cost` |
+| `core/portfolio/deployment.py` | Idle-cash deployment: `breadth()` (config with a per-portfolio override), `active()`, `recorded_regime()` and `regime_gap()` (why none), `Breadth.position_inr()` (the NORMAL share of equity over `target_holdings`), `target()` (the regime's share), `stop_reason()` (when another position may open), `below_aim()` (the soft minimum's sentence; it never buys), `run_record()` (what was bought and why the rest was not, for the digest) |
+| `core/portfolio/sizing.py` | One sizing and entry rule for every autopilot buy: `weights()` (shares of total equity: holdings at their marks plus cash), `size_buy()` (position and sector caps after the trade, cash floor), `whole_shares()` (counted in paisa), `entry_check()` (at or below `entry_high`, above `invalidation_level`), `surveillance_issue()` (active and under no ASM/GSM stage, for a new position or a top-up) |
+| `services/data/fetchers/corporate_events.py` | NSE corp-actions feed + forward board-meetings calendar (degraded-mode safe): `read_corp_actions` raises on a failed read and returns `[]` only for an empty answer (the exit rule's grading); `fetch_corp_actions` returns `[]` for both (the holding sync) |
+| `services/data/fetchers/nse_announcements.py` | Per-analysis NSE prefetch (`prefetch_nse_data`, agent context) and the event feed's lean `fetch_company_filings` (dated announcements + board meetings, no key-registry writes) |
+| `core/events/feed.py` | `run_event_feed()` — the daily company-event feed (08:15 + 18:30 IST): every held, watched and shelf stock, NSE filings and one news search each, typed by the bulk tier, and its NSE disclosures typed by rules, stored once per item; caps, identity skips and same-day dossier ingestion |
+| `core/events/disclosures.py` | NSE disclosures as events, by fixed rules: `parse_pit_xml` + `insider_event` (insider trades), `sast_events` (deal), `pledge_events` (pledge), `parse_shareholding_xbrl` + `ownership_event` (quarter-on-quarter ownership); dated by NSE dissemination, trade days in `occurred_*`; a filing NSE lists as a revision (`is_revision`) is neutral and low and says so |
+| `services/data/fetchers/nse_disclosures.py` | NSE disclosure endpoints as raw rows (`corporates-pit-gg`, `corporate-sast-reg29`, `corporate-pledgedata-sast3132`, `corporate-pledgedata`, `corporate-share-holdings-master`) and archive-only `fetch_document`; never raises |
+| `src/backend/shared/schemas/events.py` | `CompanyEvent` — the one event schema (publication time vs fetch time vs a disclosure's `occurred_*` days, cited source, `facts`) |
+| `services/api/routes/events_api.py` | `GET /events/{symbol}` — a member's own stocks and the shelf; the owner any |
+| `data/portfolio/<user>/` | Per-user volume state: `portfolio.json`, `advice_ledger.jsonl`, `transactions.jsonl` (Autopilot audit trail), `value_history.jsonl` (daily equity curve), `digests/`, `exit_shadow.jsonl` (both exit rules per holding per review day) |
 | `scripts/seed_autopilot.py` | One-time Autopilot seed: equal-weight virtual holdings from managed tickers + `autopilot=True`; idempotent |
 | `services/api/routes/discovery_api.py` | /discovery/* — Compass Phase B: shelf, latest screen, manual run, promote/drop |
-| `core/discovery/__init__.py` | `run_discovery_cycle()` — weekly funnel orchestration (every stage non-fatal) |
-| `core/discovery/screen.py` | Stage-1 quant screen: composite rank over live signals, guards, `ScreenResult` persistence |
-| `core/discovery/deep_dive.py` | Stage-3 LLM dives (≤`discovery.deep_dive_count`/wk) + `infer_sector()` (registry → NSE industry → generic) |
-| `core/discovery/shelf.py` | `ShelfStore` — cap/displacement, stale rotation, promote-to-watchlist, `shelf_events.jsonl` |
+| `core/discovery/__init__.py` | `run_discovery_cycle()` — weekly funnel orchestration (every stage non-fatal); the result's `sectors` names each dive by how its key was named |
+| `core/discovery/screen.py` | Stage-1 quant screen: composite rank over the available signals, guards, `ScreenResult` persistence |
+| `core/discovery/insider.py` | The insider_buying signal: `refresh_insider_trades()` (every company's insider filings over the window, each XBRL read once and its trades kept, the promoter share read for each company with a promoter-group sale, `data/discovery/insider_trades.json`), `counted_trades()` (each trade once, a revision's trades replacing their closest earlier match, only trades whose last day is in the window), `symbol_net()` (a promoter-group sale counts nothing above 75% promoter holding), `usable_insider_trades()` (only when every listed filing and needed promoter share was read), `net_by_symbol()` (₹ crore) |
+| `core/discovery/deep_dive.py` | Stage-3 LLM dives (≤`discovery.deep_dive_count` calls/wk, companies only, re-dives flagged `redive`, a stock the autopilot sold flagged `sold` to pass the managed skip), `entry_levels()` (band + invalidation) ; the same analyst call names the sector key (`sector_question`), checked and decided in `sector_naming.py`; Yahoo's classification is stored beside it as evidence |
+| `core/discovery/shelf.py` | `ShelfStore` — size cap and displacement, under `enforce` only actionable dives become ideas, the per-sector cap (on the sector key, as SA-050 counts it), re-dives (`redive_due`, a sold stock's idea first, then unverified ideas: no gate, or no key named; `apply_redives` names an idea's missing key, never changes a named one), `no_longer_held`, non-company drops, Yahoo-label backfill, the dive memo (`dives.json`), stale rotation, promote-to-watchlist (refused for an idea with no key), `shelf_events.jsonl`; `decision_time` / `close_before_dive` (a buy that opens a position takes only a close struck after the idea was decided: a watchlist analysis at its own time, a deep dive, which keeps only its day, after that day's 15:30 IST close); `sale_day` / `sold_since_dive` / `autopilot_sales` (the one rule that stops a re-buy and puts its re-dive first) |
+| `core/discovery/sector_naming.py` | FIX-026: how a stock's sector key is named: `configured_sectors()` (the registry's toggle list), `sector_question()` (the text the deep dive's one analyst call answers), `read_answer()` (membership, never a pattern; an explicit `generic` needs a reason), `known_key()` / `decide_key()` (decided once: managed record, ticker map, an idea's named key, then the answer), `graph_guess()` (the graph only, before the answer), `unnamed_why()`, `summarise()` for the weekly summary |
+| `core/discovery/universe.py` | The EQ/price-floor universe and the instrument rule: `instrument_kind()` from series and ISIN (company, fund, trust), `companies_only()` |
+| `core/discovery/candidates.py` | `buy_candidates()` — what one portfolio's autopilot may buy at a review (as a SWITCH destination or with idle cash): shelf ideas dived in the last 30 days and before the review session's close (whose close the trades are booked at) plus the user's own fresh, actionable watchlist BUYs run before that close (band from the last close the analysis could read), each under the sector it will be held under (`holding_sector()`: a managed stock's managed-record sector first, else a configured key of its own, else the ticker map's; a shelf idea with no key named, or a watchlist stock with none, is not offered) |
 | `core/discovery/paper_lane.py` | Paper envelopes + weekly paper reviews via `paper=True` RL workflows |
 | `services/data/fetchers/ipo.py` | NSE IPO lists (current/upcoming/past) + degraded-mode cache |
 | `core/discovery/ipo_tracker.py` | IPO candidate scoring (QIB 3×, post-listing evidence) + lock-in calendar |
@@ -862,33 +974,37 @@ All paths verified to exist. Paths are relative to project root.
 | `core/delivery/alerts.py` | Deduped alert engine (`data/delivery/alerts_sent.jsonl`) |
 | `core/delivery/brief.py` | Morning brief builder/renderer/runner |
 | `core/delivery/weekly.py` | Weekly review builder (allocation, laggards, scoreboard) |
-| `core/delivery/index_watch.py` | Index constituent snapshot diff → alerts |
+| `core/delivery/index_watch.py` | Index constituent snapshot diff → alerts: an account's held or watched stocks to that account only, shelf ideas as market notices |
 | `services/api/routes/delivery_api.py` | /delivery/* — briefs, weekly, alerts, push subscriptions |
+| `services/api/routes/ops_api.py` | /ops/errors* — the operations backlog: ranked issues, plain-text digest, triage (owner or machine key) |
 | `scripts/gen_vapid_keys.py` | One-time VAPID keypair generation for web-push |
 | `services/data/stores/eod_store.py` | `EodStore` — per-day parquet EOD cache (canonical 12-column schema) |
-| `services/data/fetchers/bhavcopy.py` | NSE delivery-bhavcopy fetcher + resumable `sync_recent()` |
+| `services/data/fetchers/bhavcopy.py` | NSE delivery-bhavcopy fetcher + resumable `sync_recent()`; the instrument listing (series and ISIN per symbol from the UDiFF bhavcopy): `refresh_listing()`, `load_listing()`, cached in `data/discovery/listing.json` |
 | `services/data/fetchers/bulk_block.py` | Bulk/block deals cache (degraded-mode keeps stale deals) |
-| `services/data/fetchers/surveillance.py` | Per-symbol NSE meta (ASM/GSM, suspension, industry) + yfinance float mcap |
+| `services/data/fetchers/surveillance.py` | `surveillance_list()`: NSE's daily Surveillance Indicator report (GSM, long/short-term ASM stage and status per security), read once a run and cached in `data/discovery/surveillance.json`, never dated after the screen's session nor more than 7 days before it + yfinance float mcap and `market_classification()` (Yahoo sector and industry, the one industry source) |
 | `src/backend/sectors/generic/pipeline/orchestrator.py` | GenericSectorOrchestrator — sector-agnostic 8-dimension graph (unified primary, UniversalAgent fallback pool) |
 | `data/market_cache/bhavcopy/` | Per-day parquet EOD cache, ~550 sessions rolling |
-| `data/discovery/` | `screens/`, `shelf.json`, `shelf_events.jsonl` |
+| `data/discovery/` | `screens/`, `shelf.json`, `shelf_events.jsonl`, `insider_trades.json` |
+| `data/events/` | Company events: `<SYMBOL>.jsonl` (one per source item), `state.json` (the day's search count, items judged unrelated), `runs.jsonl` (one line per run), `ownership/<SYMBOL>.json` (each quarter's FII, DII and mutual-fund % from its shareholding XBRL). No user id |
 | `data/rl/paper/predictions/` | ISOLATED paper-lane RL store — never mixed into real metrics |
 | `services/api/routes/prompts.py` | /ui/prompts/* — live prompt editing and GitHub deploy |
 | `services/api/routes/analytics.py` | /analytics/* — RL performance exports and Power BI feed |
-| `services/api/log_buffer.py` | In-memory ring buffer for real-time log streaming |
+| `services/api/log_buffer.py` | In-memory ring buffer for real-time log streaming (read only through the owner-only `/ui/logs` routes); the managed-ticker file's readers (`load_managed_tickers`, which seeds a missing file, and the read-only `managed_symbols`, `managed_sectors`) |
 | `services/scheduler/python/scheduler.py` | APScheduler: daily RL review (4:30pm IST), monthly forecast (1st, 9am IST), calendar update (Dec 31), pre-open shock check (`preopen_shock_check`, Mon-Fri 08:45 IST, Living Envelope §27.3), Job 13 morning brief (Mon-Fri 08:50 IST) + Job 14 weekly review (Sun 18:00 IST, Compass Phase C), `ops_watchdog` (06:30 IST daily) |
-| `core/ops/watchdog/` | **The watchdog.** Reads `config/milestones.yaml` — the authoritative registry of dated milestones and standing invariants — runs named checks, and notifies on transitions via `ops_alerts`. `registry.py` loads/validates, `checks.py` probes state, `prep.py` auto-runs safe idempotent preparation, `engine.py` is the pure escalation ladder, `runner.py` wires it to state + delivery |
-| `services/data/stores/score_store.py` | SQLite score history (read/write/delta/range queries) |
+| `core/ops/watchdog/` | **The watchdog.** Reads `config/milestones.yaml` — the authoritative registry of dated milestones and standing invariants — runs named checks, and notifies the owner alone on transitions (`emit_owner_alerts`). `registry.py` loads/validates, `checks.py` probes state, `prep.py` auto-runs safe idempotent preparation, `engine.py` is the pure escalation ladder, `runner.py` wires it to state + delivery |
+| `core/ops/error_backlog.py` | **The operations backlog.** Groups `telemetry.db` `app_logs` rows into issues by a deterministic fingerprint (normalised template of source, logger, message), keeps first/last seen, counts, run ids and a lifecycle (new/regressed/spiking/quiet; acknowledged/fixed/wontfix, fix verified by archive coverage; a fix time the recorded occurrences already contradict, a future one, or one without a UTC offset is refused) in `error_issues`, with bounded retention. Read and triaged at `/ops/errors`; `scripts/prod_errors.py` prints it; the `error_backlog_triaged` watchdog invariant warns the owner daily while an issue needs triage |
+| `services/data/stores/score_store.py` | SQLite score history (read/write/delta/range queries). One row per completed analysis, written only by `BaseSectorOrchestrator._record_score_history`; `agent_scores` holds `{raw, weight, weighted}` per agent. List-shaped readers filter with `ui_data._only_visible` (`_shared_symbols`: built-in universe, managed list, active shelf ideas; `_visible_symbols`: plus the viewer's holdings and watchlist) |
 | `services/background/macro_news_cache.py` | Daily macro news cache read/write |
 | `services/clients/llm_client.py` | Async OpenRouter LLM client |
 | `src/backend/sectors/registry.py` | `TICKER_SECTOR` dict + `SectorRegistry` singleton (resolve, get_graph_sector, get_handler, is_enabled) — the single resolution point for both the API and RL paths |
 | `src/backend/shared/config/settings/base.py` | All environment variable definitions with defaults |
 | `src/backend/shared/config/rag_config.py` | RAG-specific env vars (mirrors `core/intelligence/rag/config.py`) |
-| `src/backend/shared/pipeline/base_orchestrator.py` | `BaseSectorOrchestrator` — ticker resolution (managed-ticker short-circuit, no LLM for exact `TICKERS` matches), RL weights, NSE prefetch, `_run_agents`/`_run_unified`/`_unified_enabled` dispatch, SignalAggregator |
-| `services/data/context/bundle_builder.py` | `build_sector_bundle()` — one-pass `SectorDataBundle` (10 labeled, char-capped sections), sector-aware via `_SECTOR_BUNDLE_CFG` (per-sector queries, deep-dive Tavily target, commodities applicability, peer lists); B2 adds `section_status` — one outcome per section; SA-002 takes it from each producer's `FetchResult` and adds `section_provenance` (source, as-of, reason) |
-| `services/data/context/fetch_result.py` | SA-002 — `FetchResult` (text, status, source, as_of, reason), the section status vocabulary, and the price/fundamentals freshness bounds |
-| `services/data/stores/data_health.py` | B2 — one row per unified run: section outcomes, dimensions scored vs expected, derived `ok`/`degraded`/`hollow`. SA-002 contract v2: `health_reasons`, `essential_unusable`, `section_provenance`, stale/fallback/unverified counts; `normalize_health_row` / `recent_health_rows` read v1 rows with unknown provenance. Writes `data/logs/data_health.jsonl` + `telemetry.db.data_health`, attaches to `FinalReport.data_health`. **Write-only until B5's hollow-run gate**; never raises. Flag `observability.data_health_enabled` |
-| `src/backend/shared/pipeline/unified_analyst.py` | `UnifiedAnalyst` — one reasoning-model call → all dimension `AgentOutput`s for a sector (9/6/8/6 per `SECTOR_SPECS`); never raises, falls back to legacy on total failure |
+| `src/backend/shared/pipeline/base_orchestrator.py` | `BaseSectorOrchestrator` — ticker resolution (managed-ticker short-circuit, no LLM for exact `TICKERS` matches), RL weights, NSE prefetch, `_run_agents`/`_run_unified`/`_unified_enabled` dispatch, SignalAggregator; `analyse(..., sector_question=)` (the deep dive's) rides in the unified call and comes back as `report.sector_answer`; at both exits (`analyse`, `analyse_async`), after the decision gate, logs `run_summaries` and writes the score-history row (a failed write is a warning) |
+| `services/data/context/bundle_builder.py` | `build_sector_bundle()` — one-pass `SectorDataBundle` (10 labeled, char-capped sections), sector-aware via `_SECTOR_BUNDLE_CFG` (per-sector queries, deep-dive Tavily target, commodities applicability, peer lists); `section_status` holds one outcome per section, taken from each producer's `FetchResult`, and `section_provenance` (source, as-of, reason) |
+| `services/data/context/fetch_result.py` | `FetchResult` (text, status, source, as_of, reason), the section status vocabulary, and the price/fundamentals freshness bounds |
+| `src/backend/shared/pipeline/decision_gate.py` | The essential-data gate: `assess_analysis` / `gate_from_health_row` (actionable/degraded/abstain), `apply_gate` (enforce → `INSUFFICIENT DATA`), `decision_gate.mode` record|enforce (unknown → enforce), `record_gate_decision` → `data/logs/decision_gate.jsonl` (ticker-level); `apply_identity` (unresolved identity, or price history for another symbol → abstain; stamps `DecisionGate.identity`) |
+| `services/data/stores/data_health.py` | B2 — one row per unified run: section outcomes, dimensions scored vs expected, derived `ok`/`degraded`/`hollow`. Contract v2: `health_reasons`, `essential_unusable`, `section_provenance`, stale/fallback/unverified counts; `normalize_health_row` / `recent_health_rows` read v1 rows with unknown provenance. Writes `data/logs/data_health.jsonl` + `telemetry.db.data_health`, attaches to `FinalReport.data_health`. Never raises. Flag `observability.data_health_enabled` (the row only: the decision gate reads the same inputs and does not depend on it); `build_record` is also the gate's source |
+| `src/backend/shared/pipeline/unified_analyst.py` | `UnifiedAnalyst` — one reasoning-model call → all dimension `AgentOutput`s for a sector (9/6/8/6 per `SECTOR_SPECS`); an optional sector question is appended to the user prompt and its `SECTOR_ANSWER_KEY` block kept unvalidated (without it the prompt is unchanged); never raises, falls back to legacy on total failure |
 | `src/backend/sectors/automobile/prompts/unified.py` | Unified Sector Analyst prompt for automobile (9 dimensions in one prompt) |
 | `src/backend/sectors/banking_bfsi/prompts/unified.py` | Unified Sector Analyst prompt for BFSI (6 dimensions) |
 | `src/backend/sectors/it_sector/prompts/unified.py` | Unified Sector Analyst prompt for IT (8 dimensions) |
@@ -897,11 +1013,14 @@ All paths verified to exist. Paths are relative to project root.
 | `src/backend/sectors/banking_bfsi/pipeline/orchestrator.py` | BankingAgentOrchestrator |
 | `src/backend/sectors/it_sector/pipeline/orchestrator.py` | ITAgentOrchestrator |
 | `src/backend/sectors/renewable_energy/pipeline/orchestrator.py` | RenewableAgentOrchestrator |
-| `core/intelligence/rl/workflows/generate_forecast.py` | Generate 30-day PredictionEnvelope (runs full pipeline); `regenerate_envelope()` re-runs the pipeline mid-cycle for the remaining days only (Living Envelope, RL_DESIGN §27.2) |
+| `core/intelligence/rl/workflows/generate_forecast.py` | Generate 30-day PredictionEnvelope (runs full pipeline); `regenerate_envelope()` re-runs the pipeline mid-cycle for the remaining days only, anchored on the review session's own close, and stamps the event's `at` (Living Envelope, RL_DESIGN §27.2) |
 | `core/intelligence/rl/workflows/daily_review.py` | Daily RL feedback: compare actual vs predicted, update weights; Step 8.5 dossier curator; post-Step-6 trigger block (external_shock/thesis_break/regime_flip) calls `regenerate_envelope()` and skips Step 7 on success (§27.2) |
+| `core/intelligence/rl/workflows/review_outcomes.py` | One outcome per required ticker for the scheduled daily review: `classify` (completed / degraded / data_gated / skipped / failed; unknown or malformed results fail closed), `summarize` (required vs attempted, `by_ticker`, merge with an earlier run of the same session), `with_pipeline` (job `status`, `pipeline_ok`), `missing_detail` for the alert text. Pure, no I/O |
 | `core/intelligence/rl/workflows/preopen_check.py` | Pre-open overnight shock check (1 Serper + 1 fast LLM, market-wide); contradicted tickers trigger `regenerate_envelope(trigger="preopen_shock")` (§27.3) |
-| `core/intelligence/regime/state.py` | Sticky market-wide regime hysteresis (`update_sticky_regime`, `data/predictions/_regime_state.json`) (§27.1) |
-| `core/intelligence/rl/stores/prediction_store.py` | JSON R/W for envelopes, feedback logs, weight memory, ledgers, ticker dossier; `archive_envelope()` copies the superseded envelope to `{ticker_dir}/archived_envelopes/{YYYY-MM}_v{n}.json` before a re-forecast overwrite (§27.2) |
+| `core/intelligence/regime/state.py` | Sticky market-wide regime hysteresis (`update_sticky_regime`, `data/predictions/_regime_state.json`) (§27.1); `record_unavailable_day` (a day whose label the live inputs do not establish: no move but a severer established label, marked unavailable), `label_recorded_for` (the day's label for idle-cash deployment, none for an unavailable day) and `unrecorded_reason`; `_established_for`, the one "established for this day" test all three share (a fresh state counts for the day it was entered) |
+| `core/intelligence/rl/stores/prediction_store.py` | JSON R/W for envelopes, feedback logs, weight memory, ledgers, ticker dossier; `archive_envelope()` copies the superseded envelope to `{ticker_dir}/archived_envelopes/{YYYY-MM}_v{n}.json` before a re-forecast overwrite (§27.2). The feedback logs, weight memory and ledgers it creates carry its own sector; files already on disk keep what they say |
+| `core/intelligence/rl/stores/store_inventory.py` | Read-only manifest of the predictions tree: per store its identity, sector evidence (a recognised dimension roster must agree with the directory's graph), owner (`<managed sector>/<TICKER>`), schema markers and consumer classes; duplicate tickers, envelope cycle ids and graded days, identical or conflicting. CLI `python -m core.intelligence.rl.stores.store_inventory` |
+| `core/intelligence/rl/stores/store_migration.py` | Quarantine of stores no live writer owns: `plan` (read-only, digest), `apply --approve <digest>` (recomputes the plan, re-hashes each store before one directory rename into `prediction_quarantine/<id>/stores/`, lineage record), `rollback` (never merges into a live store that reappeared) |
 | `core/intelligence/rl/stores/ledger_propagator.py` | Propagate lessons to sector/market ledgers; stale-lesson archival + resurrection |
 | `core/intelligence/rl/agents/feedback_agent.py` | LLM-based miss classification and lesson generation (lessons carry trigger_tags) |
 | `core/intelligence/rl/agents/weight_adapter.py` | Agent weight adjustment with per-agent calibration reward (RL_CALIBRATION_REWARD_ENABLED) |
@@ -918,14 +1037,14 @@ All paths verified to exist. Paths are relative to project root.
 | `src/backend/shared/schemas/dossier.py` | TickerDossier schema + budgeted markdown digest (`to_digest`) |
 | `src/backend/shared/schemas/scorecard.py` | ControlPrediction/ControlLog + MonthlyScorecard schemas |
 | `core/intelligence/rl/conviction/tracker.py` | Conviction streak tracking |
-| `core/intelligence/rl/nse_calendar.py` | NSE trading day calendar (holiday-aware) |
-| `core/intelligence/rl/learning_mode.py` | SA-039 switch `rl.learning_mode` (adapt/observe; unknown → observe): `decision_weights()` returns sector defaults in observe; `weight_observation()` builds the would-be-weights diagnostic |
-| `core/intelligence/regime/detector.py` | Market regime detection (VIX/FII/RSI-based) |
+| `core/intelligence/rl/nse_calendar.py` | NSE trading day calendar (holiday-aware); `session_close_at` (15:30 IST of a session) |
+| `core/intelligence/rl/learning_mode.py` | Learning switch `rl.learning_mode` (adapt/observe; unknown → observe): `decision_weights()` returns sector defaults in observe; `weight_observation()` builds the would-be-weights diagnostic |
+| `core/intelligence/regime/detector.py` | Market regime detection (VIX/FII/RSI-based, plus Brent, USD/INR and S&P 500 stress), read as of the classified session; a signal that does not answer has no value (`dark_inputs`), and `unavailable` says when the signals that answered do not establish the label's severity |
 | `core/intelligence/prompt_enhancer/enhancer.py` | Injects RL lessons and regime context into agent prompts |
 | `core/intelligence/seasonal/calendar.py` | Seasonal pattern calendar |
 | `core/schemas/feedback.py` | Canonical RL schemas: FeedbackEntry, WeightMemory, PredictionEnvelope, LearningLedger |
 | `config/sector_toggles.json` | Runtime sector enable/disable toggles |
-| `data/scores.db` | SQLite: score history per ticker (created at runtime) |
+| `data/scores.db` | SQLite: score history per ticker (created at runtime); `scripts/backfill_score_history.py` copies past `run_summaries` runs into it at the owner's word (dry run by default; marked rows, removable) |
 | `data/predictions/` | RL prediction JSON files: `{sector}/{ticker}/{cycle_id}/` |
 | `data/macro_news/` | Daily macro news feed JSON files: `{YYYY-MM-DD}_macro_feed.json` |
 | `data/agent_weights.json` | Persisted user weight overrides (created at runtime) |

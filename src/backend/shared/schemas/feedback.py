@@ -73,6 +73,17 @@ class DailyForecast(BaseModel):
         default_factory=dict,
         description="Agent catalyst predictions for this forecast day: {agent: {bull_case_if, bear_case_if, data_confidence}}"
     )
+    # SA-003: the decision-gate status of the analysis run that issued this
+    # row (actionable | degraded | abstain), and that run's id. "" means the
+    # row was issued before the gate existed: provenance unknown, which the
+    # review and the advisor treat as unverified in enforce mode.
+    data_gate: str = ""
+    source_run_id: str = ""
+    # SA-008: the instrument the issuing run priced (ticker, provider symbol,
+    # price basis, identity status). A row is graded only against a close on
+    # the same basis. {} = issued before SA-008; the review then asks the
+    # instrument registry whether the basis changed since the envelope.
+    instrument: dict = Field(default_factory=dict)
 
 
 class ReforecastEvent(BaseModel):
@@ -85,6 +96,9 @@ class ReforecastEvent(BaseModel):
     reason: str             # "external_shock" | "thesis_break" | "regime_flip" | "preopen_shock" | "manual_verification" | ...
     trigger: str = ""       # free-text detail (e.g. which signal fired)
     archived_file: str = ""  # path to the archived superseded envelope, if any
+    # FIX-027: when it ran, ISO with the IST offset. "" = stored before the
+    # field existed; such an event counts as made before any decision.
+    at: str = ""
 
 
 class PredictionEnvelope(BaseModel):
@@ -102,6 +116,11 @@ class PredictionEnvelope(BaseModel):
     # sector default weights were used and weight_version_used is only the
     # stored version at that time, not the weights that produced the forecast.
     learning_mode: str = "adapt"
+    # SA-003: DecisionGate (as a dict) of the latest (re)generation's analysis.
+    # Each row also carries its own issuing run's status in data_gate.
+    decision_gate: dict | None = None
+    # SA-008: the instrument base_close and the latest (re)generation priced.
+    instrument: dict = Field(default_factory=dict)
     # Forecast profile from PriceInterpolator — stored for hindsight timing evaluation.
     # "front_loaded" means early move was expected; "back_loaded" means catalyst is 2+ weeks out.
     forecast_profile_shape: str = "linear"
@@ -289,6 +308,12 @@ class FeedbackEntry(BaseModel):
     # Market regime active at time of review — critical for regime-stratified accuracy analysis.
     # Enables: "risk_macro is 71% accurate in NORMAL but only 44% in MACRO_CRISIS"
     regime_label: str = "NORMAL"
+    # FIX-024: why regime_label is not established for this entry's day ("India
+    # VIX did not answer"): the live inputs left its severity open and the day
+    # had no established label, so regime_label is the kept sticky label (the
+    # raw one with no sticky state). The advisor holds ADD on such an entry.
+    # "" when established, and for entries written before the field existed.
+    regime_unavailable: str = ""
     # Static-tagger event tags for the review day (deterministic; see tag_events()).
     event_tags: list[str] = Field(default_factory=list)
     # lesson_ids whose claims fired in Step-7 revision today (see matching_lessons()).
@@ -988,9 +1013,9 @@ class RegimeSnapshot(BaseModel):
     Not written to weight_memory.json.
     """
     regime_label: str = "NORMAL"           # one of 6 labels: MACRO_CRISIS, RISK_OFF, NORMAL, RISK_ON, MOMENTUM_EXTENDED, OVERSOLD
-    vix_value: float = 17.0
-    fii_proxy_5d_pct: float = 0.0          # Nifty 50 5-day return % (proxy for FII direction)
-    sector_rsi: float = 50.0
+    vix_value: float | None = 17.0         # None: India VIX did not answer (FIX-023)
+    fii_proxy_5d_pct: float | None = 0.0   # Nifty 50 5-day return % (proxy for FII direction); None: did not answer
+    sector_rsi: float | None = 50.0        # None: did not answer
     multipliers: dict[str, float] = Field(default_factory=dict)   # per-agent regime multipliers
     narrative: str = ""                    # one-sentence context for LLM injection
     as_of_date: str = ""                   # ISO date
@@ -999,6 +1024,13 @@ class RegimeSnapshot(BaseModel):
     usdinr_5d_pct: float | None = None
     spx_last_pct: float | None = None
     global_stress_signals: list[str] = Field(default_factory=list)
+    # FIX-023: inputs that did not answer, by name ("India VIX"); and, when they
+    # leave the label's severity open, why ("India VIX did not answer") and the
+    # mildest label the inputs that answered allow. A day with `unavailable`
+    # set is recorded without a regime (core/intelligence/regime/state.py).
+    dark_inputs: list[str] = Field(default_factory=list)
+    unavailable: str = ""
+    floor_label: str = ""
 
 
 # ---------------------------------------------------------------------------

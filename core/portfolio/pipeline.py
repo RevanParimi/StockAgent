@@ -12,14 +12,19 @@ import logging
 from datetime import date
 
 from core.config import settings
+from backend.shared.data.fetchers.symbol_resolver import resolve_identity
 from core.intelligence.algorithms.indicators.fetcher import get_price_history
 from core.intelligence.rl.nse_calendar import is_trading_day
 from services.data.verdict_store import VerdictStore  # plane boundary (Atlas C2)
-from core.portfolio.advisor import build_signals, decide
+from backend.shared.pipeline import decision_gate as dg
+from core.portfolio.advisor import build_signals, data_gate_blocks, decide
+from core.portfolio import exit_shadow
 from core.portfolio.corp_actions import sync_corp_actions
 from core.portfolio.digest import build_digest
+from core.portfolio.identity_reconcile import holding_identity_issue, symbol_identity_issue
 from core.portfolio.narrator import narrate
-from core.portfolio.pricing import close_on
+from core.portfolio import deployment, sizing
+from core.portfolio.pricing import PriceUnavailableError, session_close
 from core.portfolio.store import PortfolioStore, active_user_ids
 from services.data.fetchers.corporate_events import (
     load_events_calendar,
@@ -40,7 +45,8 @@ def _switch_eval_max_candidates() -> int:
 
 
 def capture_switch_evaluations(rec, signals, shelf_ideas, sector_weights,
-                               held_symbols, candidate_closes, user_id, on):
+                               held_symbols, candidate_closes, user_id, on,
+                               blocked=None):
     """Evaluation rows for ONE holding against the shelf (design 2026-08-20).
 
     Runs for every holding on every review, not only when a SWITCH fires: the
@@ -50,6 +56,9 @@ def capture_switch_evaluations(rec, signals, shelf_ideas, sector_weights,
     Pure — prices arrive via `candidate_closes`, nothing is fetched here. A
     candidate with no price is dropped rather than guessed: a fabricated entry
     price would silently corrupt every excess computed from it.
+
+    `blocked` is the SA-003 destinations map `decide` was given (enforce mode
+    only), so a row never says "taken" for a switch the gate refused.
     """
     if not _switch_eval_enabled():
         return []
@@ -57,7 +66,7 @@ def capture_switch_evaluations(rec, signals, shelf_ideas, sector_weights,
     from core.portfolio.advisor import evaluate_switch_candidates
     _best, rows = evaluate_switch_candidates(
         signals, shelf_ideas, sector_weights, held_symbols,
-        _switch_eval_max_candidates())
+        _switch_eval_max_candidates(), blocked=blocked)
     out = []
     for r in rows:
         close = candidate_closes.get(r["candidate"])
@@ -102,6 +111,67 @@ def advice_alert_fields(rec, shelf_index: dict) -> dict:
     }
 
 
+def gated_decide(signals, holding, risk_profile, *, shelf_ideas, sector_weights,
+                 held_symbols, candidate_fresh, candidate_identity=None,
+                 exit_rule="legacy", evidence=None):
+    """
+    SA-003: `decide` with the data gate, plus what the gate did. PR-009:
+    `exit_rule` and `evidence` pass through to every `decide` call.
+
+    Both decisions are computed — with the blocks and without — and the mode
+    picks one: enforce keeps the gated one, record keeps the ungated one. When
+    they differ, the kept record says so in `data_gate` (what was, or would
+    have been, withheld, why, and from which forecast runs). A risk-reducing
+    verdict (EXIT/TRIM/SWITCH sell) resting on a stale close or an unverified
+    forecast is kept and annotated, never blocked.
+
+    SA-008: a holding whose identity or price basis is not verified
+    (`signals.identity_issue`) is held outright in the gated decision, and
+    a destination whose identity is unresolved is blocked.
+
+    Returns (record, blocked_candidates_passed_to_decide).
+    """
+    add_reasons, blocked = data_gate_blocks(signals, shelf_ideas, candidate_fresh,
+                                            candidate_identity)
+    identity = signals.identity_issue
+    common = dict(shelf_ideas=shelf_ideas, sector_weights=sector_weights,
+                  held_symbols=held_symbols, exit_rule=exit_rule, evidence=evidence)
+    ungated = decide(signals, holding, risk_profile, **common)
+    if not add_reasons and not blocked and not identity:
+        return ungated, None
+    gated = decide(signals, holding, risk_profile, add_blocks=add_reasons,
+                   blocked_candidates=blocked, identity_hold=identity or None, **common)
+    enforced = dg.enforcing()
+    rec = gated if enforced else ungated
+    info = {
+        "mode": dg.gate_mode(), "enforced": False, "blocked": None,
+        "reasons": [], "source_run_ids": list(signals.forecast_run_ids),
+        "price_bar_date": signals.price_bar_date or None,
+    }
+    if identity:
+        info["identity"] = identity
+    if (gated.verdict, gated.switch_candidate) != (ungated.verdict, ungated.switch_candidate):
+        blocked_action = ungated.verdict
+        reasons = list(add_reasons)
+        if identity:
+            reasons = [f"identity: {identity}"]
+        elif ungated.verdict == "SWITCH":
+            blocked_action = f"SWITCH buy leg {ungated.switch_candidate}"
+            reasons = [f"{ungated.switch_candidate}: {blocked.get(ungated.switch_candidate, '?')}"]
+        info.update(enforced=enforced, blocked=blocked_action, reasons=reasons,
+                    gated_verdict=gated.verdict, ungated_verdict=ungated.verdict)
+        rec.data_gate = info
+    elif identity:
+        info.update(reasons=[f"identity: {identity}"],
+                    note="no action rests on this price until the holding is reconciled")
+        rec.data_gate = info
+    elif rec.verdict in ("EXIT", "TRIM", "SWITCH") and add_reasons:
+        info.update(reasons=add_reasons,
+                    note="risk reduction is never blocked; it rests on the data named here")
+        rec.data_gate = info
+    return rec, (blocked if enforced else None)
+
+
 def run_post_review_pipeline(review_date: date) -> dict:
     if not settings.ADVISOR_ENABLED:
         return {"status": "disabled"}
@@ -111,46 +181,89 @@ def run_post_review_pipeline(review_date: date) -> dict:
 
     users = active_user_ids()          # Atlas C3: users-table when enabled, dir-scan when not
     total_advice, escalations = 0, []
+    # PR-009: which exit rule acts, and whether both are recorded.
+    exit_mode = exit_shadow.exit_rule_mode()
+    exit_rule = exit_shadow.acting_rule(exit_mode)
+    # SA-049: NSE's surveillance report, read at most once a run and before
+    # any user's lock; every buy that opens a position is checked against it.
+    report_held: list = []
+
+    def surveillance():
+        if not report_held:
+            from core.portfolio import autopilot
+            report_held.append(autopilot.surveillance_report(review_date))
+        return report_held[0]
 
     for user_id in users:
         store = PortfolioStore(user_id=user_id)
         # Step 1 — corp-action sync BEFORE any advisor rule (invariant).
+        # PR-009: what NSE listed per symbol, for the invalidation level's basis.
+        corp_records: dict = {}
         try:
-            sync_corp_actions(store, review_date)
+            synced = sync_corp_actions(store, review_date)
+            if isinstance(synced, dict) and isinstance(synced.get("records"), dict):
+                corp_records = synced["records"]
         except Exception as exc:
             logger.warning("[portfolio_pipeline] corp-action sync failed for %s: %s",
                            user_id, exc)
         portfolio = store.load()
-        if not portfolio.holdings:
+        # SA-049: a portfolio that deploys idle cash runs with no holdings too.
+        deploying = deployment.active(portfolio)
+        if not portfolio.holdings and not deploying:
             continue
 
-        # Phase C context for SWITCH: active shelf ideas + sector weights.
+        # Phase C context for SWITCH: the ideas this portfolio may buy + sector
+        # weights. PR-004: shelf ideas whose deep dive is fresh, plus the
+        # user's own watchlist BUYs (core/discovery/candidates.py).
         shelf_ideas: list = []
+        all_ideas: list = []          # PR-009: any status, for a holding's invalidation level
         try:
             from core.discovery.shelf import ShelfStore
-            shelf_ideas = [i for i in ShelfStore().load().ideas if i.status == "active"]
+            all_ideas = list(ShelfStore().load().ideas)
+            shelf_ideas = [i for i in all_ideas if i.status == "active"]
         except Exception as exc:
             logger.debug("[portfolio_pipeline] shelf unavailable (non-fatal): %s", exc)
-        sector_weights: dict[str, float] = {}
         try:
-            total = sum(h.adj_qty * h.adj_avg_price for h in portfolio.holdings)
-            if total > 0:
-                for h in portfolio.holdings:
-                    sector_weights[h.sector] = sector_weights.get(h.sector, 0.0) + (
-                        h.adj_qty * h.adj_avg_price / total * 100.0
-                    )
-        except Exception:
-            pass
+            from core.discovery.candidates import buy_candidates
+            shelf_ideas, not_offered = buy_candidates(portfolio, review_date, shelf_ideas)
+            if not_offered:
+                logger.info("[portfolio_pipeline] %s: %d buy candidate(s), %d not offered: %s",
+                            user_id, len(shelf_ideas), len(not_offered),
+                            dict(list(not_offered.items())[:5]))
+        except Exception as exc:
+            logger.warning("[portfolio_pipeline] buy candidates unavailable for %s, none "
+                           "offered (non-fatal): %s", user_id, exc)
+            shelf_ideas = []
+        # SA-050: every holding's close first, so each weight is a share of
+        # total equity at the review's marks (a holding without one at cost).
+        quotes: dict[str, tuple] = {}
+        for holding in portfolio.holdings:
+            try:
+                quotes[holding.symbol] = session_close(holding.symbol, review_date)
+            except Exception as exc:
+                logger.warning("[portfolio_pipeline] no close for %s/%s, not advised "
+                               "(non-fatal): %s", user_id, holding.symbol, exc)
+        marks = {sym: quote.close for sym, (quote, _session) in quotes.items()}
+        sector_weights = dict(sizing.weights(portfolio, marks).sector_pct)
 
         # Switch-validation capture (design 2026-08-20). ONE price per
         # candidate per run: candidates repeat across holdings, so this must
         # stay outside the holding loop or it becomes N_holdings fetches each.
         candidate_closes: dict[str, float] = {}
+        candidate_fresh: dict[str, bool] = {}      # SA-003: bar is the session
+        candidate_quotes: dict[str, tuple] = {}    # SA-049: deployment prices, pre-lock
+        # SA-008: shelf symbols whose identity is not resolved (registry only,
+        # no network), whether or not switch evaluation fetches their prices.
+        candidate_identity = {i.symbol: why for i in shelf_ideas
+                              if (why := symbol_identity_issue(i.symbol, review_date))}
         switch_evals: list = []
-        if _switch_eval_enabled():
+        if _switch_eval_enabled() or deploying:
             for idea in shelf_ideas:
                 try:
-                    candidate_closes[idea.symbol] = close_on(idea.symbol, review_date)
+                    quote, session = session_close(idea.symbol, review_date)
+                    candidate_quotes[idea.symbol] = (quote, session)
+                    candidate_closes[idea.symbol] = quote.close
+                    candidate_fresh[idea.symbol] = quote.fresh_for(session)
                 except Exception as exc:
                     logger.debug("[portfolio_pipeline] no close for candidate %s "
                                  "(non-fatal): %s", idea.symbol, exc)
@@ -165,9 +278,38 @@ def run_post_review_pipeline(review_date: date) -> dict:
 
         # Step 3 — advise each holding.
         advice, closes = [], {}
+        evidence_reader = (exit_shadow.EvidenceReader(all_ideas, corp_actions=corp_records)
+                           if exit_mode != "legacy" else None)
+        shadow_rows: list = []
+        shelf_index = {i.symbol: i for i in shelf_ideas}
+        buy_legs: dict[str, bool] = {}
+
+        def switch_lands(destination: str) -> bool:
+            """FIX-016: would a SWITCH's buy of `destination` land? Asked when
+            the shadow row is written, before the autopilot runs; a refused
+            buy leaves the money in cash, and the row's benchmark says so. A
+            fetch that fails in any way is a refused buy, as in the executor."""
+            if destination not in buy_legs:
+                try:
+                    quote, session = session_close(destination, review_date)
+                    issue = symbol_identity_issue(destination, session)
+                except PriceUnavailableError:
+                    quote, session, issue = None, review_date, ""
+                except Exception as exc:
+                    logger.warning("[portfolio_pipeline] %s: switch destination %s unread, "
+                                   "its buy counted as refused: %s", user_id, destination, exc)
+                    quote, session, issue = None, review_date, ""
+                buy_legs[destination] = exit_shadow.switch_buy_lands(
+                    quote, session, shelf_index.get(destination), identity_issue=issue,
+                    enforcing=dg.enforcing(),
+                    surveillance_issue=sizing.surveillance_issue(destination, surveillance()))
+            return buy_legs[destination]
         for holding in portfolio.holdings:
+            if holding.symbol not in quotes:
+                continue
             try:
-                close = close_on(holding.symbol, review_date)
+                quote, session = quotes[holding.symbol]
+                close = quote.close
                 closes[holding.symbol] = close
                 ohlcv = None
                 try:
@@ -178,13 +320,49 @@ def run_post_review_pipeline(review_date: date) -> dict:
                 pred_store = VerdictStore(holding.symbol, sector=holding.sector)
                 signals = build_signals(
                     holding, portfolio, review_date, pred_store, calendar, close,
-                    ohlcv_df=ohlcv,
+                    ohlcv_df=ohlcv, marks=marks,
                 )
-                rec = decide(signals, holding, portfolio.risk_profile,
-                             shelf_ideas=shelf_ideas, sector_weights=sector_weights,
-                             held_symbols={h.symbol for h in portfolio.holdings})
+                # SA-003: the price freshness the gate needs.
+                signals.price_fresh = quote.fresh_for(session)
+                signals.price_bar_date = quote.bar_date.isoformat() if quote.bar_date else ""
+                # SA-008: is this close the holding's own price basis?
+                signals.identity_issue = holding_identity_issue(holding, review_date)
+                evidence = None
+                if evidence_reader is not None:
+                    try:
+                        evidence = evidence_reader.read(holding, review_date)
+                    except Exception as exc:
+                        logger.warning("[portfolio_pipeline] exit evidence failed for %s "
+                                       "(non-fatal): %s", holding.symbol, exc)
+                decide_inputs = dict(
+                    shelf_ideas=shelf_ideas, sector_weights=sector_weights,
+                    held_symbols={h.symbol for h in portfolio.holdings},
+                    candidate_fresh=candidate_fresh,
+                    candidate_identity=candidate_identity)
+                rec, gate_blocked = gated_decide(
+                    signals, holding, portfolio.risk_profile,
+                    exit_rule=exit_rule, evidence=evidence, **decide_inputs)
+                # PR-009: the other rule's verdict, recorded and never acted on.
+                if evidence_reader is not None:
+                    try:
+                        other_rule = "legacy" if exit_rule == "evidence" else "evidence"
+                        other, _ = gated_decide(
+                            signals, holding, portfolio.risk_profile,
+                            exit_rule=other_rule, evidence=evidence, **decide_inputs)
+                        legacy, by_evidence = ((other, rec) if exit_rule == "evidence"
+                                               else (rec, other))
+                        shadow_rows.append(exit_shadow.shadow_row(
+                            on=review_date, user_id=user_id, mode=exit_mode, close=close,
+                            legacy=legacy, evidence_rec=by_evidence, evidence=evidence,
+                            buy_date=holding.buy_date, price_bar_date=signals.price_bar_date,
+                            deploys_cash=deploying, switch_lands=switch_lands))
+                    except Exception as exc:
+                        logger.warning("[portfolio_pipeline] exit shadow failed for %s "
+                                       "(non-fatal): %s", holding.symbol, exc)
                 rec.user_id = user_id
                 rec.date = review_date.isoformat()
+                # SA-008: the advice keeps the instrument its close priced.
+                rec.instrument = resolve_identity(holding.symbol, review_date).stamp()
                 rec.narrative = narrate(rec, signals)
                 store.append_advice(rec)
                 advice.append(rec)
@@ -192,7 +370,8 @@ def run_post_review_pipeline(review_date: date) -> dict:
                     switch_evals.extend(capture_switch_evaluations(
                         rec, signals, shelf_ideas, sector_weights,
                         {h.symbol for h in portfolio.holdings},
-                        candidate_closes, user_id, review_date))
+                        candidate_closes, user_id, review_date,
+                        blocked=gate_blocked))
                 except Exception as exc:
                     logger.warning("[portfolio_pipeline] switch capture failed "
                                    "for %s (non-fatal): %s", holding.symbol, exc)
@@ -206,18 +385,34 @@ def run_post_review_pipeline(review_date: date) -> dict:
         except Exception as exc:
             logger.warning("[portfolio_pipeline] switch-eval write failed "
                            "(non-fatal): %s", exc)
+        if shadow_rows:
+            try:
+                written = store.append_exit_shadow_once(shadow_rows)
+                logger.info("[portfolio_pipeline] exit rule %s for %s: %d holding(s), "
+                            "%d disagreement(s), %s new row(s)", exit_mode, user_id,
+                            len(shadow_rows), sum(r.disagree for r in shadow_rows), written)
+            except Exception as exc:
+                logger.warning("[portfolio_pipeline] exit-shadow write failed "
+                               "(non-fatal): %s", exc)
         total_advice += len(advice)
         escalations.extend(a.symbol for a in advice if a.verdict in ("TRIM", "EXIT", "SWITCH"))
 
         # Step 3.5 — Compass Autopilot: execute verdicts, then snapshot equity.
         txns = []
+        run_report: dict = {}
         try:
             from core.portfolio import autopilot
             shelf_sectors = {i.symbol: i.sector for i in shelf_ideas
                              if getattr(i, "sector", "")}
+            if deploying or any(a.verdict in ("SWITCH", "ADD") for a in advice):
+                surveillance()                    # SA-049: read before the lock
             txns = autopilot.execute_advice(
                 store, portfolio, advice, closes, review_date,
-                sector_lookup=shelf_sectors)
+                sector_lookup=shelf_sectors,
+                shelf_index=shelf_index,
+                candidate_quotes=candidate_quotes,
+                surveillance=surveillance,
+                report=run_report)
             if txns:
                 portfolio = store.load()          # digest sees post-trade state
                 logger.info("[portfolio_pipeline] autopilot executed %d trade(s) for %s",
@@ -225,9 +420,28 @@ def run_post_review_pipeline(review_date: date) -> dict:
         except Exception as exc:
             logger.warning("[portfolio_pipeline] autopilot failed for %s (non-fatal): %s",
                            user_id, exc)
+        # SA-051 R1: a holding added while this run was under way has no close
+        # in `closes`. Fetch one now, outside the lock, so the point marks it at
+        # its close as results.capital_flows values it; one still without a
+        # close is marked at cost and named in the point's at_cost.
+        try:
+            for holding in store.load().holdings:
+                if holding.symbol not in closes:
+                    try:
+                        closes[holding.symbol] = session_close(holding.symbol,
+                                                               review_date)[0].close
+                    except Exception as exc:
+                        logger.warning("[portfolio_pipeline] no close for %s/%s, valued "
+                                       "at cost (non-fatal): %s", user_id, holding.symbol, exc)
+        except Exception as exc:
+            logger.warning("[portfolio_pipeline] arrival closes failed for %s (non-fatal): %s",
+                           user_id, exc)
         try:
             from core.portfolio import autopilot
-            autopilot.record_value_point(store, store.load(), closes, review_date)
+            # Under the user's lock, as every add is: the point then holds a
+            # manual add whole or not at all, and its recorded_at says which.
+            with store.locked():
+                autopilot.record_value_point(store, store.load(), closes, review_date)
         except Exception as exc:
             logger.warning("[portfolio_pipeline] value point failed for %s (non-fatal): %s",
                            user_id, exc)
@@ -246,7 +460,9 @@ def run_post_review_pipeline(review_date: date) -> dict:
         # Step 4 — digest.
         try:
             store.save_digest(build_digest(user_id, review_date, advice, portfolio,
-                                           closes, transactions=txns))
+                                           closes, transactions=txns,
+                                           deployment=run_report.get("deployment"),
+                                           top_ups_skipped=run_report.get("top_ups_skipped")))
         except Exception as exc:
             logger.warning("[portfolio_pipeline] digest failed for %s: %s", user_id, exc)
 
@@ -275,29 +491,43 @@ def run_post_review_pipeline(review_date: date) -> dict:
                     kind="autopilot_trade",
                     symbol=t.symbol,
                     message=f"{t.side} {int(t.qty)} {t.symbol} @ ₹{t.price:,.2f}"
-                            + (f" (realized ₹{t.realized_pnl:,.2f})" if t.side == "SELL" else ""),
+                            + (f" (realized ₹{t.realized_pnl:,.2f} before costs)"
+                               if t.side == "SELL" else "")
+                            # SA-048: the trade's own charges, taken from cash
+                            + (f"; costs ₹{t.costs.total:,.2f}" if t.costs else ""),
                     severity="warning" if t.side == "SELL" else "info",
                 )
                 for t in txns
             )
             # SWITCH sold but the buy leg didn't land (unpriceable candidate,
-            # budget < 1 share, or dedupe) — the user gets a SELL alert and
-            # otherwise silence, which reads as a position vanishing into cash
-            # with no explanation (spec §4).
+            # above its entry band, a cap, or dedupe) — the user gets a SELL
+            # alert and otherwise silence, which reads as a position vanishing
+            # into cash with no explanation (spec §4). SA-050: the SELL's note
+            # carries the executor's reason; the alert repeats it. A buy leg is
+            # matched to its own SELL by the advice they share, so a second
+            # switch into the same stock, or an idle-cash buy of it, never
+            # stands in for a skipped leg (SA-050 review R2).
+            from core.portfolio.autopilot import switch_skip_reason
             for a in advice:
                 if a.verdict != "SWITCH" or not a.switch_candidate.strip():
                     continue
                 candidate = a.switch_candidate.strip().upper()
-                sold = any(t.side == "SELL" and t.symbol == a.symbol for t in txns)
-                bought = any(t.side == "BUY" and t.symbol == candidate for t in txns)
-                if sold and not bought:
+                sell = next((t for t in txns if t.side == "SELL" and t.symbol == a.symbol),
+                            None)
+                bought = sell is not None and any(
+                    t.side == "BUY" and t.symbol == candidate and t.advice_ref == sell.advice_ref
+                    for t in txns)
+                if sell is not None and not bought:
+                    why = switch_skip_reason(sell.note)
                     events.append(AlertEvent(
                         date=review_date.isoformat(),
                         kind="switch_buy_skipped",
                         symbol=candidate,
-                        message=f"SWITCH {a.symbol}→{candidate}: sold but buy leg "
-                                "skipped (unpriceable or budget) — proceeds remain "
-                                "in cash",
+                        message=(f"SWITCH {a.symbol}→{candidate}: sold but the buy leg "
+                                 f"was skipped: {why}" if why else
+                                 f"SWITCH {a.symbol}→{candidate}: sold but buy leg "
+                                 "skipped (unpriceable, no close dated the session, "
+                                 "or budget) — proceeds remain in cash"),
                         severity="warning",
                     ))
             if events:

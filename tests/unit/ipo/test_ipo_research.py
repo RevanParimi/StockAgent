@@ -158,7 +158,7 @@ def test_cache_key_is_filesystem_safe(tmp_path):
 @pytest.mark.parametrize("name", ["NSE_2026-09-21", "VARMORA_2026-09-24", "LEAP_nodate"])
 def test_captured_dossiers_load_and_carry_urls(name):
     from pathlib import Path
-    data = json.loads(Path("tests/fixtures/ipo_research", f"{name}.json").read_text(encoding="utf-8"))
+    data = json.loads(Path(__file__).resolve().parents[2].joinpath("fixtures", "ipo_research", f"{name}.json").read_text(encoding="utf-8"))
     d = ResearchDossier.model_validate(data)
     assert len(d.docs) >= 10 and len(d.domains) >= 10
     assert all(doc.url.startswith("http") and doc.content for doc in d.docs)

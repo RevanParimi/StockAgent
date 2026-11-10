@@ -4,8 +4,10 @@ from unittest.mock import patch
 
 import pytest
 
+from backend.shared.schemas.discovery import ShelfIdea
 from backend.shared.schemas.portfolio import AdviceRecord, Holding
 from core.portfolio.autopilot import execute_advice, record_value_point
+from core.portfolio.pricing import SessionClose
 from core.portfolio.store import PortfolioStore
 
 D = date(2026, 7, 13)
@@ -42,14 +44,17 @@ def _switch(sym="TATAMOTORS", cand="LODHA", close=110.0):
 
 
 @patch("core.portfolio.autopilot.promote_symbol", return_value={"status": "ok"})
-@patch("core.portfolio.autopilot.close_on", return_value=200.0)
+@patch("core.portfolio.autopilot.session_close", return_value=(SessionClose(200.0, D, "agree"), D))
 def test_switch_sells_then_buys_candidate(mock_close, mock_promote, tmp_path):
     s = _store(tmp_path, [_h()], cash=20000.0)
     txns = execute_advice(s, s.load(), [_switch()], {"TATAMOTORS": 110.0}, D,
-                          sector_lookup={"LODHA": "realty"})
+                          sector_lookup={"LODHA": "realty"},
+                          # SA-050: 200 sits inside the idea's band (190-210)
+                          shelf_index={"LODHA": ShelfIdea(symbol="LODHA", sector="realty", added="2026-07-01", conviction=0.8, entry_low=190.0, entry_high=210.0, invalidation_level=170.0)})
     assert [(t.side, t.symbol) for t in txns] == [("SELL", "TATAMOTORS"), ("BUY", "LODHA")]
     buy = txns[1]
     # proceeds 1100, cash 20000+1100=21100, floor 10000 -> budget min(1100, 11100)=1100 -> 5 shares
+    # (SA-050: equity 21,100, so the 10% cap is 2,110 and does not bind)
     assert buy.qty == 5 and buy.price == 200.0
     p = s.load()
     lodha = next(h for h in p.holdings if h.symbol == "LODHA")
@@ -58,7 +63,7 @@ def test_switch_sells_then_buys_candidate(mock_close, mock_promote, tmp_path):
     mock_promote.assert_called_once_with("LODHA", "realty", origin="held")
 
 
-@patch("core.portfolio.autopilot.close_on", side_effect=Exception("no price"))
+@patch("core.portfolio.autopilot.session_close", side_effect=Exception("no price"))
 def test_switch_buy_skipped_when_candidate_unpriceable(mock_close, tmp_path):
     s = _store(tmp_path, [_h()], cash=20000.0)
     txns = execute_advice(s, s.load(), [_switch()], {"TATAMOTORS": 110.0}, D)

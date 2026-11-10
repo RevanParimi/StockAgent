@@ -10,11 +10,13 @@ get_commodity_prices()      → dict
 get_inr_usd_rate()          → float
 get_macro_context()         → str   (formatted for prompt injection)
 get_macro_result() / get_raw_materials_result() → FetchResult (SA-002)
+get_overnight_markets(on)   → list[dict]  (the brief's "Before the open", PR-003)
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import threading
 from datetime import date, datetime as _dt, timedelta
 
@@ -419,3 +421,83 @@ def _format_macro(inr: dict, crude: dict, commodities: dict, rbi: dict) -> str:
         f"Rubber (MCX, news proxy): {rubber_str}\n"
         f"RBI Repo Rate: {rbi['repo_rate_pct']}% | Stance: {rbi['stance']}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Overnight market figures for the morning brief (PR-003)
+# ---------------------------------------------------------------------------
+
+def _yahoo_daily_bars(ticker: str):
+    """About a fortnight of Yahoo daily bars, indexed in the exchange's zone."""
+    return yf.Ticker(ticker).history(period="10d", interval="1d", auto_adjust=False)
+
+
+def _closes_by_date(df) -> list[tuple[date, float]]:
+    """(exchange-local date, close) per bar, oldest first: finite positive
+    closes on weekdays only, the last row kept when Yahoo repeats a date.
+    Yahoo carries weekend quotes for some currencies (INR=X), but none of the
+    brief's instruments has a weekend session, so a Saturday or Sunday bar is
+    neither a level nor a previous session."""
+    close = df["Close"]
+    if hasattr(close, "columns"):   # multi-level columns
+        close = close.iloc[:, 0]
+    by_day: dict[date, float] = {}
+    for ts, value in close.items():
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(v) and v > 0:
+            day = ts.date() if hasattr(ts, "date") else date.fromisoformat(str(ts)[:10])
+            if day.weekday() < 5:
+                by_day[day] = v
+    return sorted(by_day.items())
+
+
+def _overnight_row(inst: dict, on: date, history, max_age_days: int) -> dict:
+    row = {"label": inst["label"], "ticker": inst["ticker"],
+           "unit": inst.get("unit", "index"), "session": inst.get("session", "24h")}
+    try:
+        bars = _closes_by_date(history(inst["ticker"]))
+    except Exception as exc:
+        logger.warning("[macro] overnight figure %s failed: %s", inst["ticker"], exc)
+        return {**row, "status": "unavailable", "reason": "fetch failed"}
+    # Issue-time rule: nothing dated after the brief; a US session dated the
+    # brief's own day has not closed by 08:50 IST.
+    last_ok = on - timedelta(days=1) if row["session"] == "us_close" else on
+    bars = [b for b in bars if b[0] <= last_ok]
+    if len(bars) < 2:
+        return {**row, "status": "unavailable", "reason": "too few sessions"}
+    (prev_day, prev), (day, value) = bars[-2], bars[-1]
+    if row["session"] == "asia_live" and day != on:
+        return {**row, "status": "closed", "as_of": day.isoformat()}
+    if (on - day).days > max_age_days:
+        return {**row, "status": "unavailable", "reason": f"latest session {day.isoformat()}"}
+    out = {**row, "status": "ok", "value": round(value, 4), "as_of": day.isoformat(),
+           "prev_as_of": prev_day.isoformat()}
+    if row["unit"] == "yield":
+        if not (0 < value < 20 and 0 < prev < 20):
+            return {**row, "status": "unavailable", "reason": "implausible yield"}
+        out["change_bp"] = round((value - prev) * 100, 1)
+    else:
+        out["change_pct"] = round((value / prev - 1) * 100, 2)
+    return out
+
+
+def get_overnight_markets(on: date, instruments: list[dict] | None = None,
+                          history=None, max_age_days: int | None = None) -> list[dict]:
+    """
+    The brief's "Before the open" figures: one row per instrument with the
+    latest close (or live level) up to `on`, its change on the previous
+    session and the exchange-local date it is as of.
+
+    status "ok" carries value, change_pct (change_bp for a yield) and as_of;
+    "unavailable" (fetch failed, too few sessions, older than max_age_days,
+    an implausible yield) carries no figure at all — never a zero; "closed"
+    marks an asia_live market with no session on `on`. `history(ticker)` is
+    injectable for tests; the default reads Yahoo.
+    """
+    instruments = settings.DELIVERY_BRIEF_MARKETS if instruments is None else instruments
+    history = history or _yahoo_daily_bars
+    max_age = settings.DELIVERY_BRIEF_MARKET_MAX_AGE_DAYS if max_age_days is None else max_age_days
+    return [_overnight_row(inst, on, history, max_age) for inst in instruments]

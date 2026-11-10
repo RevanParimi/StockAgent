@@ -112,6 +112,8 @@ def main() -> None:
     parser.add_argument("--accuracy-rate", type=float, default=0.6, help="Synthetic only.")
     parser.add_argument("--vol", type=float, default=1.0, help="Synthetic only.")
     parser.add_argument("--seed", type=int, default=42, help="Synthetic only.")
+    parser.add_argument("--output-dir", type=Path, default=None,
+                        help="Where to write the JSON report (default: outputs/eval).")
     args = parser.parse_args()
 
     harness = EvalHarness()
@@ -126,7 +128,7 @@ def main() -> None:
     )
 
     print_report(report)
-    out_path = write_report(report)
+    out_path = write_report(report, args.output_dir)
     print(f"\nReport written to {out_path}")
 
 

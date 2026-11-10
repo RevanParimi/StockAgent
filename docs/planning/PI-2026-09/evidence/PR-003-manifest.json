@@ -1,0 +1,115 @@
+{
+  "story": "PR-003",
+  "phase": "implementation (2026-10-17), a new conversation opened with 'continue', session stockagent-main-9a",
+  "baseline": "86a3a60c411805d2749e5e85c23a069f532a945b (HEAD): every payload path is clean there; the new test file is untracked",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/PR-003-implementation.md",
+    "docs/README.md (the owner's probe line, not PR-003's)"
+  ],
+  "note": "Diff: analysis_data/pr003/digest.py, git diff HEAD over the 18 modified payload paths plus the new test file against /dev/null, sorted, PDF excluded (pinned here by blob).",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "config.yaml",
+      "git_blob": "0977f8fd9d562897d1b1de4b09e8902c0ebe67dd",
+      "sha256": "44dcfdd41056c3b651c6831c79ece13d1c23ceceeb340a7be386190612df3f99"
+    },
+    {
+      "path": "core/delivery/brief.py",
+      "git_blob": "9eda1091bc6c4abed67642e7bd516f5ecab33181",
+      "sha256": "5283a772fd553a1a9680817e40bf0c7a1ee50b0917fd2f2111942d1f000bc21a"
+    },
+    {
+      "path": "core/portfolio/store.py",
+      "git_blob": "79c365a66b385282f8f3fc641737cf310f6dfe01",
+      "sha256": "d2ddd5b8556a74380a40c3ca00279cdd0308196d5c3cfb98ad69ac315906dae3"
+    },
+    {
+      "path": "docs/AGENTIC_DESIGN.md",
+      "git_blob": "bb2c23e0cd10c0bd377199bb0b84910d1ee18847",
+      "sha256": "14381263ca1587bf7681559753132624ec1d0ee442f03c19ece3cd1e32331b99"
+    },
+    {
+      "path": "docs/CHAT_ARCHITECTURE.md",
+      "git_blob": "565ccdc679fe300cbe1e187c3d2650e9a1289a7f",
+      "sha256": "4987c392da4604630c688b2efea84f30a90a83b17dbec2120ad3f6218cb95262"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "ba3d915abff6de257307f37e1d6e5aa81b2ffdf5",
+      "sha256": "f065e99474a4c1ccbe73ff5b88ad666a22519d3b13c308ff235493c2655c36a7"
+    },
+    {
+      "path": "docs/RL_DESIGN.md",
+      "git_blob": "fa7cf951b677b73df3e7ab4a607297bc1f7e9d54",
+      "sha256": "4831afa684e640b1ba91be6cce1b3073f521c81983488e26c4b2ea57ef0d01ae"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "a98d0921785a1f4c1e00ab8468e19a34f85e432d",
+      "sha256": "611404d31e6de13de527fbae5c120ea9d8bcc6917415aae70803a7b0c6d5c963"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "8604d3f1be5cb1d515f5d1618961e73b2b848e6d",
+      "sha256": "e24e48201447f6a4c6e8f8dfda1a8c77511c5eca5e5f61dfd468e9afdce8fb33"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "3bab71abe636cf6b944956f25400b07fbd694e4f",
+      "sha256": "21aa4392fab74659438f526e7db09cf87156ddfdf9d7d46f9e279ca6aac20bcb"
+    },
+    {
+      "path": "services/background/macro_news_cache.py",
+      "git_blob": "4721b27cbb932ff52281b348c98b5c6a6e7eaea9",
+      "sha256": "f7dc69c36443fce43d2fe3846bb87dcabfcf3fe41f73006e7c1fedb6fba87f15"
+    },
+    {
+      "path": "services/background/macro_news_fetcher.py",
+      "git_blob": "db0655885021e552759a62a9a12023e2326a0e6e",
+      "sha256": "bcd5662c18fd107f7b0b526cbecddbbb4fd49224fa41434edefb1282858ea8f7"
+    },
+    {
+      "path": "services/data/fetchers/macro.py",
+      "git_blob": "43abf9ecdba13aadecd9e63f129cffa2048cc88a",
+      "sha256": "907a17a3521c93b316053df227d5b402cae1a7806570bfa7a9bc1e3352b52caf"
+    },
+    {
+      "path": "src/backend/shared/config/settings/base.py",
+      "git_blob": "4d3c21cedd2c82b35a2d4ae3d8a7489a27341d13",
+      "sha256": "84ee67bd9f0cb4d1fa51d872437c592a0887f6af77e1663e22e548f6985880e9"
+    },
+    {
+      "path": "src/frontend/prototypes/brief-view.jsx",
+      "git_blob": "6c6cda971e33e69ff4aff0c0fcd315820f5d80e4",
+      "sha256": "764e89233efaafd216406d9c4a3a0e1395ae2babf056647c26646ad4094c958c"
+    },
+    {
+      "path": "tests/frontend/no_invented_figures.test.mjs",
+      "git_blob": "c832ecedbb7597f5e2a091bef3df280d17c3518b",
+      "sha256": "312ba1ccc5e88f08a09b83fb42f85dfcf6a1669fe583b1c1927deca24fdd5a1e"
+    },
+    {
+      "path": "tests/test_macro_news_cache.py",
+      "git_blob": "5212a18583da32437d5278683e3da78d7593d2ac",
+      "sha256": "a8541d5dcfa2030cc85e6a1434443466ea7cd033f7817b710315a8d032f3fe7a"
+    },
+    {
+      "path": "tests/unit/test_brief_earnings_watch_fix004.py",
+      "git_blob": "4b020f43f19ab964f2d2b2d2110cbf495a3e8ce6",
+      "sha256": "75a7e27c46500e80025c1faaac7076d4a07f40a3291a6f2a870f03260727223e"
+    },
+    {
+      "path": "tests/unit/test_delivery_brief.py",
+      "git_blob": "27bc22ff099d734ac07f60dfd26241ed2673c547",
+      "sha256": "f5ae52effa84f004f551fc0b14f88efc58dd006640185b036847d39964be731a"
+    },
+    {
+      "path": "tests/unit/test_overnight_freshness_pr003.py",
+      "git_blob": "cf6371329873b26c434d04a98041210d014d58c2",
+      "sha256": "92c0f4bd61bd112910db6c4420962bf09333e0b2137a3ee4bc400f82f57d4942"
+    }
+  ]
+}

@@ -1,4 +1,5 @@
-"""Compass Phase C — weekly review: allocation, laggards, scoreboard (spec §7)."""
+"""Compass Phase C — weekly review: allocation, laggards, switches (spec §7).
+The results scorecard it opens with is tested in test_weekly_scorecard_pr002.py."""
 from datetime import date
 
 import pytest
@@ -58,12 +59,15 @@ def test_build_weekly_sections(tmp_path, monkeypatch):
     assert review["concentration_flags"] == ["it_sector", "automobile"]
     assert review["laggards"][0]["symbol"] == "LAGCO"
     assert review["laggards"][0]["pnl_pct"] == -60.0
-    sb = review["scoreboard"]
-    assert sb["counts"]["EXIT"] == 1
-    assert sb["checked"] == 1 and sb["correct"] == 1  # price fell after EXIT
+    # PR-002: the 28-day scoreboard (a price move against current closes) is
+    # replaced by the scorecard; an unexecuted EXIT advice is no sale.
+    assert "scoreboard" not in review
+    assert review["scorecard"]["week"] == "2026-W27"
+    assert review["scorecard"]["closed_trades"]["since_start"]["count"] == 0
     assert review["headline"] == "Weekly headline."
     text = wk.render_weekly_text(review)
     assert "LAGCO" in text and "Weekly headline." in text
+    assert text.splitlines()[1].startswith("Results for 29 Jun – 3 Jul 2026")
 
 
 def test_switch_candidates_only_underweight_sectors(tmp_path, monkeypatch):
@@ -122,8 +126,8 @@ def test_run_weekly_delivers_inbox_deeplink(tmp_path, monkeypatch):
     captured = {}
     monkeypatch.setattr(wk, "active_user_ids", lambda: ["u1"])
     monkeypatch.setattr(wk, "build_weekly_review",
-                        lambda uid, on, store=None: {"date": on.isoformat(),
-                                                     "kind": "weekly_review"})
+                        lambda uid, on, store=None, close_on=None: {
+                            "date": on.isoformat(), "kind": "weekly_review"})
     monkeypatch.setattr(wk, "render_weekly_text", lambda r: "text")
     monkeypatch.setattr(wk, "deliver",
                         lambda *a, **k: captured.update(k) or {"delivered": True})

@@ -74,10 +74,9 @@ def _fake_orchestrator(*, report: FinalReport | None = None, error: Exception | 
 
 
 @pytest.fixture
-def client():
-    """TestClient with no external dependencies."""
-    from services.api.server import app
-    with TestClient(app, raise_server_exceptions=False) as c:
+def client(api_worker_app):
+    """TestClient with no external dependencies (an API-only worker's startup)."""
+    with TestClient(api_worker_app, raise_server_exceptions=False) as c:
         yield c
 
 

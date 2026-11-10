@@ -10,6 +10,14 @@ from backend.shared.schemas.portfolio import Holding, TransactionRecord
 from core.portfolio.store import PortfolioStore
 
 
+class _FlatNifty:
+    def preload(self, start, end):
+        return True
+
+    def close_on(self, d):
+        return 100.0
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     # Same pattern as tests/unit/test_portfolio_api.py: patch the module-level
@@ -20,6 +28,10 @@ def client(tmp_path, monkeypatch):
     # keep promotion machinery away from the real data/managed_tickers.json
     monkeypatch.setattr(papi, "promote_symbol", lambda *a, **k: {"status": "test"})
     monkeypatch.setattr(papi, "demote_symbol", lambda *a, **k: False)
+    # /portfolio/performance compares with the Nifty (SA-051): a flat index
+    # and flat stock closes, never the network.
+    monkeypatch.setattr(papi, "_benchmark", _FlatNifty)
+    monkeypatch.setattr(papi, "_stock_closes", lambda: (lambda symbol, d: 100.0))
     app = FastAPI()
     app.include_router(papi.router)
     return TestClient(app)
@@ -98,7 +110,10 @@ def test_manual_add_records_txn_and_capital(client, tmp_path):
     assert r.json()["transaction"]["source"] == "manual"
     s = PortfolioStore(user_id="primary", base_dir=str(tmp_path))
     p = s.load()
-    assert p.capital_in == pytest.approx(11000.0 + 600.0)
+    # SA-048: fresh money pays for the shares and their buy charges. On
+    # ₹600: STT ₹0.60 -> ₹1 (to the rupee), stamp ₹0.09, NSE 0.00307% ₹0.02,
+    # SEBI ₹0.00, GST 18% of ₹0.02 = ₹0.00: ₹1.11.
+    assert p.capital_in == pytest.approx(11000.0 + 600.0 + 1.11, abs=0.001)
     assert p.cash_deployable == pytest.approx(10000.0)   # unchanged — fresh money
 
 
@@ -112,7 +127,10 @@ def test_manual_delete_sells_and_credits_cash(client, tmp_path, monkeypatch):
     s = PortfolioStore(user_id="primary", base_dir=str(tmp_path))
     p = s.load()
     assert p.holdings == []
-    assert p.cash_deployable == pytest.approx(10000.0 + 1300.0)
+    # SA-048: the sale's charges leave cash with it. On ₹1,300: STT ₹1.30 ->
+    # ₹1, NSE ₹0.04, SEBI ₹0.00, GST ₹0.01, DP ₹15.34: ₹16.39.
+    assert p.cash_deployable == pytest.approx(10000.0 + 1300.0 - 16.39, abs=0.001)
+    assert t["costs"]["total"] == pytest.approx(16.39, abs=0.001)
 
 
 def test_scheduler_daily_review_future_date_422():
@@ -129,6 +147,30 @@ def test_scheduler_daily_review_future_date_422():
     assert "future" in resp.json()["detail"].lower()
 
 
+@pytest.mark.parametrize("hour, minute, status", [(11, 0, 422), (15, 29, 422), (15, 30, 202)])
+def test_scheduler_daily_review_refuses_a_session_that_has_not_closed(monkeypatch, hour, minute,
+                                                                     status):
+    """FIX-024: today before 15:30 IST has no close to grade, and the pipeline
+    after the reviews would book trades at the session before's closes."""
+    import core.intelligence.rl.nse_calendar as cal
+    import services.api.routes.scheduler_api as sapi
+    monkeypatch.setattr(cal, "now_ist", lambda: datetime.combine(
+        date.today(), datetime.min.time().replace(hour=hour, minute=minute), cal.IST))
+    ran = []
+
+    async def no_reviews(tickers, dates, skip_existing=False):
+        ran.append(dates)
+    monkeypatch.setattr(sapi, "_review_task", no_reviews)
+    app = FastAPI()
+    app.include_router(sapi.router)
+    resp = TestClient(app).post(f"/scheduler/daily-review?review_date={date.today().isoformat()}")
+    assert resp.status_code == status
+    if status == 422:
+        assert "has not closed yet (15:30 IST)" in resp.json()["detail"] and ran == []
+    else:
+        assert ran == [[date.today()]]
+
+
 def test_manual_delete_is_idempotent_and_atomic(client, tmp_path, monkeypatch):
     """AUD-007: delete = ONE critical section; repeating it must 404 and must
     not double-record the SELL in the ledger."""
@@ -143,7 +185,8 @@ def test_manual_delete_is_idempotent_and_atomic(client, tmp_path, monkeypatch):
     assert len(sells) == 1
     p = s.load()
     assert p.holdings == []
-    assert p.cash_deployable == pytest.approx(10000.0 + 10 * 120.0)
+    # Charged once (SA-048): on ₹1,200, STT ₹1, NSE ₹0.04, GST ₹0.01, DP ₹15.34.
+    assert p.cash_deployable == pytest.approx(10000.0 + 10 * 120.0 - 16.39, abs=0.001)
 
 
 def test_manual_add_identical_retry_dedupes(client, tmp_path, monkeypatch):
@@ -167,4 +210,6 @@ def test_import_csv_credits_capital_in(client, tmp_path):
     resp = client.post("/portfolio/import-csv", content=csv_text)
     assert resp.status_code == 200 and resp.json()["imported"] == 1
     p = PortfolioStore(user_id="primary", base_dir=str(tmp_path)).load()
-    assert p.capital_in == pytest.approx(11000.0 + 4 * 1500.0)
+    # With the buy charges (SA-048). On ₹6,000: STT ₹6, stamp ₹0.90, NSE
+    # ₹0.18, SEBI ₹0.01, GST 18% of ₹0.19 = ₹0.03: ₹7.12.
+    assert p.capital_in == pytest.approx(11000.0 + 4 * 1500.0 + 7.12, abs=0.001)

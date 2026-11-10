@@ -5,30 +5,46 @@
 # =============================================================================
 
 llm:
-  # Hybrid model tiers — 2026-06-03 benchmark (scripts/model_bench.py), bulk tier
-  # re-benchmarked 2026-07-02, reasoning tier re-benchmarked 2026-07-03
-  # (scripts/reasoning_bench.py + live unified-analyst runs on MARUTI).
-  #   fast      – chat tool-loop (tools + free text, no json_object): qwen/qwen3.6-flash
-  #   reasoning – judgment calls (aggregator verdict, RL feedback/thesis, unified
-  #               analyst): z-ai/glm-5.2 — $0.686/$2.156 per M vs $1.25/$3.75 for
-  #               qwen3.7-max (~45% cheaper), AA intelligence 51 vs max's 46
-  #               (reasoning-on numbers; our reasoning-off bench: 100% JSON, all
-  #               production checks). Live MARUTI analyst agreed with max's verdict.
-  #               Fallbacks on file: qwen/qwen3.7-plus ($0.32/$1.28, max savings,
-  #               AA 39) and deepseek/deepseek-v4-pro ($0.435/$0.87, 1.8x slower,
-  #               vendor-concentrates with bulk).
-  #   bulk      – high-volume sector-agent scoring (json_object): deepseek/deepseek-v4-flash
-  #               $0.09/$0.18 per M (vs 0.36/0.40 for retired qwen-2.5-72b), 1M ctx,
-  #               json_object verified 2026-07-02 with reasoning disabled.
+  # Hybrid model tiers — fast and reasoning re-benchmarked 2026-10-22
+  # (scripts/reasoning_bench.py JSON battery + scripts/model_bench.py real chat
+  # pipeline; numbers in docs/planning/PI-2026-09/evidence/FIX-013-implementation.md).
+  # Every call site runs with provider reasoning DISABLED, so a tier model must
+  # return strict JSON with reasoning off, and OpenRouter must report its
+  # reasoning as optional (reasoning.mandatory false).
+  #   fast      – chat tool-loop (tools + free text) and the 08:45 pre-open shock
+  #               check (json_object): deepseek/deepseek-v4.1-flash-1017 — chat bench
+  #               0 fabricated sources / skipped tools / broken answers, 14.0 s a turn
+  #               vs 20.6 s and half the cost of qwen3.6-flash; JSON 6/6. Dated
+  #               snapshot slug, so OpenRouter cannot roll it silently. Of its ~30
+  #               hosts, DeepSeek's own doubles its price on weekdays 06:30-09:30
+  #               and 11:30-15:30 IST, and Alibaba's every day 05:30-19:30 IST. One
+  #               host ignores response_format, so the pre-open call sets
+  #               provider.require_parameters (preopen_check.py).
+  #   reasoning – judgment calls (unified analyst, aggregator verdict, RL feedback
+  #               and thesis, control lane, chat fallback): xiaomi/mimo-v2.6-pro —
+  #               $0.435/$0.87 per M vs glm-5.2's $1.218/$3.828 (~72% cheaper for a
+  #               7.5k-in/3k-out analyst call), AA index 46 vs 34 (v4.3.2,
+  #               reasoning-on); JSON 6/6, verdict and top drivers correct with
+  #               reasoning off. A different vendor from fast, so the chat fallback
+  #               still answers when DeepSeek fails.
+  #   bulk      – high-volume json_object scoring, narration, events, IPO extraction:
+  #               deepseek/deepseek-v4-flash $0.091/$0.182 per M, 1M ctx, ~15 hosts.
   # NB 2026-07: OpenRouter silently rolled several models to thinking-by-default
   # snapshots, truncating json_object output. EVERY json_object call site passes
   # extra_body=JSON_MODE_EXTRA_BODY (llm_client.py) to disable reasoning.
-  # Retired: qwen3-235b (broke JSON), qwen-2.5-72b (2-4x cost of deepseek),
-  # Gemini 3.5 Flash (broken output + 64x cost), Kimi (empty + 68s).
-  # Rejected 2026-07-03: minimax-m3 (non-JSON 3/12), minimax-m2.7 (OpenRouter 400:
-  # reasoning cannot be disabled — violates the JSON_MODE_EXTRA_BODY rule).
-  model_fast: "qwen/qwen3.6-flash"
-  model_reasoning: "z-ai/glm-5.2"
+  # Rejected 2026-10-22: claude-haiku-5.5 (writes its working before the JSON with
+  # reasoning off: 1/6 parseable), qwen3.8-flash (a preview; 33.8 s a turn, one
+  # turn over the 45 s chat budget), ling-3.1-flash (15 s per JSON call),
+  # deepseek-v4.1-flash-1017 for reasoning (would put all three tiers on DeepSeek);
+  # glm-5.3, glm-5.3-flash, minimax-m3.1-flash, gemini-3.8-flash (reasoning
+  # mandatory). OpenRouter ":batch" slugs are the async 24 h Batch API, not a
+  # cheaper synchronous call.
+  # Retired: z-ai/glm-5.2 and qwen/qwen3.6-flash (2026-10-22), qwen3.7-max,
+  # qwen3-235b (broke JSON), qwen-2.5-72b (2-4x cost of deepseek), Gemini 3.5 Flash
+  # (broken output + 64x cost), Kimi (empty + 68s), minimax-m3 (non-JSON 3/12),
+  # minimax-m2.7 (reasoning cannot be disabled).
+  model_fast: "deepseek/deepseek-v4.1-flash-1017"
+  model_reasoning: "xiaomi/mimo-v2.6-pro"
   model_bulk: "deepseek/deepseek-v4-flash"
   temperature: 0.2
   max_tokens: 2048
@@ -39,11 +55,18 @@ llm:
   output_cost_per_m: 0.18
   # Per-model cost rates (USD per million tokens) — AUD-105. Keyed on the exact
   # OpenRouter model id each call site logs; models not listed fall back to the
-  # flat input/output_cost_per_m above. Live OpenRouter prices 2026-07-17
-  # (NB glm-5.2 was repriced upstream from 0.686/2.156 at the 2026-07-03 bench).
+  # flat input/output_cost_per_m above. OpenRouter list prices 2026-10-22 from
+  # /api/v1/models; each call is routed to one of several hosts whose prices
+  # differ, so these are list prices, not the billed amount.
   cost_rates:
+    "deepseek/deepseek-v4.1-flash-1017": [0.15, 0.60]
+    "xiaomi/mimo-v2.6-pro": [0.435, 0.87]
+    "deepseek/deepseek-v4-flash": [0.091, 0.182]
+    # Previous tiers keep their rates, so a rollback through LLM_MODEL_* is still priced:
+    # qwen3.6-flash at its 2026-10-22 list price; glm-5.2 at its last measured rate
+    # (2026-07-17). Its 35 hosts' 2026-10-22 prices vary widely (first party
+    # $1.40/$4.40 per M), so after a rollback run costs are approximate.
     "z-ai/glm-5.2": [1.218, 3.828]
-    "deepseek/deepseek-v4-flash": [0.098, 0.196]
     "qwen/qwen3.6-flash": [0.1875, 1.125]
 
 logging:
@@ -125,6 +148,27 @@ watchdog:
   prep_enabled: true             # auto-run safe, idempotent prep (e.g. Atlas ETL)
   hour: 6                        # IST. Deliberately NOT the 23:xx cluster:
   minute: 30                     #   "your window is open today" at 23:45 is useless
+
+# SA-011: the durable-error backlog (core/ops/error_backlog.py). app_logs rows
+# are grouped into issues by a deterministic fingerprint and triaged at the
+# owner-only GET/POST /ops/errors. Nothing here sends a message: the watchdog
+# check `error_backlog` exists, but no milestones.yaml entry names it.
+error_backlog:
+  new_days: 2                    # an issue first seen (or back) this recently is new/regressed
+  quiet_days: 7                  # absent this long = quiet; a return after it is a regression
+  ack_quiet_days: 35             # an acknowledged issue regresses only after this long quiet
+                                 #   (longer than a monthly job's cadence)
+  verify_days: 7                 # a fix is verified after this long with no recurrence,
+                                 #   and only once the archive holds rows from after it
+  spike_baseline_days: 14        # spiking: today's/yesterday's count above the trailing
+  spike_sigma: 3.0               #   mean + sigma*sd of its own baseline days,
+  spike_min: 10                  #   and at least this many
+  retention_days: 90             # an inactive issue is pruned after this long unseen
+  max_issues: 2000               # table cap; never drops an active issue
+  daily_days: 30                 # per-issue daily counts kept
+  keep_ids: 20                   # per-issue run ids / tickers kept
+  batch_rows: 2000               # app_logs rows per transaction
+  max_rows_per_refresh: 20000    # per read; the next read continues from the cursor
 
 macro_news:
   enabled: true
@@ -388,6 +432,72 @@ portfolio:
   default_user_id: "primary"     # single-user launch; per-user layout from day one
   max_managed_tickers: 40        # auto-promotion cap — guards LLM spend (~$19/mo at 40)
   weekly_review_weekday: 4       # Friday: watchlist-cadence names review this weekday only
+  # Charges on every paper BUY and SELL, taken from cash with the trade
+  # (core/portfolio/costs.py): an NSE equity delivery trade at a zero-brokerage
+  # broker. Rates are percentages of the trade value. A ledger row keeps the
+  # charges and the as_of it was charged with, so changing a rate never alters
+  # a past trade; rows from before costs were charged are estimated when read
+  # with these rates, labelled "estimated". All checked on as_of:
+  costs:
+    as_of: "2026-10-31"
+    brokerage_pct: 0.0           # Zerodha equity delivery: zero brokerage (zerodha.com/charges)
+    brokerage_max_inr: 0.0       # a per-order cap for a percentage broker; 0 = none
+    stt_pct: 0.1                 # buy and sell, delivery, to the nearest rupee (STT Rules 2004, rule 4); Budget 2026 raised only F&O STT
+    stamp_duty_buy_pct: 0.015    # buy side only (Indian Stamp Act, collected via the exchange since 1 Jul 2020)
+    exchange_fee_pct: 0.00307    # NSE cash market, each side, from 1 Mar 2026 (NSE/FA/73061, 27 Feb 2026); IPFT ₹0.01/crore left out
+    sebi_fee_pct: 0.0001         # ₹10 per crore, each side
+    gst_pct: 18.0                # on brokerage + exchange fee + SEBI fee
+    dp_charge_inr: 15.34         # per scrip per SELL, GST included: ₹3.5 CDSL + ₹9.5 Zerodha + ₹2.34 GST
+  # The capital-gains tax estimate on paper sales (core/portfolio/costs.py),
+  # per financial year (April-March), for a resident individual. Shown, never
+  # taken from cash. Rates in force for transfers from 23 Jul 2024 (Finance
+  # (No. 2) Act 2024, sections 111A and 112A of the 1961 Act; carried into the
+  # Income-tax Act 2025 in force from 1 Apr 2026). Not modelled: surcharge,
+  # the basic-exemption shortfall and losses carried to later years.
+  tax:
+    as_of: "2026-10-31"
+    short_term_pct: 20.0         # listed equity held 12 months or less, STT paid
+    long_term_pct: 12.5          # held more than 12 months, above the exemption
+    long_term_exemption_inr: 125000   # per financial year, once
+    long_term_after_months: 12
+    cess_pct: 4.0                # health and education cess on the tax
+  # The holdings idle-cash deployment works with (autopilot.deploy_idle_cash;
+  # core/portfolio/deployment.py). The analysis's BUY ideas that pass the checks
+  # decide how many stocks are held, up to max_holdings; the regime's share of
+  # equity decides how much is invested. A new position asks for the NORMAL
+  # share of equity over target_holdings (80% ÷ 12 ≈ 6.7%: ₹80,000 of ₹12 L,
+  # ₹3,33,333 of ₹50 L), in every regime, always within advisor.max_position_pct,
+  # the sector cap and the cash floor.
+  min_holdings: 10               # a soft minimum in calm regimes: reported when not met, never forces a buy
+  target_holdings: 12            # sets a position's size (owner, 12 Oct 2026); not a limit on holdings
+  max_holdings: 15               # stops over-dilution
+  # Per portfolio (user id): any of the three keys above, deploy_idle_cash, and
+  # deploy_target_invested_pct, whose regimes replace those it names.
+  # Example: {primary: {deploy_idle_cash: true}} switches deployment on for
+  # one portfolio only.
+  overrides: {}
+
+# Compass Autopilot: executes the advisor's verdicts on the paper portfolio
+# (core/portfolio/autopilot.py).
+autopilot:
+  enabled: true
+  add_tranche_pct: 25.0          # an ADD buys this % of the holding's value
+  trim_pct: 25.0                 # a TRIM sells this % of the holding
+  min_cash_floor: 10000.0        # ₹ every buy leaves in cash, after its charges
+  add_cooldown_td: 5             # exchange sessions between two buys of one stock
+  # Idle-cash deployment (SA-049): after sells and switches, open new positions
+  # from the day's buy candidates until the invested share reaches the sticky
+  # market regime's target (the daily review's label). Off until the owner
+  # switches it on; portfolio.overrides can switch it per portfolio.
+  deploy_idle_cash: false
+  deploy_max_new_per_day: 2      # new positions a day, so cash goes in over days
+  deploy_target_invested_pct:    # % of total equity in stocks (owner, 1 Nov 2026)
+    NORMAL: 80
+    RISK_ON: 80
+    MOMENTUM_EXTENDED: 80
+    OVERSOLD: 80
+    RISK_OFF: 50
+    MACRO_CRISIS: 0              # no new positions: cash is held on purpose
 
 advisor:
   enabled: true
@@ -407,11 +517,25 @@ advisor:
   confidence_decline_threshold: 0.05  # remaining-envelope confidence drop that counts as declining
   envelope_flat_band_pct: 1.0    # remaining-forecast drift within ±this% = FLAT
   add_min_direction_accuracy: 0.60    # last-7-entries hit rate needed for ADD
+  # Caps on total equity (holdings at market + cash), after the trade, for
+  # every autopilot buy; the same numbers drive POSITION_LARGE and
+  # SECTOR_CONCENTRATION_HIGH (SA-050, core/portfolio/sizing.py)
   max_position_pct: 10.0
-  sector_concentration_warn_pct: 30.0
+  max_sector_pct: 30.0
   ltcg_wait_min_months: 10       # TRIM in month 10-12 with intact thesis -> WAIT_FOR_LTCG note
   earnings_gap_days: 3           # profitable + earnings within N trading days -> protection flag
   switch_conviction_gap: 0.15    # SWITCH: shelf idea must beat holding envelope confidence by this (spec §5.2)
+  # Which exit rule sells a holding whose reason may have broken (KT section 6,
+  # core/portfolio/exit_shadow.py). legacy: the price-path thesis_break decides.
+  # shadow: legacy decides, and both verdicts are recorded per holding per review
+  # day in data/portfolio/<user>/exit_shadow.jsonl. evidence: case_broken decides
+  # (a material negative NSE filing or rule-typed disclosure, never a news article
+  # alone; an actionable SELL run after the buy, at most 22 sessions old; or the
+  # invalidation price), switched only by the owner on the weekly scorecard's
+  # predeclared gate (not worse in count and money, against cash or the Nifty).
+  # Rollback = legacy. An unknown value reads as shadow.
+  exit_rule: shadow
+  min_hold_sessions: 10          # case_broken waits this many sessions after the buy; stops never wait
 
 # =============================================================================
 # Compass Phase B — Discovery funnel + generic sector graph (spec 2026-07-06 §6/§8)
@@ -425,28 +549,33 @@ discovery:
   enabled: true
   history_days: 550              # rolling EOD window (~2.2yr; 12m momentum needs 252 tds)
   bhavcopy_dir: "data/market_cache/bhavcopy"
-  data_dir: "data/discovery"     # screens/, shelf.json, shelf_events.jsonl
+  data_dir: "data/discovery"     # screens/, shelf.json, shelf_events.jsonl, listing.json
   paper_data_dir: "data/rl/paper/predictions"   # ISOLATED paper-lane store root (spec §6.3)
   liquidity_floor_cr: 5.0        # median daily traded value ≥ ₹5 cr
   float_mcap_floor_cr: 500.0     # free-float mcap ≥ ₹500 cr (thin float = operator bait)
   min_price: 20.0                # no penny stocks
-  max_promoter_pledge_pct: 25.0  # guard ships dark in v1 (no free data source yet)
+  max_promoter_pledge_pct: 25.0  # promoter shares pledged, % of the promoter holding (NSE pledge data)
+  pledge_guard: true             # base.py fallback false; rollback = false (the check is then degraded)
   circuit_streak_max: 3          # > N trailing upper-circuit days = operator pattern
   shortlist_size: 80             # bhavcopy-ranked names that get per-symbol guard checks
   max_candidates: 40             # ScreenResult size after guards
-  deep_dive_count: 10            # weekly unified-analyst calls (LLM cost cap)
-  shelf_size: 10                 # max active shelf ideas
-  stale_days: 60                 # idea age without trigger -> rotate out
+  deep_dive_count: 20            # weekly analyst calls, re-dives and IPO slots included (LLM cost cap)
+  shelf_size: 20                 # max active shelf ideas: 12 holdings plus rotation
+  max_ideas_per_sector: 3        # active ideas per market sector; 0 = no cap
+  redive_after_days: 30          # an idea's deep dive older than this is re-dived before it can be bought; 0 = off
+  watchlist_buys: true           # a user's watchlist BUY (actionable, fresh) is a buy candidate too
+  stale_days: 60                 # latest deep dive older than this -> rotate out
   min_conviction: 0.55           # deep-dive final_score floor to reach the shelf (= BUY threshold)
   include_sme: false             # SME platform excluded by default (spec §6.2)
-  signal_weights:                # composite rank blend; renormalized over LIVE signals
+  signal_weights:                # composite rank blend; renormalized over AVAILABLE signals
     momentum: 0.30               # 6m+12m vol-adjusted (NSE Momentum-50 style)
     delivery_surge: 0.15         # 5d delivery% vs prior 20d
     volume_breakout: 0.15        # 5d/60d volume ratio, gated on 60d-high proximity
     bulk_block: 0.15             # same-side bulk/block net accumulation over 4wks
     high_52wk_rs: 0.10           # 52wk-high proximity + 3m relative strength
-    insider_buying: 0.10         # DARK in v1 — fetcher returns None until a source ships
-    mf_holding: 0.05             # DARK in v1 — AMC portfolio parsing is its own sub-project
+    insider_buying: 0.10         # promoter + director open-market net buying, NSE insider filings
+  insider_window_days: 28        # insider_buying reads every company's filings over this window
+  insider_max_documents: 600     # new filing documents read a run; more -> signal unavailable that week
 
   # -- Stage-2 IPO / new-listing tracker (Compass Phase C, spec §6.2) --------
   ipo_enabled: true              # base.py fallback false
@@ -454,6 +583,35 @@ discovery:
   ipo_max_deep_dives: 2          # reserved Stage-3 slots (WITHIN deep_dive_count budget)
   ipo_lockin_warn_days: 7        # flag anchor/pre-IPO lock-in expiries within N days
   ipo_qib_weight: 3.0            # QIB subscription weighted 3x retail (spec §6.2)
+
+# ── Company-event feed (core/events; KT sections 4 and 9) ──────────────────
+# Twice each trading day, what happened to every stock a user holds or watches
+# and every active shelf idea: NSE filings and one news search per stock, typed
+# by one bulk-tier call, and NSE disclosures (insider trades, substantial
+# acquisitions, promoter pledges, shareholding changes) typed by fixed rules,
+# stored in data/events/<SYMBOL>.jsonl. Store only: nothing reads it yet
+# except the route and the same-day dossier ingestion.
+events:
+  enabled: true                  # base.py fallback false; rollback = false (EVENTS_ENABLED)
+  data_dir: "data/events"
+  morning: "08:15"               # IST, before the 08:45 pre-open check
+  evening: "18:30"               # IST, after the close and the 16:30 review
+  max_symbols: 60                # held first, then watched, then shelf
+  news_queries_per_day: 60       # Serper /news; each run may use half
+  news_articles_per_query: 5
+  news_recency: "qdr:d"          # past 24 hours; NSE filings cover longer gaps
+  lookback_days: 7               # NSE filing window, covers long weekends
+  max_items_per_symbol: 24       # new items per stock per run (newest first)
+  max_items_per_call: 12         # items per classifier call
+  seen_days: 30                  # how long an "unrelated" answer is remembered
+  ingest_on_results: true        # a results or concall filing runs the dossier ingestion that run
+  disclosures:                   # base.py fallbacks false; rollback = set a source false
+    insider: true                # SEBI PIT filings -> insider events
+    sast: true                   # SAST Regulation 29 filings -> deal events
+    pledge: true                 # SAST Regulation 31 events -> pledge events
+    ownership: true              # quarterly shareholding pattern -> ownership events
+  ownership_move_points: 1.0     # promoter, FII, DII or MF share moving this much makes an event
+  max_documents_per_symbol: 10   # insider XBRL documents read per stock per run (newest first)
 
 # ── PI Prospect — IPO intelligence (spec 2026-08-11) ────────────────────────
 ipo:
@@ -657,6 +815,37 @@ observability:
   data_health_fundamentals_max_age_days: 200
 
 # =============================================================================
+# Decision gate (SA-003, audit F08) — act only on essential data
+# =============================================================================
+decision_gate:
+  # Each analysis gets a typed gate: actionable, degraded (actionable, but an
+  # ordinary enrichment such as news is missing) or abstain. It abstains when
+  # an essential section above (observability.data_health_essential_sections)
+  # is not ok/cache_hit, when fewer than min_dimensions_fraction of the
+  # sector's dimensions were scored, or when the run has no structured
+  # provenance (the legacy worker-pool fallback).
+  #
+  # record  = compute the gate everywhere and record, in
+  #           data/logs/decision_gate.jsonl and on the report, forecast rows and
+  #           advice, what enforcement WOULD stop. Nothing changes.
+  # enforce = an abstained analysis reads INSUFFICIENT DATA; no forecast,
+  #           re-forecast, shelf idea, weight update, lesson or envelope
+  #           revision is built on it; a review whose close is not dated the
+  #           session is skipped; no ADD or SWITCH buy without a close dated
+  #           the review session and an actionable forecast. Exits and trims
+  #           are never blocked.
+  # Any other value fails closed to enforce and logs a warning.
+  #
+  # Checked in as record: activating enforce is a separate owner decision,
+  # after SA-039's observation window and a measured record period.
+  # ROLLBACK LINE: set this (or the env DECISION_GATE_MODE) back to record.
+  mode: record
+  # Audit F08 saw BUY on 1 of 6 and 2 of 6 scored dimensions and STRONG BUY on
+  # 3 of 9. The composite renormalises over what was scored, so one surviving
+  # dimension becomes the whole verdict. At least half must be scored.
+  min_dimensions_fraction: 0.5
+
+# =============================================================================
 # Sector routing (Three Loops PI, task A1 — spec 2026-08-24 §2.1)
 # =============================================================================
 sectors:
@@ -704,9 +893,10 @@ generic_graph:
 delivery:
   enabled: true                  # master gate: scheduler Jobs 13/14 + all channel sends
   data_dir: "data/delivery"      # push_subscriptions.json, alerts_sent.jsonl
-  # D6/SA-006: Railway disables outbound SMTP on Free/Trial/Hobby, so the SMTP
-  # path cannot work in prod on this plan ([Errno 101] Network is unreachable).
-  # Set RESEND_API_KEY in Railway and EMAIL_TRANSPORT stays "auto" -> resend.
+  # D6/SA-006: Railway blocks outbound SMTP on Free/Trial/Hobby ([Errno 101]
+  # Network is unreachable). Production moved to Pro and was redeployed on
+  # 2026-09-21, and SMTP has worked since. On a host that blocks SMTP, set
+  # RESEND_API_KEY and EMAIL_TRANSPORT stays "auto" -> resend (HTTPS).
   email_enabled: false           # flip once RESEND_API_KEY (or SMTP_*) is set in .env / Railway
   push_enabled: true             # degrades silently until VAPID_* secrets are set
   index_watch:                   # weekly constituent diff -> inclusion/exclusion alerts
@@ -716,10 +906,16 @@ delivery:
     - "NIFTY SMALLCAP 250"
   # Atlas C7 (BP2) durable outbox — active only when ATLAS_ENABLED. The drainer
   # runs in the singleton-lock owner and retries with backoff -> dead-letter.
-  outbox_max_attempts: 3         # sends before a row is dead-lettered
+  # SA-006: only TRANSIENT failures retry; auth/config/rejected-recipient
+  # failures dead-letter at once. GET /delivery/outbox shows dead letters.
+  outbox_max_attempts: 3         # sends before a transient failure is dead-lettered
   outbox_backoff_minutes: [1, 5, 30]   # per-attempt reschedule delay
+  outbox_retry_after_cap_minutes: 360  # longest provider Retry-After honoured
+  outbox_sending_stale_minutes: 60     # 'sending' older than this = stopped process -> dead, not re-sent
   outbox_poll_seconds: 30        # drainer loop interval
-  outbox_retention_days: 30      # C9 prunes delivered/dead rows older than this
+  outbox_retention_days: 30      # C9 prunes delivered rows older than this (dead rows: payload cleared)
+  outbox_dead_letter_retention_days: 180  # C9 deletes dead-letter rows older than this
+  push_ttl_seconds: 43200        # push service holds an undelivered push this long (pywebpush default 0 = drop)
   # Alert rendering (presentation 2026-08-20). false = plain-text email only;
   # the Inbox card is unaffected either way (it reads the structured fields
   # straight off the sent-log).
@@ -754,6 +950,23 @@ delivery:
     with, from, up, its, into, over, without, amid, new, plan, move, step, measure,
     raise, boost, increase, hike, support, ease, rbi, govt, government, india, indian,
     market, stock, share, sensex, nifty]
+  # PR-003: overnight = PUBLISHED since the previous brief, not shown recently
+  brief_overnight_max_lookback_days: 4        # never older than this, even after a gap in briefs
+  brief_overnight_repeat_lookback_briefs: 5   # the user's last N briefs count as "shown"
+  brief_overnight_repeat_min_shared: 3        # a different-URL story is a repeat only if it shares >= this many salient entities
+  brief_overnight_repeat_max_new_share: 0.34  # ...at most this share of its salient entities is new, and no new figure
+  # PR-003 "Before the open" (Yahoo daily bars). session: us_close = last session
+  # before the brief's day; asia_live = shown only when it traded on the brief's
+  # day; 24h = latest bar up to the brief's day. [] removes the section.
+  brief_markets:
+    - {label: "S&P 500", ticker: "^GSPC", session: us_close, unit: index}
+    - {label: "Nasdaq Composite", ticker: "^IXIC", session: us_close, unit: index}
+    - {label: "Nikkei 225", ticker: "^N225", session: asia_live, unit: index}
+    - {label: "Hang Seng", ticker: "^HSI", session: asia_live, unit: index}
+    - {label: "Brent crude", ticker: "BZ=F", session: "24h", unit: usd}
+    - {label: "USD/INR", ticker: "INR=X", session: "24h", unit: inr}
+    - {label: "US 10-year yield", ticker: "^TNX", session: us_close, unit: yield}
+  brief_market_max_age_days: 4                # an older figure is "unavailable", not shown
 
 # =============================================================================
 # Atlas M1 — user-plane relational core (data/atlas.db). Ships DORMANT: the whole

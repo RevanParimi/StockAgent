@@ -262,11 +262,14 @@ _CATEGORIES = [
     },
 ]
 
+# Suggested first questions in the chat overlay. Questions only: a seed that
+# states a verdict or a figure ("Why is X rated STRONG BUY today?") would show
+# a claim that no analysis made.
 _CHAT_SEEDS = [
-    "Why is MARUTI rated STRONG BUY today?",
-    "What does the Sales & Demand agent see this week?",
-    "Compare Tata Motors vs M&M for EV exposure",
-    "Which agent should I trust most for short-term moves?",
+    "How is my portfolio doing?",
+    "What moved the market today?",
+    "What should I watch in my holdings this week?",
+    "Explain the latest verdict on one of my stocks",
 ]
 
 
@@ -277,6 +280,74 @@ _CHAT_SEEDS = [
 def _score_store():
     from services.data.stores.score_store import ScoreStore
     return ScoreStore()
+
+
+# Every analysis writes the score history, including one a member asked for by
+# name (FIX-010). So a screen that lists stocks out of it names only stocks the
+# viewer may see: the shared ones below, plus the viewer's own holdings and
+# watchlist. A stock another account holds, watches or asked about is never
+# named to anyone else (FIX-009's rule). A screen keyed by a stock the viewer
+# names (a watchlist row, a ticker's history) needs no filter.
+
+def _shared_symbols() -> set[str]:
+    """Stocks any account may see named: the built-in universe, the managed
+    tickers (GET /ui/tickers/managed is open to every account) and the shelf's
+    active ideas. A failed read narrows the set; it never widens it."""
+    syms = {t["sym"] for t in _ALL_TICKERS}
+    try:
+        syms |= {str(t.get("sym") or "").strip().upper()
+                 for t in _load_mt() if isinstance(t, dict)} - {""}
+    except Exception as exc:
+        logger.warning("[ui_data] managed tickers unreadable, left out of the shared stocks: %s", exc)
+    try:
+        from core.discovery.shelf import ShelfStore
+        syms |= {i.symbol.upper() for i in ShelfStore().load().ideas if i.status == "active"}
+    except Exception as exc:
+        logger.warning("[ui_data] shelf unreadable, left out of the shared stocks: %s", exc)
+    return syms
+
+
+def _own_symbols(user_id: str | None) -> set[str]:
+    """The viewer's own holdings and watchlist; empty when unreadable.
+
+    With Atlas on, the account's portfolio; dormant, also the global watchlist
+    (one user). No user id means an anonymous request while sign-in is
+    required (with AUTH off the owner passthrough has an id): it owns nothing,
+    and never stands in for the default user. Like the chat's brief (FIX-005),
+    it reads only a portfolio that exists: the read never creates an
+    account's folder."""
+    from core.config import settings
+    from core.portfolio.store import _USER_ID_RE, PortfolioStore
+    if not user_id:
+        return set()
+    uid = str(user_id)
+    own: set[str] = set()
+    if not atlas_store.enabled():
+        own |= {str(s).upper() for s in _load_watchlist()}
+    if not _USER_ID_RE.fullmatch(uid) or not (Path(settings.PORTFOLIO_DATA_DIR) / uid).is_dir():
+        return own
+    try:
+        p = PortfolioStore(user_id=uid).load()
+    except Exception as exc:
+        logger.warning("[ui_data] portfolio unreadable for the viewer, own stocks left out: %s", exc)
+        return own
+    return own | {h.symbol.upper() for h in p.holdings} | {w.symbol.upper() for w in p.watchlist}
+
+
+def _visible_symbols(user_id: str | None) -> set[str]:
+    return _shared_symbols() | _own_symbols(user_id)
+
+
+def _agent_score(value) -> float | None:
+    """An agent's score from a score-history row's `agent_scores`. The writer
+    stores {"raw", "weight", "weighted"} per agent (ScoreStore.save); the raw
+    score is the agent's own reading. A plain number is taken as it is."""
+    if isinstance(value, dict):
+        value = value.get("raw")
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _fetch_yf_price(yf_ticker: str) -> tuple[float, float]:
@@ -337,12 +408,43 @@ def _fetch_yf_series(yf_ticker: str, days: int = 30) -> list[float]:
 
 
 def _fetch_sector_changes() -> list[dict]:
-    """Return sector daily % changes from NSE indices. Sync."""
+    """Return sector daily % changes from NSE indices. Sync.
+
+    A failed fetch comes back from _fetch_yf_price as (0.0, 0.0); its pct is
+    None here, so the UI shows "—" rather than a flat "+0.00%" day."""
     results = []
     for sector in _SECTOR_INDICES:
         price, pct = _fetch_yf_price(sector["yf"])
-        results.append({"name": sector["name"], "pct": pct})
+        results.append({"name": sector["name"], "pct": pct if price else None})
     return results
+
+
+def _fetch_index_history(yf_ticker: str, calendar_days: int) -> list[tuple[str, float]]:
+    """An index's daily closes over a little more than the last `calendar_days`
+    days, as (ISO date, close), oldest first. Sync; [] when the fetch fails.
+
+    The date is the bar's own exchange date, so the UI can say which day a
+    value belongs to. During market hours the last bar is today's, still moving."""
+    try:
+        import yfinance as yf
+        hist = yf.Ticker(yf_ticker).history(period=f"{calendar_days + 10}d", auto_adjust=True)
+    except Exception as exc:
+        logger.debug("[ui_data] index history fetch failed for %s: %s", yf_ticker, exc)
+        return []
+    if hist is None or hist.empty or "Close" not in hist:
+        return []
+    closes = hist["Close"].dropna()
+    return [(ts.date().isoformat(), round(float(v), 2)) for ts, v in closes.items()]
+
+
+def _index_quote(history: list[tuple[str, float]]) -> dict | None:
+    """Last value, its change on the bar before, and that bar's date; None
+    when there are not two closes to compare."""
+    if len(history) < 2 or not history[-2][1]:
+        return None
+    (_, prev), (as_of, last) = history[-2], history[-1]
+    return {"name": "Nifty 50", "value": last,
+            "changePct": round((last - prev) / prev * 100, 2), "asOf": as_of}
 
 
 def _verdict_to_trend(verdict: str) -> str:
@@ -365,13 +467,12 @@ def _pulse_from_scores(scores: list[float], sector_changes: list[dict] | None = 
             return "Mixed signals"
         return "Caution ahead"
 
-    # No DB data — derive from live sector % changes
-    if sector_changes:
-        positives = sum(1 for s in sector_changes if s.get("pct", 0) > 0)
-        negatives = sum(1 for s in sector_changes if s.get("pct", 0) < 0)
-        total = len(sector_changes)
-        if total == 0:
-            return "Market closed"
+    # No DB data — derive from the sector % changes that were fetched
+    known = [s["pct"] for s in (sector_changes or []) if s.get("pct") is not None]
+    if known:
+        positives = sum(1 for p in known if p > 0)
+        negatives = sum(1 for p in known if p < 0)
+        total = len(known)
         if positives >= total * 0.7:
             return "Mostly green"
         if positives >= total * 0.5:
@@ -380,7 +481,8 @@ def _pulse_from_scores(scores: list[float], sector_changes: list[dict] | None = 
             return "Caution ahead"
         return "Mixed signals"
 
-    return "Market closed"
+    # Neither scores nor sector data: say so, not "Market closed".
+    return "No recent data"
 
 
 def _load_watchlist() -> list[str]:
@@ -508,36 +610,43 @@ def _build_ticker_row(
     }
 
 
-def _rows_since(store, hours: int) -> list[dict]:
-    """Return all DB rows from the last N hours, falling back to all-time latest if empty."""
+def _rows_since(store, hours: int, visible: set[str]) -> list[dict]:
+    """The rows of the visible stocks from the last N hours, falling back to
+    their all-time latest if there are none."""
     from datetime import datetime, timezone, timedelta
     since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
-    rows = store.get_by_date_range(since_iso=since)
-    return rows if rows else store.get_all_latest()
+    rows = _only_visible(store.get_by_date_range(since_iso=since), visible)
+    return rows if rows else _only_visible(store.get_all_latest(), visible)
+
+
+def _only_visible(rows: list[dict], visible: set[str]) -> list[dict]:
+    return [r for r in rows if str(r.get("ticker") or "").upper() in visible]
 
 
 def _freshness_label(rows: list[dict]) -> dict:
-    """Return {label, runAt, isStale} based on the most recent run_at in the row set."""
+    """Return {label, runAt, isStale} based on the most recent run_at in the row set.
+
+    The score history stores run_at as naive UTC (ScoreStore.save and the
+    backfill), so a time without an offset is read as UTC. A time that cannot
+    be read states no age and counts as stale."""
     if not rows:
         return {"label": "No data yet", "runAt": None, "isStale": True}
     latest_run = max(r["run_at"] for r in rows)
     try:
-        from datetime import datetime, timezone
-        run_dt = datetime.fromisoformat(latest_run.replace("Z", "+00:00"))
-        now = datetime.now(timezone.utc)
-        age_hours = (now - run_dt).total_seconds() / 3600
-        if age_hours < 1:
-            label = "Live"
-        elif age_hours < 6:
-            label = f"Updated {int(age_hours)}h ago"
-        elif age_hours < 24:
-            label = f"Updated {int(age_hours)}h ago"
-        else:
-            days = int(age_hours / 24)
-            label = f"Last analysis {days} day{'s' if days > 1 else ''} ago"
-        return {"label": label, "runAt": latest_run, "isStale": age_hours > 12}
-    except Exception:
-        return {"label": "Updated recently", "runAt": latest_run, "isStale": False}
+        run_dt = datetime.fromisoformat(str(latest_run).replace("Z", "+00:00"))
+    except ValueError:
+        return {"label": "Analysis time unknown", "runAt": latest_run, "isStale": True}
+    if run_dt.tzinfo is None:
+        run_dt = run_dt.replace(tzinfo=timezone.utc)
+    age_hours = (datetime.now(timezone.utc) - run_dt).total_seconds() / 3600
+    if age_hours < 1:
+        label = "Live"
+    elif age_hours < 24:
+        label = f"Updated {int(age_hours)}h ago"
+    else:
+        days = int(age_hours / 24)
+        label = f"Last analysis {days} day{'s' if days > 1 else ''} ago"
+    return {"label": label, "runAt": latest_run, "isStale": age_hours > 12}
 
 
 def _build_drivers_from_db(rows: list[dict]) -> list[dict]:
@@ -573,22 +682,17 @@ def _build_drivers_from_db(rows: list[dict]) -> list[dict]:
             if len(drivers) >= 4:
                 return drivers
 
-    # Always return 4 drivers; pad with generic ones if DB sparse
-    fallback = [
-        {"kind": "good", "label": "Auto sector broadly positive — EV registrations growing", "impact": "Sales & Demand", "tickers": ["TATAMOTORS", "M&M"]},
-        {"kind": "good", "label": "Crude oil stable — raw material cost relief",              "impact": "Raw Materials",   "tickers": ["MARUTI", "BAJAJ-AUTO"]},
-        {"kind": "mid",  "label": "INR mildly weak vs USD — watch import cost creep",         "impact": "Risk & Macro",   "tickers": ["MARUTI"]},
-        {"kind": "bad",  "label": "Global macro uncertainty — monitor FII flows",             "impact": "Sentiment",      "tickers": []},
-    ]
-    while len(drivers) < 4:
-        drivers.append(fallback[len(drivers)])
-    return drivers[:4]
+    # Up to 4, and only drivers an analysis actually named: no generic padding
+    # when the DB is sparse (the UI says there are none yet).
+    return drivers
 
 
 def _build_month_agent_scores(latest_rows: list[dict]) -> list[dict]:
-    """Aggregate agent sub-scores across recent analyses for the 'This month' pane."""
+    """Aggregate agent sub-scores across recent analyses for the 'This month' pane.
+
+    Only agents with at least one score appear. An agent's configured weight is
+    not a vote, so it is never shown in place of a missing score."""
     import json
-    from core.config import settings
 
     agg: dict[str, list[float]] = {}
     for row in latest_rows:
@@ -598,14 +702,17 @@ def _build_month_agent_scores(latest_rows: list[dict]) -> list[dict]:
         except Exception:
             scores = {}
         for agent, val in scores.items():
-            agg.setdefault(agent, []).append(float(val))
+            v = _agent_score(val)
+            if v is not None:
+                agg.setdefault(agent, []).append(v)
 
     result = []
-    weights = settings.AGENT_WEIGHTS
     for meta in _AGENT_META:
         key = meta["key"]
         vals = agg.get(key, [])
-        avg = round(sum(vals) / len(vals), 2) if vals else round(weights.get(key, 0.5), 2)
+        if not vals:
+            continue
+        avg = round(sum(vals) / len(vals), 2)
         kind = "good" if avg >= 0.60 else "bad" if avg < 0.45 else "mid"
         result.append({"n": meta["name"], "v": avg, "k": kind})
     return result
@@ -635,12 +742,14 @@ async def _gather_ticker_data() -> tuple[list[dict], list[dict]]:
 
 
 async def _gather_market_data(db_latest: list[dict]) -> dict:
-    """Fetch sector changes + Nifty Auto sparkline concurrently."""
-    sector_changes, nifty_history = await asyncio.gather(
+    """Fetch sector changes, the Nifty Auto sparkline and the Nifty 50 concurrently."""
+    sector_changes, nifty_history, nifty50_history = await asyncio.gather(
         asyncio.to_thread(_fetch_sector_changes),
         asyncio.to_thread(_fetch_yf_series, "^CNXAUTO", 30),
+        asyncio.to_thread(_fetch_index_history, "^NSEI", 5),
     )
-    return {"sector_changes": sector_changes, "nifty_history": nifty_history}
+    return {"sector_changes": sector_changes, "nifty_history": nifty_history,
+            "nifty50": _index_quote(nifty50_history)}
 
 
 # ---------------------------------------------------------------------------
@@ -783,7 +892,8 @@ async def get_tickers() -> dict:
 @router.get("/market/summary", summary="Market pulse, drivers, sector changes, sparkline")
 async def get_market_summary() -> dict:
     store     = _score_store()
-    db_latest = store.get_all_latest()
+    # Market-wide figures name no account's own stock (FIX-010): shared stocks only
+    db_latest = _only_visible(store.get_all_latest(), _shared_symbols())
 
     market_data_pre = await _gather_market_data(db_latest)
     scores = [float(r["final_score"]) for r in db_latest if r.get("final_score") is not None]
@@ -794,16 +904,16 @@ async def get_market_summary() -> dict:
         "Auto sector data will appear here after your first analysis runs."
     )
     one_liner_month = (
-        "EV momentum + PLI benefits flowing through margins. Watch crude & INR."
+        "No analyses this month yet."
         if not db_latest else
         "Multiple analyses available — check agent verdicts for the full picture."
     )
 
     market_data = market_data_pre  # already fetched above
 
-    # Auto sector 1-day change for the hero
+    # Auto sector 1-day change; None when it could not be fetched
     auto_change = next(
-        (s["pct"] for s in market_data["sector_changes"] if s["name"] == "Auto"), 0.0
+        (s["pct"] for s in market_data["sector_changes"] if s["name"] == "Auto"), None
     )
 
     return {
@@ -833,17 +943,20 @@ async def bootstrap() -> dict:
     """
     store = _score_store()
     ticker_rows, db_latest = await _gather_ticker_data()
+    # Market-wide figures name no account's own stock (FIX-010): shared stocks only
+    shared = _shared_symbols()
+    db_latest = _only_visible(db_latest, shared)
     market_data = await _gather_market_data(db_latest)
 
     scores    = [float(r["final_score"]) for r in db_latest if r.get("final_score")]
     pulse     = _pulse_from_scores(scores, market_data["sector_changes"])
     auto_chg  = next(
-        (s["pct"] for s in market_data["sector_changes"] if s["name"] == "Auto"), 0.0
+        (s["pct"] for s in market_data["sector_changes"] if s["name"] == "Auto"), None
     )
 
     # Date-filtered row sets for Today (24h) and This Month (current calendar month)
-    today_rows = _rows_since(store, hours=24)
-    month_rows = _rows_since(store, hours=24 * 31)
+    today_rows = _rows_since(store, hours=24, visible=shared)
+    month_rows = _rows_since(store, hours=24 * 31, visible=shared)
     today_freshness = _freshness_label(today_rows)
     month_freshness = _freshness_label(month_rows)
 
@@ -892,7 +1005,8 @@ async def bootstrap() -> dict:
         reason = drivers[0][:90] if drivers else r["name"]
         # Pull top agent score for the "why" line
         try:
-            agent_scores = json.loads(db_row.get("agent_scores") or "{}")
+            agent_scores = {k: s for k, v in json.loads(db_row.get("agent_scores") or "{}").items()
+                            if (s := _agent_score(v)) is not None}
             top_agent_key = max(agent_scores, key=agent_scores.get)
             top_agent_name = next((m["name"] for m in _AGENT_META if m["key"] == top_agent_key), top_agent_key)
             top_score = agent_scores[top_agent_key]
@@ -945,14 +1059,19 @@ async def bootstrap() -> dict:
         "MARKET_MONTH": {
             "pulse":      _pulse_from_scores([float(r["final_score"]) for r in month_rows if r.get("final_score")]),
             "oneLiner":   (month_rows[0].get("investment_thesis", "")[:160] if month_rows
-                           else "EV momentum + PLI benefits flowing through margins. Watch crude & INR."),
+                           else "No analyses this month yet."),
             "drivers":    _build_drivers_from_db(month_rows),
             "agentVotes": _build_month_agent_scores(month_rows),
             "freshness":  month_freshness,
         },
 
-        # Nifty Auto sparkline — window.NIFTY_AUTO_HISTORY
-        "NIFTY_AUTO_HISTORY": market_data["nifty_history"] or _fallback_sparkline(),
+        # Nifty 50's last value, its change on the bar before and that bar's
+        # date (window.NIFTY50; the home hero's market line) — None when the
+        # fetch failed, and the hero then leaves the line out.
+        "NIFTY50": market_data["nifty50"],
+
+        # Nifty Auto closes — window.NIFTY_AUTO_HISTORY; empty when the fetch failed
+        "NIFTY_AUTO_HISTORY": market_data["nifty_history"],
 
         # Trending — window.TRENDING (score-delta movers, not price movers)
         "TRENDING": trending,
@@ -972,33 +1091,43 @@ async def bootstrap() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# T2.1  GET /ui/nifty-ranges — multi-timeframe Nifty Auto sparkline
+# T2.1  GET /ui/nifty-ranges — the Nifty 50 over a time range (home index box)
 # ---------------------------------------------------------------------------
 
+# Calendar days per range, so "1 year" covers a year of trading days.
 _RANGE_CONFIG = {
-    "1W": {"period": "1mo",  "days": 7,   "label": "1 week"},
-    "1M": {"period": "1mo",  "days": 30,  "label": "1 month"},
-    "3M": {"period": "3mo",  "days": 63,  "label": "3 months"},
-    "6M": {"period": "6mo",  "days": 126, "label": "6 months"},
-    "1Y": {"period": "1y",   "days": 252, "label": "1 year"},
+    "1W": {"days": 7,   "label": "1 week"},
+    "1M": {"days": 30,  "label": "1 month"},
+    "3M": {"days": 91,  "label": "3 months"},
+    "6M": {"days": 182, "label": "6 months"},
+    "1Y": {"days": 365, "label": "1 year"},
 }
 
 
-@router.get("/nifty-ranges", summary="Nifty Auto sparkline for a given time range")
+@router.get("/nifty-ranges", summary="Nifty 50 closes, last value and its date for a time range")
 async def get_nifty_ranges(range: str = Query(default="1M")) -> dict:
-    cfg = _RANGE_CONFIG.get(range.upper(), _RANGE_CONFIG["1M"])
-    series = await asyncio.to_thread(_fetch_yf_series, "^CNXAUTO", cfg["days"] + 20)
-    series = series[-cfg["days"]:]   # trim to exact count
-
-    change = 0.0
-    if len(series) >= 2:
-        change = round((series[-1] - series[0]) / series[0] * 100, 2)
+    """The Nifty 50's closes over the range, its last value and that close's
+    date. `value`, `asOf` and `change` are None when the fetch failed (no
+    points) and the home index box then says the Nifty 50 is unavailable."""
+    key = range.upper() if range.upper() in _RANGE_CONFIG else "1M"
+    cfg = _RANGE_CONFIG[key]
+    history = await asyncio.to_thread(_fetch_index_history, "^NSEI", cfg["days"])
+    if history:
+        start = date.fromordinal(date.fromisoformat(history[-1][0]).toordinal() - cfg["days"])
+        history = [(d, v) for d, v in history if d >= start.isoformat()]
+    points = [v for _, v in history]
+    change = (round((points[-1] - points[0]) / points[0] * 100, 2)
+              if len(points) >= 2 and points[0] else None)
 
     return {
-        "range":  range.upper(),
-        "points": series,
+        "index":  "Nifty 50",
+        "range":  key,
         "label":  cfg["label"],
+        "points": points,
         "change": change,
+        "value":  points[-1] if points else None,
+        "asOf":   history[-1][0] if history else None,
+        "from":   history[0][0] if history else None,
     }
 
 
@@ -1051,8 +1180,11 @@ async def get_watchlist(
     async def _fetch_one(sym: str) -> dict:
         ticker_def = next((t for t in _ALL_TICKERS if t["sym"] == sym), None)
         if not ticker_def:
-            return {"sym": sym, "name": sym, "price": 0.0, "change": 0.0,
-                    "score": 0.5, "verdict": "NEUTRAL", "trend": "flat", "hasData": False}
+            # A stock outside the built-in universe: its analysis comes from the
+            # score history like any other (FIX-010); no price is fetched for it.
+            row = db_map.get(str(sym).upper())
+            return _build_ticker_row({"sym": sym, "name": (row or {}).get("company_name") or sym},
+                                     row, 0.0, 0.0)
         price, change = await asyncio.to_thread(_fetch_yf_price, ticker_def["yf"])
         return _build_ticker_row(ticker_def, db_map.get(sym), price, change)
 
@@ -1183,7 +1315,8 @@ async def _yf_lookup(sym: str) -> dict | None:
 
 
 @router.get("/search", summary="Search tickers by name/symbol and recent thesis text")
-async def search(q: str = Query(default="")) -> dict:
+async def search(q: str = Query(default=""),
+                 user: dict | None = Depends(get_current_user_optional)) -> dict:
     q_raw = q.strip()
     q = q_raw.lower()
     if len(q) < 2:
@@ -1198,10 +1331,12 @@ async def search(q: str = Query(default="")) -> dict:
             results.append({"sym": t["sym"], "name": t["name"], "type": "ticker"})
             known_syms.add(t["sym"])
 
-    # Search recent investment theses from DB
+    # Search recent investment theses from DB: a text match names stocks the
+    # caller did not, so only the stocks they may see (FIX-010)
     try:
         store = _score_store()
-        db_latest = store.get_all_latest()
+        visible = await asyncio.to_thread(_visible_symbols, (user or {}).get("user_id"))
+        db_latest = _only_visible(store.get_all_latest(), visible)
         for row in db_latest:
             thesis = (row.get("investment_thesis") or "").lower()
             sym = row.get("ticker", "")
@@ -1222,7 +1357,7 @@ async def search(q: str = Query(default="")) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# T2.5  GET /ui/learnings — RL feedback → lesson cards
+# T2.5  GET /ui/learnings — recent verdict changes and forecast misses
 # ---------------------------------------------------------------------------
 
 def _severity_from_score(score: float) -> str:
@@ -1232,81 +1367,112 @@ def _severity_from_score(score: float) -> str:
 
 
 def _kind_from_verdict_change(prev: str, cur: str) -> str:
+    """Name the verdict move itself. It says nothing about what anyone did:
+    no trade is attached to a verdict change, so "missed buy" or "good call"
+    would be a claim this data cannot support."""
     bullish = {"STRONG BUY", "BUY"}
     bearish = {"STRONG SELL", "SELL"}
-    if prev in bullish and cur in bearish: return "missed-sell"
-    if prev in bearish and cur in bullish: return "missed-buy"
-    if cur in bullish: return "good-call"
-    if cur in bearish: return "avoided-loss"
-    return "sizing"
+    if prev in bullish and cur in bearish: return "turned-bearish"
+    if prev in bearish and cur in bullish: return "turned-bullish"
+    if cur in bullish: return "bullish"
+    if cur in bearish: return "bearish"
+    return "neutral"
 
 
-@router.get("/learnings", summary="Derive lesson cards from RL feedback logs and score history")
-async def get_learnings() -> dict:
+# "Recent verdict changes" lists at most this many, newest first. The Portfolio
+# page's LEARNINGS_MAX_CHANGES mirrors it: a full list is the newest N, not all.
+_LEARNINGS_MAX_CHANGES = 10
+# Forecast misses follow under their own heading, newest first.
+_LEARNINGS_MAX_MISSES = 5
+
+
+def _verdict_of(run: dict) -> str:
+    return (run.get("verdict") or "").strip().upper()
+
+
+def _verdict_changes(history: list[dict]) -> list[tuple[dict, dict]]:
+    """The (run, run before it) pairs where the verdict changed, from one
+    stock's runs newest first (as ScoreStore.get_history returns them).
+
+    A re-run that gives the same verdict is not a change, and a pair with a
+    missing verdict proves nothing either way."""
+    return [(newer, older) for newer, older in zip(history, history[1:])
+            if _verdict_of(newer) and _verdict_of(older) and _verdict_of(newer) != _verdict_of(older)]
+
+
+def _verdict_change_record(sym: str, newest: dict, prev: dict) -> tuple[str, int, dict]:
+    """(run_at, row id, item) for one verdict change, dated by the run that made it."""
+    kind = _kind_from_verdict_change(_verdict_of(prev), _verdict_of(newest))
+    score = float(newest.get("final_score", 0.5))
+    prev_score = float(prev.get("final_score", 0.5))
+    score_delta = round(score - prev_score, 2)
+
+    # Parse agent scores
+    try:
+        agent_scores_raw = newest.get("agent_scores") or "{}"
+        agent_scores = json.loads(agent_scores_raw) if isinstance(agent_scores_raw, str) else agent_scores_raw
+    except ValueError:   # malformed JSON (json.JSONDecodeError)
+        agent_scores = {}
+
+    top_agents = sorted(agent_scores.items(), key=lambda x: x[1], reverse=True)[:3]
+    agent_snapshot = [
+        {"n": next((m["name"] for m in _AGENT_META if m["key"] == k), k), "v": round(v, 2)}
+        for k, v in top_agents
+    ]
+
+    run_at = newest.get("run_at") or ""
+    thesis = (newest.get("investment_thesis") or "")[:160]
+    verdict_label = newest.get("verdict","NEUTRAL")
+
+    return run_at, int(newest.get("id") or 0), {
+        "id":            f"{kind}-{sym.lower()}-{newest.get('id')}",
+        "kind":          kind,
+        "severity":      _severity_from_score(score),
+        "sym":           sym,
+        "title":         f"{sym}: {prev.get('verdict','NEUTRAL')} → {verdict_label}",
+        "when":          run_at[:10] or "Recent",
+        "what":          thesis or f"Composite score {score:.2f}, verdict {verdict_label}",
+        "detail":        f"Score moved {'+' if score_delta >= 0 else ''}{score_delta:.2f} → now {verdict_label}",
+        "agentSnapshot": agent_snapshot,
+    }
+
+
+@router.get("/learnings", summary="Recent verdict changes and forecast misses for the analysed stocks")
+async def get_learnings(user: dict | None = Depends(get_current_user_optional)) -> dict:
     """
-    Reads from the RL prediction store (if available) and the score history DB
-    to generate actionable lesson cards matching the PORTFOLIO_LEARNINGS shape.
-    Falls back to an empty set if no data exists.
+    Reads the score history DB (and the RL feedback log, when present) and
+    returns dated records: the verdict changes in the kept runs of the stocks
+    the viewer may see (a verdict that differs from the run before it),
+    newest first, at most _LEARNINGS_MAX_CHANGES; then the latest forecast
+    misses, kind "forecast-miss", newest first, at most _LEARNINGS_MAX_MISSES.
+    `since` is the date of the oldest kept run among those stocks (None with
+    no runs), so an empty list can say since when nothing changed.
+
+    The stocks are _visible_symbols(): the shared ones and the viewer's own,
+    never another account's (FIX-010). Every field is read from those stores.
+    There is deliberately no money figure (a composite-score change is not
+    rupees), no summary rate and no advice text: the realized results of
+    trades come from SA-051 and PR-002. Empty when no data exists, and when
+    the score history cannot be read (a partial list would misstate the
+    newest changes).
     """
-    items = []
-    patterns = []
+    from core.config import settings
+
+    changes: list[tuple[str, int, dict]] = []
+    misses: list[tuple[str, dict]] = []
+    oldest: list[str] = []
 
     try:
         store = _score_store()
-        db_latest   = store.get_all_latest()
-        db_latest_m = {r["ticker"]: r for r in db_latest}
+        visible = await asyncio.to_thread(_visible_symbols, (user or {}).get("user_id"))
 
-        # Pull up-to-3 historical records per ticker to spot verdict changes
-        for ticker_def in _ALL_TICKERS:
-            sym = ticker_def["sym"]
-            history = await asyncio.to_thread(store.get_history, sym, 3)
-            if len(history) < 2:
-                continue
-            newest, prev = history[0], history[1]
-
-            kind = _kind_from_verdict_change(prev.get("verdict","NEUTRAL"), newest.get("verdict","NEUTRAL"))
-            score = float(newest.get("final_score", 0.5))
-            prev_score = float(prev.get("final_score", 0.5))
-            score_delta = round(score - prev_score, 2)
-
-            # Parse agent scores
-            try:
-                agent_scores_raw = newest.get("agent_scores") or "{}"
-                agent_scores = json.loads(agent_scores_raw) if isinstance(agent_scores_raw, str) else agent_scores_raw
-            except Exception:
-                agent_scores = {}
-
-            top_agents = sorted(agent_scores.items(), key=lambda x: x[1], reverse=True)[:3]
-            agent_snapshot = [
-                {"n": next((m["name"] for m in _AGENT_META if m["key"] == k), k), "v": round(v, 2)}
-                for k, v in top_agents
-            ]
-
-            thesis = (newest.get("investment_thesis") or "")[:160]
-            when   = newest.get("run_at", "")[:10] if newest.get("run_at") else "Recent"
-            verdict_label = newest.get("verdict","NEUTRAL")
-
-            cost_text = (
-                f"Score moved {'+' if score_delta >= 0 else ''}{score_delta:.2f} → now {verdict_label}"
-            )
-
-            items.append({
-                "id":            f"{kind}-{sym.lower()}",
-                "kind":          kind,
-                "severity":      _severity_from_score(score),
-                "sym":           sym,
-                "title":         f"{sym}: {prev.get('verdict','NEUTRAL')} → {verdict_label}",
-                "when":          when,
-                "what":          thesis or f"Composite score {score:.2f}, verdict {verdict_label}",
-                "cost":          cost_text,
-                "costValue":     round(score_delta * 10000),
-                "lesson":        (
-                    f"When score crosses 0.70+, {sym} has shown sustained upside. Watch agent weights." if score >= 0.70
-                    else f"Score below 0.50 on {sym} — tighten stop-loss or reduce position."
-                ),
-                "agentSnapshot": agent_snapshot,
-                "action":        "Review agent details",
-            })
+        # Every kept run per ticker: a change can be any pair of runs in it
+        for sym in sorted(visible):
+            history = await asyncio.to_thread(store.get_history, sym, settings.SCORE_HISTORY_MAX_ROWS)
+            if history:
+                oldest.append(history[-1].get("run_at") or "")
+            for newest, prev in _verdict_changes(history):
+                changes.append(_verdict_change_record(sym, newest, prev))
 
         # Also try reading RL feedback logs from prediction store
         try:
@@ -1319,72 +1485,45 @@ async def get_learnings() -> dict:
                 fb_log = ps.load_feedback_log(cycle)
                 for entry in (fb_log.entries if fb_log else [])[-5:]:
                     mt = entry.miss_type if hasattr(entry, "miss_type") else None
-                    if mt and str(mt) not in ("MissType.data_gap", "MissType.external_shock"):
-                        items.append({
+                    # MissType is a Literal: the value is the bare name ("data_gap").
+                    # Data gaps and outside shocks are not the model's misses.
+                    if mt and str(mt).replace("MissType.", "") not in ("data_gap", "external_shock"):
+                        misses.append((str(entry.date), {
                             "id":            f"rl-{sym.lower()}-{entry.date}",
-                            "kind":          "missed-sell" if str(mt) in ("MissType.model_bias", "MissType.direction_flip") else "sizing",
+                            "kind":          "forecast-miss",
                             "severity":      "high" if entry.direction_correct is False else "low",
                             "sym":           sym,
                             "title":         f"RL flag: {str(mt).replace('MissType.','').replace('_',' ')} on {sym}",
                             "when":          str(entry.date),
                             "what":          f"Agent {entry.primary_miss_agent or 'unknown'} flagged as primary miss. Direction correct: {entry.direction_correct}",
-                            "cost":          f"Miss type: {str(mt).replace('MissType.','')}",
-                            "costValue":     0,
-                            "lesson":        "Review this agent's weight if it consistently misses direction.",
+                            "detail":        f"Miss type: {str(mt).replace('MissType.','')}",
                             "agentSnapshot": [],
-                            "action":        "Tune agent weight",
-                        })
+                        }))
         except Exception as exc:
             logger.debug("[ui/learnings] RL store read skipped: %s", exc)
 
     except Exception as exc:
         logger.warning("[ui/learnings] DB read failed: %s", exc)
+        return {"items": [], "since": None}
 
-    # Summarise
-    score_changes = [it["costValue"] for it in items]
-    summary = {
-        "missedGain":      sum(v for v in score_changes if v > 0),
-        "avoidedLoss":     sum(-v for v in score_changes if v < 0),
-        "realizedLoss":    0,
-        "accuracyVsAgent": round(len([i for i in items if i["kind"] == "good-call"]) / max(len(items), 1), 2),
-        "actionsReviewed": len(items),
-    }
-
-    # Simple patterns from items
-    good_count = len([i for i in items if i["kind"] in ("good-call", "avoided-loss")])
-    bad_count  = len([i for i in items if i["kind"] in ("missed-buy", "missed-sell", "missed-sell")])
-    total = max(good_count + bad_count, 1)
-    if items:
-        patterns = [
-            {"id":"p1", "label": "Correct verdict calls this period", "rate": round(good_count/total, 2), "kind": "good" if good_count > bad_count else "bad",
-             "detail": f"{good_count} of {total} verdict changes were in the right direction."},
-        ]
-
-    return {
-        "summary": summary,
-        "items":   items[:10],
-        "patterns": patterns,
-    }
-
-
-def _fallback_sparkline() -> list[float]:
-    """Generate a plausible-looking 30-point series if yfinance is unavailable."""
-    import math, random
-    v = 22_000
-    out = []
-    for i in range(30):
-        v += math.sin(i / 3) * 60 + (random.random() - 0.45) * 90
-        out.append(round(v, 2))
-    return out
+    # Newest first, then cut: the cap keeps the latest, whichever stock they are in.
+    # Same-second runs fall back to the row id (insertion order).
+    changes.sort(key=lambda c: (c[0], c[1]), reverse=True)
+    misses.sort(key=lambda m: m[0], reverse=True)
+    since = min((o for o in oldest if o), default="")[:10] or None
+    return {"items": [c[2] for c in changes[:_LEARNINGS_MAX_CHANGES]]
+                     + [m[1] for m in misses[:_LEARNINGS_MAX_MISSES]],
+            "since": since}
 
 
 # ---------------------------------------------------------------------------
 # Chat context builders — each fetches one slice of relevant data
 # ---------------------------------------------------------------------------
 
-def _ctx_current_verdicts() -> str:
+def _ctx_current_verdicts(user_id: str | None = None) -> str:
+    """The latest verdict of each stock the caller may see (FIX-010)."""
     try:
-        rows = _score_store().get_all_latest()
+        rows = _only_visible(_score_store().get_all_latest(), _visible_symbols(user_id))
         if not rows:
             return ""
         lines = [
@@ -1396,11 +1535,12 @@ def _ctx_current_verdicts() -> str:
         return ""
 
 
-def _ctx_recent_history(days: int = 14) -> str:
+def _ctx_recent_history(days: int = 14, user_id: str | None = None) -> str:
+    """The analyses of the last N days, of the stocks the caller may see (FIX-010)."""
     try:
         from datetime import datetime, timedelta
         since = (datetime.utcnow() - timedelta(days=days)).isoformat()
-        rows = _score_store().get_by_date_range(since)
+        rows = _only_visible(_score_store().get_by_date_range(since), _visible_symbols(user_id))
         if not rows:
             return f"HISTORY (last {days} days): No analyses run in this window."
         lines = [
@@ -1649,7 +1789,8 @@ async def _chat_tool_get_macro_news() -> str:
             for r in raw[:6]:
                 iso = _normalize_date(r.get("date", ""))
                 age = _result_age_label(iso) if iso else "recent"
-                lines.append(f"[{age}] {r.get('title', '')} — {r.get('source', '')} | {r.get('link', '')}")
+                link = f" | {r['link']}" if r.get("link") else ""
+                lines.append(f"[{age}] {r.get('title', '')} — {r.get('source', '')}{link}")
             return "\n".join(lines)
     except Exception as exc:
         logger.debug("[macro] live fallback failed: %s", exc)
@@ -1658,15 +1799,17 @@ async def _chat_tool_get_macro_news() -> str:
             "returned nothing. Use search_market_news for a specific topic.")
 
 
-def _build_chat_context(_message: str, intent_type: str = "GENERAL") -> str:
+def _build_chat_context(_message: str, intent_type: str = "GENERAL",
+                        user_id: str | None = None) -> str:
     """
     Always-available lightweight context: date/market status, optional macro trending
-    news (broad intents only), and current ticker verdicts.
+    news (broad intents only), and current ticker verdicts of the stocks the
+    caller may see (FIX-010).
     History and RL data are fetched on-demand via get_analysis_history / get_rl_insights tools.
     """
     market_ctx = _nse_market_context()
     macro_ctx  = _get_macro_context_for_intent(intent_type)
-    cv         = _ctx_current_verdicts()
+    cv         = _ctx_current_verdicts(user_id)
     db_line    = cv or "No analysis data yet — run a ticker analysis from the Home screen first."
     parts = [market_ctx]
     if macro_ctx:
@@ -2262,9 +2405,9 @@ _NSE_NAME_ALIASES: dict[str, str] = {
 
 
 # NSE ticker → correct yfinance symbol via the shared self-healing resolver
-# (curated overrides in settings.YF_SYMBOL_OVERRIDES + the learned cache).
+# (the instrument registry, config/instruments.yaml, + the learned cache).
 def _nse_yf(ticker: str) -> str:
-    """Map an NSE ticker to its yfinance symbol (override → learned cache → naive)."""
+    """Map an NSE ticker to its yfinance symbol (registry → learned cache → naive)."""
     from backend.shared.data.fetchers.symbol_resolver import resolve_yf_symbol
     return resolve_yf_symbol(ticker)
 
@@ -2422,21 +2565,43 @@ def _rrf_fuse(result_lists: list[list[dict]], k: int = 60) -> list[dict]:
     Reciprocal Rank Fusion: merge several ranked result lists into one. A doc's
     score = Σ 1/(k + rank) across lists, so items that rank high in MULTIPLE
     queries float to the top — more robust than any single query's ranking.
-    Dedupes by link/url.
+    Dedupes by link/url. A result without a link is one doc with the result of
+    the same title (case and spacing ignored): Serper gives an article's link
+    only in a search's top 3 and "" below (FIX-021), so one article can come
+    back with its link in one variant and without it in another. The doc keeps
+    the result that has its link; two results with different links stay two.
     """
-    def _key(r: dict) -> str:
-        return r.get("link") or r.get("url") or r.get("title", "")
+    def _link(r: dict) -> str:
+        return r.get("link") or r.get("url") or ""
+
+    def _title(r: dict) -> str:
+        return " ".join(str(r.get("title") or "").lower().split())
 
     scores: dict[str, float] = {}
     items: dict[str, dict] = {}
+    key_of_link: dict[str, str] = {}
+    key_of_title: dict[str, str] = {}
     for lst in result_lists:
         for rank, r in enumerate(lst):
-            key = _key(r)
+            link, title = _link(r), _title(r)
+            if link:
+                key = key_of_link.get(link)
+                held = key_of_title.get(title) if title else None
+                if key is None and held is not None and not _link(items[held]):
+                    key = held
+                key = key or link
+            else:
+                key = key_of_title.get(title) or (f"title:{title}" if title else "")
             if not key:
                 continue
             scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank)
-            items.setdefault(key, r)
-    return sorted(items.values(), key=lambda r: scores[_key(r)], reverse=True)
+            if key not in items or (link and not _link(items[key])):
+                items[key] = r
+            if link:
+                key_of_link.setdefault(link, key)
+            if title:
+                key_of_title.setdefault(title, key)
+    return [items[key] for key in sorted(items, key=scores.__getitem__, reverse=True)]
 
 
 async def _chat_tool_search_news(query: str) -> str:
@@ -2509,10 +2674,11 @@ async def _chat_tool_search_news(query: str) -> str:
             iso_date  = _normalize_date(r.get("date", ""))
             age_label = _result_age_label(iso_date)
             snippet   = (r.get("snippet") or "")[:300]
+            link      = f" | {r['link']}" if r.get("link") else ""
             lines.append(
                 f"[Result {i} — published: {age_label}]\n"
                 f"Title: {r['title']}\n"
-                f"Source: {r.get('source','')} | {r['link']}\n"
+                f"Source: {r.get('source','')}{link}\n"
                 f"Snippet: {snippet}\n"
             )
         return "\n".join(lines)
@@ -2670,28 +2836,53 @@ def _tool_cache_key(name: str, args: dict) -> str:
     return f"{name}({','.join(parts)})"
 
 
-async def _execute_chat_tool(name: str, args: dict, cache: dict | None = None) -> str:
+async def _execute_chat_tool(name: str, args: dict, cache: dict | None = None,
+                             user_id: str | None = None) -> str:
     """
     Dispatch a chat tool, with an optional per-turn memo cache. The model
     sometimes re-requests the same sector snapshot / news search inside its loop;
     caching identical (tool, args) calls for the duration of ONE chat turn avoids
     duplicate Serper credits and yfinance hits at zero behavioural cost.
+
+    `user_id` is the signed-in caller (FIX-005), passed to the tools that read a
+    user's own data. The memo cache lives for one turn of one request, so it
+    never holds another user's result.
     """
     if cache is not None:
         ckey = _tool_cache_key(name, args)
         if ckey in cache:
             return cache[ckey]
-        result = await _dispatch_chat_tool(name, args)
+        result = await _dispatch_chat_tool(name, args, user_id=user_id)
         cache[ckey] = result
         return result
-    return await _dispatch_chat_tool(name, args)
+    return await _dispatch_chat_tool(name, args, user_id=user_id)
 
 
-def _chat_tool_portfolio_brief() -> str:
-    """Latest morning brief; falls back to the latest EOD digest (Compass Phase C)."""
+_BRIEF_NOT_YET = ("No brief yet — the morning-brief job hasn't produced one. "
+                  "Add holdings via /portfolio, then POST /delivery/run-brief.")
+_BRIEF_NO_USER = ("Your brief is unavailable — this request is not tied to a "
+                  "signed-in account.")
+
+
+def _chat_tool_portfolio_brief(user_id: str | None) -> str:
+    """The caller's latest morning brief; falls back to their latest EOD digest.
+
+    FIX-005: reads only the signed-in caller's portfolio, the same store
+    GET /portfolio and GET /delivery/brief/latest open. It used to build
+    PortfolioStore() with no user id, so every chat caller got the default
+    user's brief. With no user id, or one that is not a valid portfolio id, it
+    refuses: it never falls back to another account. A user without a
+    portfolio directory gets "no brief yet", and the read creates none.
+    """
     try:
-        from core.portfolio.store import PortfolioStore
-        store = PortfolioStore()
+        from core.config import settings as _s
+        from core.portfolio.store import _USER_ID_RE, PortfolioStore
+        if not user_id or not _USER_ID_RE.fullmatch(str(user_id)):
+            logger.warning("[chat] portfolio brief refused: no valid user id on this request")
+            return _BRIEF_NO_USER
+        if not (Path(_s.PORTFOLIO_DATA_DIR) / user_id).is_dir():
+            return _BRIEF_NOT_YET
+        store = PortfolioStore(user_id=user_id)
         brief = store.load_latest_brief()
         if brief:
             from core.delivery.brief import render_brief_text
@@ -2707,14 +2898,13 @@ def _chat_tool_portfolio_brief() -> str:
                 pnl_s = f" ({pnl:+.1f}%)" if pnl is not None else ""
                 lines.append(f"{row['symbol']}: {row['verdict']}{pnl_s} — {row.get('reason', '')}")
             return "\n".join(lines)[:1800]
-        return ("No brief yet — the morning-brief job hasn't produced one. "
-                "Add holdings via /portfolio, then POST /delivery/run-brief.")
+        return _BRIEF_NOT_YET
     except Exception as exc:
         logger.warning("[chat] portfolio brief failed: %s", exc, exc_info=True)
         return "Brief unavailable right now — try again in a moment."
 
 
-async def _dispatch_chat_tool(name: str, args: dict) -> str:
+async def _dispatch_chat_tool(name: str, args: dict, user_id: str | None = None) -> str:
     if name == "get_live_price":
         return await _chat_tool_get_live_price(args.get("symbol", ""))
     if name == "get_macro_news":
@@ -2727,7 +2917,7 @@ async def _dispatch_chat_tool(name: str, args: dict) -> str:
         return result or f"No analysis for {ticker} yet — run it from the Home screen first."
     if name == "get_analysis_history":
         days = int(args.get("days", 14))
-        return _ctx_recent_history(days=min(days, 30)) or "No analysis history found."
+        return _ctx_recent_history(days=min(days, 30), user_id=user_id) or "No analysis history found."
     if name == "get_rl_insights":
         return _ctx_rl_learning() or "No RL data yet — needs at least one full analysis cycle."
     if name == "get_sector_snapshot":
@@ -2745,7 +2935,7 @@ async def _dispatch_chat_tool(name: str, args: dict) -> str:
     if name == "get_ticker_dossier":
         return await _chat_tool_ticker_dossier(args.get("ticker", ""))
     if name == "get_portfolio_brief":
-        return _chat_tool_portfolio_brief()
+        return _chat_tool_portfolio_brief(user_id)
     return f"Unknown tool: {name}"
 
 
@@ -2992,7 +3182,7 @@ async def chat(body: dict, user: dict = Depends(get_current_user)) -> dict:
     if quota_block:
         return JSONResponse(status_code=429, content=quota_block)
 
-    context = _build_chat_context(message)
+    context = _build_chat_context(message, user_id=user["user_id"])
     system_prompt = _CHAT_SYSTEM_PROMPT.format(context=context)
 
     messages: list[dict] = [{"role": "system", "content": system_prompt}]
@@ -3037,7 +3227,8 @@ async def chat(body: dict, user: dict = Depends(get_current_user)) -> dict:
             messages.append(assistant_entry)
 
             tool_results = await asyncio.gather(*[
-                _execute_chat_tool(tc.function.name, json.loads(tc.function.arguments or "{}"))
+                _execute_chat_tool(tc.function.name, json.loads(tc.function.arguments or "{}"),
+                                   user_id=user["user_id"])
                 for tc in tool_calls
             ])
             for tc, result in zip(tool_calls, tool_results):
@@ -3079,11 +3270,11 @@ def _mock_reply(q: str) -> str:
 
 try:
     from backend.shared.config import settings as _chat_cfg
-    _CHAT_MODEL = _chat_cfg.LLM_MODEL_FAST            # fast tool-loop model (qwen3.6-flash)
+    _CHAT_MODEL = _chat_cfg.LLM_MODEL_FAST            # fast tool-loop model
     _CHAT_FALLBACK_MODEL = _chat_cfg.LLM_MODEL_REASONING  # escalate on rate-limit/5xx
 except Exception:
-    _CHAT_MODEL = "qwen/qwen3.6-flash"
-    _CHAT_FALLBACK_MODEL = "z-ai/glm-5.2"
+    _CHAT_MODEL = "deepseek/deepseek-v4.1-flash-1017"
+    _CHAT_FALLBACK_MODEL = "xiaomi/mimo-v2.6-pro"
 _CHAT_MAX_TOOL_ROUNDS = 4              # max tool rounds before forcing a final answer
 _CHAT_RETRIES_PER_MODEL = 2            # AUD-101: was 3 — caps the retry x model product at 4
 _CHAT_TURN_BUDGET_S = 45.0             # AUD-101: soft wall-clock budget per user turn
@@ -3343,7 +3534,7 @@ async def chat_stream(body: dict, user: dict = Depends(get_current_user)):
         yield f'data: {_json.dumps({"event": "intent", "session_id": session_id, "tier": "active", "query": message[:80]})}\n\n'
 
         # Strong system prompt (IST market context + grounding rules) + carried history.
-        context = _build_chat_context(message)
+        context = _build_chat_context(message, user_id=user["user_id"])
         system_prompt = _CHAT_SYSTEM_PROMPT.format(context=context)
         messages: list[dict] = [{"role": "system", "content": system_prompt}]
         messages.extend(_session_history_get(session_id, user["user_id"]))
@@ -3438,7 +3629,8 @@ async def chat_stream(body: dict, user: dict = Depends(get_current_user)):
                     except Exception:
                         parsed_args.append({})
                 results = await asyncio.gather(*[
-                    _execute_chat_tool(tc.function.name, a, _tool_cache)
+                    _execute_chat_tool(tc.function.name, a, _tool_cache,
+                                       user_id=user["user_id"])
                     for tc, a in zip(tcs, parsed_args)
                 ])
                 for tc, result in zip(tcs, results):
@@ -3748,19 +3940,25 @@ async def toggle_managed_ticker(sym: str,
 
 # ---------------------------------------------------------------------------
 # Live log streaming — GET /ui/logs  and  GET /ui/logs/stream (SSE)
+#
+# FIX-007: owner session or machine key only. Log lines carry user ids, per-user
+# trade activity and error text, and the buffer redacts nothing. The dependency
+# runs before the handler, so a refused stream never subscribes or sends a line.
 # ---------------------------------------------------------------------------
 
 @router.get("/logs", summary="Return recent server log entries (polling fallback)")
-async def get_logs(level: str = "INFO", limit: int = 200) -> dict:
+async def get_logs(level: str = "INFO", limit: int = 200,
+                   _owner: dict = Depends(require_owner)) -> dict:
     from services.api.log_buffer import snapshot
     entries = snapshot(level=level, limit=min(limit, 1000))
     return {"entries": entries, "count": len(entries)}
 
 
 @router.get("/logs/stream", summary="Server-Sent Events stream of live log entries")
-async def stream_logs(level: str = "INFO"):
+async def stream_logs(level: str = "INFO", _owner: dict = Depends(require_owner)):
     """
-    Connect via EventSource('/ui/logs/stream').
+    Read with fetch() so the session header is sent (EventSource cannot send
+    one); see logs.jsx.
     Sends buffered history first, then live entries as they arrive.
     Keepalive comments are sent every 30 s to prevent proxy timeouts.
     """

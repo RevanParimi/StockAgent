@@ -277,6 +277,11 @@ _TEXT_FIELD_CAP = 400
 _SUMMARY_CAP = 1200
 _MAX_LIST_ITEMS = 5
 
+# FIX-026: the top-level block a deep dive's sector question asks for. The
+# question's text comes from core/discovery/sector_naming.py; this module only
+# appends it to the user prompt and hands back the block, unvalidated.
+SECTOR_ANSWER_KEY = "sector_key"
+
 
 def _clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:
     return max(lo, min(hi, value))
@@ -316,6 +321,9 @@ class UnifiedAnalyst:
         self._client = get_llm_client()
         self._last_prompt_tokens: int = 0
         self._last_completion_tokens: int = 0
+        # FIX-026: the SECTOR_ANSWER_KEY block of the last run, as written;
+        # None when no question was asked or the block is missing.
+        self._last_sector_answer = None
 
     # ------------------------------------------------------------------
     # Public entrypoint
@@ -327,9 +335,15 @@ class UnifiedAnalyst:
         bundle: SectorDataBundle,
         sector: str,
         run_id: str = "",
+        sector_question: str | None = None,
     ) -> dict[str, AgentOutput]:
         """
         One LLM call -> all dimension outputs for `sector`.
+
+        `sector_question` (the deep dive's, FIX-026) is appended to the user
+        prompt; the same call answers it in a SECTOR_ANSWER_KEY block, kept
+        unvalidated in `_last_sector_answer`. Without it the prompt is
+        unchanged.
 
         NEVER raises. Returns {} on:
           - unknown sector (no prompt module / class map)
@@ -337,6 +351,7 @@ class UnifiedAnalyst:
           - non-JSON / non-dict response
           - any other unexpected error
         """
+        self._last_sector_answer = None
         try:
             spec = SECTOR_SPECS.get(sector)
             if spec is None:
@@ -348,6 +363,8 @@ class UnifiedAnalyst:
             if system_prompt is None:
                 # _build_prompt already logged the error.
                 return {}
+            if sector_question:
+                user_prompt = f"{user_prompt}\n{sector_question}"
 
             t0 = time.time()
             raw = self._call_llm(system_prompt, user_prompt)
@@ -388,6 +405,8 @@ class UnifiedAnalyst:
             if not isinstance(data, dict):
                 raise ValueError(f"LLM returned {type(data).__name__}, expected dict")
 
+            if sector_question:
+                self._last_sector_answer = data.get(SECTOR_ANSWER_KEY)
             return self._parse_all(data, query.ticker, class_map, spec)
 
         except Exception as exc:

@@ -1,0 +1,75 @@
+{
+  "story": "SA-004",
+  "phase": "implementation",
+  "baseline_commit": "0a5bf9e15b6d6a9c43ac9f66106a5583a9c75ea5",
+  "baseline_note": "Diff each file against 0a5bf9e:<path>; new files have none. Excludes STATE.json, HANDOFF.md, the receipt, story cards, the PI README and this manifest (bookkeeping written after it).",
+  "payload_update": "1 (2026-09-27): owner-requested backlog SA-048..SA-051 changed the KT, PDF, ARCHITECTURE and TEAM_TESTING_GUIDE only; code and tests unchanged. Previous review input a5e77a74ec7511e5d137c32a57e74929183f53680f43b4df82226dc230bb9e7e; its four changed blobs are stored in this checkout: KT a9c89010, PDF b54a6a5d, ARCHITECTURE 24a9d0f9, TEAM_TESTING_GUIDE 0ce916f6.",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "d5dd06c6ac567e72a34d6a6d349f8e91de5dcb62",
+      "sha256": "c5da46db054f0473050b4c7958b08146fd6250bc1756ff7b1d24afb76b943130"
+    },
+    {
+      "path": "core/delivery/ops_alerts.py",
+      "git_blob": "2a3b1eb071d82ec73a41c64f0d4a3cb0e7a132c3",
+      "sha256": "5418c9743ed49ef6dca2c39355e5aaf2188a668a01bd831d34aea7955b6cf7bc"
+    },
+    {
+      "path": "core/intelligence/rl/workflows/review_outcomes.py",
+      "git_blob": "0440ebec6451f93f336bbd783866fdc92ce5a79e",
+      "sha256": "5ffe47cca605354fea1b284b37ff50facc4022129ec20b15656da5b6c46efeff"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "git_blob": "ac9f8398ed2fde5f1047582d3ba3143d074d2657",
+      "sha256": "2af0be7e54de489cdb946d3e9a502ed698080f9b07d8a59ca7f1ef526306f441"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "861711face7bf755c7b921677ba7bef42470cb3f",
+      "sha256": "2323d2abdf3a007e907f32e44ced0684faf2292985941e06fad9b3e033852487"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "22822f83f2adfaceb246040be10260eb87df76ef",
+      "sha256": "2d629b181c09e573b257f30cf62444204414fd529e3b3f0e49d5ae755eeaf58d"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "804560f4df1a053e3b9c2c50f4fe098371cfffed",
+      "sha256": "98239426258992079bf5a5f2da23401d385eb52a42159b4c407cd3759d33aa95"
+    },
+    {
+      "path": "services/api/log_buffer.py",
+      "git_blob": "10959c7a43fed034137b29cbb113e0e121c14564",
+      "sha256": "c03d7c746b8c27c4ee6a7f2f76f40a4192dec11b54c29b6bd454b2a0a6d78e05"
+    },
+    {
+      "path": "services/scheduler/python/scheduler.py",
+      "git_blob": "8bed725f754bf05cf39b608aa1a278e37ec09990",
+      "sha256": "2a2ff2da40211ee9095ac03645172113fd60996451c4f1d7878ca23cf69ee92e"
+    },
+    {
+      "path": "tests/conftest.py",
+      "git_blob": "fc540baccc5c1319608177d14b5f301f5be2f64d",
+      "sha256": "cd031610ef0e484c3f7657044c97f9e715fe76d7c825cddb1107cbc042f4391a"
+    },
+    {
+      "path": "tests/unit/intelligence/rl/test_review_outcomes_feedback_sa004.py",
+      "git_blob": "e89aae361702229413eb9649a4234b605fe9cc25",
+      "sha256": "982539b3c325244a0d7fa0942040c2abeabfc629416c2b5e32469e74129d5ab1"
+    },
+    {
+      "path": "tests/unit/test_daily_review_outcomes_sa004.py",
+      "git_blob": "e2baf3a8b57b6af55e1538a9f3be48768d535e68",
+      "sha256": "2531858885e5ae31fa363082adc5b53c5644b6d8ca25b633d2259d6d73eb0dfa"
+    },
+    {
+      "path": "tests/unit/test_scheduler_portfolio_hook.py",
+      "git_blob": "ef4f45d7e6de57d493c18f8c36803d666b366ada",
+      "sha256": "5f086ca8cf48f9395082f1456cfe8d3889ee0cc00068ad2117ef85d69a54dab2"
+    }
+  ]
+}

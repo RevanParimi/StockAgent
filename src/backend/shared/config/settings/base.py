@@ -28,8 +28,8 @@ OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "your-openrouter-api-k
 OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
 
 # Hybrid model tiers — rationale + retirement history documented in config.yaml.
-LLM_MODEL_FAST: str      = cfg("llm.model_fast",      env="LLM_MODEL_FAST",      fallback="qwen/qwen3.6-flash")
-LLM_MODEL_REASONING: str = cfg("llm.model_reasoning", env="LLM_MODEL_REASONING", fallback="qwen/qwen3.7-max")
+LLM_MODEL_FAST: str      = cfg("llm.model_fast",      env="LLM_MODEL_FAST",      fallback="deepseek/deepseek-v4.1-flash-1017")
+LLM_MODEL_REASONING: str = cfg("llm.model_reasoning", env="LLM_MODEL_REASONING", fallback="xiaomi/mimo-v2.6-pro")
 LLM_MODEL_BULK: str      = cfg("llm.model_bulk",      env="LLM_MODEL_BULK",      fallback="deepseek/deepseek-v4-flash")
 LLM_TEMPERATURE: float = cfg("llm.temperature", env="LLM_TEMPERATURE", fallback=0.2)
 LLM_MAX_TOKENS: int = cfg("llm.max_tokens", env="LLM_MAX_TOKENS", fallback=2048)
@@ -44,8 +44,10 @@ LLM_OUTPUT_COST_PER_M: float = cfg("llm.output_cost_per_m", env="LLM_OUTPUT_COST
 # fallback. Values: (input_usd_per_m, output_usd_per_m). Source of truth is
 # config.yaml llm.cost_rates; this dict is the shipped default.
 _DEFAULT_COST_RATES = {
+    "deepseek/deepseek-v4.1-flash-1017": (0.15, 0.60),
+    "xiaomi/mimo-v2.6-pro": (0.435, 0.87),
+    "deepseek/deepseek-v4-flash": (0.091, 0.182),
     "z-ai/glm-5.2": (1.218, 3.828),
-    "deepseek/deepseek-v4-flash": (0.098, 0.196),
     "qwen/qwen3.6-flash": (0.1875, 1.125),
 }
 LLM_COST_RATES: dict[str, tuple[float, float]] = {
@@ -94,8 +96,18 @@ DEFAULT_CURRENCY: str = "INR"
 PRICE_HISTORY_YEARS: int = cfg("data_fetch.price_history_years", fallback=10)          # years of OHLCV history
 TECHNICAL_REFRESH_INTERVAL_MIN: int = cfg("data_fetch.technical_refresh_interval_min", fallback=15)
 
-# Nifty Auto index ticker used for peer correlation
-NIFTY_AUTO_TICKER: str = "^CNXAUTO"
+# SA-010: the index each sector's technicals measure correlation and beta
+# against, as (yfinance symbol, prompt label). The caller names the sector;
+# there is no default index. "generic" is the deliberate policy for a stock
+# with no sector index of its own, and for any sector not listed: the broad
+# market, labelled as such, never another sector's index.
+SECTOR_BENCHMARKS: dict[str, tuple[str, str]] = {
+    "automobile":       ("^CNXAUTO",   "Nifty Auto"),
+    "banking_bfsi":     ("^NSEBANK",   "Nifty Bank"),
+    "it_sector":        ("^CNXIT",     "Nifty IT"),
+    "renewable_energy": ("^CNXENERGY", "Nifty Energy"),
+    "generic":          ("^NSEI",      "Nifty 50 (broad market)"),
+}
 
 # ---------------------------------------------------------------------------
 # Agent execution
@@ -175,17 +187,10 @@ NEWS_SOURCES: list[str] = [
 # yfinance: NSE tickers need ".NS" suffix (e.g. MARUTI → MARUTI.NS)
 YFINANCE_SUFFIX: str = ".NS"
 
-# Yahoo symbol overrides — bare NSE ticker → exact yfinance symbol. Used when
-# Yahoo lists a name under a different code, or a corporate action (demerger /
-# rename) drops the old ticker. SINGLE SOURCE OF TRUTH — every NSE→yfinance
-# conversion path consults this (indicators fetcher, chat resolver, ticker
-# verification). Add a line here, not in individual modules.
-YF_SYMBOL_OVERRIDES: dict[str, str] = {
-    "TATAMOTORS": "TMPV.NS",      # Tata Motors demerged 2025 → Passenger Vehicles entity
-    "TVSMOTORS":  "TVSMOTOR.NS",  # NSE symbol is TVSMOTOR (no trailing S)
-    "CANARABANK": "CANBK.NS",     # NSE/Yahoo symbol is CANBK
-    "HEXAWARE":   "HEXT.NS",      # Yahoo lists Hexaware as HEXT
-}
+# Ticker → provider-symbol mappings (aliases, renames, demergers) live in the
+# instrument registry, config/instruments.yaml (SA-008): effective-dated, with
+# evidence, and read through symbol_resolver.resolve_identity. The former
+# YF_SYMBOL_OVERRIDES dict here had no dates and no identity status.
 
 # Number of news articles to fetch per Serper/NewsAPI query
 NEWS_ARTICLES_PER_QUERY: int = cfg("data_fetch.news_articles_per_query", env="NEWS_ARTICLES_PER_QUERY", fallback=5)
@@ -334,6 +339,13 @@ WEIGHT_MIN_OBSERVATIONS: int = cfg("rl.weight_min_observations", fallback=3)
 # Read at call time through core.intelligence.rl.learning_mode, which fails
 # closed to "observe" on any other value.
 RL_LEARNING_MODE: str = cfg("rl.learning_mode", env="RL_LEARNING_MODE", fallback="adapt")
+
+# SA-003 decision gate: "record" (compute and record which analyses, forecasts,
+# reviews and buys the essential-data gate would stop; change nothing) or
+# "enforce" (stop them). Read at call time through
+# backend.shared.pipeline.decision_gate, which fails closed to "enforce" on any
+# other value.
+DECISION_GATE_MODE: str = cfg("decision_gate.mode", env="DECISION_GATE_MODE", fallback="record")
 
 # Accuracy window: how many recent days are used to judge agent direction accuracy
 WEIGHT_ACCURACY_WINDOW: int = cfg("rl.weight_accuracy_window", fallback=7)
@@ -875,6 +887,18 @@ PORTFOLIO_DATA_DIR: str = cfg("portfolio.data_dir", env="PORTFOLIO_DATA_DIR", fa
 PORTFOLIO_DEFAULT_USER_ID: str = cfg("portfolio.default_user_id", env="PORTFOLIO_DEFAULT_USER_ID", fallback="primary")
 PORTFOLIO_MAX_MANAGED_TICKERS: int = cfg("portfolio.max_managed_tickers", env="PORTFOLIO_MAX_MANAGED_TICKERS", fallback=40)
 PORTFOLIO_WEEKLY_REVIEW_WEEKDAY: int = cfg("portfolio.weekly_review_weekday", fallback=4)
+# SA-048: trading-cost and tax rates, dated. No fallback rates: a missing key
+# fails the trade loudly (core/portfolio/costs.py) instead of charging nothing.
+PORTFOLIO_COSTS: dict = cfg("portfolio.costs", fallback={})
+PORTFOLIO_TAX: dict = cfg("portfolio.tax", fallback={})
+# SA-049, FIX-025: the holdings idle-cash deployment works with
+# (core/portfolio/deployment.py). `overrides` maps a portfolio's user id to its
+# own values of these three keys, of autopilot.deploy_idle_cash and of
+# autopilot.deploy_target_invested_pct.
+PORTFOLIO_MIN_HOLDINGS: int = int(cfg("portfolio.min_holdings", fallback=10))
+PORTFOLIO_TARGET_HOLDINGS: int = int(cfg("portfolio.target_holdings", fallback=12))
+PORTFOLIO_MAX_HOLDINGS: int = int(cfg("portfolio.max_holdings", fallback=15))
+PORTFOLIO_OVERRIDES: dict = dict(cfg("portfolio.overrides", fallback={}) or {})
 
 ADVISOR_ENABLED: bool = bool(cfg("advisor.enabled", env="ADVISOR_ENABLED", fallback=True))
 ADVISOR_NARRATE: bool = bool(cfg("advisor.narrate", fallback=True))
@@ -897,9 +921,13 @@ ADVISOR_CONFIDENCE_DECLINE_THRESHOLD: float = cfg("advisor.confidence_decline_th
 ADVISOR_ENVELOPE_FLAT_BAND_PCT: float = cfg("advisor.envelope_flat_band_pct", fallback=1.0)
 ADVISOR_ADD_MIN_DIRECTION_ACCURACY: float = cfg("advisor.add_min_direction_accuracy", fallback=0.60)
 ADVISOR_MAX_POSITION_PCT: float = cfg("advisor.max_position_pct", fallback=10.0)
-ADVISOR_SECTOR_CONCENTRATION_WARN_PCT: float = cfg("advisor.sector_concentration_warn_pct", fallback=30.0)
+ADVISOR_MAX_SECTOR_PCT: float = cfg("advisor.max_sector_pct", fallback=30.0)
 ADVISOR_LTCG_WAIT_MIN_MONTHS: int = cfg("advisor.ltcg_wait_min_months", fallback=10)
 ADVISOR_EARNINGS_GAP_DAYS: int = cfg("advisor.earnings_gap_days", fallback=3)
+# PR-009: case_broken (the evidence exit rule) waits this many exchange
+# sessions after the buy; stops never wait. The rule's mode, advisor.exit_rule,
+# is read per run (core/portfolio/exit_shadow.py).
+ADVISOR_MIN_HOLD_SESSIONS: int = int(cfg("advisor.min_hold_sessions", fallback=10))
 
 # ---------------------------------------------------------------------------
 # M0 — Multi-user foundation (spec 2026-07-26)
@@ -922,6 +950,19 @@ AUTOPILOT_ADD_TRANCHE_PCT: float = cfg("autopilot.add_tranche_pct", fallback=25.
 AUTOPILOT_TRIM_PCT: float = cfg("autopilot.trim_pct", fallback=25.0)
 AUTOPILOT_MIN_CASH_FLOOR: float = cfg("autopilot.min_cash_floor", fallback=10000.0)
 AUTOPILOT_ADD_COOLDOWN_TD: int = int(cfg("autopilot.add_cooldown_td", fallback=5))
+# SA-049: idle cash goes into the day's buy candidates up to the market
+# regime's target invested share; off until the owner switches it on.
+AUTOPILOT_DEPLOY_IDLE_CASH: bool = bool(cfg("autopilot.deploy_idle_cash", fallback=False))
+AUTOPILOT_DEPLOY_MAX_NEW_PER_DAY: int = int(cfg("autopilot.deploy_max_new_per_day", fallback=2))
+_DEPLOY_TARGET_FALLBACK: dict[str, float] = {
+    "NORMAL": 80.0, "RISK_ON": 80.0, "MOMENTUM_EXTENDED": 80.0, "OVERSOLD": 80.0,
+    "RISK_OFF": 50.0, "MACRO_CRISIS": 0.0,
+}
+AUTOPILOT_DEPLOY_TARGET_PCT: dict[str, float] = {
+    str(k).strip().upper(): float(v)
+    for k, v in (cfg("autopilot.deploy_target_invested_pct",
+                     fallback=_DEPLOY_TARGET_FALLBACK) or {}).items()
+}
 
 DISCOVERY_BHAVCOPY_DIR: str = cfg("discovery.bhavcopy_dir", fallback="data/market_cache/bhavcopy")
 DISCOVERY_DATA_DIR: str = cfg("discovery.data_dir", fallback="data/discovery")
@@ -938,6 +979,9 @@ DISCOVERY_SHORTLIST_SIZE: int = int(cfg("discovery.shortlist_size", fallback=80)
 DISCOVERY_MAX_CANDIDATES: int = int(cfg("discovery.max_candidates", fallback=40))
 DISCOVERY_DEEP_DIVE_COUNT: int = int(cfg("discovery.deep_dive_count", fallback=10))
 DISCOVERY_SHELF_SIZE: int = int(cfg("discovery.shelf_size", fallback=10))
+DISCOVERY_MAX_IDEAS_PER_SECTOR: int = int(cfg("discovery.max_ideas_per_sector", fallback=0))
+DISCOVERY_REDIVE_AFTER_DAYS: int = int(cfg("discovery.redive_after_days", fallback=0))
+DISCOVERY_WATCHLIST_BUYS: bool = bool(cfg("discovery.watchlist_buys", fallback=False))
 DISCOVERY_STALE_DAYS: int = int(cfg("discovery.stale_days", fallback=60))
 DISCOVERY_MIN_CONVICTION: float = float(cfg("discovery.min_conviction", fallback=0.55))
 DISCOVERY_INCLUDE_SME: bool = bool(cfg("discovery.include_sme", fallback=False))
@@ -945,12 +989,42 @@ DISCOVERY_INCLUDE_SME: bool = bool(cfg("discovery.include_sme", fallback=False))
 _DISCOVERY_SIGNAL_WEIGHTS_FALLBACK: dict[str, float] = {
     "momentum": 0.30, "delivery_surge": 0.15, "volume_breakout": 0.15,
     "bulk_block": 0.15, "high_52wk_rs": 0.10, "insider_buying": 0.10,
-    "mf_holding": 0.05,
 }
 DISCOVERY_SIGNAL_WEIGHTS: dict[str, float] = {
     str(k): float(v)
     for k, v in cfg("discovery.signal_weights", fallback=_DISCOVERY_SIGNAL_WEIGHTS_FALLBACK).items()
 }
+# PR-011: insider_buying reads every company's insider-trade filings over this
+# window (core/discovery/insider.py), at most this many new documents a run;
+# the pledge guard is switched off with discovery.pledge_guard false.
+DISCOVERY_INSIDER_WINDOW_DAYS: int = int(cfg("discovery.insider_window_days", fallback=28))
+DISCOVERY_INSIDER_MAX_DOCUMENTS: int = int(cfg("discovery.insider_max_documents", fallback=600))
+DISCOVERY_PLEDGE_GUARD: bool = bool(cfg("discovery.pledge_guard", fallback=False))
+
+# ---------------------------------------------------------------------------
+# Company-event feed (config.yaml events.*; core/events)
+# ---------------------------------------------------------------------------
+EVENTS_ENABLED: bool = bool(cfg("events.enabled", env="EVENTS_ENABLED", fallback=False))
+EVENTS_DATA_DIR: str = cfg("events.data_dir", fallback="data/events")
+EVENTS_MORNING: str = str(cfg("events.morning", fallback="08:15"))
+EVENTS_EVENING: str = str(cfg("events.evening", fallback="18:30"))
+EVENTS_MAX_SYMBOLS: int = int(cfg("events.max_symbols", fallback=60))
+EVENTS_NEWS_QUERIES_PER_DAY: int = int(cfg("events.news_queries_per_day", fallback=60))
+EVENTS_NEWS_ARTICLES_PER_QUERY: int = int(cfg("events.news_articles_per_query", fallback=5))
+EVENTS_NEWS_RECENCY: str = str(cfg("events.news_recency", fallback="qdr:d"))
+EVENTS_LOOKBACK_DAYS: int = int(cfg("events.lookback_days", fallback=7))
+EVENTS_MAX_ITEMS_PER_SYMBOL: int = int(cfg("events.max_items_per_symbol", fallback=24))
+EVENTS_MAX_ITEMS_PER_CALL: int = int(cfg("events.max_items_per_call", fallback=12))
+EVENTS_SEEN_DAYS: int = int(cfg("events.seen_days", fallback=30))
+EVENTS_INGEST_ON_RESULTS: bool = bool(cfg("events.ingest_on_results", fallback=True))
+# PR-011: NSE disclosures typed by rules (core/events/disclosures.py); each
+# source is switched off on its own (rollback).
+EVENTS_DISCLOSE_INSIDER: bool = bool(cfg("events.disclosures.insider", fallback=False))
+EVENTS_DISCLOSE_SAST: bool = bool(cfg("events.disclosures.sast", fallback=False))
+EVENTS_DISCLOSE_PLEDGE: bool = bool(cfg("events.disclosures.pledge", fallback=False))
+EVENTS_DISCLOSE_OWNERSHIP: bool = bool(cfg("events.disclosures.ownership", fallback=False))
+EVENTS_OWNERSHIP_MOVE_POINTS: float = float(cfg("events.ownership_move_points", fallback=1.0))
+EVENTS_MAX_DOCUMENTS_PER_SYMBOL: int = int(cfg("events.max_documents_per_symbol", fallback=10))
 
 # ---------------------------------------------------------------------------
 # Compass Phase C — IPO tracker + M4 proactive delivery (spec §6.2 / §7)
@@ -1048,6 +1122,32 @@ DELIVERY_BRIEF_OVERNIGHT_STOPWORDS: list = list(cfg("delivery.brief_overnight_st
     "rbi", "govt", "government", "india", "indian", "market", "stock", "share",
     "sensex", "nifty",
 ]))
+# PR-003: overnight news is what was PUBLISHED since the previous brief (never
+# further back than max_lookback_days) and was not shown in the user's last
+# repeat_lookback_briefs briefs. A different-URL story counts as shown when it
+# shares >= repeat_min_shared salient entities with a shown one, at most
+# repeat_max_new_share of its own salient entities are new, and it carries no
+# figure the shown one lacked.
+DELIVERY_BRIEF_OVERNIGHT_MAX_LOOKBACK_DAYS: int = int(cfg("delivery.brief_overnight_max_lookback_days", fallback=4))
+DELIVERY_BRIEF_OVERNIGHT_REPEAT_LOOKBACK_BRIEFS: int = int(cfg("delivery.brief_overnight_repeat_lookback_briefs", fallback=5))
+DELIVERY_BRIEF_OVERNIGHT_REPEAT_MIN_SHARED: int = int(cfg("delivery.brief_overnight_repeat_min_shared", fallback=3))
+DELIVERY_BRIEF_OVERNIGHT_REPEAT_MAX_NEW_SHARE: float = float(cfg("delivery.brief_overnight_repeat_max_new_share", fallback=0.34))
+# PR-003 "Before the open": Yahoo daily bars per instrument. session: us_close
+# = the last session dated before the brief; asia_live = only a session dated
+# the brief's day (otherwise "closed"); 24h = the latest bar up to the brief's
+# day. unit: index | usd | inr | yield (yield change in basis points). Bars
+# dated Saturday or Sunday are ignored: list no weekend-trading market here.
+# An empty list removes the section.
+DELIVERY_BRIEF_MARKETS: list = list(cfg("delivery.brief_markets", fallback=[
+    {"label": "S&P 500", "ticker": "^GSPC", "session": "us_close", "unit": "index"},
+    {"label": "Nasdaq Composite", "ticker": "^IXIC", "session": "us_close", "unit": "index"},
+    {"label": "Nikkei 225", "ticker": "^N225", "session": "asia_live", "unit": "index"},
+    {"label": "Hang Seng", "ticker": "^HSI", "session": "asia_live", "unit": "index"},
+    {"label": "Brent crude", "ticker": "BZ=F", "session": "24h", "unit": "usd"},
+    {"label": "USD/INR", "ticker": "INR=X", "session": "24h", "unit": "inr"},
+    {"label": "US 10-year yield", "ticker": "^TNX", "session": "us_close", "unit": "yield"},
+]))
+DELIVERY_BRIEF_MARKET_MAX_AGE_DAYS: int = int(cfg("delivery.brief_market_max_age_days", fallback=4))
 DELIVERY_BRIEF_MAX_IDEAS: int = int(cfg("delivery.brief_max_ideas", fallback=5))
 DELIVERY_BRIEF_IDEA_REASON_MAXLEN: int = int(cfg("delivery.brief_idea_reason_maxlen", fallback=180))
 DELIVERY_BRIEF_MAX_IPOS: int = int(cfg("delivery.brief_max_ipos", fallback=3))
@@ -1094,6 +1194,27 @@ RESEND_FROM: str = os.getenv("RESEND_FROM", "StockAgent <onboarding@resend.dev>"
 VAPID_PRIVATE_KEY: str = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_PUBLIC_KEY: str = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_CLAIM_EMAIL: str = os.getenv("VAPID_CLAIM_EMAIL", "admin@stockagent.app")
+
+# SA-007 — independent off-site backup (services/data/offsite.py). Each nightly
+# archive that passes its restore drill is encrypted and pushed to storage the
+# app volume does not host. Nothing is provisioned by code: the owner creates
+# the bucket and a key scoped to it. Unset target = off, and the watchdog's
+# backup_recoverable check reports that every day.
+#   BACKUP_OFFSITE_TARGET: "s3" (any S3-compatible store: Backblaze B2,
+#   Cloudflare R2, AWS S3) or "dir" (a separately mounted directory).
+#   BACKUP_ENCRYPTION_KEY: base64 of 32 random bytes. Keep a copy OUTSIDE
+#   Railway (a password manager): without it no off-site copy can be read.
+#   BACKUP_OFFSITE_KEEP: confirmed copies kept off-site (<= 0 keeps all).
+BACKUP_OFFSITE_TARGET: str = os.getenv("BACKUP_OFFSITE_TARGET", "")
+BACKUP_ENCRYPTION_KEY: str = os.getenv("BACKUP_ENCRYPTION_KEY", "")
+BACKUP_OFFSITE_KEEP: str = os.getenv("BACKUP_OFFSITE_KEEP", "30")
+BACKUP_OFFSITE_DIR: str = os.getenv("BACKUP_OFFSITE_DIR", "")
+BACKUP_S3_ENDPOINT: str = os.getenv("BACKUP_S3_ENDPOINT", "")
+BACKUP_S3_BUCKET: str = os.getenv("BACKUP_S3_BUCKET", "")
+BACKUP_S3_REGION: str = os.getenv("BACKUP_S3_REGION", "auto")
+BACKUP_S3_PREFIX: str = os.getenv("BACKUP_S3_PREFIX", "stockagent/")
+BACKUP_S3_ACCESS_KEY_ID: str = os.getenv("BACKUP_S3_ACCESS_KEY_ID", "")
+BACKUP_S3_SECRET_ACCESS_KEY: str = os.getenv("BACKUP_S3_SECRET_ACCESS_KEY", "")
 
 _GENERIC_AGENT_WEIGHTS_FALLBACK: dict[str, float] = {
     "business": 0.14, "fundamentals": 0.18, "valuation": 0.14, "technical": 0.12,

@@ -301,6 +301,17 @@ class TestRegimeSnapshotSchema:
 # ---------------------------------------------------------------------------
 
 class TestRegimeDetectorDetect:
+    @pytest.fixture(autouse=True)
+    def _neutral_global_context(self, monkeypatch):
+        """detect() also reads Brent, USD/INR and the S&P 500 live, and escalates
+        the label on stress. Unpatched, these tests fetched real prices, so their
+        labels depended on that day's markets (SA-005). Here each answers a
+        flat 0.0%: below every stress threshold (None would be a missing input,
+        FIX-023)."""
+        monkeypatch.setattr(RegimeDetector, "_get_5d_pct", lambda self, ticker, on: 0.0)
+        monkeypatch.setattr(RegimeDetector, "_get_last_session_pct",
+                            lambda self, ticker, on: 0.0)
+
     def _make_df(self, closes: list[float]) -> pd.DataFrame:
         return pd.DataFrame({"Close": closes})
 
@@ -337,29 +348,27 @@ class TestRegimeDetectorDetect:
             snap = detector.detect(date(2026, 5, 1), "automobile")
         assert snap.regime_label == "RISK_ON"
 
-    def test_detect_fallback_to_vix_default_on_yfinance_error(self):
-        # When yfinance raises inside _get_vix(), the method catches and returns VIX_FALLBACK.
+    def test_a_vix_fetch_error_gives_no_value(self):
+        # FIX-023: a failed fetch gives no value, never VIX_FALLBACK.
         detector = RegimeDetector()
         with patch("yfinance.Ticker") as mock_ticker:
             mock_ticker.return_value.history.side_effect = Exception("network")
             vix = detector._get_vix(date(2026, 5, 1))
-        assert vix == settings.VIX_FALLBACK
+        assert vix is None
 
-    def test_detect_fallback_to_zero_on_fii_yfinance_error(self):
-        # When yfinance raises inside _get_fii_proxy(), falls back to FII_PROXY_FALLBACK.
+    def test_a_nifty_fetch_error_gives_no_value(self):
         detector = RegimeDetector()
         with patch("yfinance.Ticker") as mock_ticker:
             mock_ticker.return_value.history.side_effect = Exception("network")
             fii = detector._get_fii_proxy(date(2026, 5, 1))
-        assert fii == settings.FII_PROXY_FALLBACK
+        assert fii is None
 
-    def test_detect_fallback_to_fifty_on_rsi_yfinance_error(self):
-        # When yfinance raises inside _get_sector_rsi(), falls back to RSI_FALLBACK.
+    def test_a_sector_index_fetch_error_gives_no_value(self):
         detector = RegimeDetector()
         with patch("yfinance.Ticker") as mock_ticker:
             mock_ticker.return_value.history.side_effect = Exception("network")
             rsi = detector._get_sector_rsi("automobile", date(2026, 5, 1))
-        assert rsi == settings.RSI_FALLBACK
+        assert rsi is None
 
     def test_narrative_non_empty_for_all_regimes(self):
         detector = RegimeDetector()

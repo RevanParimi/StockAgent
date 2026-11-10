@@ -8,6 +8,7 @@ from backend.shared.schemas.portfolio import (
     AdviceRecord, Holding, Portfolio, TransactionRecord,
 )
 from core.portfolio.digest import build_digest
+from core.portfolio.pricing import SessionClose
 
 D = date(2026, 7, 13)
 
@@ -75,10 +76,10 @@ def test_pipeline_calls_executor_and_value_recorder():
          patch.object(pl, "PortfolioStore") as MockStore, \
          patch.object(pl, "sync_corp_actions"), \
          patch.object(pl, "refresh_events_calendar", return_value={}), \
-         patch.object(pl, "close_on", return_value=110.0), \
+         patch.object(pl, "session_close", return_value=(SessionClose(110.0, D, "agree"), D)), \
          patch.object(pl, "get_price_history", side_effect=Exception("skip")), \
          patch.object(pl, "build_signals"), \
-         patch.object(pl, "decide", return_value=_advice()[0]), \
+         patch.object(pl, "gated_decide", return_value=(_advice()[0], None)), \
          patch.object(pl, "narrate", return_value="n"), \
          patch("core.portfolio.autopilot.execute_advice", return_value=[_txn()]) as mock_exec, \
          patch("core.portfolio.autopilot.record_value_point", return_value=None) as mock_rvp, \
@@ -101,10 +102,10 @@ def test_pipeline_emits_switch_buy_skipped_alert():
          patch.object(pl, "PortfolioStore") as MockStore, \
          patch.object(pl, "sync_corp_actions"), \
          patch.object(pl, "refresh_events_calendar", return_value={}), \
-         patch.object(pl, "close_on", return_value=110.0), \
+         patch.object(pl, "session_close", return_value=(SessionClose(110.0, D, "agree"), D)), \
          patch.object(pl, "get_price_history", side_effect=Exception("skip")), \
          patch.object(pl, "build_signals"), \
-         patch.object(pl, "decide", return_value=_switch_advice_with_skipped_buy()[0]), \
+         patch.object(pl, "gated_decide", return_value=(_switch_advice_with_skipped_buy()[0], None)), \
          patch.object(pl, "narrate", return_value="n"), \
          patch("core.portfolio.autopilot.execute_advice",
                return_value=[_switch_sell_only_txn()]), \

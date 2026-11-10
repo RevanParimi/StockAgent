@@ -51,6 +51,8 @@ async def promote_idea(
     result = ShelfStore().promote(symbol.strip().upper(), user_id=user["user_id"])
     if result["status"] == "not_on_shelf":
         raise HTTPException(status_code=404, detail=f"{symbol.upper()} is not an active shelf idea.")
+    if result["status"] == "sector_unnamed":         # FIX-026
+        raise HTTPException(status_code=409, detail=result["detail"])
     return result
 
 

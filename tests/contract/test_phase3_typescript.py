@@ -209,23 +209,17 @@ class TestWebSocketEventShapes:
 
 
 # ---------------------------------------------------------------------------
-# 5. TypeScript client timeout contract
+# 5. Timeout contract
+#
+# SA-005 removed "agent timeout < the TypeScript client's 180 s": that client
+# (typescript/src/clients/pythonClient.ts) is no longer in the repository, and
+# config.yaml has shipped agent_execution.timeout_seconds: 180, production's
+# value, since 2026-07-06. The check passed only where a developer's .env
+# overrode AGENT_TIMEOUT_SECONDS. A client that sets a timeout again should
+# carry this contract with it.
 # ---------------------------------------------------------------------------
 
 class TestClientTimeoutContract:
-    def test_agent_timeout_plus_buffer_within_ts_client_timeout(self):
-        """
-        TypeScript client sets a 180s timeout.
-        Python AGENT_TIMEOUT_SECONDS is 120s.
-        120s (agents) + overhead must be < 180s (TS timeout).
-        """
-        from core.config import settings
-        ts_client_timeout = 180
-        assert settings.AGENT_TIMEOUT_SECONDS < ts_client_timeout, (
-            f"AGENT_TIMEOUT_SECONDS ({settings.AGENT_TIMEOUT_SECONDS}) must be "
-            f"less than TypeScript client timeout ({ts_client_timeout}s)"
-        )
-
     def test_llm_timeout_within_agent_timeout(self):
         from core.config import settings
         assert settings.LLM_TIMEOUT_SECONDS <= settings.AGENT_TIMEOUT_SECONDS, (

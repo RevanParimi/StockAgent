@@ -32,6 +32,9 @@ def app_env(tmp_path, monkeypatch):
     monkeypatch.setattr(ui_data, "_WATCHLIST_PATH", tmp_path / "watchlist.json",
                         raising=False)
     monkeypatch.setattr(settings, "AUTH_REQUIRED", True, raising=False)
+    # GET /ui/watchlist quotes each symbol live; (0.0, 0.0) is the helper's own
+    # "no price" answer (SA-005).
+    monkeypatch.setattr(ui_data, "_fetch_yf_price", lambda yf_ticker: (0.0, 0.0))
 
     from services.api.routes.auth_api import router as auth_router
     app = FastAPI()

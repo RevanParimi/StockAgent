@@ -2,7 +2,8 @@
 CLI smoke tests for core/intelligence/rl/eval/run_eval.py
 
 Verifies the module is invocable as `python -m core.intelligence.rl.eval.run_eval`,
-prints a summary table, and writes outputs/eval/{date}_report.json.
+prints a summary table, and writes {date}_report.json (outputs/eval by default;
+the test passes --output-dir so the checkout is never written, SA-005).
 """
 from __future__ import annotations
 
@@ -24,8 +25,8 @@ def test_cli_synthetic_smoke(tmp_path, monkeypatch):
 
     result = subprocess.run(
         [sys.executable, "-m", "core.intelligence.rl.eval.run_eval", "--synthetic",
-         "--n-tickers", "2", "--n-cycles", "1"],
-        cwd=str(PROJECT_ROOT),
+         "--n-tickers", "2", "--n-cycles", "1", "--output-dir", str(tmp_path / "eval")],
+        cwd=str(tmp_path),
         env=env,
         capture_output=True,
         text=True,
@@ -38,7 +39,7 @@ def test_cli_synthetic_smoke(tmp_path, monkeypatch):
     assert "direction_accuracy" in result.stdout
     assert "Report written to" in result.stdout
 
-    report_path = PROJECT_ROOT / "outputs" / "eval" / f"{date.today().isoformat()}_report.json"
+    report_path = tmp_path / "eval" / f"{date.today().isoformat()}_report.json"
     assert report_path.exists()
 
     data = json.loads(report_path.read_text(encoding="utf-8"))

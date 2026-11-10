@@ -11,6 +11,7 @@ the nightly lane. Dormant no-op unless ATLAS_ENABLED (wired as scheduler Job 18)
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -29,6 +30,10 @@ def _verdicts_cap_days():
 
 def _outbox_cap_days():
     return cfg("delivery.outbox_retention_days", fallback=30)
+
+
+def _dead_letter_cap_days():
+    return cfg("delivery.outbox_dead_letter_retention_days", fallback=180)
 
 
 def _value_history_cap():
@@ -51,24 +56,72 @@ def _prune_ticker_verdicts() -> int:
 
 
 def _prune_outbox() -> int:
-    """Drop delivered/dead outbox rows older than the cap. Queued/sending rows are
-    never pruned regardless of age. Returns rows removed."""
-    days = _outbox_cap_days()
-    if not days or int(days) <= 0:
-        return 0
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=int(days))).isoformat(timespec="seconds")
+    """Drop delivered outbox rows older than the outbox cap. Queued/sending rows
+    are never pruned regardless of age. Returns rows removed.
+
+    SA-006: dead letters are the delivery history, so they outlive delivered
+    rows. At the outbox cap only a dead row's payload is cleared (the message
+    content is private and stale by then); the row — channel, kind, attempts,
+    last_error — stays until the dead-letter cap."""
+    removed = 0
+    now = datetime.now(timezone.utc)
     conn = atlas_store._get_conn()
-    with atlas_store._lock:
-        cur = conn.execute(
-            "DELETE FROM outbox WHERE status IN ('delivered','dead') AND created_at < ?",
-            (cutoff,))
-        conn.commit()
-    return cur.rowcount or 0
+    days = _outbox_cap_days()
+    if days and int(days) > 0:
+        cutoff = (now - timedelta(days=int(days))).isoformat(timespec="seconds")
+        with atlas_store._lock:
+            cur = conn.execute(
+                "DELETE FROM outbox WHERE status='delivered' AND created_at < ?", (cutoff,))
+            removed += cur.rowcount or 0
+            conn.execute("UPDATE outbox SET payload_ref='{}' WHERE status='dead'"
+                         " AND created_at < ? AND payload_ref != '{}'", (cutoff,))
+            conn.commit()
+    dead_days = _dead_letter_cap_days()
+    if dead_days and int(dead_days) > 0:
+        cutoff = (now - timedelta(days=int(dead_days))).isoformat(timespec="seconds")
+        with atlas_store._lock:
+            cur = conn.execute(
+                "DELETE FROM outbox WHERE status='dead' AND created_at < ?", (cutoff,))
+            removed += cur.rowcount or 0
+            conn.commit()
+    return removed
+
+
+def _kept_value_lines(lines: list[str], cap: int) -> list[str]:
+    """The last `cap` lines, plus every older point the Nifty comparison
+    dates its deposits by (core/portfolio/results.py, SA-051): the first
+    point with a capital_in, and each point whose capital_in differs from the
+    point before it. A deposit then keeps its own date and amount however
+    long the history grows; without them the first kept point's capital_in
+    would read as an opening deposit on a later day."""
+    tail = len(lines) - cap
+    if tail <= 0:
+        return lines
+    kept: list[str] = []
+    previous = None
+    for i, line in enumerate(lines):
+        if i >= tail:
+            kept.append(line)
+            continue
+        try:
+            point = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(point, dict) or not isinstance(point.get("total_equity"), (int, float)):
+            continue
+        capital = point.get("capital_in")
+        if not isinstance(capital, (int, float)):
+            continue
+        if previous is None or abs(float(capital) - previous) > 0.005:
+            kept.append(line)
+        previous = float(capital)
+    return kept
 
 
 def _prune_value_history() -> int:
-    """Truncate every user's value_history.jsonl to the last `cap` points (atomic).
-    Returns the number of files trimmed."""
+    """Truncate every user's value_history.jsonl to the last `cap` points and
+    the older points where capital_in changed (atomic). Returns the number of
+    files trimmed."""
     cap = _value_history_cap()
     if not cap or int(cap) <= 0:
         return 0
@@ -82,8 +135,9 @@ def _prune_value_history() -> int:
     for vh in root.glob("*/value_history.jsonl"):
         try:
             lines = vh.read_text(encoding="utf-8").splitlines()
-            if len(lines) > cap:
-                atomic_write_text(vh, "\n".join(lines[-cap:]) + "\n")
+            kept = _kept_value_lines(lines, cap)
+            if len(kept) < len(lines):
+                atomic_write_text(vh, "\n".join(kept) + "\n")
                 trimmed += 1
         except Exception as exc:
             logger.warning("[retention] value_history trim failed for %s (non-fatal): %s",

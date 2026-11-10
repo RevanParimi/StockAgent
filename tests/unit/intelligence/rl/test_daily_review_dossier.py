@@ -140,7 +140,7 @@ def test_run_daily_review_writes_dossier_and_event_tags(tmp_path, monkeypatch):
 
     # Step 2: actual close — direction-correct, near-zero error (NEUTRAL verdict
     # is always direction_correct regardless, but keep the error tiny too).
-    monkeypatch.setattr(dr, "_fetch_actual_close", lambda t, d: 100.1)
+    monkeypatch.setattr(dr, "_fetch_session_close", lambda t, d: dr.SessionClose(100.1, d, "agree"))
 
     # Volume context (non-fatal try/except around get_price_history).
     monkeypatch.setattr(dr, "get_price_history", lambda *a, **k: None)
@@ -157,13 +157,16 @@ def test_run_daily_review_writes_dossier_and_event_tags(tmp_path, monkeypatch):
     import services.data.fetchers.nse_market as nse_mkt_mod
     monkeypatch.setattr(nse_mkt_mod, "get_nse_market_data", lambda *a, **k: {"error": "skipped"})
 
-    # G4 off-market signals — fetch_all returns an empty signals object (no `nse` pkg calls).
+    # G4 off-market signals — fetch_all returns an empty signals object, and the
+    # constructor opens no NSE session (SA-005: it used to, before fetch_all).
     from backend.shared.schemas.feedback import OffMarketSignals
     import core.intelligence.rl.stores.offmarket_fetcher as offmarket_mod
     monkeypatch.setattr(
         offmarket_mod.OffMarketFetcher, "fetch_all",
         lambda self, t, d: OffMarketSignals(date=d, ticker=t),
     )
+    monkeypatch.setattr(offmarket_mod.OffMarketFetcher, "__init__",
+                        lambda self: setattr(self, "_nse", None))
 
     # Factor regime (IIMA) — avoid network/CSV fetch.
     import core.intelligence.rl.algorithms.factor_regime as factor_regime_mod
@@ -283,7 +286,7 @@ def test_run_daily_review_external_shock_wrong_direction_no_crash(tmp_path, monk
 
     # Falling actual close => actual_direction="DOWN" => direction_correct=False
     # for the BUY verdict above.
-    monkeypatch.setattr(dr, "_fetch_actual_close", lambda t, d: 98.0)
+    monkeypatch.setattr(dr, "_fetch_session_close", lambda t, d: dr.SessionClose(98.0, d, "agree"))
     monkeypatch.setattr(dr, "get_price_history", lambda *a, **k: None)
 
     from core.schemas.feedback import RegimeSnapshot
@@ -301,6 +304,15 @@ def test_run_daily_review_external_shock_wrong_direction_no_crash(tmp_path, monk
         offmarket_mod.OffMarketFetcher, "fetch_all",
         lambda self, t, d: OffMarketSignals(date=d, ticker=t),
     )
+    monkeypatch.setattr(offmarket_mod.OffMarketFetcher, "__init__",
+                        lambda self: setattr(self, "_nse", None))
+
+    # A wrong direction runs the thesis reviewer: keep its LLM in-process
+    # (an intact thesis, the reviewer's own answer when its LLM fails).
+    from core.intelligence.rl.agents.thesis_reviewer import ThesisReviewer
+    monkeypatch.setattr(ThesisReviewer, "_call_llm",
+                        lambda self, prompt: json.dumps({"thesis_intact": True,
+                                                         "horizon_confidence_multiplier": 1.0}))
 
     import core.intelligence.rl.algorithms.factor_regime as factor_regime_mod
     monkeypatch.setattr(factor_regime_mod, "get_factor_regime", lambda *a, **k: None)

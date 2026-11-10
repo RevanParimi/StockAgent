@@ -68,21 +68,23 @@ def test_broadcast_emits_once_per_user(tmp_path, monkeypatch):
     assert result["emitted"] == len(users)   # one record per audience user
 
 
-def test_system_alert_sites_broadcast():
-    """The 6 system-level alert sites fan out to the whole audience (AUD-015)."""
+def test_system_alert_sites_fan_out():
+    """System-level alert sites reach more than one user: operator notices go
+    to the owner audience (FIX-008), market notices to everyone (AUD-015).
+    test_operator_notices_owner_only_fix008.py holds the full classification."""
     import inspect
     from core.delivery import ops_alerts, index_watch
     import core.discovery as discovery
     from core.portfolio import store as pstore, reconcile
 
-    assert "emit_alerts_broadcast" in inspect.getsource(ops_alerts._emit)
-    assert "emit_alerts_broadcast" in inspect.getsource(
+    assert "emit_owner_alerts" in inspect.getsource(ops_alerts._emit)
+    assert "emit_owner_alerts" in inspect.getsource(
         ops_alerts.alert_job_partial_output)
     assert "emit_alerts_broadcast" in inspect.getsource(index_watch)
     assert "emit_alerts_broadcast" in inspect.getsource(discovery)
-    assert "emit_alerts_broadcast" in inspect.getsource(
+    assert "emit_owner_alerts" in inspect.getsource(
         pstore.PortfolioStore._alert_quarantine)
-    assert "emit_alerts_broadcast" in inspect.getsource(reconcile._alert)
+    assert "emit_owner_alerts" in inspect.getsource(reconcile._alert)
 
     # preopen reforecast alert (scheduler job) is system-level too
     import services.scheduler.python.scheduler as sched

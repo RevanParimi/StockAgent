@@ -50,10 +50,12 @@ from services.api.routes.prompts import router as prompts_router
 from services.api.routes.analytics import router as analytics_router
 from services.api.routes.portfolio_api import router as portfolio_router
 from services.api.routes.discovery_api import router as discovery_router
+from services.api.routes.events_api import router as events_router
 from services.api.routes.delivery_api import router as delivery_router
 from services.api.routes.audit_api import router as audit_router
 from services.api.routes.rl_monitor import router as rl_monitor_router
 from services.api.routes.auth_api import router as auth_router
+from services.api.routes.ops_api import router as ops_router
 from core.portfolio.store import QuarantinedPortfolioError
 
 
@@ -137,19 +139,24 @@ def _self_heal_rl() -> None:
         logger.warning("[startup] RL imports failed — self-heal skipped: %s", exc)
         return
 
-    from services.api.log_buffer import get_active_tickers
+    from services.api.log_buffer import get_active_tickers_with_sector
     today = date.today()
     month_start = today.replace(day=1)
     # Use a cycle_id key so the checkpoint resets each month automatically
     _cycle_key = today.strftime("%Y-%m")
     _completed: set[str] = _load_self_heal_checkpoint(_cycle_key)
 
-    for ticker in get_active_tickers():
+    # SA-009: each ticker's own sector, the store the scheduled forecast and
+    # review use. This looked in automobile/<TICKER> for every ticker and ran
+    # the automobile graph into it, so each month's first deploy gave every
+    # non-automobile ticker a second, wrongly-dimensioned store.
+    for entry in get_active_tickers_with_sector():
+        ticker, sector = entry["sym"], entry["sector"]
         if ticker in _completed:
             logger.info("[startup] %s — already processed this cycle, skipping (checkpoint)", ticker)
             continue
         try:
-            store    = PredictionStore(ticker, sector="automobile")
+            store    = PredictionStore(ticker, sector=sector)
             cycle_id = store.current_cycle_id()
 
             # ── Step a: ensure forecast envelope exists ───────────────────
@@ -162,7 +169,7 @@ def _self_heal_rl() -> None:
                 try:
                     import time as _t
                     _t.sleep(3)   # brief stagger so yfinance isn't burst-hit for 5 tickers at once
-                    envelope = generate_forecast(ticker)
+                    envelope = generate_forecast(ticker, sector=sector)
                     logger.info(
                         "[startup] Envelope generated: %s horizon=%dd base=₹%.2f",
                         ticker, len(envelope.daily_forecasts), envelope.base_close,
@@ -189,7 +196,7 @@ def _self_heal_rl() -> None:
                 )
                 for review_date in missing:
                     try:
-                        summary = run_daily_review(ticker, review_date)
+                        summary = run_daily_review(ticker, review_date, sector=sector)
                         logger.info(
                             "[startup] Backfill %s %s — status=%s direction=%s",
                             ticker, review_date,
@@ -473,10 +480,12 @@ app.include_router(prompts_router,   tags=["Prompts"])
 app.include_router(analytics_router, tags=["Analytics"])
 app.include_router(portfolio_router,  tags=["Portfolio"])
 app.include_router(discovery_router,  tags=["Discovery"])
+app.include_router(events_router,     tags=["Events"])
 app.include_router(delivery_router,   tags=["Delivery"])
 app.include_router(rl_monitor_router, tags=["RL Monitor"])
 app.include_router(audit_router,     tags=["Audit"])
 app.include_router(auth_router,      tags=["Auth"])
+app.include_router(ops_router,       tags=["Ops"])
 
 
 # NOTE: "/" is served by the SPA catch-all at the bottom of this module
@@ -523,7 +532,7 @@ if _FRONTEND_DIR is not None:
     # (AUD-100) — fail loudly instead.
     _API_NAMESPACES = (
         "ui/", "api/", "scheduler/", "analytics/", "portfolio/", "discovery/",
-        "delivery/", "history/", "ws/", "analyse",
+        "events/", "delivery/", "history/", "ws/", "analyse", "ops/",
     )
 
     # Catch-all (registered last → all API/docs routes take precedence).

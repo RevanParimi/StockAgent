@@ -47,8 +47,8 @@ def _patched_detector(monkeypatch, *, vix=17.0, fii=0.0, rsi=50.0,
     monkeypatch.setattr(RegimeDetector, "_get_fii_proxy", lambda self, a: fii)
     monkeypatch.setattr(RegimeDetector, "_get_sector_rsi", lambda self, s, a: rsi)
     monkeypatch.setattr(RegimeDetector, "_get_5d_pct",
-                        lambda self, t: {"BZ=F": brent, "INR=X": usdinr}.get(t))
-    monkeypatch.setattr(RegimeDetector, "_get_last_session_pct", lambda self, t: spx)
+                        lambda self, t, a: {"BZ=F": brent, "INR=X": usdinr}.get(t))
+    monkeypatch.setattr(RegimeDetector, "_get_last_session_pct", lambda self, t, a: spx)
     return d
 
 
@@ -73,6 +73,10 @@ def test_detect_fetch_failure_degrades_to_current_behavior(monkeypatch):
     snap = d.detect(date(2026, 7, 27), "automobile")
     assert snap.regime_label == "NORMAL"
     assert snap.global_stress_signals == []
+    # FIX-023: two missing global signals could have escalated it, so the
+    # learning loop's NORMAL is not the day's regime.
+    assert snap.unavailable == "Brent crude, USD/INR and S&P 500 did not answer"
+    assert snap.floor_label == "NORMAL"
 
 
 def test_detect_multipliers_follow_escalated_label(monkeypatch):

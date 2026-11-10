@@ -1,0 +1,140 @@
+{
+  "story": "SA-050",
+  "phase": "implementation (2026-10-18), a new conversation opened with 'continue', session stockagent-main-e7",
+  "baseline": "85e447b1a4e60ac8b3cd4feb530962ca2c0cc5d4 (HEAD): every payload path is clean there; sizing.py and the new test file are untracked",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/SA-050-implementation.md",
+    "docs/README.md (the owner's probe line, not SA-050's)"
+  ],
+  "note": "Diff: analysis_data/sa050/digest.py, git diff HEAD over the 22 modified payload paths plus sizing.py and the new test file against /dev/null, sorted, PDF excluded (pinned here by blob).",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "f05d7d33cbb7d1a410ff79aa001651692081d349",
+      "sha256": "9716cd1b22b847d08863f7e5b81f4e180dd52484a7a3b559f0b7e0b8001b7ff7"
+    },
+    {
+      "path": "README.md",
+      "git_blob": "ccdcc4aaef1c15f746b02e9bd5d52de57872c7b8",
+      "sha256": "d9783f8a256529f6d3ba6dd2f033af7c1a684f8303124d42e71f734b2fe73dbe"
+    },
+    {
+      "path": "config.yaml",
+      "git_blob": "f87e3d72f72ec988a6074b2bca07180dcf42566c",
+      "sha256": "1658db99dd299ab86b30544a1c236b4b049a280ffd529545e37f3b18b4d62909"
+    },
+    {
+      "path": "core/delivery/weekly.py",
+      "git_blob": "cc1e0bd37f5dd3318ea5a2cce21b658b0ed40806",
+      "sha256": "576678327f8bd4606466e566e5ed7e02a939ceacec80f568e9aaa67476922440"
+    },
+    {
+      "path": "core/portfolio/advisor.py",
+      "git_blob": "5e9d7ad2351b73c9a96dec9c861b4b5487a4c53f",
+      "sha256": "f7cc9e2f709ce09a32c4c83c6cbabf1864245b874a741a0fe54dede06e599dfe"
+    },
+    {
+      "path": "core/portfolio/autopilot.py",
+      "git_blob": "2ebfeedf1d5424c2e5d0607489cbb13d2003cc49",
+      "sha256": "c68b80f5ae6150a78b87d61f7117e50f207591f1d3b85a5ec3448969e0b95c6e"
+    },
+    {
+      "path": "core/portfolio/narrator.py",
+      "git_blob": "9850286be014b32bbc1f8fd3954ffba4fd6fe79f",
+      "sha256": "4ed76c707c2c4488465a9b1bed7d482fbe4400ea3e3ee56099ef28339616b7f2"
+    },
+    {
+      "path": "core/portfolio/pipeline.py",
+      "git_blob": "89460ac19f3126e278f6935568d0d1e895e781b3",
+      "sha256": "98a3f3a29ea0e6e91ab52131c2f81c5e0ef7574ab6c4f6ac11d3772fabfe7d5a"
+    },
+    {
+      "path": "core/portfolio/sizing.py",
+      "git_blob": "54d59db12a785bb59e8f0af76a69a57cc9e4b1e3",
+      "sha256": "4dc82d5338addf93cd1bcdf7abeec809c117853b53dadd5d2ed24e69268e5c1c"
+    },
+    {
+      "path": "docs/AUTOPILOT_GUIDE.md",
+      "git_blob": "99b625b98fde36a6b84beca585174780744db003",
+      "sha256": "ce513bcdf1dc1c7f3a0fedbadd27bb800822a905bd97fcc313cd8653a926d211"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "cc60abfa04ca756ab8d60243229bb645896a336a",
+      "sha256": "c8424dd636830a2e465688cc0c42b8a0a4b1ce00b6e32944640e8f3834b8f34f"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "93f3f6d1a364ff98bfad17ff88c154e69d2c1b49",
+      "sha256": "366ea1304ea544c1b5f1dd1218ca7dfcc8451c0fc2a0beec4073b0fcf9dbd498"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "2ba2daa11fd9362a486db15b21425ce0781a1ef0",
+      "sha256": "b654f4ca43caf2041eff884fab7dd680d3abc2c3c17168a74bbed7d19302ab7f"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "ceaef267b1b2364c9aa49bc7349bda409e3af74e",
+      "sha256": "5912d69953eebd906e72bbf22a3486c2e558f2b83d5ee41fe8b5a6c1ab1c9741"
+    },
+    {
+      "path": "scripts/ci/broad_except_baseline.txt",
+      "git_blob": "b3831702dda0d3fb19afa521bc9575262796d487",
+      "sha256": "381cbbbee544d1e37c9d70d854780a50327fd548bcbbcdb552c539d54a9d9123"
+    },
+    {
+      "path": "src/backend/shared/config/settings/base.py",
+      "git_blob": "60e9c867320a324728ffb6abdf02daf116a1c49f",
+      "sha256": "6650e3ed728af7d1f0dc596cec5c1992d9deeef2d3baf03dfc19ff08d698a5aa"
+    },
+    {
+      "path": "src/frontend/prototypes/weekly-view.jsx",
+      "git_blob": "28aaa5de2a2629664e800c69438fb5ca5db60404",
+      "sha256": "e707d26f97580abfac340dd4ef53820b4f56e8ae72c5e1732f9b052c0b01a0fc"
+    },
+    {
+      "path": "tests/frontend/no_invented_figures.test.mjs",
+      "git_blob": "5842bf3fbc025989147cf28882ace74d10f8b478",
+      "sha256": "9a854db594613b7481ffcffc7ea48bc8d492ddc637a882218d43c15ac7c83486"
+    },
+    {
+      "path": "tests/unit/test_autopilot_executor_adds.py",
+      "git_blob": "12f0689b91e3bdb2d3c70fd791fa9b098010daeb",
+      "sha256": "54ab9532d7fe89e7ed86b2872bd921ef3e6c242cf7697426ad16a960862df920"
+    },
+    {
+      "path": "tests/unit/test_autopilot_executor_switch.py",
+      "git_blob": "91d62ecb4e4fb8a4e36c264879457923a478e266",
+      "sha256": "5d1b853689793d72a27851491175e9f4a9a5bcee9757540363ed63bfecfdd921"
+    },
+    {
+      "path": "tests/unit/test_autopilot_isolation.py",
+      "git_blob": "85f8d9b599d10527879265d48fe7f84537497489",
+      "sha256": "8210cfd765361ba6f77604179405384a3acb158e9c44c4aee604aa26d26ce310"
+    },
+    {
+      "path": "tests/unit/test_decision_gate_portfolio_sa003.py",
+      "git_blob": "d2730d3ee5f60ffe510864ba5cfc04812b2561c0",
+      "sha256": "c661831a0c727f2c3cc42940b5ed078843b151dc501b0a99d023cea39045c7c3"
+    },
+    {
+      "path": "tests/unit/test_identity_portfolio_sa008.py",
+      "git_blob": "4aae7419c6c317444a04ca350a9fbf614e7a42dd",
+      "sha256": "04da36ccc3d5739d723d935f3bd284f8d454f27d35717b5e8faf14edd59d8c46"
+    },
+    {
+      "path": "tests/unit/test_portfolio_settings.py",
+      "git_blob": "9a5c0f04a34ab5465b7e6e3334e1bbef7ee52ff5",
+      "sha256": "9fe637d2d7d6ab180e2d444caa0f881471acb509500a080b431fb214a49632ee"
+    },
+    {
+      "path": "tests/unit/test_sizing_rule_sa050.py",
+      "git_blob": "5901367a400fe184336758e31f2c840cd3df2567",
+      "sha256": "87e783961b7eddf27e518a07232c6eec3020c45c8a7ce853fe1f163b2b696315"
+    }
+  ]
+}

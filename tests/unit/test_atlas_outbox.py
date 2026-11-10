@@ -14,6 +14,7 @@ import pytest
 
 import core.delivery.outbox as outbox
 import core.delivery.channels as channels
+from core.delivery.channels import SendResult
 import services.data.stores.atlas_store as atlas_store
 from core.config import settings
 
@@ -72,7 +73,7 @@ def test_drain_delivers_and_marks_delivered(env, monkeypatch):
     _mk_user("u_1")
     calls = []
     monkeypatch.setattr(channels, "send_push_result",
-                        lambda *a, **k: (calls.append(a), (1, ""))[1])
+                        lambda *a, **k: (calls.append(a), SendResult(1, accepted_by="webpush 1/1 subscriptions"))[1])
     outbox.enqueue("u_1", "push", "brief", _payload(), "k1")
     result = outbox.drain_once()
     assert result["delivered"] == 1
@@ -87,7 +88,7 @@ def test_row_already_claimed_is_not_resent(env, monkeypatch):
     _mk_user("u_1")
     calls = []
     monkeypatch.setattr(channels, "send_push_result",
-                        lambda *a, **k: (calls.append(a), (1, ""))[1])
+                        lambda *a, **k: (calls.append(a), SendResult(1))[1])
     outbox.enqueue("u_1", "push", "brief", _payload(), "k1")
     # simulate another drainer having claimed the row (status='sending')
     conn = atlas_store._get_conn()
@@ -105,13 +106,15 @@ def test_backoff_then_dead_letter_after_max_attempts(env, monkeypatch):
     monkeypatch.setattr(outbox, "_backoff_minutes", lambda: [0, 0, 0])
     calls = []
     monkeypatch.setattr(channels, "send_push_result",
-                        lambda *a, **k: (calls.append(a), (0, "push transport failed"))[1])   # always fails
+                        lambda *a, **k: (calls.append(a), SendResult(reason="transient: push service HTTP 503"))[1])   # always fails
     outbox.enqueue("u_1", "push", "brief", _payload(), "k1")
     for _ in range(3):
         outbox.drain_once()
     assert len(calls) == 3
     assert _count("dead") == 1
     assert _count("queued") == 0
+    reason = atlas_store._get_conn().execute("SELECT last_error FROM outbox").fetchone()[0]
+    assert reason == "retries exhausted (3/3): transient: push service HTTP 503"
 
 
 # --- fan-out helper + deliver() choke point ---------------------------------
@@ -188,30 +191,63 @@ def test_enqueue_message_stores_full_body_and_html(monkeypatch):
     assert len(email_payload["body"]) == 4000          # full body stored (no 1500 clip)
 
 
-def test_send_row_caps_push_and_passes_html_to_email(monkeypatch):
+@pytest.fixture()
+def account_u1(tmp_path, monkeypatch):
+    """A real account row for u1 in a throwaway users.db (SA-005). The email
+    rows resolve their recipient from it, as in production; the global
+    DELIVERY_EMAIL_TO fallback is empty, so nothing depends on a developer's
+    .env address."""
+    from services.data.stores import user_store
+    monkeypatch.setattr(user_store, "_DB_PATH", tmp_path / "users.db")
+    monkeypatch.setattr(user_store, "_conn_holder", {"conn": None})
+    monkeypatch.setattr(settings, "DELIVERY_EMAIL_TO", "")
+    user_store.create_user("u1@example.invalid", "pw-for-tests", "U One", user_id="u1")
+    yield "u1@example.invalid"
+    user_store._conn_holder["conn"].close()
+
+
+def test_send_row_without_an_account_or_fallback_is_refused(monkeypatch, account_u1):
+    """The premise the next tests rely on: no account and no fallback address
+    means no email is attempted."""
+    sent = []
+    monkeypatch.setattr(channels, "send_email_result",
+                        lambda *a, **k: (sent.append(k), SendResult(1))[1])
+    payload = json.dumps({"title": "t", "body": "b", "url": "/"})
+    res = outbox._send_row({"id": 9, "user_id": "u_nobody", "channel": "email",
+                            "payload_ref": payload, "dedupe_key": "k9"})
+    assert (res.accepted, res.permanent, sent) == (False, True, [])
+    assert res.reason == "permanent: no email on file for this account"
+    assert "u_nobody" not in res.reason        # the owner report carries no user id
+
+
+def test_send_row_caps_push_and_passes_html_to_email(monkeypatch, account_u1):
     calls = {}
-    # SA-006: _send_row now calls the *_result variants and returns (ok, reason).
+    # SA-006: _send_row calls the *_result variants and returns a SendResult.
     monkeypatch.setattr(channels, "send_push_result",
                         lambda title, body, url="/", user_id=None, store=None:
-                        (calls.__setitem__("push", body), (1, ""))[1])
+                        (calls.__setitem__("push", body), SendResult(1))[1])
     monkeypatch.setattr(channels, "send_email_result",
-                        lambda title, body, html_body=None, to=None:
-                        (calls.__setitem__("email", (len(body), html_body)), (True, ""))[1])
+                        lambda title, body, html_body=None, to=None, idempotency_key=None:
+                        (calls.__setitem__("email", (len(body), html_body, to, idempotency_key)),
+                         SendResult(1))[1])
 
     payload = json.dumps({"title": "t", "body": "y" * 4000, "url": "/", "html": "<i>h</i>"})
-    assert outbox._send_row({"id": 1, "user_id": "u1", "channel": "push", "payload_ref": payload}) == (True, "")
+    assert outbox._send_row({"id": 1, "user_id": "u1", "channel": "push",
+                             "payload_ref": payload, "dedupe_key": "k1"}).accepted
     assert len(calls["push"]) == 1500                   # push capped at send time
-    assert outbox._send_row({"id": 2, "user_id": "u1", "channel": "email", "payload_ref": payload}) == (True, "")
-    assert calls["email"] == (4000, "<i>h</i>")         # email gets full body + html
+    assert outbox._send_row({"id": 2, "user_id": "u1", "channel": "email",
+                             "payload_ref": payload, "dedupe_key": "k2"}).accepted
+    # full body + html, to the account, with the row's provider idempotency key
+    assert calls["email"] == (4000, "<i>h</i>", account_u1, outbox.idempotency_key("k2"))
 
 
-def test_send_row_returns_transport_reason(monkeypatch):
+def test_send_row_returns_transport_reason(monkeypatch, account_u1):
     """The reason travels back so drain_once can persist it (SA-006)."""
     monkeypatch.setattr(channels, "send_email_result",
-                        lambda title, body, html_body=None, to=None:
-                        (False, "OSError: [Errno 101] Network is unreachable"))
+                        lambda title, body, html_body=None, to=None, idempotency_key=None:
+                        SendResult(reason="transient: OSError: [Errno 101] Network is unreachable"))
     payload = json.dumps({"title": "t", "body": "b", "url": "/"})
-    ok, reason = outbox._send_row(
-        {"id": 3, "user_id": "u1", "channel": "email", "payload_ref": payload})
-    assert ok is False
-    assert "Errno 101" in reason
+    res = outbox._send_row({"id": 3, "user_id": "u1", "channel": "email",
+                            "payload_ref": payload, "dedupe_key": "k3"})
+    assert (res.accepted, res.permanent) == (False, False)
+    assert "Errno 101" in res.reason

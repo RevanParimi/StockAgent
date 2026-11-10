@@ -1,0 +1,83 @@
+{
+  "story": "SA-010",
+  "phase": "implementation",
+  "baseline": "5772536cc7bfa62a65ab59515a93d68d45faeacf",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/SA-010-implementation.md"
+  ],
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "core/intelligence/algorithms/indicators/fetcher.py",
+      "git_blob": "b9d5e6bb1863f2ebb1365f7188e40d4e936b5747",
+      "sha256": "b3cadaf4c02fa2363d59fad4d60cd8687b6c8e616df5eeb423ae8d21224bd5b1"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "2e63d954e2418d614e248296ebdeec12e50409c7",
+      "sha256": "5625a551196d4fb83051c0b0d02be03deb1e786ba2ba802b73c0f11f61a66194"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "38cd3978a54c30d8ada931053f3c3c2e01e16e3d",
+      "sha256": "264f8c33cd68420aab81922d86214ab57b1b2ab281c80432e0e57047b6b228f8"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "a6302a2002dbd3c1aad281029be042f659e8dc67",
+      "sha256": "0e10594c8874b0da3398ae295bbaae567ab51d90914fd530a25d64477a092023"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/SA-026.md",
+      "git_blob": "6334465b69b7551ed1becf5c7ad6afca4160207f",
+      "sha256": "aafd7f3fc95c2303fda8b99e9508a29c4b2c895cac5042b7d6257e9f44f87b64"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/SA-040.md",
+      "git_blob": "c244d14a4f17725381d37efc13d8875c11d876f8",
+      "sha256": "db48b2dd179ef313c109f6ee1831d7882045b2e5dc845f46be911f94cc535c39"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/SA-045.md",
+      "git_blob": "495f6022afe638107d7744f5776b1aab84d0c70e",
+      "sha256": "3f599dee932c2de1503c116fa5a965aa884cdeb439fe26a0679947a2731b2bc7"
+    },
+    {
+      "path": "services/data/context/builder.py",
+      "git_blob": "9b043d3399a79ef4b802902aa9dd2802bc0b4a4a",
+      "sha256": "817c0b827caed13fb021e34c196c412edc85c6429489f2ddff57ea2261e332c0"
+    },
+    {
+      "path": "services/data/context/bundle_builder.py",
+      "git_blob": "7d8f31067f04f35bb3b95b8c428cc284a9192863",
+      "sha256": "063d768f69160c28ebfbd2a39a8c19c924dafdf6f74f04fbb34082406044ad6e"
+    },
+    {
+      "path": "services/data/context/fetch_result.py",
+      "git_blob": "d1f5e0498c6c054a7ba8555f227ac6ed9d522872",
+      "sha256": "7ee73023892b5e9a6fc2b5a0f0707f4e4c1dc7460609a2cc7c9f2007764aa456"
+    },
+    {
+      "path": "src/backend/shared/config/settings/base.py",
+      "git_blob": "abccefff4224b42abbf644d41d8c9af341069a8c",
+      "sha256": "03969d971edc851127764078da658357ad1d2daa3fbb058a770aa5048ab86c77"
+    },
+    {
+      "path": "tests/unit/shared/test_data_health_contract.py",
+      "git_blob": "775472680a2863dc6c6f78d72b5c5f9cb80ac626",
+      "sha256": "c66157de664c5dd6d17c683419982909ab1f50358b88a880cc6ee51da3fc3c21"
+    },
+    {
+      "path": "tests/unit/shared/test_instrument_identity_sa008.py",
+      "git_blob": "bd025badc39f45ad5c94bfe46c2aa9439cb64349",
+      "sha256": "dce7725627f1feb233a58878031f638b0746f65a3df478a17ca10002b804fec5"
+    },
+    {
+      "path": "tests/unit/shared/test_sector_benchmark_sa010.py",
+      "git_blob": "a10e5f32db57f94b628b59a1a15beb312de8cee4",
+      "sha256": "15b1201b0be3ac29d787c64faacac6c518a5ab636b14ffb563021c384b9a18b6"
+    }
+  ]
+}

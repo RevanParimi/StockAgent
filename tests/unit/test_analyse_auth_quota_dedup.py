@@ -46,9 +46,8 @@ def enforced(monkeypatch):
 
 
 @pytest.fixture()
-def client():
-    from services.api.server import app
-    with TestClient(app, raise_server_exceptions=False) as c:
+def client(api_worker_app):
+    with TestClient(api_worker_app, raise_server_exceptions=False) as c:
         yield c
 
 

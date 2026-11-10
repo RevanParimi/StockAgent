@@ -127,8 +127,11 @@ class TestYfinanceFetcher:
         assert not df.empty
         mock_dl.assert_called_once()
 
+    # An empty download triggers the symbol self-heal's Yahoo search; [] is its
+    # own answer when that search fails (SA-005: it used to go out live).
+    @patch("backend.shared.data.fetchers.symbol_resolver._india_candidates", return_value=[])
     @patch("core.intelligence.algorithms.indicators.fetcher.yf.download")
-    def test_get_price_history_empty_fallback(self, mock_dl):
+    def test_get_price_history_empty_fallback(self, mock_dl, _no_search):
         from core.intelligence.algorithms.indicators.fetcher import get_price_history
         mock_dl.return_value = pd.DataFrame()
         df = get_price_history("MARUTI")
@@ -322,7 +325,7 @@ def test_fetcher_no_exception_on_empty_data():
     import pandas as pd
 
     with patch("core.intelligence.algorithms.indicators.fetcher.yf.download",
-               return_value=pd.DataFrame()):
+               return_value=pd.DataFrame()),          patch("backend.shared.data.fetchers.symbol_resolver._india_candidates", return_value=[]):
         result = get_price_history("FAKEFAKE.NS", years=1)
         # Should return empty DataFrame, not raise
         assert result is not None

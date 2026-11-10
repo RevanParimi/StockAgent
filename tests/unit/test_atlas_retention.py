@@ -73,18 +73,26 @@ def test_none_cap_keeps_all(env, monkeypatch):
 def test_prune_outbox_removes_only_old_terminal_rows(env):
     conn = atlas_store._get_conn()
     _seed_instrument_and_user(conn)
-    rows = [("delivered", _iso_days_ago(60), "d1"),   # old + terminal -> pruned
-            ("dead", _iso_days_ago(60), "d2"),        # old + terminal -> pruned
+    body = '{"title": "t", "body": "private portfolio text"}'
+    rows = [("delivered", _iso_days_ago(60), "d1"),   # old + accepted -> pruned
+            ("dead", _iso_days_ago(60), "d2"),        # old dead letter -> kept, payload cleared
             ("queued", _iso_days_ago(60), "d3"),      # old but not terminal -> kept
-            ("delivered", _iso_days_ago(1), "d4")]    # terminal but recent -> kept
+            ("delivered", _iso_days_ago(1), "d4"),    # accepted but recent -> kept
+            ("dead", _iso_days_ago(200), "d5"),       # past the dead-letter cap -> pruned
+            ("dead", _iso_days_ago(1), "d6")]         # recent dead letter -> untouched
     for status, created, dk in rows:
         conn.execute("INSERT INTO outbox (user_id, channel, kind, payload_ref,"
-                     " dedupe_key, status, created_at) VALUES"
-                     " ('u_1','push','brief','{}', ?, ?, ?)", (dk, status, created))
+                     " dedupe_key, status, created_at, last_error) VALUES"
+                     " ('u_1','push','brief', ?, ?, ?, ?, 'why')", (body, dk, status, created))
     conn.commit()
-    retention._prune_outbox()                   # default 30 days
-    kept = sorted(r[0] for r in conn.execute("SELECT dedupe_key FROM outbox").fetchall())
-    assert kept == ["d3", "d4"]
+    removed = retention._prune_outbox()          # defaults: 30 days, dead letters 180
+    got = {r[0]: (r[1], r[2]) for r in conn.execute(
+        "SELECT dedupe_key, payload_ref, last_error FROM outbox").fetchall()}
+    assert removed == 2
+    assert sorted(got) == ["d2", "d3", "d4", "d6"]
+    # SA-006: the dead letter's history (reason) stays; its private content goes
+    assert got["d2"] == ("{}", "why")
+    assert got["d6"] == (body, "why") and got["d3"][0] == body
 
 
 # --- value_history ----------------------------------------------------------

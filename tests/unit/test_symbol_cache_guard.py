@@ -171,8 +171,8 @@ def test_company_name_lookup_never_uses_a_mismatched_symbol():
     MARUTI/JAYBARMARU incident.
 
     base_orchestrator._yf_info(ticker) builds the yfinance symbol ONLY from
-    settings.YF_SYMBOL_OVERRIDES.get(ticker.upper()) (a curated, trusted
-    override) or the naive "{ticker}{YFINANCE_SUFFIX}" — it NEVER consults
+    the instrument registry (config/instruments.yaml, a curated, trusted
+    record; SA-008) or the naive "{ticker}{YFINANCE_SUFFIX}" — it NEVER consults
     the learned yf_symbol_cache and never receives a fuzzy-search result.
     So _company_name_for() can never call learn_company_name(ticker, name)
     with a name sourced from a different company's symbol; the MARUTI ->
@@ -183,6 +183,7 @@ def test_company_name_lookup_never_uses_a_mismatched_symbol():
     from backend.shared.pipeline.base_orchestrator import BaseSectorOrchestrator
 
     src = inspect.getsource(BaseSectorOrchestrator._yf_info)
-    assert "YF_SYMBOL_OVERRIDES" in src
+    assert "registry_identity" in src
+    assert "resolve_identity" not in src and "resolve_yf_symbol" not in src
     assert "_load_cache" not in src
     assert "yf_symbol_cache" not in src

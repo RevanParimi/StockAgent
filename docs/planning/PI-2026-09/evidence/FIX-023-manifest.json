@@ -1,0 +1,104 @@
+{
+  "story": "FIX-023",
+  "phase": "implementation",
+  "head": "c5165a1",
+  "date": "2026-11-02",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "60b7446aed8b44fd7aa3c73b40cbb4bf45db53e0",
+      "sha256": "918bf820436be9db4856d02c717c6a67f9b1d689ecd215c4026d85c80aad38d9"
+    },
+    {
+      "path": "core/discovery/shelf.py",
+      "git_blob": "f52fa702d22781033d595e947accb1dd07bc2451",
+      "sha256": "0c1e45201f48b09eda5435a186a85f15098871c1aaae55299b166d928d8a305b"
+    },
+    {
+      "path": "core/intelligence/regime/detector.py",
+      "git_blob": "75317cc1c985194183cf44e0fef06dfb64b4ea41",
+      "sha256": "8202316871008c38658c968783b9d1e3da87cc77a41f99a3af336b888b9ff751"
+    },
+    {
+      "path": "core/intelligence/regime/state.py",
+      "git_blob": "0ba12158e49507ad763d51d1b3b389b77c538b02",
+      "sha256": "a7ff2343c766710cccaecd45e055b1c284e01a2f6ab146863f26d3e9ba62309a"
+    },
+    {
+      "path": "core/intelligence/rl/workflows/daily_review.py",
+      "git_blob": "66fe4896ea6a41e5f3bda281fa9018b29aba1027",
+      "sha256": "a2097f6c0d619b59dbdeb9090e1e567356b3693d762fe8607878490712b851ed"
+    },
+    {
+      "path": "core/portfolio/autopilot.py",
+      "git_blob": "32744883cf8a9e10422a3b045890bb14f16bba71",
+      "sha256": "a4e95d13edcbbc1bd55132d89b7f76a59dd54982d93aa377f1bc180e63f05a78"
+    },
+    {
+      "path": "core/portfolio/deployment.py",
+      "git_blob": "e90354c30ba52492f8f197d76c99c645cea16f59",
+      "sha256": "cd709d709ab6d23888859056430d3f597b020bdb4b8d8afced65d50c96df1731"
+    },
+    {
+      "path": "core/portfolio/exit_shadow.py",
+      "git_blob": "a3442abd9ff803d6d8fcb94d45dfc706e683d955",
+      "sha256": "6f3d363dbdbc1cda8ce59200e965a119f4255f9f7491705198cb88831694ab99"
+    },
+    {
+      "path": "docs/AUTOPILOT_GUIDE.md",
+      "git_blob": "0e77bf0e1a8925a108b4a5ffd34848a5e8faaec7",
+      "sha256": "89e3147fa21d170473ff60bc763c6adf324e527367ce231b67b8fd74f462f3fe"
+    },
+    {
+      "path": "docs/RL_DESIGN.md",
+      "git_blob": "7f2ebc21e3fae5dda34c1cb45be6ecb36317b6fa",
+      "sha256": "cef4cdee9e952f683df7c277f7588b99392c58ba9dc715dd739151ce5f80bfee"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "793f494347c24575a83bebaa820148ca7582b347",
+      "sha256": "5907679ffa5259b64f738278cb081819cb3db568d7cd2c0e362ae49ce49b032d"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "c752b5a3c2f87a82035991c4f08e95e809411710",
+      "sha256": "f0633fc8cb6c28a6b220ef323b840705a65b2b8b2eeae515e9d10687672adb69"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "f84f549ad2a797499c4db5178d3f3b41f0ae3b30",
+      "sha256": "4d65a516f35726a172def9acb38e517f4fbfc8fb53ca080c0259b3859ca444a1"
+    },
+    {
+      "path": "scripts/ci/broad_except_baseline.txt",
+      "git_blob": "36d309c9c5bfb83217f41f1a92f248f54b2a4bf2",
+      "sha256": "6c96c944d35cfdd19bfa4432e82f02740da1505f88db6fc71aace28d9656d853"
+    },
+    {
+      "path": "src/backend/shared/schemas/feedback.py",
+      "git_blob": "145ce904096e7bdcabb90b41cdc71f0835c2f83a",
+      "sha256": "6d8975e3037f29fd3a534cf3d73163e2cc75f085949000732e931028614e1cde"
+    },
+    {
+      "path": "tests/unit/intelligence/regime/test_global_stress.py",
+      "git_blob": "29a750de310f435f5509777f28bc61db31fc0c96",
+      "sha256": "f3a9b4323b4846b6fe694670ec0636f98933ba85ed5654f35a4a6f2f68bcfe1a"
+    },
+    {
+      "path": "tests/unit/intelligence/rl/test_regime.py",
+      "git_blob": "8c66135fdf0a8aa2a8e5109765ba640e81f4f450",
+      "sha256": "dd5e285324343a043af35accaacaac49f5690e528ae027f93a1438fc3e4e84c6"
+    },
+    {
+      "path": "tests/unit/test_deploy_idle_cash_sa049.py",
+      "git_blob": "256a5cc8c58ec08254a57123371b90c202f8eb0d",
+      "sha256": "6ee78a3b2d5116a001cd3795d19aae5601ae207872ad52d253967ff133d49f1a"
+    },
+    {
+      "path": "tests/unit/test_regime_inputs_fix023.py",
+      "git_blob": "1fbb0c8273ea7e87711c72865815b4fbb43682a3",
+      "sha256": "acc97da8c87f89e170db110a7540d62c8b3f70498a2c2404faabc396f9d3ea1b"
+    }
+  ]
+}

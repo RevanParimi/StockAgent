@@ -341,11 +341,11 @@ def _migrate_telemetry(telemetry_db: Path) -> bool:
 
 
 def _emit_ops_alert(message: str) -> None:
-    """One broadcast ops alert (non-fatal; degrades to nothing when delivery is
-    disabled, e.g. under tests)."""
+    """One ops alert to the owner (non-fatal; degrades to nothing when delivery
+    is disabled, e.g. under tests)."""
     try:
-        from core.delivery.alerts import AlertEvent, emit_alerts_broadcast
-        emit_alerts_broadcast([AlertEvent(
+        from core.delivery.alerts import AlertEvent, emit_owner_alerts
+        emit_owner_alerts([AlertEvent(
             date=datetime.now(timezone.utc).date().isoformat(),
             kind="atlas_quarantine", symbol="", message=message, severity="warning",
         )], title="Atlas ETL")

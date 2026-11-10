@@ -1,0 +1,110 @@
+{
+  "story": "FIX-010",
+  "phase": "rework 1 (2026-10-16), a new conversation opened with 'continue', after the first fresh review's changes_requested",
+  "baseline": "c31136b (HEAD): FIX-010's reviewed code ec3f336, unchanged at HEAD; the docs as committed in 445d7fa plus the KT bump c31136b. Review input of the first review: FIX-010-manifest-review1.json (900c8f27)",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/*",
+    "docs/README.md (the owner's probe line, not FIX-010's)"
+  ],
+  "note": "Cumulative: the first review's 18 paths plus scripts/ci/broad_except_baseline.txt. Rework diff: git diff HEAD over the rework's payload paths, PDF excluded (analysis_data/fix010/rework1/rw_digest.py, writes rw_code.diff).",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "fd47f4d56f1fbeba6f8a0cee7627813673f17cb6",
+      "sha256": "cab95987f86472bcf4c4466497ebc24c5ecb5c5d1b8d3f3f629d3e7208bdb3a4"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "268caad59a13f8eb8259abd25351bd48de4878b9",
+      "sha256": "ad1b5c7cd312effcdadf7172aff3cc95b54aa113e9516f8912884840eab74eb2"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "522d762efa8457d5810837e52fd9c98512b3b24d",
+      "sha256": "48ddf1337f6487e4b11d3c2604a31b14308c84bb0338c235d86310837d929c73"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "e866403256c2519b98e8e0df463b688d1e75d728",
+      "sha256": "171da0684945e4d21640481ec0f078f6b08fb55da3b031b42d33043574f9d04f"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "9ea8c65bbd3b2e810b83688edc39586f97f262fe",
+      "sha256": "b67626c190b313ce0acdf1459bb6d8c3874ffe9f11e878492b3ce0c8e2dcc760"
+    },
+    {
+      "path": "scripts/backfill_score_history.py",
+      "git_blob": "d1c53aac0fff1c84bbd43ae6fc12bac988939e0c",
+      "sha256": "4d662644a9db42320d25943740933c3df4dbf981eb60046823c2af522da451b6"
+    },
+    {
+      "path": "scripts/ci/broad_except_baseline.txt",
+      "git_blob": "b5483a2e109c29a2f24764504ce6bedbf63875dc",
+      "sha256": "428fae11acd79854813c0e7e9d7aca6ceb3a6744c87b67d24c58ffba162c574e"
+    },
+    {
+      "path": "services/api/routes/analytics.py",
+      "git_blob": "64a84afd5a60a320489058aaaefbd78e4c0c00f9",
+      "sha256": "16ecce751e83ccbbae7707117de2f99424796c3ec970036be58ee140541b2029"
+    },
+    {
+      "path": "services/api/routes/ui_data.py",
+      "git_blob": "ffa0b60901338861a76d45d6ceca01b921e02ded",
+      "sha256": "b2c6bdb5c4b6f07659924af49d4f443f638f6b810f062c9bec02b25d2a5e80dd"
+    },
+    {
+      "path": "src/backend/shared/pipeline/base_orchestrator.py",
+      "git_blob": "c1f823ef51483d4c2d69e6833671684f9315ca0f",
+      "sha256": "72663de28d0365c2f5dbd7d70d76c1641e53913bdd9aff207ed6a7166bf4326f"
+    },
+    {
+      "path": "src/frontend/prototypes/UI_SPEC.md",
+      "git_blob": "be908e026eefe2f121fa1750bb42b93d4d4d28f7",
+      "sha256": "c3f6d7f6f5a28ec99acff3c8de8e03e156027115bb0e1e5bbfd2e8de1be5c3a5"
+    },
+    {
+      "path": "src/frontend/prototypes/data.jsx",
+      "git_blob": "4fee92d8c2b08b6d92d681fe19b2fef6e7d234f2",
+      "sha256": "70232517307cff22ce9aa6bc1566778c4bf8cda564998f0614e7bdf0c20bb9a6"
+    },
+    {
+      "path": "src/frontend/prototypes/index.html",
+      "git_blob": "63a18f252242d182d07c55f445743839a9807d0d",
+      "sha256": "5c4d3b5b863a9a008a052de18dbb0bbaac3423dda6b73e570cb57b3267d971e3"
+    },
+    {
+      "path": "src/frontend/prototypes/portfolio.jsx",
+      "git_blob": "298af6b35907c41415c89c216cd7b37892609644",
+      "sha256": "f02f9f5514929e71322817ed0919767fc7cd347d18954baf05da3adb8553dfa3"
+    },
+    {
+      "path": "tests/frontend/no_invented_figures.test.mjs",
+      "git_blob": "0431282061a68d1270883386149a89241fbad0b8",
+      "sha256": "0a312dfc1615783fb39c2d16bd9c9291b42b5572d70e8cb44d748c667ee97512"
+    },
+    {
+      "path": "tests/unit/api/test_chat_brief_user_scope_fix005.py",
+      "git_blob": "75f2ed84c8a2ce01c0c6d0da5facbc3774d1034c",
+      "sha256": "3f89d72f683c2842319613e131cabb2a2d953ca3a0a5ae479a9c5990ab6461a4"
+    },
+    {
+      "path": "tests/unit/test_chat_session_memory.py",
+      "git_blob": "3bbed7f14a1352a3875e299e3ee6739a1c94cff2",
+      "sha256": "e83acd0fecf85c9c66c1a75402344b78e948efaf56c2e72744df15a432db2f48"
+    },
+    {
+      "path": "tests/unit/test_score_history_fix010.py",
+      "git_blob": "e6a55f785a00cce49b775970556063cf59b01a20",
+      "sha256": "76d5091690883b5ce745c98c787babe7ae9c47701d38f652246951dd40dc1981"
+    },
+    {
+      "path": "tests/unit/test_ui_no_invented_figures_pr001.py",
+      "git_blob": "d2460954a3bdebcd898917cc3dc453d298cc5036",
+      "sha256": "7658a406da10570e021d02e809c01cf6140f8958dbaf494a766b4fa651e02e90"
+    }
+  ]
+}

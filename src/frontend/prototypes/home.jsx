@@ -1,6 +1,58 @@
 // Beginner Home screen — tabbed (Today / This month / Watchlist / Trending)
 const { useState: useStateHome, useMemo, useEffect: useEffectHome, useRef: useRefHome } = React;
 
+// ── Real values only (PR-001) ──────────────────────────────────────────────
+// Every figure on Home comes from an API answer and carries its date, or the
+// screen says it is unavailable. The clock is IST whatever the device's zone.
+const IST = 'Asia/Kolkata';
+
+function istGreeting(now = new Date()) {
+  const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: IST, hour: '2-digit', hourCycle: 'h23' }).format(now));
+  return h >= 5 && h < 12 ? 'Good morning' : h >= 12 && h < 17 ? 'Good afternoon' : 'Good evening';
+}
+
+// '2026-10-12' (an exchange date) -> '12 Oct'
+function fmtIstDate(isoDate) {
+  if (!isoDate) return '';
+  const d = new Date(isoDate.length === 10 ? isoDate + 'T12:00:00+05:30' : isoDate);
+  return isNaN(d) ? '' : d.toLocaleDateString('en-IN', { timeZone: IST, day: 'numeric', month: 'short' });
+}
+
+// An ISO timestamp -> '13 Oct, 22:40'
+function fmtIstTime(iso) {
+  const d = iso ? new Date(iso) : null;
+  return !d || isNaN(d) ? '' : d.toLocaleString('en-IN', { timeZone: IST, day: 'numeric', month: 'short',
+    hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+function fmtPct(v) {
+  return (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+}
+
+// The first word of the account's display name, or '' when there is none.
+function firstName(user) {
+  return ((user && user.display_name) || '').trim().split(/\s+/)[0] || '';
+}
+
+// A ticker row's figures, each only when the API supplied it: no price means
+// the price fetch failed (the server sends 0), no analysis means no score.
+function tickerFigures(t) {
+  const parts = [];
+  if (t.hasData) parts.push(`Score ${t.score.toFixed(2)}`);
+  if (t.price) parts.push(`₹${t.price.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`);
+  return parts.length ? parts.join(' · ') : 'Not analysed yet';
+}
+
+// What a pane says while market data is loading or after it failed.
+function MarketUnavailable({ what }) {
+  const loading = window.__apiState === 'loading';
+  return (
+    <div className="card sa-unavailable" style={{ padding:24, color:'var(--ink-3)', fontSize:13 }}>
+      {loading ? `Loading ${what.toLowerCase()}…` : `${what} is unavailable right now. Try again in a few minutes.`}
+    </div>
+  );
+}
+
 function Home({ onNav, openChat }) {
   const [tab, setTab] = useStateHome('today');
   const [search, setSearch] = useStateHome('');
@@ -74,7 +126,7 @@ function Home({ onNav, openChat }) {
 
       <main style={{ maxWidth:1280, margin:'0 auto', padding:'var(--main-py) var(--main-px) 96px' }}>
         {/* HERO */}
-        <Hero openChat={openChat} onAnalyze={onAnalyze}/>
+        <Hero openChat={openChat}/>
 
         {/* TAB BAR */}
         <div className="tab-bar" style={{
@@ -103,21 +155,25 @@ function Home({ onNav, openChat }) {
         {tab==='watch' && <WatchlistPane onAnalyze={onAnalyze}/>}
         {tab==='trend' && <TrendingPane onAnalyze={onAnalyze}/>}
 
-        {/* CATEGORIES */}
-        <div style={{ marginTop:36 }}>
-          <SectionHead title="Browse by category" subtitle="Pick a slice of the auto sector"/>
-          <div style={{ display:'grid', gridTemplateColumns:'var(--grid-categories)', gap:12, marginTop:16 }}>
-            {window.CATEGORIES.map(c => <CategoryCard key={c.key} c={c} onClick={()=>setSelectedCategory(c)}/>)}
+        {/* CATEGORIES — only what the API sent */}
+        {window.CATEGORIES.length > 0 && (
+          <div style={{ marginTop:36 }}>
+            <SectionHead title="Browse by category"/>
+            <div style={{ display:'grid', gridTemplateColumns:'var(--grid-categories)', gap:12, marginTop:16 }}>
+              {window.CATEGORIES.map(c => <CategoryCard key={c.key} c={c} onClick={()=>setSelectedCategory(c)}/>)}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* SUGGESTIONS */}
-        <div style={{ marginTop:36 }}>
-          <SectionHead title="Suggested for you" subtitle="Picked by your agents based on what you watch"/>
-          <div style={{ display:'grid', gridTemplateColumns:'var(--grid-suggestions)', gap:16, marginTop:16 }}>
-            {window.SUGGESTIONS.map(s => <SuggestCard key={s.sym} s={s} onAnalyze={onAnalyze}/>)}
+        {/* SUGGESTIONS — only what the API sent */}
+        {window.SUGGESTIONS.length > 0 && (
+          <div style={{ marginTop:36 }}>
+            <SectionHead title="Suggested for you" subtitle="Picked by your agents based on what you watch"/>
+            <div style={{ display:'grid', gridTemplateColumns:'var(--grid-suggestions)', gap:16, marginTop:16 }}>
+              {window.SUGGESTIONS.map(s => <SuggestCard key={s.sym} s={s} onAnalyze={onAnalyze}/>)}
+            </div>
           </div>
-        </div>
+        )}
       </main>
 
       {/* Analysis result drawer */}
@@ -156,6 +212,10 @@ function TopNav({ active, onNav, search, setSearch }) {
   const value = setSearch ? search : ownSearch;
   const write = setSearch || setOwnSearch;
   const timerRef = useRefHome(null);
+  const user = useSaUser();
+  const isOwner = saIsOwner(user);
+  const initials = ((user && user.display_name) || '').trim().split(/\s+/)
+    .filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
 
   const handleSearch = (val) => {
     write(val);
@@ -179,7 +239,8 @@ function TopNav({ active, onNav, search, setSearch }) {
     { screen:'portfolio',  label:'Portfolio',  icon:<Icon.Briefcase size={17}/> },
     { screen:'inbox',      label:'Inbox',      icon:<Icon.Bell size={17}/> },
     { screen:'learn',      label:'Learn',      icon:<Icon.Book size={17}/> },
-    { screen:'rl-monitor', label:'RL Monitor', icon:<Icon.Activity size={17}/> },
+    // Operator screens: the owner's only (PR-001).
+    ...(isOwner ? [{ screen:'rl-monitor', label:'RL Monitor', icon:<Icon.Activity size={17}/> }] : []),
   ];
 
   return (
@@ -202,7 +263,7 @@ function TopNav({ active, onNav, search, setSearch }) {
             <Icon.Search size={16} style={{ position:'absolute', left:12, top:'50%',
               transform:'translateY(-50%)', color:'var(--ink-3)', pointerEvents:'none' }}/>
             <input value={value} onChange={e=>handleSearch(e.target.value)}
-              placeholder="Search MARUTI, Tata Motors..." style={{
+              placeholder="Search stocks…" style={{
                 width:'100%', padding:'11px 12px 11px 36px', border:'1px solid var(--border)',
                 borderRadius:10, background:'var(--bg-base)', fontSize:14, outline:'none',
                 boxSizing:'border-box' }}/>
@@ -225,13 +286,15 @@ function TopNav({ active, onNav, search, setSearch }) {
             }}>{l.icon} {l.label}</button>
           ))}
 
-          {/* Secondary screens */}
+          {/* Secondary screens — the operator ones for the owner only */}
           <div style={{ height:1, background:'var(--border)', margin:'12px 0 8px' }}/>
           {[
             { screen:'settings',   label:'Settings',   icon:<Icon.Settings size={16}/> },
-            { screen:'prompt-lab', label:'Prompt Lab', icon:<Icon.Settings size={16}/> },
-            { screen:'analytics',  label:'Analytics',  icon:<Icon.Trend size={16}/> },
-            { screen:'logs',       label:'Logs',        icon:<Icon.Layers size={16}/> },
+            ...(isOwner ? [
+              { screen:'prompt-lab', label:'Prompt Lab', icon:<Icon.Settings size={16}/> },
+              { screen:'analytics',  label:'Analytics',  icon:<Icon.Trend size={16}/> },
+              { screen:'logs',       label:'Logs',        icon:<Icon.Layers size={16}/> },
+            ] : []),
           ].map(l => (
             <button key={l.screen} onClick={()=>{ onNav?.(l.screen); setMenuOpen(false); }} style={{
               display:'flex', alignItems:'center', gap:14, padding:'12px 14px', borderRadius:12, width:'100%',
@@ -305,7 +368,7 @@ function TopNav({ active, onNav, search, setSearch }) {
             <Icon.Search size={16} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'var(--ink-3)', pointerEvents:'none' }}/>
             <input value={value} onChange={e=>handleSearch(e.target.value)}
               onFocus={()=>results.length > 0 && setDropOpen(true)}
-              placeholder="Search MARUTI, Tata Motors..." style={{
+              placeholder="Search stocks…" style={{
                 width:'100%', padding:'9px 12px 9px 36px', border:'1px solid var(--border)', borderRadius:10,
                 background:'var(--bg-base)', fontSize:13, outline:'none'
               }}/>
@@ -336,16 +399,16 @@ function TopNav({ active, onNav, search, setSearch }) {
           {/* Bell — desktop-only. Duplicates the Inbox tab already in the bottom
               nav / mobile menu, so it stays nav-desktop rather than adding a
               third route to the same screen. */}
+          {/* No unread dot: nothing counts unread items, so a dot would always be on. */}
           <button className="nav-desktop nav-bell" style={{ width:36, height:36, borderRadius:'50%', border:'1px solid var(--border)', background:'var(--bg-surface)', display:'grid', placeItems:'center', position:'relative', flexShrink:0 }}>
             <Icon.Bell size={16} c="var(--ink-2)"/>
-            <span style={{ position:'absolute', top:6, right:6, width:8, height:8, borderRadius:'50%', background:'var(--sell-strong)' }}/>
           </button>
           {/* Avatar — the single Settings entry point, visible at every width (no
               nav-desktop). Below 1024px .nav-avatar picks up margin-left:auto
               (styles.css:130) so it clusters with the theme toggle + hamburger
               at the right edge instead of sitting orphaned next to the logo
               once the pill/search/bell disappear. */}
-          <button className="nav-avatar" onClick={()=>onNav?.('settings')} title="Settings" style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#22d3ee,#a78bfa)', display:'grid', placeItems:'center', color:'#fff', fontWeight:700, fontSize:13, flexShrink:0, border:'none', cursor:'pointer' }}>AS</button>
+          <button className="nav-avatar" onClick={()=>onNav?.('settings')} title="Settings" style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#22d3ee,#a78bfa)', display:'grid', placeItems:'center', color:'#fff', fontWeight:700, fontSize:13, flexShrink:0, border:'none', cursor:'pointer' }}>{initials || <Icon.User size={16} c="#fff"/>}</button>
 
           {/* Mobile + tablet: theme toggle + hamburger (opens the full-screen
               menu, which now also carries search) */}
@@ -421,7 +484,16 @@ function ThemeToggle() {
   );
 }
 
-function Hero({ openChat, onAnalyze }) {
+function Hero({ openChat }) {
+  const user = useSaUser();
+  const name = firstName(user);
+  const n50 = window.NIFTY50;                 // {value, changePct, asOf} or null
+  const today = window.MARKET_TODAY;
+  const state = window.__apiState;
+  const badge = state === 'ready' ? `Updated ${fmtIstTime(window.__apiFetchedAt)} IST`
+    : state === 'failed' ? 'Market data unavailable'
+    : state === 'demo' ? 'Sample data'
+    : 'Loading market data…';
   return (
     <section style={{
       position:'relative', overflow:'hidden', borderRadius:24,
@@ -438,15 +510,23 @@ function Hero({ openChat, onAnalyze }) {
         <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'6px 12px', borderRadius:999,
           background:'rgba(34,211,238,.15)', border:'1px solid rgba(34,211,238,.3)', fontSize:11, fontWeight:600,
           color:'#67e8f9', marginBottom:16, letterSpacing:'.05em' }}>
-          <span style={{ width:6, height:6, borderRadius:'50%', background:'#22d3ee', display:'inline-block', animation:'pulse-soft 2s ease-in-out infinite' }}/>
-          LIVE · {new Date().toLocaleString('en-IN', { hour:'2-digit', minute:'2-digit', day:'numeric', month:'short' })} IST
+          <span style={{ width:6, height:6, borderRadius:'50%', background: state === 'failed' ? '#fbbf24' : '#22d3ee',
+            display:'inline-block', animation: state === 'ready' ? 'pulse-soft 2s ease-in-out infinite' : 'none' }}/>
+          <span className="sa-hero-badge">{badge}</span>
         </div>
         <h1 style={{ fontSize:34, fontWeight:800, letterSpacing:'-0.02em', lineHeight:1.15, margin:'0 0 12px' }}>
-          Good afternoon, Aditi.<br/>
-          <span style={{ color:'#94a3b8', fontWeight:600 }}>Auto sector</span> <span style={{ color:'#22c55e' }}>+1.24%</span> <span style={{ color:'#94a3b8', fontWeight:600 }}>today.</span>
+          <span className="sa-hero-greeting">{istGreeting()}{name ? `, ${name}` : ''}.</span>
+          {n50 && n50.changePct != null && <>
+            <br/>
+            <span className="sa-hero-market">
+              <span style={{ color:'#94a3b8', fontWeight:600 }}>Nifty 50</span>{' '}
+              <span style={{ color: n50.changePct >= 0 ? '#22c55e' : '#f87171' }}>{fmtPct(n50.changePct)}</span>{' '}
+              <span style={{ color:'#94a3b8', fontWeight:600 }}>on {fmtIstDate(n50.asOf)}.</span>
+            </span>
+          </>}
         </h1>
         <p style={{ color:'#cbd5e1', fontSize:15, lineHeight:1.6, margin:'0 0 20px', maxWidth:520 }}>
-          {window.MARKET_TODAY.oneLiner} Ask the assistant anything — or jump to a tab below.
+          {today && today.oneLiner ? today.oneLiner + ' ' : ''}Ask the assistant anything — or jump to a tab below.
         </p>
         <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
           <button onClick={openChat} style={{
@@ -454,11 +534,6 @@ function Hero({ openChat, onAnalyze }) {
             background:'linear-gradient(135deg,#22d3ee,#a78bfa)', color:'#0a1628',
             fontSize:13, fontWeight:700, display:'flex', alignItems:'center', gap:8, cursor:'pointer'
           }}><Icon.Sparkles size={15}/> Ask the assistant</button>
-          <button onClick={()=>onAnalyze('MARUTI')} style={{
-            padding:'10px 18px', borderRadius:10, border:'1px solid rgba(255,255,255,.18)',
-            background:'rgba(255,255,255,.06)', color:'#f1f5f9',
-            fontSize:13, fontWeight:600, display:'flex', alignItems:'center', gap:8, cursor:'pointer'
-          }}><Icon.Star size={15}/> Run on MARUTI</button>
         </div>
       </div>
 
@@ -486,27 +561,79 @@ function SectionHead({ title, subtitle, action }) {
 
 // ---------- TODAY pane ----------
 function TodayPane({ data, onDriverClick }) {
-  const [range, setRange] = useStateHome('1M');
-  // T2.1 — fetched range data overrides mock NIFTY_AUTO_RANGES for non-1M tabs
-  const [fetchedRange, setFetchedRange] = useStateHome(null);
-  const [rangeFetching, setRangeFetching] = useStateHome(false);
-
-  const handleRangeChange = async (newRange) => {
-    setRange(newRange);
-    if (newRange === '1M') { setFetchedRange(null); return; } // 1M already in bootstrap
-    setRangeFetching(true);
-    try {
-      const res = await fetch(`/ui/nifty-ranges?range=${newRange}`);
-      if (res.ok) setFetchedRange(await res.json()); // {range, points, label, change}
-    } catch {}
-    setRangeFetching(false);
-  };
-
-  const r = fetchedRange || window.NIFTY_AUTO_RANGES[range];
-
   return (
     <div style={{ display:'grid', gridTemplateColumns:'var(--grid-2col)', gap:20 }}>
       {/* Market pulse + drivers */}
+      {data ? <TodayPulse data={data} onDriverClick={onDriverClick}/> : <MarketUnavailable what="Today's market"/>}
+
+      {/* Nifty 50 + sectors */}
+      <div style={{ display:'flex', flexDirection:'column', gap:20, minWidth:0 }}>
+        <NiftyBox/>
+        {data && (data.sectorChange || []).length > 0 && (
+          <div className="card" style={{ padding:20, minWidth:0 }}>
+            <div className="eyebrow" style={{ marginBottom:12 }}>Sectors today</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {data.sectorChange.map(s => <SectorRow key={s.name} s={s}/>)}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// The Nifty 50 over the chosen range, from /ui/nifty-ranges (T2.1): its last
+// value and that close's date, or "unavailable". Demo mode reads the fixture.
+function NiftyBox() {
+  const [range, setRange] = useStateHome('1M');
+  const [r, setR] = useStateHome(null);          // the API answer; null while loading
+
+  useEffectHome(() => {
+    if (window.saDemoMode) { setR((window.NIFTY50_RANGES || {})[range] || {}); return; }
+    let alive = true;
+    fetch(`/ui/nifty-ranges?range=${range}`)
+      .then(res => res.ok ? res.json() : {})
+      .then(d => { if (alive) setR(d || {}); })
+      .catch(() => { if (alive) setR({}); });
+    return () => { alive = false; };
+  }, [range]);
+
+  const has = r && r.value != null;
+  return (
+    <div className="card sa-nifty-box" style={{ padding:20, minWidth:0 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14, gap:10, flexWrap:'wrap' }}>
+        <div style={{ minWidth:0 }}>
+          <div className="eyebrow" style={{ marginBottom:4 }}>Nifty 50</div>
+          {has ? <>
+            <div style={{ display:'flex', alignItems:'baseline', gap:8 }}>
+              <span className="mono" style={{ fontSize:24, fontWeight:700 }}>
+                {r.value.toLocaleString('en-IN', { maximumFractionDigits:2 })}
+              </span>
+              {r.change != null && (
+                <span style={{ color: r.change >= 0 ? 'var(--buy-strong)' : 'var(--sell-strong)', fontWeight:700, fontSize:13 }}>
+                  {fmtPct(r.change)}
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:2 }}>
+              {r.change != null ? `over ${r.label} · ` : ''}as of {fmtIstDate(r.asOf)}
+            </div>
+          </> : (
+            <div style={{ fontSize:13, color:'var(--ink-3)', marginTop:4 }}>
+              {r === null ? 'Loading…' : 'Unavailable right now'}
+            </div>
+          )}
+        </div>
+        <RangeTabs value={range} onChange={setRange}/>
+      </div>
+      {has && <Sparkline values={r.points} height={70} color="var(--cyan)"/>}
+    </div>
+  );
+}
+
+function TodayPulse({ data, onDriverClick }) {
+  const drivers = data.drivers || [];
+  return (
       <div className="card" style={{ padding:24, minWidth:0 }}>
         <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
           <PulseDot kind="good"/>
@@ -518,7 +645,7 @@ function TodayPane({ data, onDriverClick }) {
             color: data.freshness?.isStale ? 'var(--neutral)' : 'var(--ink-3)',
             display:'flex', alignItems:'center', gap:5 }}>
             {data.freshness?.isStale && <span style={{ width:6, height:6, borderRadius:'50%', background:'var(--neutral)', display:'inline-block' }}/>}
-            {data.freshness?.label || 'Updated recently'}
+            {data.freshness?.label || ''}
           </div>
         </div>
 
@@ -528,43 +655,22 @@ function TodayPane({ data, onDriverClick }) {
 
         <div className="eyebrow" style={{ marginBottom:10 }}>What's moving the market</div>
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          {data.drivers.map((d,i) => <DriverRow key={i} d={d} onClick={onDriverClick}/>)}
+          {drivers.map((d,i) => <DriverRow key={i} d={d} onClick={onDriverClick}/>)}
+          {drivers.length === 0 && (
+            <div style={{ fontSize:13, color:'var(--ink-3)' }}>No market drivers from recent analyses yet.</div>
+          )}
         </div>
       </div>
-
-      {/* Sector heatmap + Nifty Auto sparkline */}
-      <div style={{ display:'flex', flexDirection:'column', gap:20, minWidth:0 }}>
-        <div className="card" style={{ padding:20, minWidth:0 }}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14, gap:10, flexWrap:'wrap' }}>
-            <div style={{ minWidth:0 }}>
-              <div className="eyebrow" style={{ marginBottom:4 }}>Nifty Auto</div>
-              <div style={{ display:'flex', alignItems:'baseline', gap:8 }}>
-                <span className="mono" style={{ fontSize:24, fontWeight:700 }}>22,847</span>
-                <span style={{ color: r.change >= 0 ? 'var(--buy-strong)' : 'var(--sell-strong)', fontWeight:700, fontSize:13 }}>
-                  {r.change >= 0 ? '+' : ''}{r.change.toFixed(2)}%
-                </span>
-              </div>
-              <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:2 }}>over {r.label}</div>
-            </div>
-            <RangeTabs value={range} onChange={handleRangeChange}/>
-          </div>
-          <Sparkline values={r.points} height={70} color="var(--cyan)"/>
-        </div>
-
-        <div className="card" style={{ padding:20, minWidth:0 }}>
-          <div className="eyebrow" style={{ marginBottom:12 }}>Sectors today</div>
-          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {data.sectorChange.map(s => <SectorRow key={s.name} s={s}/>)}
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
 function MonthPane({ data, onDriverClick }) {
+  if (!data) return <MarketUnavailable what="This month's market"/>;
+  const drivers = data.drivers || [];
+  // Agent votes only when the API sent real ones; nothing is drawn in their place.
+  const votes = data.agentVotes || [];
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'var(--grid-2col)', gap:20 }}>
+    <div style={{ display:'grid', gridTemplateColumns: votes.length ? 'var(--grid-2col)' : '1fr', gap:20 }}>
       <div className="card" style={{ padding:24 }}>
         <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
           <PulseDot kind="good"/>
@@ -573,59 +679,63 @@ function MonthPane({ data, onDriverClick }) {
             <div style={{ fontSize:18, fontWeight:700 }}>{data.pulse}</div>
           </div>
           <div style={{ marginLeft:'auto', fontSize:12, color:'var(--ink-3)' }}>
-            {new Date().toLocaleString('en-IN', { month:'long', year:'numeric' })}
+            {new Date().toLocaleString('en-IN', { timeZone: IST, month:'long', year:'numeric' })}
           </div>
         </div>
         <p style={{ color:'var(--ink-2)', fontSize:14, lineHeight:1.6, margin:'0 0 20px' }}>{data.oneLiner}</p>
         <div className="eyebrow" style={{ marginBottom:10 }}>Themes shaping this month</div>
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          {data.drivers.map((d,i) => <DriverRow key={i} d={d} onClick={onDriverClick}/>)}
+          {drivers.map((d,i) => <DriverRow key={i} d={d} onClick={onDriverClick}/>)}
+          {drivers.length === 0 && (
+            <div style={{ fontSize:13, color:'var(--ink-3)' }}>No themes from this month's analyses yet.</div>
+          )}
         </div>
       </div>
 
-      <div className="card" style={{ padding:20 }}>
-        <div className="eyebrow" style={{ marginBottom:14 }}>How agents are voting</div>
-        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          {(data.agentVotes || [
-            {n:'Sales & Demand',      v:0.78, k:'good'},
-            {n:'Fundamentals',        v:0.72, k:'good'},
-            {n:'Pattern Analysis',    v:0.65, k:'good'},
-            {n:'Sentiment',           v:0.61, k:'good'},
-            {n:'Policy & Regulatory', v:0.58, k:'mid'},
-            {n:'Raw Materials',       v:0.55, k:'mid'},
-            {n:'Competitive Intel',   v:0.52, k:'mid'},
-            {n:'Risk & Macro',        v:0.42, k:'bad'},
-          ]).map(a => (
-            <div key={a.n} style={{ display:'grid', gridTemplateColumns:'1fr 80px 50px', alignItems:'center', gap:10 }}>
-              <span style={{ fontSize:13, color:'var(--ink-2)' }}>{a.n}</span>
-              <div style={{ height:6, background:'var(--bg-tinted)', borderRadius:999, overflow:'hidden' }}>
-                <div style={{ width: (a.v*100)+'%', height:'100%',
-                  background: a.k==='good' ? 'var(--buy)' : a.k==='mid' ? 'var(--neutral)' : 'var(--sell)',
-                  borderRadius:999, transition:'width .8s' }}/>
+      {votes.length > 0 && (
+        <div className="card sa-agent-votes" style={{ padding:20 }}>
+          <div className="eyebrow" style={{ marginBottom:14 }}>How agents are voting</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            {votes.map(a => (
+              <div key={a.n} style={{ display:'grid', gridTemplateColumns:'1fr 80px 50px', alignItems:'center', gap:10 }}>
+                <span style={{ fontSize:13, color:'var(--ink-2)' }}>{a.n}</span>
+                <div style={{ height:6, background:'var(--bg-tinted)', borderRadius:999, overflow:'hidden' }}>
+                  <div style={{ width: (a.v*100)+'%', height:'100%',
+                    background: a.k==='good' ? 'var(--buy)' : a.k==='mid' ? 'var(--neutral)' : 'var(--sell)',
+                    borderRadius:999, transition:'width .8s' }}/>
+                </div>
+                <span className="mono" style={{ fontSize:12, color:'var(--ink-2)', textAlign:'right' }}>{a.v.toFixed(2)}</span>
               </div>
-              <span className="mono" style={{ fontSize:12, color:'var(--ink-2)', textAlign:'right' }}>{a.v.toFixed(2)}</span>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
 
 function WatchlistPane({ onAnalyze }) {
-  const [watchlist, setWatchlist] = useStateHome(window.WATCHLIST);
+  // null until /ui/watchlist answers: until then the list is bootstrap's,
+  // read at each render so a bootstrap that lands after mount still shows.
+  const [ownList, setWatchlist] = useStateHome(null);
+  const watchlist = ownList || window.WATCHLIST;
   const [liveTickers, setLiveTickers] = useStateHome(null); // null = not yet fetched
   const [addOpen, setAddOpen] = useStateHome(false);
   const [addVal, setAddVal] = useStateHome('');
   const [addError, setAddError] = useStateHome('');
   const [addBusy, setAddBusy] = useStateHome(false);
+  const [wlFailed, setWlFailed] = useStateHome(false);
 
-  // Fetch live prices from GET /ui/watchlist on mount
+  // Fetch the account's watchlist and live prices from GET /ui/watchlist on mount
   useEffectHome(() => {
+    if (window.saDemoMode) return;
     fetch('/ui/watchlist')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.tickers) setLiveTickers(d.tickers); })
-      .catch(() => {});
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('watchlist HTTP ' + r.status)))
+      .then(d => {
+        if (Array.isArray(d?.watchlist)) setWatchlist(d.watchlist);
+        if (d?.tickers) setLiveTickers(d.tickers);
+      })
+      .catch(() => setWlFailed(true));
   }, []);
 
   // Use live ticker data if available, fall back to bootstrap window.TICKERS
@@ -634,9 +744,15 @@ function WatchlistPane({ onAnalyze }) {
     : watchlist.map(s => window.TICKERS.find(t => t.sym === s)).filter(Boolean);
   const allSyms = (window.TICKERS || []).map(t => t.sym);
 
+  // Neither bootstrap nor /ui/watchlist answered: say so, show no stocks.
+  if (wlFailed && !liveTickers && window.__apiState === 'failed') {
+    return <MarketUnavailable what="Your watchlist"/>;
+  }
+
   const handleAdd = async () => {
     const sym = addVal.trim().toUpperCase();
     if (!sym) { setAddError('Enter a ticker symbol'); return; }
+    if (!allSyms.length) { setAddError('The list of supported stocks is unavailable right now.'); return; }
     if (!allSyms.includes(sym)) { setAddError(`${sym} not in supported list: ${allSyms.join(', ')}`); return; }
     if (watchlist.includes(sym)) { setAddError(`${sym} already in watchlist`); return; }
     setAddBusy(true);
@@ -743,12 +859,16 @@ function WatchlistPane({ onAnalyze }) {
                   <div className="mono" style={{ fontWeight:700, fontSize:14 }}>{t.sym}</div>
                   <div style={{ fontSize:11, color:'var(--ink-3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.name}</div>
                 </div>
-                <span style={{ fontSize:11, fontWeight:700, padding:'3px 8px', borderRadius:999, background:`color-mix(in oklab,${verdictColor} 14%,transparent)`, color:verdictColor }}>{t.verdict}</span>
+                {t.hasData
+                  ? <span style={{ fontSize:11, fontWeight:700, padding:'3px 8px', borderRadius:999, background:`color-mix(in oklab,${verdictColor} 14%,transparent)`, color:verdictColor }}>{t.verdict}</span>
+                  : <span style={{ fontSize:10, fontWeight:600, padding:'3px 8px', borderRadius:999, background:'var(--bg-tinted)', color:'var(--ink-3)' }}>Not analysed</span>}
               </div>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', fontSize:13 }}>
-                <span className="mono">₹{t.price.toLocaleString('en-IN',{minimumFractionDigits:2})}</span>
-                <span style={{ color: t.change >= 0 ? 'var(--buy-strong)' : 'var(--sell-strong)', fontWeight:700 }}>{t.change >= 0 ? '+' : ''}{t.change.toFixed(2)}%</span>
-                <div style={{ display:'flex', alignItems:'center', gap:6 }}><ScoreDot v={t.score}/><span className="mono" style={{ fontWeight:700 }}>{t.score.toFixed(2)}</span></div>
+                <span className="mono">{t.price ? '₹' + t.price.toLocaleString('en-IN',{minimumFractionDigits:2}) : '—'}</span>
+                {t.price
+                  ? <span style={{ color: t.change >= 0 ? 'var(--buy-strong)' : 'var(--sell-strong)', fontWeight:700 }}>{fmtPct(t.change)}</span>
+                  : <span style={{ color:'var(--ink-3)' }}>—</span>}
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>{t.hasData ? <><ScoreDot v={t.score}/><span className="mono" style={{ fontWeight:700 }}>{t.score.toFixed(2)}</span></> : <span style={{ color:'var(--ink-3)' }}>—</span>}</div>
                 <div style={{ display:'flex', gap:6 }}>
                   <button onClick={()=>onAnalyze(t.sym)} style={{ padding:'6px 12px', border:'none', borderRadius:8, background:'linear-gradient(135deg,var(--cyan),var(--violet))', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' }}>Analyze</button>
                   <button onClick={()=>handleRemove(t.sym)} style={{ width:30, height:30, border:'1px solid var(--border)', borderRadius:7, background:'transparent', display:'grid', placeItems:'center', color:'var(--ink-3)', fontSize:14, cursor:'pointer' }}>×</button>
@@ -767,11 +887,12 @@ function TrendingPane({ onAnalyze }) {
   const [fetchError, setFetchError] = useStateHome(false);
 
   useEffectHome(() => {
+    if (window.saDemoMode) { setItems(window.TRENDING || []); return; }
     fetch('/ui/trending')
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(d => setItems(d.trending || []))
       .catch(() => {
-        // fall back to bootstrap window.TRENDING on network error
+        // fall back to bootstrap's window.TRENDING (an API answer) on a network error
         setItems(window.TRENDING || []);
         setFetchError(true);
       });
@@ -786,19 +907,16 @@ function TrendingPane({ onAnalyze }) {
     );
   }
 
+  if (items.length === 0 && fetchError) return <MarketUnavailable what="Trending"/>;
+
   if (items.length === 0) {
     return (
       <div className="card" style={{ padding:40, textAlign:'center' }}>
         <div style={{ fontSize:32, marginBottom:12 }}>📊</div>
         <div style={{ fontSize:16, fontWeight:700, color:'var(--ink-1)', marginBottom:8 }}>No trending data yet</div>
-        <div style={{ fontSize:13, color:'var(--ink-3)', maxWidth:360, margin:'0 auto 20px', lineHeight:1.6 }}>
-          Run your first analysis on any ticker to start seeing which stocks are moving on agent signals.
+        <div style={{ fontSize:13, color:'var(--ink-3)', maxWidth:360, margin:'0 auto', lineHeight:1.6 }}>
+          Once stocks have been analysed twice, the ones whose scores moved most show here.
         </div>
-        <button onClick={()=>onAnalyze('MARUTI')} style={{
-          padding:'10px 20px', border:'none', borderRadius:10,
-          background:'linear-gradient(135deg,var(--cyan),var(--violet))', color:'#fff',
-          fontSize:13, fontWeight:700, cursor:'pointer'
-        }}>Run analysis on MARUTI</button>
       </div>
     );
   }
@@ -812,8 +930,8 @@ function TrendingPane({ onAnalyze }) {
       )}
       <div style={{ display:'grid', gridTemplateColumns:'var(--grid-trending)', gap:16 }}>
         {items.map(t => {
-          const ticker = window.TICKERS.find(x => x.sym === t.sym);
-          const score = t.score ?? ticker?.score ?? 0.5;
+          const ticker = window.TICKERS.find(x => x.sym === t.sym && x.hasData);
+          const score = t.score ?? ticker?.score ?? null;
           const delta = typeof t.delta === 'number' ? t.delta : parseFloat(t.delta) || 0;
           const isUp = t.direction === 'up' || delta > 0;
           const isDown = t.direction === 'down' || delta < 0;
@@ -845,7 +963,7 @@ function TrendingPane({ onAnalyze }) {
                   )}
                   <div style={{ fontSize:13, color:'var(--ink-2)', marginTop:6, lineHeight:1.5 }}>{t.why}</div>
                   <div style={{ display:'flex', gap:8, marginTop:10, flexWrap:'wrap' }}>
-                    <Pill kind="good">Score {score.toFixed(2)}</Pill>
+                    {score != null && <Pill kind="good">Score {score.toFixed(2)}</Pill>}
                     <button onClick={()=>onAnalyze(t.sym)} style={{
                       padding:'3px 10px', border:'1px solid var(--border)', borderRadius:6,
                       background:'var(--bg-surface)', fontSize:11, fontWeight:600, color:'var(--ink-1)', cursor:'pointer'
@@ -892,21 +1010,27 @@ function TickerRow({ t, onAnalyze, onRemove }) {
           </div>
         </div>
       </td>
-      <td style={td}><span className="mono">₹{t.price.toLocaleString('en-IN', {minimumFractionDigits:2})}</span></td>
-      <td style={{...td, color: t.change >= 0 ? 'var(--buy-strong)' : 'var(--sell-strong)', fontWeight:700 }}>
-        {t.change >= 0 ? '+' : ''}{t.change.toFixed(2)}%
+      {/* A failed price fetch arrives as 0, an unanalysed stock with hasData false:
+          both show "—", never a ₹0.00 price or a default 0.50 NEUTRAL. */}
+      <td style={td}><span className="mono">{t.price ? '₹' + t.price.toLocaleString('en-IN', {minimumFractionDigits:2}) : '—'}</span></td>
+      <td style={{...td, color: !t.price ? 'var(--ink-3)' : t.change >= 0 ? 'var(--buy-strong)' : 'var(--sell-strong)', fontWeight:700 }}>
+        {t.price ? fmtPct(t.change) : '—'}
       </td>
       <td style={td}>
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <ScoreDot v={t.score}/>
-          <span className="mono" style={{ fontWeight:700 }}>{t.score.toFixed(2)}</span>
-        </div>
+        {t.hasData ? (
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <ScoreDot v={t.score}/>
+            <span className="mono" style={{ fontWeight:700 }}>{t.score.toFixed(2)}</span>
+          </div>
+        ) : <span style={{ color:'var(--ink-3)' }}>—</span>}
       </td>
       <td style={td}>
-        <span style={{ display:'inline-block', padding:'4px 10px', borderRadius:999, fontSize:11, fontWeight:700,
-          background:`color-mix(in oklab, ${verdictColor} 14%, transparent)`, color: verdictColor, letterSpacing:'.04em' }}>
-          {t.verdict}
-        </span>
+        {t.hasData ? (
+          <span style={{ display:'inline-block', padding:'4px 10px', borderRadius:999, fontSize:11, fontWeight:700,
+            background:`color-mix(in oklab, ${verdictColor} 14%, transparent)`, color: verdictColor, letterSpacing:'.04em' }}>
+            {t.verdict}
+          </span>
+        ) : <span style={{ fontSize:11, color:'var(--ink-3)' }}>Not analysed</span>}
       </td>
       <td style={{...td, textAlign:'right'}}>
         <div style={{ display:'flex', gap:6, justifyContent:'flex-end' }}>
@@ -982,6 +1106,16 @@ function DriverRow({ d, onClick }) {
 }
 
 function SectorRow({ s }) {
+  // pct is null when that index could not be fetched: no bar, a dash.
+  if (s.pct == null) {
+    return (
+      <div style={{ display:'grid', gridTemplateColumns:'70px 1fr 60px', alignItems:'center', gap:10, fontSize:13 }}>
+        <span style={{ color:'var(--ink-2)', fontWeight:600 }}>{s.name}</span>
+        <div style={{ height:6, background:'var(--bg-tinted)', borderRadius:999 }}/>
+        <span className="mono" style={{ color:'var(--ink-3)', textAlign:'right' }}>—</span>
+      </div>
+    );
+  }
   const positive = s.pct >= 0;
   const w = Math.min(Math.abs(s.pct) * 50, 100);
   return (
@@ -1396,7 +1530,7 @@ function DriverDetailPanel({ driver: d, onClose, onAnalyze }) {
                           <span className="mono" style={{ fontWeight:700, fontSize:13 }}>{t.sym}</span>
                           <span style={{ fontSize:11, padding:'2px 7px', borderRadius:999, background:`color-mix(in oklab,${verdictColor} 14%,transparent)`, color:verdictColor, fontWeight:700 }}>{t.verdict}</span>
                         </div>
-                        <div style={{ fontSize:12, color:'var(--ink-3)', marginTop:2 }}>Score {t.score.toFixed(2)} · ₹{t.price.toLocaleString('en-IN',{minimumFractionDigits:2})}</div>
+                        <div style={{ fontSize:12, color:'var(--ink-3)', marginTop:2 }}>{tickerFigures(t)}</div>
                       </div>
                       <button onClick={()=>{onClose(); onAnalyze(t.sym);}} style={{ padding:'6px 12px', border:'none', borderRadius:8, background:'linear-gradient(135deg,var(--cyan),var(--violet))', color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer', flexShrink:0 }}>Analyze</button>
                     </div>
@@ -1425,7 +1559,7 @@ function CategoryDrawer({ category: initialCat, onClose, onAnalyze }) {
 
   const tickers = (cat.tickers || []).map(sym => {
     const t = window.TICKERS.find(x => x.sym === sym);
-    return t || { sym, name: sym, price: 0, change: 0, score: 0.5, verdict: 'NEUTRAL', hasData: false };
+    return t || { sym, name: sym, hasData: false };   // no figures: shown as "Not analyzed"
   });
 
   const mutate = async (add = [], remove = []) => {
@@ -1503,7 +1637,7 @@ function CategoryDrawer({ category: initialCat, onClose, onAnalyze }) {
                     )}
                   </div>
                   <div style={{ fontSize:12, color:'var(--ink-3)', marginTop:2 }}>
-                    {t.hasData !== false ? `Score ${t.score.toFixed(2)} · ₹${t.price.toLocaleString('en-IN',{minimumFractionDigits:2})}` : t.name}
+                    {t.hasData !== false ? tickerFigures(t) : t.name}
                   </div>
                 </div>
                 <div style={{ display:'flex', gap:6, flexShrink:0 }}>

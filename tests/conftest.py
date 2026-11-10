@@ -9,8 +9,21 @@ valuation_catalyst.
 
 from __future__ import annotations
 
+# SA-005: the hermetic boundary (no .env, no network, no checkout data) must be
+# in place before the first application import below. See tests/hermetic.py.
+from tests.hermetic import (  # noqa: F401  (pytest hooks, registered from this namespace)
+    pytest_report_header,
+    pytest_runtest_makereport,
+    pytest_runtest_setup,
+    pytest_runtest_teardown,
+    pytest_sessionfinish,
+    pytest_sessionstart,
+    pytest_terminal_summary,
+)
+
 import json
 from datetime import date
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -43,6 +56,10 @@ from core.schemas.pipeline import (
 
 # ---------------------------------------------------------------------------
 # Delivery isolation — no test may ever use a real transport
+#
+# Since SA-005 every test already runs in an empty working directory, so the
+# relative data/ paths below can no longer reach the checkout. These fixtures
+# stay because tests read their exact tmp_path targets.
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(autouse=True)
@@ -93,6 +110,77 @@ def _no_real_evidence_writes(monkeypatch, tmp_path):
         lambda path=None: _orig_path(
             path or str(tmp_path / "news_availability.jsonl")),
     )
+
+
+@pytest.fixture(autouse=True)
+def _no_real_gate_writes(monkeypatch, tmp_path):
+    """Same rule for SA-003's decision-gate skip log: every analysis, forecast
+    and review the suite runs records its gate, and data/logs is the Railway
+    volume in production. Explicit path= arguments are honored unchanged."""
+    from backend.shared.pipeline import decision_gate as _gate
+    _orig_path = _gate._path
+    monkeypatch.setattr(
+        _gate, "_path",
+        lambda path=None: _orig_path(path or str(tmp_path / "decision_gate.jsonl")),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _isolated_instrument_registry(monkeypatch):
+    """SA-008: the suite reads an empty instrument registry unless a test
+    points INSTRUMENT_REGISTRY_PATH at its own or at the shipped
+    config/instruments.yaml. Suites that use TATAMOTORS as their healthy
+    example keep testing data health, not the shipped identity decisions,
+    and a registry edit cannot silently change unrelated tests."""
+    monkeypatch.setenv("INSTRUMENT_REGISTRY_PATH",
+                       str(Path(__file__).parent / "fixtures" / "instruments_empty.yaml"))
+
+
+@pytest.fixture(autouse=True)
+def _no_real_job_outcome_writes(monkeypatch, tmp_path):
+    """Same rule for the scheduler's last-run outcomes: the daily-review job
+    tests wrote the repo's real data/scheduler_job_outcomes.json, and since
+    SA-004 the job also READS it (a second run for the same session merges
+    with the first), so a leftover record would leak between tests."""
+    from services.data.stores import job_outcomes as _outcomes
+    monkeypatch.setattr(_outcomes, "_OUTCOMES_PATH", tmp_path / "scheduler_job_outcomes.json")
+
+
+class SurveillanceAllClear(dict):
+    """NSE's surveillance report listing every symbol as active and under no
+    measure."""
+
+    def get(self, key, default=None):
+        return {"status": "A", "measures": []}
+
+
+@pytest.fixture(autouse=True)
+def _surveillance_all_clear(monkeypatch):
+    """SA-049: every autopilot buy that opens a position (a SWITCH buy leg, an
+    idle-cash buy) reads NSE's surveillance report, which is the NSE archive
+    and data/discovery on the Railway volume. The suite's buys see a report
+    that clears every symbol unless a test answers
+    `core.portfolio.autopilot.surveillance_report` itself, as the SA-049
+    tests do."""
+    from core.portfolio import autopilot as _autopilot
+    monkeypatch.setattr(_autopilot, "surveillance_report",
+                        lambda session: (SurveillanceAllClear(), "2000-01-01"))
+
+
+@pytest.fixture
+def api_worker_app(monkeypatch):
+    """services.api.server's app, whose lifespan starts as an API-only worker.
+
+    The singleton owner also refreshes the NSE calendar over the network,
+    starts the scheduler and runs the RL self-heal thread, which rebuilds a
+    missing month's envelope for every managed ticker (LLM and market calls,
+    in the background, into whichever test runs next). In an empty working
+    directory every envelope is missing. Enter it with
+    `with TestClient(api_worker_app) as c:` (SA-005)."""
+    from services.api import server
+    monkeypatch.setattr(server, "_acquire_singleton_lock", lambda: False)
+    monkeypatch.setattr(server, "_ensure_calendar_file", lambda: None)
+    return server.app
 
 
 # ---------------------------------------------------------------------------

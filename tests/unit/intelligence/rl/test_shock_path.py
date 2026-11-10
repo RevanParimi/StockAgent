@@ -81,7 +81,7 @@ def _patch_common(dr, monkeypatch, tmp_path, actual_close: float = 98.0):
     => actual_direction="DOWN" => direction_correct=False.
     """
     monkeypatch.setattr(dr.settings, "PREDICTION_DATA_DIR", str(tmp_path))
-    monkeypatch.setattr(dr, "_fetch_actual_close", lambda t, d: actual_close)
+    monkeypatch.setattr(dr, "_fetch_session_close", lambda t, d: dr.SessionClose(actual_close, d, "agree"))
     monkeypatch.setattr(dr, "get_price_history", lambda *a, **k: None)
 
     # When direction is wrong (the common case in these shock-path tests),
@@ -132,6 +132,17 @@ def _patch_common(dr, monkeypatch, tmp_path, actual_close: float = 98.0):
     monkeypatch.setattr(
         control_lane_mod, "_call_llm",
         lambda *a, **k: (control_payload, "test-control-model"))
+
+    # SA-005 (T1): fetch_all is stubbed above, but the constructor opened a
+    # live NSE session, and the thesis reviewer called OpenRouter whenever a
+    # test did not replace review(). Both now stay in-process: no session, and
+    # an intact thesis (the reviewer's own answer when its LLM fails).
+    monkeypatch.setattr(offmarket_mod.OffMarketFetcher, "__init__",
+                        lambda self: setattr(self, "_nse", None))
+    from core.intelligence.rl.agents.thesis_reviewer import ThesisReviewer
+    monkeypatch.setattr(ThesisReviewer, "_call_llm",
+                        lambda self, prompt: json.dumps({"thesis_intact": True,
+                                                         "horizon_confidence_multiplier": 1.0}))
 
 
 def _fb_output(miss_type: str, primary_miss_agent: str = "risk_macro"):

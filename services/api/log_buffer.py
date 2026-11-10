@@ -5,7 +5,8 @@ Shared in-memory ring buffer for live server-log streaming.
 
 Imported by:
   - services/api/server.py            → registers _handler at startup
-  - services/api/routes/ui_data.py    → exposes GET /ui/logs and GET /ui/logs/stream
+  - services/api/routes/ui_data.py    → exposes GET /ui/logs and GET /ui/logs/stream,
+                                        to the owner or the machine key only (FIX-007)
 
 Thread model
 ------------
@@ -204,6 +205,56 @@ def save_managed_tickers(tickers: list[dict]) -> None:
     )
 
 
+def managed_symbols() -> set[str]:
+    """
+    Every managed symbol, enabled or not, uppercased (FIX-002: the ticker
+    resolver's short cut). Read-only: unlike load_managed_tickers, a missing
+    or unreadable file gives an empty set and is never seeded, so resolving a
+    ticker cannot write the managed list.
+    """
+    try:
+        raw = json.loads(_MANAGED_TICKERS_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return set()
+    except (OSError, ValueError) as exc:
+        # The resolver then sends managed tickers to the LLM again: say so.
+        _log.warning("[managed_tickers] %s unreadable for symbols: %s", _MANAGED_TICKERS_PATH, exc)
+        return set()
+    if not isinstance(raw, list):
+        _log.warning("[managed_tickers] %s is not a list: no managed symbols", _MANAGED_TICKERS_PATH)
+        return set()
+    return {
+        str(t.get("sym") or "").strip().upper()
+        for t in raw
+        if isinstance(t, dict) and str(t.get("sym") or "").strip()
+    }
+
+
+def managed_sectors() -> dict[str, str]:
+    """
+    {symbol: sector} for every managed ticker, enabled or not, read-only like
+    managed_symbols. The sector is read as the daily review and the monthly
+    forecast read it (get_active_tickers_with_sector: `sector`, default
+    "automobile"), so it is the key a managed stock's predictions are written
+    under; promote_symbol keeps it when the stock is promoted again (PR-004).
+    """
+    try:
+        raw = json.loads(_MANAGED_TICKERS_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as exc:
+        _log.warning("[managed_tickers] %s unreadable for sectors: %s", _MANAGED_TICKERS_PATH, exc)
+        return {}
+    if not isinstance(raw, list):
+        _log.warning("[managed_tickers] %s is not a list: no managed sectors", _MANAGED_TICKERS_PATH)
+        return {}
+    return {
+        str(t.get("sym") or "").strip().upper(): str(t.get("sector", "automobile") or "")
+        for t in raw
+        if isinstance(t, dict) and str(t.get("sym") or "").strip()
+    }
+
+
 def get_active_tickers() -> list[str]:
     """Return only the enabled ticker symbols from the managed list."""
     return [t["sym"] for t in load_managed_tickers() if t.get("enabled", True)]
@@ -224,3 +275,9 @@ def get_active_tickers_with_sector() -> list[dict]:
         for t in load_managed_tickers()
         if t.get("enabled", True)
     ]
+
+
+def get_disabled_tickers() -> list[str]:
+    """Managed tickers switched off on purpose (enabled: false). The daily
+    review reports them as excluded, not as required work (SA-004)."""
+    return [t["sym"] for t in load_managed_tickers() if not t.get("enabled", True)]

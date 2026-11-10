@@ -120,6 +120,37 @@ def test_invariant_with_no_window_warns_when_pending():
     assert [n.level for n in notes] == ["warning"]
 
 
+def _days_notified(inv, results_by_day, start):
+    """Run the ladder once a day from `start`; return the day offsets that notified."""
+    state, fired = {}, []
+    for offset, res in enumerate(results_by_day):
+        notes, state = evaluate([inv], {inv.id: res}, _now(2026, 10, start + offset), state)
+        if notes:
+            fired.append(offset)
+    return fired
+
+
+def test_slow_repeat_warns_on_day_0_and_day_7_only():
+    """A check that asks for repeat_days=7 (a deferred state) reminds weekly."""
+    inv = Milestone(id="bk", kind="invariant", title="Backup", check="backup_recoverable")
+    weekly = CheckResult("pending", "no off-site target", repeat_days=7)
+    assert _days_notified(inv, [weekly] * 15, start=1) == [0, 7, 14]
+
+
+def test_a_daily_state_after_a_weekly_reminder_warns_the_next_day():
+    """The slow cadence belongs to the deferred state, not to the entry: a real
+    failure the day after a weekly reminder is not held back six days."""
+    inv = Milestone(id="bk", kind="invariant", title="Backup", check="backup_recoverable")
+    weekly = CheckResult("pending", "no off-site target", repeat_days=7)
+    failed = CheckResult("pending", "drill failed")
+    assert _days_notified(inv, [weekly, failed, failed], start=1) == [0, 1, 2]
+
+
+def test_default_repeat_is_daily():
+    inv = Milestone(id="bk", kind="invariant", title="Backup", check="backup_recoverable")
+    assert _days_notified(inv, [CheckResult("pending", "x")] * 3, start=1) == [0, 1, 2]
+
+
 def test_monthly_invariant_silent_when_already_notified_this_month():
     inv = Milestone(id="sc", kind="invariant", title="Scorecard",
                     check="monthly_scorecard_written", schedule="monthly")

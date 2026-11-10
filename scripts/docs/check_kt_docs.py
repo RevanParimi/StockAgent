@@ -37,6 +37,12 @@ DOCS = [
     "docs/planning/PI-2026-09/evidence/DOC-001-review.md",
 ]
 LINK = r"\[[^\]\n]+\]\(([^)]+)\)"
+# Scheduler loops that register one job per slot, by their f-string ID.
+DYNAMIC_JOB_IDS = {
+    "f'ipo_refresh_{slot}'": ["ipo_refresh_am", "ipo_refresh_pm"],
+    "f'company_events_{slot}'": ["company_events_am", "company_events_pm"],
+}
+DYNAMIC_JOB_PREFIXES = ("ipo_refresh_", "company_events_")
 
 
 def canonical_sha256(path: Path) -> str:
@@ -90,7 +96,7 @@ def check_header_revision(kt: str, documented_jobs: list[str], errors: list[str]
             errors.append(f"KT links {rel}, which is absent at its declared revision {rev[:12]}")
     scheduler = _git("show", f"{rev}:services/scheduler/python/scheduler.py").stdout
     for job in documented_jobs:
-        needle = "ipo_refresh_" if job.startswith("ipo_refresh_") else job
+        needle = next((prefix for prefix in DYNAMIC_JOB_PREFIXES if job.startswith(prefix)), job)
         if needle not in scheduler:
             errors.append(f"KT documents job {job}, which is absent at its declared revision {rev[:12]}")
     changed = _git("diff", "--name-only", rev, "HEAD", "--", *sorted(sources)).stdout.split()
@@ -142,10 +148,12 @@ def main() -> None:
             if isinstance(ident, ast.Constant):
                 jobs.append(ident.value)
             elif isinstance(ident, ast.JoinedStr):
-                # The source loop currently has two IPO slots, am and pm.
-                if ast.unparse(ident) != "f'ipo_refresh_{slot}'":
+                # Reviewed loops: two IPO slots and two company-event slots, am and pm.
+                expanded = DYNAMIC_JOB_IDS.get(ast.unparse(ident))
+                if expanded is None:
                     errors.append("New dynamic job ID requires inventory review")
-                jobs.extend(["ipo_refresh_am", "ipo_refresh_pm"])
+                else:
+                    jobs.extend(expanded)
     clock = kt.split("## 9.", 1)[1].split("## 10.", 1)[0]
     documented = re.findall(r"^\| `([^`]+)` \|", clock, re.M)
     if set(jobs) != set(documented) or len(jobs) != len(documented):

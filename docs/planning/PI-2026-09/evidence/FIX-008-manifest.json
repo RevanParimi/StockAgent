@@ -1,0 +1,135 @@
+{
+  "story": "FIX-008",
+  "phase": "implementation (2026-10-13)",
+  "baseline": "33ae170",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/FIX-008-implementation.md",
+    "docs/README.md (the owner's probe line, not FIX-008's)"
+  ],
+  "note": "Base 33ae170 holds SA-011 and FIX-007 as accepted and committed; no uncommitted peer change sits under these paths.",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "ed2c2b151d6001276db542d13ca2b19227211cc0",
+      "sha256": "f921e720f37d0bf50973221f01130e1638cfdb23f7099cf8da816d9bdc6d340f"
+    },
+    {
+      "path": "config/milestones.yaml",
+      "git_blob": "13690cbb8ae73771c6a1cfde63126425ce7d42ca",
+      "sha256": "464d41eaca6b91cc9104457940bbac4267dc3dd78dd9a7b6d11d2ff713a38c41"
+    },
+    {
+      "path": "core/audit/thresholds.py",
+      "git_blob": "253207eb0a61fda1608094959a6d87a9629dc2a4",
+      "sha256": "8bfab8e6a08dcfa7a44319ce2db737fbc30a4f897b380e785ddf1181ab927ef2"
+    },
+    {
+      "path": "core/delivery/alerts.py",
+      "git_blob": "69fb926144271e65640a49e8e5964d1508b31728",
+      "sha256": "5fb03c2f34ffdfacc200cf002b16188888f925a410a57aa51edd691845c67358"
+    },
+    {
+      "path": "core/delivery/ops_alerts.py",
+      "git_blob": "d5bf70f30acafe66e404bc176913e1b7510ac6b8",
+      "sha256": "97141f2e632c10f410d3932985485a8e5d9a468ef6b60d6673a1b03e1c908527"
+    },
+    {
+      "path": "core/ops/watchdog/checks.py",
+      "git_blob": "4f6259fc74b6a343f2312c8765b6ead578f38e9f",
+      "sha256": "5e04ee4949939fb48fdc19396fbdee7e37b92b27bb63f57b24dd668d06306de0"
+    },
+    {
+      "path": "core/ops/watchdog/runner.py",
+      "git_blob": "d03f063dae8ddaf3899b49ff1fa14b89ca3bf95a",
+      "sha256": "c9a7161003855a12e0fb60c46001f794be5aee042b3fcc81504dab3ced9c9644"
+    },
+    {
+      "path": "core/portfolio/reconcile.py",
+      "git_blob": "bff78b7c1e4ac1d008582115008f54257da6bd66",
+      "sha256": "63704735a5415da3de711a630ac2134b1711d70da6a42602b716871e5cdfa9ed"
+    },
+    {
+      "path": "core/portfolio/store.py",
+      "git_blob": "3f0ab43306def10184001c80d0e3a58c0236a9f8",
+      "sha256": "20c628c308bcd841260bb485b06f435ddad897eceb35a01e53e2296ff2ed1664"
+    },
+    {
+      "path": "core/portfolio/universe.py",
+      "git_blob": "42acc63c8b674d6637197f9211b667677cb5c12e",
+      "sha256": "fad6e74efdf568cd8df5757a11bea17e9cebae69445db9fefb9418b315937d4a"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "git_blob": "e780e5ce21de95f7a615bfc514ba3fbc2c58714d",
+      "sha256": "db1c132c0d48a7d9b8b21fa1c10c235be712bd08faf12926fcfb1c102ecebc78"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "2b51bc26c94d9f0962371b92828179fa4f55ef78",
+      "sha256": "acf11dcf2c6ee030602e889a94e81e76a6ddff44d5a7f6a1945ab21e9b602b1c"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "d64df5f4979718a02bf7fcf97980036a9ec20e06",
+      "sha256": "faf7e269378b231a1e37aa044b73ddb65fc7c88097abae990df80092b3dbb8f4"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "b086c64a20b2bbaed8f2ef45d5a6e506b6b16bf5",
+      "sha256": "99eec85d8198de2962799306d9551bafe2e9c110cf56292296c3c05a7620706f"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "9c41671ea9facdc103e3afcc8afb5e59bcad356f",
+      "sha256": "5835a9677b62597c7b344eca543b1ac3be8709875b751c4051565b0157e3370d"
+    },
+    {
+      "path": "scripts/atlas_etl.py",
+      "git_blob": "7cae9874970edec1ee3d08c046059a79649a26b1",
+      "sha256": "990986a28f3d5862676f6771423fba2a1f5235d6657194fe38e1198d006dde55"
+    },
+    {
+      "path": "services/api/routes/delivery_api.py",
+      "git_blob": "0412fb7e733478a63bd6fa8eeadc5af81640483c",
+      "sha256": "df431602c5568d141f034fe954a91bc84ef44ff450035ee381b352a24e65d5e1"
+    },
+    {
+      "path": "services/data/stores/user_store.py",
+      "git_blob": "cebff0c63b721ef868316d887315cbde5ca19869",
+      "sha256": "d606d96ad9b3247ec998d622349d5d84d9c82208d6b57fcc10fc8bbb91849548"
+    },
+    {
+      "path": "tests/unit/audit/test_audit_thresholds.py",
+      "git_blob": "d8a696dd14bfb76fe031f4fa73b229321f9d97f2",
+      "sha256": "1882e01e4b6aa23954dec283b8219da2e98c557984b49a7c4957589b00a7d0ab"
+    },
+    {
+      "path": "tests/unit/intelligence/rl/test_review_outcomes_feedback_sa004.py",
+      "git_blob": "5dd85b0bd06b081ab77a2744349d71db451b7c23",
+      "sha256": "ff560b2d7c198893d02b051dbc087f9fee135b109873c04cebfe2f993b26d2ef"
+    },
+    {
+      "path": "tests/unit/ops/test_error_backlog_sa011.py",
+      "git_blob": "4d42a3cc5f9ad0a6595f6a86cef16f6ae4372994",
+      "sha256": "aa7b1f95b8c96c7a247045459ff1f3e4531aa936561a383a1d139e5ccf8fb6ca"
+    },
+    {
+      "path": "tests/unit/test_alerts_wave_f.py",
+      "git_blob": "31d0f8a14ca48e501b8ca1b4b05665a235f181fb",
+      "sha256": "48bd87dce6c40b4eeadbec85e48afcc757b9d9fb8ace6b95d9d5d251ada31a0f"
+    },
+    {
+      "path": "tests/unit/test_daily_review_outcomes_sa004.py",
+      "git_blob": "84c286d02c12ffd6cde46c773d19e48828971a1e",
+      "sha256": "33304e864cff6b36e39100c11f0e6383e651835c52bceda5fbf1e9dfd8f22448"
+    },
+    {
+      "path": "tests/unit/test_operator_notices_owner_only_fix008.py",
+      "git_blob": "f334ea521c0521f518ddcd24d659a860b3cf9b83",
+      "sha256": "d7503fff8a2030d265ec9792dc01d5765788210c4ddfce3ebef5b6d198666396"
+    }
+  ]
+}

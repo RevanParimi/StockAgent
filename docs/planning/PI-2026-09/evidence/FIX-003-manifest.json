@@ -1,0 +1,43 @@
+{
+  "story": "FIX-003",
+  "phase": "implementation",
+  "baseline": "df34176c78122471a573d3ed87bc85a7120ea795",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/FIX-003-implementation.md"
+  ],
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "5bb57d77ce901ebd1f36979b8e47723535a3ab7d",
+      "sha256": "fba5d7e7b583cbed808430f47f33a583e991909fb8fd14daeefbfc251b4268bc"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "37c0b8d2eb71a96cedbe4603ede38f84b8e0769c",
+      "sha256": "2241d77de6749b6b5e3c5b4e66368038fe527d0b91ef9ef2128e1a6564c6f8c2"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "4ea1439939b108efe137239a864a7465d4fdf575",
+      "sha256": "283b1e88a1d6e72c3ba847f010515a4773256273154f152b24f150ed783e2717"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/SA-045.md",
+      "git_blob": "ac6add1a86dc460cd8ccf24d4e4a006c07626479",
+      "sha256": "a3ce95750f3485a142ee9f074439d08fcb221124dab5c6c5e757761138aff085"
+    },
+    {
+      "path": "services/data/fetchers/fundamentals.py",
+      "git_blob": "53c67f353f03a13f6ce9bbf141d8ead6bb6403a8",
+      "sha256": "153348ea7759d72f024575d0a7c3d62900b604e8aac45d4f3b3f80d665659479"
+    },
+    {
+      "path": "tests/unit/shared/test_bank_statement_fix003.py",
+      "git_blob": "6165bb230e0f1c7ef2e03f775e7ede90a64f8b81",
+      "sha256": "7bb2a5b5df7c09124f3d2646a91db22f051b67cd2946518f36d98d61445cc72e"
+    }
+  ]
+}

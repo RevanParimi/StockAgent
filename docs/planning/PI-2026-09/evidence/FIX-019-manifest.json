@@ -1,0 +1,49 @@
+{
+  "story": "FIX-019",
+  "phase": "implementation (with amendment 1)",
+  "head": "48db226",
+  "date": "2026-10-30",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "f4b39648a72daf28c42ee6116831a3540f5054fe",
+      "sha256": "1d593f491833d9544d81ca964af04b22356864c84adde3a5433e29c26c9b4cb4"
+    },
+    {
+      "path": "config/instruments.yaml",
+      "git_blob": "f18d31b62112f042c511a0783f6c26fcaac7eca5",
+      "sha256": "93ab07f62456978ea43f4bd095b3e447028905c71e21ca8521e548e6e3902ceb"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "d3925f6a47e78683ca94f19480bce12bc32d69d9",
+      "sha256": "c624016282c11e835fb96081fa08808fedc9286cf5043c1c9559561b8352d972"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "ca4f09b304c1577be8ea53a2509ce97b29eb53a1",
+      "sha256": "8881a74922538df0888593e89d1a428c5c378937d7977bd6437f49a7b63e2d60"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "9ab0b91dcdcb21b0e8636bc797edde8b59e0968a",
+      "sha256": "e2ec3ca626b091a900b8a0c989f31ba3e3a6703a55887d6db3524a39ff9ce92a"
+    },
+    {
+      "path": "tests/unit/shared/test_instrument_identity_sa008.py",
+      "git_blob": "08f339077203b41822f5568931ba4a1da47f9d9e",
+      "sha256": "5fff6cee01870632961e0291f2a7836ca052807e04396cae09f64614c1a05026"
+    },
+    {
+      "path": "tests/unit/test_exit_fix018.py",
+      "git_blob": "b90d4aa14a1b9ecd7b9315017c14f180bad0a524",
+      "sha256": "86a4dcedd1f4c355bdd9292bd7695b1eba0244b63d1a3b29f8003007c1b8adc1"
+    },
+    {
+      "path": "tests/unit/test_registry_fix019.py",
+      "git_blob": "b5723c6518d0d217bbb12ed335df616645055d89",
+      "sha256": "fdd6c461f8421c2e299dac0fe677ba31510f1a83480dde48f323b232f4ebc6ab"
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "story": "SA-006",
+  "phase": "implementation",
+  "baseline": "9e65c7a955c7c408191857ec556f697be7c34c89",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/SA-006-implementation.md"
+  ],
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "0dfd18fded7425c59d6e90e3fe625a0b8bec145d",
+      "sha256": "16e85505c9759bf6b95395f07765877e4096528b0d9831590a1992a0600a7ad5"
+    },
+    {
+      "path": "config.yaml",
+      "git_blob": "c9a807081b1edf67dd86766952fe124dee0c7060",
+      "sha256": "705853f0fc9e8add300bea9779649a2c44d213abfeaab2a9e7d44f94310cf27f"
+    },
+    {
+      "path": "core/delivery/channels.py",
+      "git_blob": "4973c3bc9bd247e092b64c0355a6c557c8585701",
+      "sha256": "6d0aec77336580a51103df1e71f30d41d2c6b245205b240b8465158badc72107"
+    },
+    {
+      "path": "core/delivery/outbox.py",
+      "git_blob": "fc96eb87170ed8df59148dfb7510397a7a9f88cd",
+      "sha256": "c6200f807c990f3dbaac6d51c513702176b12b931dd37a674cfaeef51966a481"
+    },
+    {
+      "path": "core/portfolio/retention.py",
+      "git_blob": "ca61f760633c8a92e619590d5f7d44f5666bfd15",
+      "sha256": "18ea488fcdbb50e0132dde727aac8047930f845dbd312deab7ae2c62da9b02f8"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "git_blob": "8151bdb7b02763d57aa2f059a6d3bc4c6207e14f",
+      "sha256": "bc1534ca5a4c1d66c8b844a224ec1d84a6e77625fd49c3bf60e806b564ddb5c4"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "f636514d320638506438d069d0238fc1a792fd6b",
+      "sha256": "17538c17abffb1b412a06b395b91ecd9f3216f12f646f4ab76db26166259783c"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "5c79af904f23cfa59e39c0b403c274290474d0eb",
+      "sha256": "64c59bdeac149b8a46d1071af8a36b7111dbfacb774403da0afba3a4d8ed107c"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "f6b647048214401e04fe732f00c2df674a9e640d",
+      "sha256": "34f79b83c42c1ef1be46e94774645c0cf70a4ea52eb3a5e817276a1c84d53e0f"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/SA-011.md",
+      "git_blob": "c7d24dc0e47cc1e606619cce8567b51aef5cb5ae",
+      "sha256": "b71766ece9dbe7451b37c68077e59fbff60681b85eee142bc1083f4387e327ab"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/SA-031.md",
+      "git_blob": "f9e4b876ff80c51718fd9580b130bba857068723",
+      "sha256": "c2a685504a9a79d34d485f9ad54dd9997d0a18806b86d1df3bccbd5675d9c2ed"
+    },
+    {
+      "path": "services/api/routes/delivery_api.py",
+      "git_blob": "bb7a747b26349c9a2414da73fb0bbcf8339e6b52",
+      "sha256": "22c9e0cd8d2e83957e82e543a260ca2a8f8641c19a4095c1c42192daa19631a5"
+    },
+    {
+      "path": "services/data/stores/atlas_store.py",
+      "git_blob": "f7f7c38f5a634f1afa39e97fd5d5fab2ed06c7c2",
+      "sha256": "08a3b075e9c513242d4de00ccd6da53daefbad8b5a0dd8f8a52dd3f42e7d7423"
+    },
+    {
+      "path": "services/scheduler/python/scheduler.py",
+      "git_blob": "fd7522e3b4028719d27c030fa67807c4a4d8bae0",
+      "sha256": "4f69e5cdb21fa6acc8651db8a7db9ea882628e667a330b9cd6c5a6945ef1a3b2"
+    },
+    {
+      "path": "tests/unit/test_atlas_outbox.py",
+      "git_blob": "a7c147b77736ce6c131ccc649c8331b1110ad9e9",
+      "sha256": "d28ddce70745c027c8f91cef882cee3d8a0a24d8793f21166e77356c6530ea97"
+    },
+    {
+      "path": "tests/unit/test_atlas_retention.py",
+      "git_blob": "8f3e5c00e1a8f6b1e1e514cf960be5984808a572",
+      "sha256": "f3a43c8869c209d4188e1a2ab67206bc025e12b23e2fa263701b1afd6cb3251f"
+    },
+    {
+      "path": "tests/unit/test_delivery_channels.py",
+      "git_blob": "f48e7a612800e64a6e6c9639dec06fbad08e9500",
+      "sha256": "8cff504233aa28c4fa8ad826b89623f535c9573bd40e8366182ca1ad199c773d"
+    },
+    {
+      "path": "tests/unit/test_delivery_sa006_invariants.py",
+      "git_blob": "b7e9798ddfbb3496855905ff16c98f9d419c4f31",
+      "sha256": "b6d053fccbf9c87a87ce29abc5536a615e7b244f0beebe65d315af638eb5a941"
+    }
+  ]
+}

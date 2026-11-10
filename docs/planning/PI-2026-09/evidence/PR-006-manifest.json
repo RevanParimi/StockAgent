@@ -1,0 +1,133 @@
+{
+  "story": "PR-006",
+  "phase": "rework 1 (2026-10-22), a new conversation opened with continue, session stockagent-main-46; fixes review R1 and L1",
+  "baseline": "the uncommitted working tree on 25fae38ecdc1a85b99b4a2c6d759fc2d11dfbdaf. Rework base: the reviewed input (evidence/PR-006-manifest-review1.json, d2e35f72, 23 files), snapshotted before the first edit to analysis_data/pr006/rework1/base/ (each path reproducing its manifest blob). Cumulative base: analysis_data/pr006/base/ (PR-004's accepted input aec91b8f plus bookkeeping), as for the implementation",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/PR-006-implementation.md",
+    "docs/planning/PI-2026-09/evidence/PR-006-review.md",
+    "docs/planning/PI-2026-09/evidence/PR-006-manifest-review1.json",
+    "every PR-004 path PR-006 does not change (PR-004-manifest.json)",
+    "docs/README.md (the owner probe line)"
+  ],
+  "note": "Diffs: analysis_data/pr006/rework1/rw_digest.py. Rework: git diff --no-index rework1/base/PATH PATH for each path except the PDF (unchanged paths give no output). Cumulative: the implementation's recipe (analysis_data/pr006/digest.py) on today's bytes",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "0e987fba3cc9931d712a639d1c306e547579cbf1",
+      "sha256": "268386fbe7353f6e7287ef43153d2c1e770c15c413a96babf5c986ff38065ef3"
+    },
+    {
+      "path": "config.yaml",
+      "git_blob": "663dd1d523a6723ca6db455ee7f27d5427eaf074",
+      "sha256": "c48fe92aadbecc9266fc5ecd0dea7654c7e0c06b864366d41e43ab1ff2ecc5e4"
+    },
+    {
+      "path": "core/config/prompts/shared/company_events.py",
+      "git_blob": "ce393ab1f14d433944266bf99eff6a16cfd703dd",
+      "sha256": "225bb00f268b53ccc2c5c56550c4b317dec6041bd1e470684ef234976acb6168"
+    },
+    {
+      "path": "core/events/__init__.py",
+      "git_blob": "091b38b2ad00925772f74bb2e979cb13e95d7012",
+      "sha256": "3138aa5546c27220525fccc77bbccd764544861e8667c3a5e2f3043ad7312c6a"
+    },
+    {
+      "path": "core/events/classify.py",
+      "git_blob": "a74ae49f07c01ec2f46b38538a7895a3eaa29acd",
+      "sha256": "96417574e5b663dd7c39fb2209fe3a8340464df651b9e5167b7d6495a50cb84e"
+    },
+    {
+      "path": "core/events/feed.py",
+      "git_blob": "b5ddddd38b58a1aeb3a2c6bf4625680427b2ca4d",
+      "sha256": "a6259a76e92c038d39520c2f6560d8b42bbef50b554077447973b8b5b07b87f0"
+    },
+    {
+      "path": "core/events/sources.py",
+      "git_blob": "8ede93cbc293e8b42a2129bf183817bae58ab0b7",
+      "sha256": "2ca9572b7832e2e127bc6b68a56d5790b13b63bb8444189e100dbf35ea2da796"
+    },
+    {
+      "path": "core/events/store.py",
+      "git_blob": "f1a43dec51be898ff99862b03d2366b0e1ff1917",
+      "sha256": "06e897aa7caba76f48e626adc73ad9423d1a212b32fde18ee64dcf5985f886e2"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "1ad54c75ab65454a610dfa1d59e1c6e317ebbb5c",
+      "sha256": "da7d035a572c406a15a10ec31f9b78d4b1b9421b64f2887d74e405c52fc0104c"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "138f9f3607c5929288b38c35088118b60429b163",
+      "sha256": "3b937f322260cdf0de84a12620e84c92bf82a4e667b4faf25f0a7d783bb0310d"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "b28700fb6945b2fa60e25d9f99b7fd1313620b1f",
+      "sha256": "c17d3d642e358b7e89088035d2fe7a607680830a8d27b26bbc71711ec211c1ce"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "838220286c93f9bfc47eed07ca5e043259e72d4c",
+      "sha256": "ac6d6aac0c8926497e7b67e0a325f8de232408f0d3575bd34333f6ba32709fd6"
+    },
+    {
+      "path": "scripts/docs/check_kt_docs.py",
+      "git_blob": "6d56828f40a0cdd84458419f734ba9ac3178ca39",
+      "sha256": "4854b1a4b640c6a1810d115efea716ca430d77da4ffaad57f39e346f3c35a889"
+    },
+    {
+      "path": "services/api/routes/events_api.py",
+      "git_blob": "a98fc5bbe4afcc8b61aca036edd3bfac7f4b6eb0",
+      "sha256": "6feee87db69b3a5915c84b129c04d172bd8a7bc4e00ed88d9274fc2629aee1f6"
+    },
+    {
+      "path": "services/api/server.py",
+      "git_blob": "5c99c0d2dfe4ecb03125c4c3aed273acc720181a",
+      "sha256": "a2d12430bee5789bf5a4ef185d847a83847cbe393d3fba08db698ca5ccafae9d"
+    },
+    {
+      "path": "services/data/fetchers/news.py",
+      "git_blob": "a1a27e608afefafe3ca66c7ab4b18177dab778e4",
+      "sha256": "605d03e0382438b0a23515fffb86d0762bf045e7b20c06426ab824e760ba9cf7"
+    },
+    {
+      "path": "services/data/fetchers/nse_announcements.py",
+      "git_blob": "4610cbcb56fadb101bb1150900473d17c864546c",
+      "sha256": "13c43a802f7180b3c4ae21a10b640070c2443cc2e5edfb3aa82dbb96feb0d846"
+    },
+    {
+      "path": "services/scheduler/python/scheduler.py",
+      "git_blob": "cbdf2563ff2ec51a61e115ab05c0918791492c57",
+      "sha256": "54bee4f2c370ce01d3d01e74dfe6f665b6258f93cc252fa727ed19e698bd0dd0"
+    },
+    {
+      "path": "src/backend/shared/config/settings/base.py",
+      "git_blob": "b14b6576810121fa3e03ba441240597d53203396",
+      "sha256": "cb2c09599c9813ec8530c522ea55bc5f5d616aadba87eb6dd4d8691095216a0b"
+    },
+    {
+      "path": "src/backend/shared/schemas/events.py",
+      "git_blob": "e301d163752bcc45620516ae14bff594283ecbcf",
+      "sha256": "4a283332cc00b5cd3a839284b8d1a1f4809faf714cf4520e721a198d3d20c55c"
+    },
+    {
+      "path": "tests/fixtures/company_events/nse_maruti_20261022.json",
+      "git_blob": "98aad41eb52323312739933ed7a36a160dea21d5",
+      "sha256": "61590a5692c0dd3bf505fbaeeeb62eda37352a4544a5d4d7e10559ce11045c6f"
+    },
+    {
+      "path": "tests/fixtures/company_events/serper_news_maruti.json",
+      "git_blob": "cbdf86faf837d001fa3e1960b5bdde711be74531",
+      "sha256": "cc53addb8871747b6ab58cf2b91a8f079a84d490a540b36115d5f42a36864116"
+    },
+    {
+      "path": "tests/unit/test_company_events_pr006.py",
+      "git_blob": "ed1dcf0e904b3341d5ace5a656cb21c82c392a1a",
+      "sha256": "d897c0e0971007694c6d51d77198be9e4ccd0891f2129622fd297801ad4f91e0"
+    }
+  ]
+}

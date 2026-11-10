@@ -57,10 +57,10 @@ def _days_since(iso: str, now: datetime) -> float:
 
 
 def _emit_ops_alert(message: str) -> None:
-    """Budget-governor ops alert (broadcast, non-fatal)."""
+    """Budget-governor ops alert (the owner only, non-fatal)."""
     try:
-        from core.delivery.alerts import AlertEvent, emit_alerts_broadcast
-        emit_alerts_broadcast([AlertEvent(
+        from core.delivery.alerts import AlertEvent, emit_owner_alerts
+        emit_owner_alerts([AlertEvent(
             date=datetime.now(timezone.utc).date().isoformat(),
             kind="universe_budget", symbol="", message=message, severity="warning",
         )], title="Universe budget governor")

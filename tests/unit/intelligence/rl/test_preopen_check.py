@@ -15,6 +15,9 @@ Covers:
   - LLM garbage JSON -> severity 0.0 path, never raises.
   - per-ticker exception isolated -> loop continues.
   - cost contract: exactly 1 Serper call + 1 LLM call even with many tickers.
+  - host routing: the request is served only by a host that honours every
+    parameter sent, so a host that drops response_format cannot turn a shock
+    into "neutral"; with no such host the call is a recorded failure.
 
 All Serper/LLM/PredictionStore/regenerate_envelope calls are mocked — no
 real network or LLM traffic is possible from this test module.
@@ -448,3 +451,98 @@ def test_default_tickers_above_threshold_uses_real_sector_configs(monkeypatch):
     assert result["reforecasts"] == []
     assert len(serper_calls) == 1
     assert len(llm_calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# Host routing (FIX-013 review L2): the real OpenAI SDK over an in-memory
+# transport, answered by a fake OpenRouter that follows its documented rule.
+# Without provider.require_parameters it may pick a host that ignores a sent
+# parameter; with it, only hosts supporting every sent parameter are eligible.
+# ---------------------------------------------------------------------------
+
+_SHOCK = {"severity": 0.8, "direction": "risk_off", "headline": "Asia sells off"}
+
+# Listed in the order the fake router tries them. The first one does not support
+# response_format and fences its JSON, as a host that drops the parameter may.
+_HOSTS = [
+    {"name": "drops-response-format",
+     "supports": {"reasoning", "max_tokens", "temperature", "tools"},
+     "reply": "```json\n" + json.dumps(_SHOCK) + "\n```"},
+    {"name": "honours-response-format",
+     "supports": {"reasoning", "max_tokens", "temperature", "tools", "response_format"},
+     "reply": json.dumps(_SHOCK)},
+]
+
+
+def _fake_openrouter(hosts: list, bodies: list):
+    import httpx
+
+    def handler(request):
+        body = json.loads(request.content)
+        bodies.append(body)
+        sent = set(body) - {"model", "messages", "provider", "stream"}
+        eligible = hosts
+        if (body.get("provider") or {}).get("require_parameters"):
+            eligible = [h for h in hosts if sent <= h["supports"]]
+        if not eligible:
+            return httpx.Response(404, json={"error": {
+                "code": 404,
+                "message": "No endpoints found that can handle the requested parameters."}})
+        return httpx.Response(200, json={
+            "id": "gen-1", "object": "chat.completion", "created": 0, "model": body["model"],
+            "choices": [{"index": 0, "finish_reason": "stop",
+                         "message": {"role": "assistant", "content": eligible[0]["reply"]}}],
+            "usage": {"prompt_tokens": 758, "completion_tokens": 45, "total_tokens": 803},
+        })
+
+    return httpx.MockTransport(handler)
+
+
+def _patch_openrouter(monkeypatch, hosts: list) -> tuple[list, list]:
+    import httpx
+    from openai import OpenAI
+
+    bodies: list = []
+    rows: list = []
+    client = OpenAI(api_key="test-key", base_url="https://openrouter.ai/api/v1", max_retries=0,
+                    http_client=httpx.Client(transport=_fake_openrouter(hosts, bodies)))
+    monkeypatch.setattr("services.clients.llm_client.get_llm_client", lambda: client)
+    monkeypatch.setattr("services.clients.llm_client.record_llm_call",
+                        lambda caller, model, pt, ct, ms, ok, *a, **k: rows.append((caller, model, ok)))
+    return bodies, rows
+
+
+def test_shock_is_rated_from_a_host_that_honours_json_mode(monkeypatch):
+    monkeypatch.setattr(pc.settings, "RL_PREOPEN_CHECK_ENABLED", True)
+    monkeypatch.setattr(pc.settings, "RL_PREOPEN_SHOCK_SEVERITY", 0.7)
+    _patch_serper(monkeypatch, [])
+    _patch_predicted_direction(monkeypatch, {})
+    bodies, rows = _patch_openrouter(monkeypatch, _HOSTS)
+
+    result = pc.run_preopen_check(tickers=[("MARUTI", "automobile")])
+
+    # A 0.8 risk-off night is not lost to the fenced host's reply.
+    assert result["severity"] == 0.8
+    assert result["direction"] == "risk_off"
+    assert result["headline"] == "Asia sells off"
+    [body] = bodies
+    assert body["model"] == pc.settings.LLM_MODEL_FAST
+    assert body["response_format"] == {"type": "json_object"}
+    assert body["reasoning"] == {"enabled": False}
+    assert body["provider"] == {"require_parameters": True}
+    assert rows == [("preopen_check", pc.settings.LLM_MODEL_FAST, True)]
+
+
+def test_no_eligible_host_is_a_recorded_failure_not_a_quiet_neutral(monkeypatch, caplog):
+    monkeypatch.setattr(pc.settings, "RL_PREOPEN_CHECK_ENABLED", True)
+    monkeypatch.setattr(pc.settings, "RL_PREOPEN_SHOCK_SEVERITY", 0.7)
+    _patch_serper(monkeypatch, [])
+    bodies, rows = _patch_openrouter(monkeypatch, _HOSTS[:1])
+
+    with caplog.at_level("WARNING", logger=pc.__name__):
+        result = pc.run_preopen_check(tickers=[("MARUTI", "automobile")])
+
+    assert result["severity"] == 0.0 and result["direction"] == "neutral"
+    assert len(bodies) == 1
+    assert rows == [("preopen_check", pc.settings.LLM_MODEL_FAST, False)]
+    assert "LLM shock rating failed" in caplog.text

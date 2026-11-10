@@ -30,6 +30,9 @@ def test_cross_process_add_holding_is_atomic(tmp_path):
         p.start()
     for p in procs:
         p.join(60)
+    # A worker that died on a failed write used to surface only as "lost
+    # updates" below (SA-005: the Windows rename flake).
+    assert [p.exitcode for p in procs] == [0, 0]
     p = PortfolioStore(user_id="u1", base_dir=str(tmp_path)).load()
     # 2 procs × 20 adds of qty 1 across SYM0..SYM19 → each symbol merged to qty 2
     assert {h.symbol: h.qty for h in p.holdings} == {f"SYM{i}": 2.0 for i in range(20)}

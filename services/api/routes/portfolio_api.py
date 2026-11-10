@@ -14,10 +14,13 @@ DELETE /portfolio/watchlist/{symbol}
 POST   /portfolio/import-csv           Raw CSV body: symbol,sector,qty,avg_buy_price,buy_date
 GET    /portfolio/advice               Advice-ledger tail
 GET    /portfolio/digest/latest
+GET    /portfolio/scorecard            Weekly results scorecard rows (own rows only)
 POST   /portfolio/run-advisor          Manual pipeline trigger (202, background)
+POST   /portfolio/deposit              Add paper capital: one dated DEPOSIT (owner only)
 
-Authentication (M0.1): bearer session on all user routes; run-advisor is
-owner-or-machine (require_owner) — browsers never need X-Scheduler-Key.
+Authentication (M0.1): bearer session on all user routes; run-advisor and
+deposit are owner-or-machine (require_owner) — browsers never need
+X-Scheduler-Key.
 USER DECISION 2026-07-06: hard lockdown deferred while portfolio is virtual.
 All output is research/analysis, never "advice". No auto-trading, ever.
 """
@@ -29,20 +32,26 @@ from datetime import date, datetime, timezone
 
 from fastapi import (APIRouter, BackgroundTasks, Depends, HTTPException,
                      Query, Request)
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from core.config import settings
 from services.api.auth import get_current_user, require_owner
 from backend.sectors.registry import SectorRegistry
 from backend.shared.schemas.portfolio import Holding, TransactionRecord, WatchlistItem
+from core.portfolio import costs, results
 from core.portfolio.autopilot import make_txn_id
 from core.portfolio.pipeline import run_post_review_pipeline
-from core.portfolio.pricing import PriceUnavailableError, close_on
+from core.portfolio.pricing import PriceUnavailableError, close_on, session_close
 from core.portfolio.promotion import demote_symbol, is_valid_sector, promote_symbol
 from core.portfolio.store import PortfolioStore, import_csv
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/portfolio", tags=["Portfolio"])
+
+# The value chart's ranges, in value points (one per review day). The screen
+# slices its chart by these and shows the server's figures for each.
+RANGE_POINTS = {"1W": 5, "1M": 22, "3M": 66, "6M": 132, "1Y": 252}
+HISTORY_SHOWN = 400          # value points sent for the chart
 
 
 def _store(user_id: str | None) -> PortfolioStore:
@@ -73,6 +82,11 @@ class WatchlistIn(BaseModel):
     reason: str = ""
 
 
+class DepositIn(BaseModel):
+    amount: float = Field(gt=0, le=1e9)    # rupees
+    reference: str = Field(min_length=1, max_length=80)   # the owner's label for it
+
+
 @router.get("", summary="Portfolio with mark-to-market P&L")
 async def get_portfolio(
     user: dict = Depends(get_current_user),
@@ -81,13 +95,17 @@ async def get_portfolio(
     p = store.load()
     holdings = []
     for h in p.holdings:
-        last_close, pnl = None, None
+        last_close, last_close_date, pnl = None, None, None
         try:
-            last_close = await asyncio.to_thread(close_on, h.symbol, date.today())
+            quote, _session = await asyncio.to_thread(session_close, h.symbol, date.today())
+            last_close = quote.close
+            # The date of the bar the price came from, shown beside it (SA-051).
+            last_close_date = quote.bar_date.isoformat() if quote.bar_date else None
             pnl = round(h.unrealised_pnl_pct(last_close), 2)
         except Exception as exc:
             logger.warning("[portfolio_api] mark failed for %s: %s", h.symbol, exc)
-        holdings.append({**h.model_dump(), "last_close": last_close, "pnl_pct": pnl})
+        holdings.append({**h.model_dump(), "last_close": last_close,
+                         "last_close_date": last_close_date, "pnl_pct": pnl})
     return {
         "user_id": p.user_id,
         "risk_profile": p.risk_profile,
@@ -130,6 +148,7 @@ async def add_holding(
         symbol=symbol, sector=sector, qty=body.qty, avg_buy_price=price,
         adj_avg_price=price, adj_qty=body.qty, buy_date=body.buy_date,
     )
+    charges = costs.trade_costs("BUY", round(body.qty * price, 2))
     store = _store(user["user_id"])
     txn = None
     # One critical section for the whole read-modify-write (AUD-001/007).
@@ -153,7 +172,9 @@ async def add_holding(
         p = store.load()
         if p.cash_deployable is not None:
             value = round(holding.qty * price, 2)
-            p.capital_in = round(p.capital_in + value, 2)   # fresh money in
+            # Fresh money in: the shares and what buying them cost (SA-048).
+            # No cash moves, so the charges are in capital_in, not cash.
+            p.capital_in = round(p.capital_in + value + charges.total, 2)
             txn = TransactionRecord(
                 txn_id=tid,
                 date=body.buy_date, ts=datetime.now(timezone.utc).isoformat(),
@@ -162,7 +183,7 @@ async def add_holding(
                 cash_after=p.cash_deployable,
                 holding_qty_after=next((h.adj_qty for h in p.holdings
                                         if h.symbol == symbol), body.qty),
-                source="manual", note="manual add (fresh capital)")
+                source="manual", note="manual add (fresh capital)", costs=charges)
             store.append_transaction(txn)
             store.save(p)
     promotion = promote_symbol(symbol, sector, origin="held")
@@ -201,9 +222,13 @@ async def delete_holding(
                                     detail=f"No holding {symbol.upper()}")
             qty = h.adj_qty
             cash_before = p.cash_deployable
+            # Stamped like an autopilot sale, so the weekly scorecard can
+            # count this round trip's result rather than report it unknown.
+            cost_basis = round(h.adj_avg_price, 4)
+            charges = costs.trade_costs("SELL", round(qty * price, 2))
             realized = h.sell(qty, price)
             p.holdings = [x for x in p.holdings if x.symbol != h.symbol]
-            p.cash_deployable = round(p.cash_deployable + qty * price, 2)
+            p.cash_deployable = round(p.cash_deployable + qty * price - charges.total, 2)
             today = date.today().isoformat()
             txn = TransactionRecord(
                 txn_id=make_txn_id(p.user_id, today, h.symbol, "SELL",
@@ -212,7 +237,10 @@ async def delete_holding(
                 user_id=p.user_id, symbol=h.symbol, side="SELL", qty=qty, price=price,
                 value=round(qty * price, 2), cash_before=cash_before,
                 cash_after=p.cash_deployable, holding_qty_after=0.0,
-                realized_pnl=realized, source="manual", note="manual delete")
+                realized_pnl=realized, source="manual", note="manual delete",
+                cost_basis=cost_basis, costs=charges,
+                pnl_pct=(round(realized / (cost_basis * qty) * 100, 2)
+                         if cost_basis > 0 and qty > 0 else None))
             if txn.txn_id not in {t.txn_id for t in store.load_transactions(limit=2000)}:
                 store.append_transaction(txn)
             store.save(p)
@@ -316,7 +344,52 @@ async def get_transactions(
     limit: int = Query(default=50, ge=1, le=1000),
 ) -> dict:
     records = _store(user["user_id"]).load_transactions(limit=limit)
-    return {"transactions": [r.model_dump() for r in reversed(records)]}
+    # A trade from before costs were charged shows its costs estimated, never
+    # as none (SA-048); a dividend has none.
+    rates = costs.cost_rates()
+    out = []
+    for r in reversed(records):
+        row, c = r.model_dump(), costs.costs_of(r, rates)
+        row["costs"] = c.model_dump() if c is not None else None
+        out.append(row)
+    return {"transactions": out}
+
+
+def _equity_shares(market_value, cash) -> tuple[float | None, float | None]:
+    """(in stocks %, cash %) of total equity (the two together), to one
+    decimal, adding to 100."""
+    if cash is None or market_value is None or market_value + cash <= 0:
+        return None, None
+    cash_pct = round(cash / (market_value + cash) * 100.0, 1)
+    return round(100.0 - cash_pct, 1), cash_pct
+
+
+def _benchmark():
+    """The Nifty series (a seam: tests answer it without the network)."""
+    from core.audit.benchmark import BenchmarkSeries
+    return BenchmarkSeries()
+
+
+def _stock_closes():
+    """The NSE close an added holding is valued at (a seam, as above)."""
+    return results.stock_close_fn()
+
+
+def _nifty_comparison(points: list[dict], txns: list) -> dict:
+    """results.portfolio_vs_nifty with one Nifty download for every value
+    point's date. Never raises: a failure reads as unavailable."""
+    try:
+        days = sorted(d for d in (results._day(p.get("date")) for p in points) if d)
+        series = _benchmark()
+        if days:
+            series.preload(days[0], days[-1])
+        return results.portfolio_vs_nifty(
+            points, txns, close_on=series.close_on,
+            stock_close_on=_stock_closes(), ranges=RANGE_POINTS)
+    except Exception as exc:
+        logger.warning("[portfolio_api] Nifty comparison failed: %s", exc)
+        return {"line": [], "ranges": {},
+                "since_start": {"available": False, "reason": "could not be computed"}}
 
 
 @router.get("/performance", summary="P&L summary + daily equity curve")
@@ -325,8 +398,13 @@ async def get_performance(
 ) -> dict:
     store = _store(user["user_id"])
     p = store.load()
-    history = store.load_value_history(limit=400)
-    realized = round(sum(t.realized_pnl for t in store.load_transactions(limit=2000)), 2)
+    # Every point and row: the deposits and closed trades span the account's
+    # whole life (retention keeps each point where capital_in changed); the
+    # chart gets the last HISTORY_SHOWN points.
+    points = store.load_value_history(limit=1_000_000)
+    txns = store.load_transactions(limit=1_000_000)
+    history = points[-HISTORY_SHOWN:]
+    realized = round(sum(t.realized_pnl for t in txns), 2)
     cash = p.cash_deployable
     if history:
         last = history[-1]
@@ -355,20 +433,58 @@ async def get_performance(
         if market_value is not None else None
     total_pnl = round(total_equity - p.capital_in, 2) \
         if total_equity is not None and p.capital_in > 0 else None
+    in_stocks_pct, cash_pct = _equity_shares(market_value, cash)
+    # The comparison, the trade record, the costs and the tax estimate need
+    # cash accounting: without it no deposit or sale is recorded.
+    comparison = closed = paid = tax = None
+    if cash is not None:
+        closed = results.trade_stats(results.closed_trades(txns))
+        paid = costs.cost_summary(txns)
+        tax = costs.tax_estimate(txns)
+        if points:
+            comparison = await asyncio.to_thread(_nifty_comparison, points, txns)
+    # Charged costs are already out of cash, so out of total_pnl; adding them
+    # back keeps unrealized P&L the open holdings' price gain (SA-048).
+    charged = paid["costs"]["charged"] if paid else 0.0
+    line = {pt["date"]: pt["nifty_value"] for pt in (comparison or {}).get("line", [])}
     return {
         "cash": cash,
         "capital_in": p.capital_in,
         "market_value": market_value,
         "total_equity": total_equity,
-        "realized_pnl": realized,
-        "unrealized_pnl": round(total_pnl - realized, 2) if total_pnl is not None else None,
+        "in_stocks_pct": in_stocks_pct,
+        "cash_pct": cash_pct,
+        "realized_pnl": realized,      # before costs, as always; `realized` splits it
+        "realized": (paid or {}).get("realized"),
+        "costs": (paid or {}).get("costs"),
+        "tax_estimate": tax,
+        "unrealized_pnl": round(total_pnl - realized + charged, 2)
+            if total_pnl is not None else None,
         "total_return_pct": round(total_pnl / p.capital_in * 100, 2)
             if total_pnl is not None else None,
         "day_change_pct": day_change_pct,
         "as_of": as_of,
         "autopilot": p.autopilot,
-        "history": history,
+        "history": [{**pt, "nifty_value": line.get(pt.get("date"))} for pt in history],
+        "benchmark": "Nifty 50",
+        "vs_nifty": (comparison or {}).get("since_start")
+            or {"available": False, "reason": "no valuation recorded yet"},
+        "ranges": (comparison or {}).get("ranges", {}),
+        "range_points": RANGE_POINTS,
+        "closed_trades": closed,
     }
+
+
+@router.get("/scorecard", summary="Weekly results scorecard rows (newest week first)")
+async def get_scorecard(
+    user: dict = Depends(get_current_user),
+    limit: int = Query(default=12, ge=1, le=520),
+) -> dict:
+    """The signed-in user's stored rows only, written by the Sunday weekly
+    review (core/portfolio/results.py). Nothing is computed here."""
+    rows = _store(user["user_id"]).load_scorecards()
+    rows.sort(key=lambda r: str(r.get("week", "")), reverse=True)
+    return {"rows": rows[:limit]}
 
 
 @router.post("/run-advisor", status_code=202, summary="Manually trigger the post-review pipeline")
@@ -387,13 +503,23 @@ async def run_advisor(
             )
     else:
         target = date.today()
-    from core.intelligence.rl.nse_calendar import now_ist
-    if target > now_ist().date():
+    from core.intelligence.rl.nse_calendar import now_ist, session_close_at
+    now = now_ist()
+    if target > now.date():
         # AUD-044: a future date would stamp last_autopilot_run forward and
         # brick the executor's monotonic guard until that date passes.
         raise HTTPException(
             status_code=422,
             detail=f"review_date {target} is in the future (IST) — refusing.",
+        )
+    if session_close_at(target) > now:
+        # FIX-024: the run books its trades at the review session's close;
+        # before 15:30 IST that close does not exist, and every price would be
+        # carried forward from the session before, under decisions made today.
+        raise HTTPException(
+            status_code=422,
+            detail=(f"review_date {target} has not closed yet (15:30 IST); review the "
+                    "previous session, or run after the close — refusing."),
         )
 
     async def _task() -> None:
@@ -402,3 +528,56 @@ async def run_advisor(
 
     background_tasks.add_task(_task)
     return {"status": "accepted", "review_date": target.isoformat()}
+
+
+def _deposit_day() -> date:
+    """The IST calendar date a deposit is recorded on (a seam for tests)."""
+    from core.intelligence.rl.nse_calendar import now_ist
+    return now_ist().date()
+
+
+@router.post("/deposit", summary="Add paper capital (owner only)")
+async def deposit(
+    body: DepositIn,
+    owner: dict = Depends(require_owner),
+) -> dict:
+    """SA-049: paper capital into the caller's own portfolio (the machine key
+    acts as the default user), as one DEPOSIT row dated today (IST). Cash and
+    capital_in both rise by the amount, so the Nifty comparison buys the same
+    money's Nifty units at the close of the session the first valuation
+    holding it reviews (results.capital_flows): a deposit made before the
+    16:30 run on day T at the previous session's close (the run reviews it),
+    one made after it at T's close. Idempotent on (date, amount, reference):
+    a retry writes nothing and says so."""
+    amount = round(float(body.amount), 2)
+    reference = body.reference.strip()
+    if not reference:
+        raise HTTPException(status_code=422, detail="A deposit needs a reference.")
+    day = _deposit_day().isoformat()
+    store = _store(owner["user_id"])
+    ref = f"deposit|{amount:.2f}|{reference}"
+    tid = make_txn_id(store.user_id, day, "CASH", "DEPOSIT", ref)
+    with store.locked():
+        p = store.load()
+        if p.cash_deployable is None:
+            raise HTTPException(status_code=409,
+                                detail="Cash accounting is off for this portfolio: "
+                                       "there is no cash to add to.")
+        if any(t.txn_id == tid for t in store.load_transactions(limit=1_000_000)):
+            logger.info("[portfolio_api] duplicate deposit ignored: %s", ref)
+            return {"duplicate": True, "transaction": None,
+                    "cash": p.cash_deployable, "capital_in": p.capital_in}
+        cash_before = p.cash_deployable
+        p.cash_deployable = round(cash_before + amount, 2)
+        p.capital_in = round(p.capital_in + amount, 2)
+        txn = TransactionRecord(
+            txn_id=tid, date=day, ts=datetime.now(timezone.utc).isoformat(),
+            user_id=p.user_id, symbol="CASH", side="DEPOSIT", qty=0.0, price=0.0,
+            value=amount, cash_before=cash_before, cash_after=p.cash_deployable,
+            holding_qty_after=0.0, source="manual", advice_ref=ref,
+            note=f"paper capital added: {reference}")
+        store.append_transaction(txn)
+        store.save(p)
+    logger.info("[portfolio_api] deposit of %.2f into %s on %s", amount, store.user_id, day)
+    return {"duplicate": False, "transaction": txn.model_dump(),
+            "cash": p.cash_deployable, "capital_in": p.capital_in}

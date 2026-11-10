@@ -15,14 +15,22 @@ Each entry schema:
     "title":          str,
     "snippet":        str,
     "url":            str,
-    "published_date": "2026-05-12",              # ISO (normalised from relative)
+    "published_date": "2026-05-12",              # IST publish date; "" if unreadable
+    "published_raw":  "5 hours ago",             # the source's own date string
     "severity":       "HIGH" | "MEDIUM" | "LOW",
     "impact_tags":    ["gold", "rbi", ...],      # constrained vocabulary
     "summary":        str,                       # 1 sentence from ReviewAgent LLM
   }
 
 Atomic writes: write to .tmp then os.replace() — safe against concurrent reads.
-URL dedup: same URL within the same day is silently skipped.
+URL dedup: same URL within the same day is silently skipped when written. A
+URL fetched again on a later day lands in that day's file too; readers that
+span several files keep its first fetch.
+
+Freshness (PR-003): a reader's "recent" means PUBLISHED recently, by the IST
+calendar date in published_date, never "in a recent fetch file". Files are
+named by the server's fetch date, so each reader scans one file before its
+window as well. An entry without a readable publish date is never recent.
 """
 
 from __future__ import annotations
@@ -32,10 +40,29 @@ import logging
 import os
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
 _DATA_DIR = Path("data/macro_news")
+_IST = ZoneInfo("Asia/Kolkata")
+_SEV_ORDER = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+
+
+def ist_today() -> date:
+    """Today's IST calendar date (the server clock may be UTC)."""
+    return datetime.now(_IST).date()
+
+
+def published_on(entry: dict) -> date | None:
+    """An entry's IST publish date, or None when it is missing or unreadable."""
+    raw = entry.get("published_date")
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        return date.fromisoformat(raw[:10])
+    except ValueError:
+        return None
 
 
 def _today_file(d: date | None = None) -> Path:
@@ -106,41 +133,60 @@ class MacroNewsCache:
         self._cleanup_old_files()
         return added
 
-    def _recent_entries(self, severities: tuple[str, ...], hours_back: int) -> list[dict]:
-        """Entries at the given severities from the last `hours_back` hours."""
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_back)
-        cutoff_date = cutoff.date()
-
-        entries: list[dict] = []
-        for d in [date.today(), date.today() - timedelta(days=1)]:
-            if d < cutoff_date:
-                continue
-            entries.extend(self._entries_on(d, severities))
-
-        return entries
-
     def _entries_on(self, day: date, severities: tuple[str, ...]) -> list[dict]:
         """Entries of the given severities from one day's feed file."""
         data = _load_file(_today_file(day))
         return [e for e in data.get("entries", []) if e.get("severity") in severities]
 
+    def entries_fetched(self, start: date, end: date,
+                        severities: tuple[str, ...]) -> list[dict]:
+        """Entries at `severities` from the feed files fetched start..end
+        (inclusive), oldest file first, one per URL: a URL fetched again on a
+        later day keeps its first fetch. Entries without a URL are all kept."""
+        out: list[dict] = []
+        seen: set[str] = set()
+        day = start
+        while day <= end:
+            for e in self._entries_on(day, severities):
+                url = e.get("url", "")
+                if url and url in seen:
+                    continue
+                seen.add(url)
+                out.append(e)
+            day += timedelta(days=1)
+        return out
+
+    def entries_published(self, start: date, end: date,
+                          severities: tuple[str, ...]) -> list[dict]:
+        """Entries at `severities` PUBLISHED start..end (IST dates, inclusive),
+        read from the files fetched the day before `start` through `end`. An
+        entry with no readable publish date is never returned."""
+        return [
+            e for e in self.entries_fetched(start - timedelta(days=1), end, severities)
+            if (p := published_on(e)) is not None and start <= p <= end
+        ]
+
     def get_high_severity(self, hours_back: int = 24) -> list[dict]:
-        """Return HIGH-severity entries from the last `hours_back` hours (today + yesterday)."""
-        return self._recent_entries(("HIGH",), hours_back)
+        """HIGH entries published today or within the last `hours_back` hours,
+        counted in whole IST days (24 → today and yesterday)."""
+        today = ist_today()
+        days = max(1, -(-hours_back // 24))
+        return self.entries_published(today - timedelta(days=days), today, ("HIGH",))
 
     def get_all_today(self) -> list[dict]:
-        """Return all entries for today, sorted HIGH → MEDIUM → LOW."""
-        data = _load_file(_today_file())
-        _sev_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
-        return sorted(
-            data.get("entries", []),
-            key=lambda x: _sev_order.get(x.get("severity", "LOW"), 2),
-        )
+        """Every entry published today or yesterday (IST), sorted HIGH → MEDIUM
+        → LOW. An article fetched today but published earlier is not today's
+        news, and neither is one without a readable date."""
+        today = ist_today()
+        entries = self.entries_published(
+            today - timedelta(days=1), today, tuple(_SEV_ORDER))
+        return sorted(entries, key=lambda x: _SEV_ORDER.get(x.get("severity", "LOW"), 2))
 
     def get_formatted_context(self, max_items: int = 3) -> str:
         """
         Compact text block for injection into the chat system prompt.
-        Only HIGH-severity items from the last 24h.  Empty string if nothing.
+        Only HIGH-severity items published today or yesterday (IST).
+        Empty string if nothing.
         """
         items = self.get_high_severity(hours_back=24)[:max_items]
         if not items:
@@ -173,24 +219,24 @@ class MacroNewsCache:
     def get_for_daily_review(self, max_items: int = 5, for_date: date | None = None) -> str:
         """
         F2 — market-wide context for the RL daily review when a ticker has no
-        company-specific news. HIGH *and* MEDIUM from the reviewed day and the
-        one before it: an overnight macro event big enough to move a stock is
-        often rated MEDIUM, and the review's alternative is no context at all.
+        company-specific news. HIGH *and* MEDIUM PUBLISHED on the reviewed day
+        or the one before it (PR-003: by publish date, not fetch file): an
+        overnight macro event big enough to move a stock is often rated
+        MEDIUM, and the review's alternative is no context at all.
 
         `for_date` anchors the window on the day under review — backfills read
         past days, and today's headlines must never be injected into a review of
-        June. Retention (90 days) bounds how far back a backfill finds anything;
-        beyond it the feed files are gone and the result is empty.
+        June. Only files fetched by the reviewed day are read, and nothing
+        published after it is used. Retention (90 days) bounds how far back a
+        backfill finds anything; beyond it the feed files are gone and the
+        result is empty.
 
         Reads the existing cache only — no API calls. Empty string if nothing.
         """
         anchor = for_date or date.today()
-        items = (
-            self._entries_on(anchor, ("HIGH", "MEDIUM"))
-            + self._entries_on(anchor - timedelta(days=1), ("HIGH", "MEDIUM"))
-        )
-        _sev_order = {"HIGH": 0, "MEDIUM": 1}
-        items.sort(key=lambda e: _sev_order.get(e.get("severity", "MEDIUM"), 1))
+        items = self.entries_published(
+            anchor - timedelta(days=1), anchor, ("HIGH", "MEDIUM"))
+        items.sort(key=lambda e: _SEV_ORDER.get(e.get("severity", "MEDIUM"), 1))
 
         lines = []
         for e in items[:max_items]:

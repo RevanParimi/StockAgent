@@ -103,7 +103,7 @@ def _active_tickers() -> list[str]:
     return tickers
 
 
-from services.api.log_buffer import get_active_tickers_with_sector
+from services.api.log_buffer import get_active_tickers_with_sector, get_disabled_tickers
 
 
 def _sector_lookup() -> dict[str, str]:
@@ -344,6 +344,32 @@ class AutomobileScheduler:
         )
         logger.info("[Scheduler] Pre-open shock check job: 8:45 am IST weekdays")
 
+        # ── Job 10b: Company-event feed (Mon–Fri 08:15 + 18:30 IST) ─────────
+        # Before the 08:45 pre-open check, and after the close and the 16:30
+        # review. The job skips NSE holidays. Store only (core/events).
+        if getattr(settings, "EVENTS_ENABLED", False):
+            for slot, hhmm in (("am", settings.EVENTS_MORNING), ("pm", settings.EVENTS_EVENING)):
+                try:
+                    hour, minute = (int(part) for part in str(hhmm).split(":"))
+                    scheduler.add_job(
+                        func=self._company_events_job,
+                        args=[slot],
+                        trigger=CronTrigger(day_of_week="mon-fri", hour=hour, minute=minute,
+                                            timezone="Asia/Kolkata"),
+                        id=f"company_events_{slot}",
+                        name=f"Company-event feed ({slot})",
+                        misfire_grace_time=1800,
+                        coalesce=True,
+                        replace_existing=True,
+                    )
+                except ValueError as exc:
+                    logger.warning("[Scheduler] Invalid events time %r — company_events_%s "
+                                   "NOT scheduled: %s", hhmm, slot, exc)
+            logger.info("[Scheduler] Company-event feed jobs: %s and %s IST weekdays",
+                        settings.EVENTS_MORNING, settings.EVENTS_EVENING)
+        else:
+            logger.info("[Scheduler] Company-event feed disabled (EVENTS_ENABLED=false)")
+
         # ── Job 11: Daily bhavcopy sync (19:00 IST weekdays — EOD data settles ~18:30) ──
         if getattr(settings, "DISCOVERY_ENABLED", False):
             scheduler.add_job(
@@ -411,14 +437,15 @@ class AutomobileScheduler:
         else:
             logger.info("[Scheduler] Delivery jobs disabled (DELIVERY_ENABLED=false)")
 
-        # ── Job 15: Nightly data backup (23:30 IST daily — AUD-088) ─────────
-        # Always on: the local rotation under data/backups/ is free; the
-        # emailed off-site copy rides whenever the SMTP transport is configured.
+        # ── Job 15: Nightly data backup (23:30 IST daily — AUD-088, SA-007) ─
+        # Always on: the local rotation under data/backups/ is free. Each
+        # archive is restore-drilled; a passing one goes off-site encrypted
+        # when BACKUP_OFFSITE_TARGET is configured, and is also emailed.
         scheduler.add_job(
             func=self._backup_job,
             trigger=CronTrigger(hour=23, minute=30, timezone="Asia/Kolkata"),
             id="data_backup_nightly",
-            name="Nightly data backup (zip + email off-site)",
+            name="Nightly data backup (zip + drill + off-site)",
             misfire_grace_time=3600,
             coalesce=True,
             replace_existing=True,
@@ -607,18 +634,29 @@ class AutomobileScheduler:
         """Weekly discovery funnel (spec §6): non-fatal by construction —
         run_discovery_cycle() contains every stage failure."""
         from core.discovery import run_discovery_cycle
+        from core.discovery.sector_naming import counts_line
 
         _job_banner("Weekly Discovery Funnel")
         try:
             result = run_discovery_cycle()
             logger.info(
                 "[Scheduler] Discovery — universe=%s candidates=%s dives=%s "
-                "shelf_added=%s paper_reviewed=%s dark=%s errors=%s",
+                "shelf_added=%s paper_reviewed=%s dark=%s dark_checks=%s "
+                "sectors=[%s] errors=%s",
                 result.get("universe_size"), result.get("candidates"),
                 result.get("deep_dives"), result.get("shelf", {}).get("added"),
                 result.get("paper", {}).get("reviewed"),
-                result.get("dark_signals"), result.get("errors"),
+                result.get("dark_signals"), result.get("dark_checks"),
+                counts_line(result.get("sectors")), result.get("errors"),
             )
+            # FIX-026: each stock whose sector key is not cleanly named.
+            sectors = result.get("sectors") or {}
+            for kind in ("generic", "unnamed", "invalid", "disputed", "kept"):
+                if sectors.get(kind):
+                    logger.info("[Scheduler] Discovery sectors %s: %s", kind, sectors[kind])
+            if sectors.get("no_yahoo"):
+                logger.info("[Scheduler] Discovery sectors no Yahoo labels: %s",
+                            sectors["no_yahoo"])
             try:
                 from core.delivery.ops_alerts import alert_job_zero_output
                 alert_job_zero_output(
@@ -730,18 +768,45 @@ class AutomobileScheduler:
         a slow day must not kill the trading day).
         After the reviews, the Compass portfolio pipeline runs event-triggered
         (AUD-043) — advisor → autopilot → value point → digest.
+
+        SA-004: every required ticker gets exactly one outcome (completed,
+        degraded, data_gated, skipped or failed; see review_outcomes). Only a
+        review that wrote its feedback entry is output, so a missing input, a
+        gate stop, an exception or an unfinished review leaves the cohort
+        incomplete, and the zero- and partial-output alerts see it.
         """
+        from core.intelligence.rl.workflows import review_outcomes as ro
         from core.intelligence.rl.workflows.daily_review import run_daily_review
         from core.intelligence.rl.nse_calendar import now_ist, trading_days_ago
 
         review_date = trading_days_ago(now_ist().date(), 1)
+        date_iso = review_date.isoformat()
 
-        ticker_entries = get_active_tickers_with_sector()
-        _job_banner(f"RL Daily Review — {review_date.isoformat()} ({len(ticker_entries)} tickers)")
+        # SA-004: the required cohort is each enabled ticker once. A duplicate
+        # managed entry used to review the same session twice and count twice.
+        ticker_entries: list[dict] = []
+        duplicates: list[str] = []
+        seen: set[str] = set()
+        for entry in get_active_tickers_with_sector():
+            key = str(entry["sym"]).strip().upper()
+            if key in seen:
+                duplicates.append(entry["sym"])
+                continue
+            seen.add(key)
+            ticker_entries.append(entry)
+        try:
+            excluded = get_disabled_tickers()
+        except Exception as exc:
+            logger.warning("[Scheduler] Could not list disabled tickers: %s", exc)
+            excluded = []
+
+        _job_banner(f"RL Daily Review — {date_iso} ({len(ticker_entries)} tickers)")
         logger.info(
             "[Scheduler] Active tickers for this run: %s",
             [e["sym"] for e in ticker_entries],
         )
+        if duplicates:
+            logger.warning("[Scheduler] Duplicate managed tickers, reviewed once: %s", duplicates)
 
         max_w = getattr(settings, "RL_SCHEDULER_MAX_WORKERS", 1)
         logger.info("[Scheduler] Running with max_workers=%d", max_w)
@@ -755,7 +820,8 @@ class AutomobileScheduler:
             except Exception as exc:
                 return t, s, None, exc
 
-        succeeded = 0
+        # SA-004: one outcome per required ticker, keyed by the entry's symbol.
+        outcomes: dict[str, ro.ReviewOutcome] = {}
         stragglers: list[str] = []
         # F5: how many reviews actually saw company news. Reviews that early-return
         # (no envelope / no actual close) never reach the news fetch and report no
@@ -766,6 +832,42 @@ class AutomobileScheduler:
         # instead of nothing. Separates "rescued" from "truly context-less" for
         # the 20-trading-day miss-taxonomy comparison.
         news_macro_rescued = 0
+
+        def _harvest(future, entry: dict) -> None:
+            nonlocal news_fetched, news_blind, news_macro_rescued
+            sym = entry["sym"]
+            try:
+                ticker, sector, summary, err = future.result()
+            except Exception as exc:          # cancelled, or _review_one broke
+                outcomes[sym] = ro.classify(sym, date_iso, None, exc)
+                logger.error("[Scheduler] Unexpected error in daily review for %s: %s",
+                             sym, exc, exc_info=exc)
+                return
+            outcome = ro.classify(sym, date_iso, summary, err)
+            outcomes[sym] = outcome
+            if err is not None:
+                logger.error("[Scheduler] Daily review FAILED for %s: %s", ticker, err, exc_info=err)
+                return
+            if not isinstance(summary, dict):
+                logger.error("[Scheduler] Daily review for %s — %s", ticker, outcome.reason)
+                return
+            news_flag = summary.get("news_available")
+            if news_flag is True:
+                news_fetched += 1
+            elif news_flag is False:
+                news_blind += 1
+            if summary.get("macro_fallback_used") is True:
+                news_macro_rescued += 1
+            logger.info(
+                "[Scheduler] %s %s sector=%s — outcome=%s status=%s direction=%s "
+                "lessons=%s weights=v%s",
+                ticker, review_date, sector, outcome.outcome,
+                summary.get("status"),
+                summary.get("direction_correct"),
+                summary.get("lessons_added"),
+                summary.get("weight_version"),
+            )
+
         # AUD-084: the old "3-minute per-ticker timeout" was fiction —
         # as_completed only ever yields FINISHED futures, so result(timeout=)
         # never blocked. The only real cap is the aggregate as_completed budget,
@@ -784,36 +886,28 @@ class AutomobileScheduler:
             try:
                 for future in _cf.as_completed(futures, timeout=300 * max(len(ticker_entries), 1)):
                     try:
-                        ticker, sector, summary, err = future.result()
-                        if err is not None:
-                            logger.error(
-                                "[Scheduler] Daily review FAILED for %s: %s", ticker, err, exc_info=True
-                            )
-                        else:
-                            succeeded += 1
-                            news_flag = summary.get("news_available")
-                            if news_flag is True:
-                                news_fetched += 1
-                            elif news_flag is False:
-                                news_blind += 1
-                            if summary.get("macro_fallback_used") is True:
-                                news_macro_rescued += 1
-                            logger.info(
-                                "[Scheduler] %s %s sector=%s — status=%s direction=%s lessons=%s weights=v%s",
-                                ticker, review_date, sector,
-                                summary.get("status"),
-                                summary.get("direction_correct"),
-                                summary.get("lessons_added"),
-                                summary.get("weight_version"),
-                            )
+                        _harvest(future, futures[future])
                     except Exception as exc:
                         logger.error("[Scheduler] Unexpected error in daily review: %s", exc, exc_info=True)
             except _cf.TimeoutError:
-                stragglers = [e["sym"] for f, e in futures.items() if not f.done()]
+                # SA-004: a review that finished after the last yield still
+                # counts; one still running is a timeout, not an absence.
+                for f, e in futures.items():
+                    if e["sym"] in outcomes:
+                        continue
+                    if f.done():
+                        try:
+                            _harvest(f, e)
+                        except Exception as exc:
+                            logger.error("[Scheduler] Unexpected error in daily review: %s",
+                                         exc, exc_info=True)
+                    else:
+                        stragglers.append(e["sym"])
+                        outcomes[e["sym"]] = ro.timed_out(e["sym"])
                 logger.error(
                     "[Scheduler] Daily review harvest budget exhausted — %d unfinished: %s; "
-                    "continuing with %d completed reviews (AUD-084)",
-                    len(stragglers), stragglers, succeeded,
+                    "continuing with %d harvested reviews (AUD-084)",
+                    len(stragglers), stragglers, len(outcomes) - len(stragglers),
                 )
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
@@ -826,18 +920,45 @@ class AutomobileScheduler:
             news_fetched, news_blind, news_fetched + news_blind, news_macro_rescued,
         )
 
+        # SA-004: count the cohort. A second run for the same session (the day
+        # after a weekday holiday) merges with the first rather than replacing it.
+        previous = None
+        try:
+            from services.data.stores.job_outcomes import load_job_outcomes
+            previous = load_job_outcomes().get("daily_review")
+        except Exception as exc:
+            logger.warning("[Scheduler] Could not read the previous review outcome: %s", exc)
+        record = ro.summarize(
+            date_iso, [e["sym"] for e in ticker_entries], outcomes,
+            excluded=excluded, duplicates=duplicates, previous=previous,
+        )
+        detail = ro.missing_detail(record)
+        logger.log(
+            logging.INFO if record["cohort_complete"] else logging.WARNING,
+            "[Scheduler] Daily review %s: %d/%d required outcomes (completed %d, degraded %d); "
+            "skipped %d, data_gated %d, failed %d; attempted %d over %d run(s), retried %d; "
+            "excluded %d, duplicates %d%s",
+            date_iso, record["produced"], record["required"], record["completed"],
+            record["degraded"], record["skipped"], record["data_gated"], record["failed"],
+            record["attempted"], record["runs"], len(record["retried"]),
+            len(record["excluded"]), len(record["duplicates"]),
+            f" — missing: {detail}" if detail else "",
+        )
+
         try:
             # AUD-039: "all reviews failed but the job logged complete" must page.
+            # SA-004: produced is the reviews that wrote feedback, not the calls
+            # that returned.
             from core.delivery.ops_alerts import alert_job_zero_output
-            alert_job_zero_output("daily_review", produced=succeeded,
-                                  expected=len(ticker_entries))
+            alert_job_zero_output("daily_review", produced=record["produced"],
+                                  expected=record["required"], detail=detail)
         except Exception:
             pass
         try:
             # AUD-090b: a partial day (13/16 on Tue 7/14) was invisible.
             from core.delivery.ops_alerts import alert_job_partial_output
-            alert_job_partial_output("daily_review", produced=succeeded,
-                                     expected=len(ticker_entries))
+            alert_job_partial_output("daily_review", produced=record["produced"],
+                                     expected=record["required"], detail=detail)
         except Exception:
             pass
 
@@ -845,13 +966,19 @@ class AutomobileScheduler:
         # completion (AUD-043 — this hook existed only on the HTTP path before;
         # the scheduled job never traded). Non-fatal: a pipeline failure must
         # never mark the reviews themselves as failed.
-        pipeline_ok = False
+        pipeline = "failed"
         pipeline_error = ""
         try:
             from core.portfolio.pipeline import run_post_review_pipeline
-            summary = run_post_review_pipeline(review_date)
-            pipeline_ok = True
-            logger.info("[Scheduler] Post-review portfolio pipeline: %s", summary)
+            pipeline_result = run_post_review_pipeline(review_date)
+            # SA-004: returning is not success; a malformed result is not ok.
+            pipeline = ro.pipeline_status(pipeline_result)
+            if pipeline == "malformed":
+                pipeline_error = f"malformed result: {str(pipeline_result)[:200]}"
+                logger.error("[Scheduler] Post-review portfolio pipeline returned a %s",
+                             pipeline_error)
+            else:
+                logger.info("[Scheduler] Post-review portfolio pipeline: %s", pipeline_result)
         except Exception as exc:
             pipeline_error = str(exc)[:300]
             logger.error(
@@ -864,11 +991,8 @@ class AutomobileScheduler:
             from services.data.stores.job_outcomes import record_job_outcome
             record_job_outcome(
                 "daily_review",
-                review_date=review_date.isoformat(),
-                produced=succeeded,
-                expected=len(ticker_entries),
+                **ro.with_pipeline(record, pipeline),
                 stragglers=stragglers,
-                pipeline_ok=pipeline_ok,
                 pipeline_error=pipeline_error,
                 news_fetched=news_fetched,     # F5 sensing telemetry
                 news_blind=news_blind,
@@ -981,13 +1105,15 @@ class AutomobileScheduler:
         _job_banner("Macro News — Daily Policy/RBI", done=True)
 
     def _backup_job(self) -> None:
-        """Job 15 — nightly data/ backup (AUD-088). Archive-creation failures
-        raise so the EVENT_JOB_ERROR listener pages a human; a missing off-site
-        copy only warns (run_backup_job logs it)."""
+        """Job 15 — nightly data/ backup (AUD-088, SA-007). Archive-creation
+        and restore-drill failures raise so the EVENT_JOB_ERROR listener pages
+        a human; a missing off-site copy only warns, and the watchdog's
+        backup_recoverable check reports it."""
         from services.data.backup import run_backup_job
         summary = run_backup_job()
-        logger.info("[Scheduler] nightly backup done: emailed=%s bytes=%d",
-                    summary["emailed"], summary["bytes"])
+        logger.info("[Scheduler] nightly backup done: offsite=%s emailed=%s bytes=%d",
+                    summary.get("offsite_confirmed"), summary.get("emailed"),
+                    summary.get("bytes", 0))
 
     def _universe_recompute_job(self) -> None:
         """Job 16 — Atlas Universe recompute (C4). No-op unless ATLAS_ENABLED;
@@ -1237,10 +1363,17 @@ class AutomobileScheduler:
             except Exception as audit_exc:
                 logger.warning("[Scheduler] audit section failed (non-fatal): %s",
                                audit_exc)
-            send_email(
+            sent = send_email(
                 subject=f"[StockAgent] Learning Evidence {month}: {report['verdict']}",
                 body=body,
             )
+            if not sent:
+                # SA-006: a direct send has no outbox row, retry or dead letter;
+                # this line is the only trace. The channel logged the reason.
+                logger.warning(
+                    "[Scheduler] Learning Evidence email for %s was NOT accepted by "
+                    "the email transport (see the [delivery] line for the reason); "
+                    "the report is saved at %s", month, json_path)
         except Exception as exc:
             logger.warning(
                 "[Scheduler] Learning evidence build failed for %s: %s", month, exc, exc_info=True
@@ -1320,6 +1453,43 @@ class AutomobileScheduler:
             "[Scheduler] Weekly research loop complete — answered=%d expired=%d",
             answered, expired)
         _job_banner("Weekly Research Loop", done=True)
+
+    def _company_events_job(self, slot: str) -> None:
+        """
+        Company-event feed run: NSE filings and company news for every held,
+        watched and shelf stock, typed and stored (core/events). Weekdays at
+        08:15 and 18:30 IST; skips NSE holidays. run_event_feed never raises,
+        so this job is non-fatal by construction.
+        """
+        from core.events.feed import run_event_feed
+        from core.intelligence.rl.nse_calendar import is_trading_day, now_ist
+
+        today = now_ist().date()
+        if not is_trading_day(today):
+            logger.info("[Scheduler] Company events %s skipped: %s is not a trading day",
+                        slot, today)
+            return
+        _job_banner(f"Company Events ({slot})")
+        rec = run_event_feed(slot)
+        from services.data.stores.job_outcomes import record_job_outcome
+        record_job_outcome(
+            f"company_events_{slot}",
+            status=rec.get("status"),
+            symbols_tracked=rec.get("symbols_tracked"),
+            symbols_used=rec.get("symbols_used"),
+            symbols_over_cap=rec.get("symbols_over_cap"),
+            identity_skipped=len(rec.get("identity_skipped") or {}),
+            news_queries_used=rec.get("news_queries_used"),
+            news_run_budget=rec.get("news_run_budget"),
+            news_failed=len(rec.get("news_failed") or {}),
+            items_new=rec.get("items_new"),
+            events_stored=rec.get("events_stored"),
+            llm_calls=rec.get("llm_calls"),
+            llm_failed=rec.get("llm_failed"),
+            ingest=rec.get("ingest"),
+            error=rec.get("error"),
+        )
+        _job_banner(f"Company Events ({slot})", done=True)
 
     def _preopen_shock_check_job(self) -> None:
         """

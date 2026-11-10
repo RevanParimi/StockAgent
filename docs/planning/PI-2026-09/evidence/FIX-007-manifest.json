@@ -1,0 +1,79 @@
+{
+  "story": "FIX-007",
+  "phase": "implementation (2026-10-12)",
+  "baseline": "b9cc851f04f8f7c6e9dde77f513778c5137354e2",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/FIX-007-implementation.md"
+  ],
+  "note": "CODEBASE.md, docs/PRODUCT_MAP.md, docs/TECHNICAL_DESIGN.md, docs/TEAM_TESTING_GUIDE.md and the PDF also carry SA-011's accepted, uncommitted changes (input evidence/SA-011-manifest.json, 0323f2a8). FIX-007's diff is taken from that state; see the receipt, 'Manifest and digest'.",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "b1ac4a2fefb55ba9a7872eeb3d3d5d450e0d1157",
+      "sha256": "0ee200db6b62b3c4185fae1848d4032b8ce1129f46139dc2da11a4cd08427125"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "30953ca7c36006effe3edcf36336a219e6ff7fe7",
+      "sha256": "88b4de9399f75773586bc6289234045c39802bb56b59b12ed0e785af43049b69"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "50ccddb6fbf89155d0d7586b624d5e907dfab5fa",
+      "sha256": "154fbeeb35637dc1c32dcd25d24e6f805cc14fc0b3476c1220bbe2f1e2d61cfa"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "567a25ba9b7a4eae84253680d965fe8e1ac7e268",
+      "sha256": "9a36c90a8090c87ebe087d3f25dbb43aea2e54e7a322458e9b732a651124d7fe"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "6cfd4a7d90d2d67a7220d6e83e3e7e26b14e4c18",
+      "sha256": "ce490484a1d154efc7495035af8a4cd8bee77524a2d9256305c9c567cf0541bc"
+    },
+    {
+      "path": "package.json",
+      "git_blob": "b0c9363e8c9dbab747c799bf17f8a9362bf95c5b",
+      "sha256": "6f61157433c846b79da5ec2403c0bcd9109ab4f8aa903446efdd70af5daa5d03"
+    },
+    {
+      "path": "services/api/log_buffer.py",
+      "git_blob": "daecf0194b14f0456b93ce5899379c37bf54d34e",
+      "sha256": "d191c9d4170d7eb81bdef4c5d000f1b8671cf43d384e486a7652f97ab6a169c7"
+    },
+    {
+      "path": "services/api/routes/ui_data.py",
+      "git_blob": "f4c90a596370e1fad0317fe3f64e02de9461fe0f",
+      "sha256": "db2abb15cea609180164efbc6be88a90a08607521de6b97d07df7d0ab99176fd"
+    },
+    {
+      "path": "src/frontend/prototypes/index.html",
+      "git_blob": "bab0ef2a8b3c951b477ae47298da40f9f9cbdb1c",
+      "sha256": "6a3b3b0c12029b860148b32cda97f330b6bad80a64ac8136484f2322fa331ef2"
+    },
+    {
+      "path": "src/frontend/prototypes/logs.jsx",
+      "git_blob": "7eacf8102b41113688266df5a6c4ae09b04f5aa0",
+      "sha256": "7dbc19086866c5cbef9000acc52a264bc77039bfc6fbea628884306a44748417"
+    },
+    {
+      "path": "tests/frontend/chat_harness.mjs",
+      "git_blob": "46de559ba4a5c7efd520c16f0994ac29bfab9774",
+      "sha256": "556a9994fe7ae1da23b676c60910da304d8306c2acbd0e24568e70e2fd277c5c"
+    },
+    {
+      "path": "tests/frontend/logs_screen.test.mjs",
+      "git_blob": "204eff511c396ab19df15dadab90b3a76331ca1e",
+      "sha256": "a9e6a1c11c17f375c66b50dc350b402e73a106d84201638479c8f8c032a00b4a"
+    },
+    {
+      "path": "tests/unit/api/test_log_routes_owner_only_fix007.py",
+      "git_blob": "a78d15d517ee66570e13abcabe3d5050f1463af6",
+      "sha256": "9332c9ebf90637616895eadd10de24c0ba2a812b7708e92f2caaba7929f24781"
+    }
+  ]
+}

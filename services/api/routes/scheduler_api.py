@@ -312,13 +312,23 @@ async def trigger_daily_review(
                 status_code=422,
                 detail=f"Invalid date '{review_date}'. Use ISO format: YYYY-MM-DD.",
             )
-        from core.intelligence.rl.nse_calendar import now_ist
-        if target > now_ist().date():
+        from core.intelligence.rl.nse_calendar import now_ist, session_close_at
+        now = now_ist()
+        if target > now.date():
             # AUD-044: the post-review pipeline would stamp the autopilot
             # marker forward and brick its monotonic guard.
             raise HTTPException(
                 status_code=422,
                 detail=f"review_date {target} is in the future (IST) — refusing.",
+            )
+        if session_close_at(target) > now:
+            # FIX-024: before 15:30 IST the session has no close to grade, and
+            # the portfolio pipeline after the reviews would book its trades at
+            # the session before's closes, under decisions made today.
+            raise HTTPException(
+                status_code=422,
+                detail=(f"review_date {target} has not closed yet (15:30 IST); review the "
+                        "previous session, or run after the close — refusing."),
             )
     else:
         target = _last_trading_day()

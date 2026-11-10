@@ -70,6 +70,7 @@ _TOGGLES: dict[str, dict] = _load_toggles()
 TICKER_SECTOR: dict[str, str] = {
     # ── automobile (enabled, tier=backend) ──────────────────────────────────
     "MARUTI":       "automobile",   "TATAMOTORS":   "automobile",
+    "TMPV":         "automobile",   # SA-008: tracked in place of TATAMOTORS
     "M&M":          "automobile",   "HEROMOTOCO":   "automobile",
     "BAJAJ-AUTO":   "automobile",   "EICHERMOT":    "automobile",
     "TVSMOTORS":    "automobile",   "ASHOKLEY":     "automobile",

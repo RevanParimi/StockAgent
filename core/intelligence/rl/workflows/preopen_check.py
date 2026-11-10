@@ -16,9 +16,10 @@ Flow
 2. One Serper search for overnight India-market / GIFT-Nifty / global macro
    headlines (via services.data.fetchers.news.fetch_news_context,
    max_queries=1).
-3. One LLM_MODEL_FAST call (json_object) rating overall overnight shock
-   severity/direction. Parsed defensively — garbage JSON degrades to
-   severity 0.0 / direction "neutral".
+3. One LLM_MODEL_FAST call (json_object, served only by a host that supports
+   every parameter sent) rating overall overnight shock severity/direction.
+   Parsed defensively — garbage JSON degrades to severity 0.0 / direction
+   "neutral".
 4. severity < RL_PREOPEN_SHOCK_SEVERITY -> log + return (no per-ticker work).
 5. severity >= threshold -> for each (ticker, sector), load today's envelope
    forecast direction via PredictionStore. A contradiction (predicted UP in
@@ -71,7 +72,10 @@ def _call_llm(system_prompt: str, user_prompt: str) -> tuple[str, str]:
             temperature=0.2,
             max_tokens=300,
             response_format={"type": "json_object"},
-            extra_body=JSON_MODE_EXTRA_BODY,
+            # require_parameters: OpenRouter routes only to hosts that honour every
+            # parameter sent. A host that drops response_format can reply with fenced
+            # or prose JSON, which the strict parse below reads as "no shock".
+            extra_body={**JSON_MODE_EXTRA_BODY, "provider": {"require_parameters": True}},
             messages=[{"role": "system", "content": system_prompt},
                       {"role": "user", "content": user_prompt}],
         )

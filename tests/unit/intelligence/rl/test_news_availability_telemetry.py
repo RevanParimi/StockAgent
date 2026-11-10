@@ -47,7 +47,7 @@ def _run_review_with_news(news_fn, ticker: str, tmp_path, monkeypatch) -> dict:
 
     import core.intelligence.rl.workflows.daily_review as dr
     monkeypatch.setattr(dr.settings, "PREDICTION_DATA_DIR", str(tmp_path))
-    monkeypatch.setattr(dr, "_fetch_actual_close", lambda t, d: 100.1)
+    monkeypatch.setattr(dr, "_fetch_session_close", lambda t, d: dr.SessionClose(100.1, d, "agree"))
     monkeypatch.setattr(dr, "get_price_history", lambda *a, **k: None)
 
     from core.schemas.feedback import RegimeSnapshot
@@ -64,6 +64,9 @@ def _run_review_with_news(news_fn, ticker: str, tmp_path, monkeypatch) -> dict:
     import core.intelligence.rl.stores.offmarket_fetcher as offmarket_mod
     monkeypatch.setattr(offmarket_mod.OffMarketFetcher, "fetch_all",
                         lambda self, t, d: OffMarketSignals(date=d, ticker=t))
+    # ...and the constructor opens no live NSE session (SA-005).
+    monkeypatch.setattr(offmarket_mod.OffMarketFetcher, "__init__",
+                        lambda self: setattr(self, "_nse", None))
 
     import core.intelligence.rl.algorithms.factor_regime as factor_regime_mod
     monkeypatch.setattr(factor_regime_mod, "get_factor_regime", lambda *a, **k: None)

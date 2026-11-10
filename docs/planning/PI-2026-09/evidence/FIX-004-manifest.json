@@ -1,0 +1,71 @@
+{
+  "story": "FIX-004",
+  "phase": "implementation",
+  "baseline": "5ea49fe7ff801499de9466d474c72254e346071b",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/FIX-004-implementation.md",
+    "docs/planning/PI-2026-09/evidence/FIX-004-probe-2026-10-06.md",
+    "docs/planning/PI-2026-09/evidence/SA-038-review.md"
+  ],
+  "note": "FIX-004.md also carries the uncommitted 7 Oct probe-phase edits (measured note, Open guidance criterion); its diff against the baseline shows both.",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "core/intelligence/rl/agents/event_ingestor.py",
+      "git_blob": "33ad9101d98e8c51f83ac3e4c9dd51079b3ccbb4",
+      "sha256": "1bad8906651f93d4294de78650b87c45e6925fa87a3a58ba6688b7c5590e65f9"
+    },
+    {
+      "path": "docs/RL_DESIGN.md",
+      "git_blob": "ea407b53ddea607ab1c5505abd1a6a0faea3605f",
+      "sha256": "ffb8d79efca7854d564f06737c4bd39b8017ef7980db9c76ac8848d592c3bffc"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "855f0918f7bd4e9f809bd6f29e64903b02d90b03",
+      "sha256": "9e71ca00a2d6d2fd020af496d600b11ceb56670647626735b836c11ea75a8b1a"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "1bd1e259fce18281609edbdfca4d93de15444bb9",
+      "sha256": "de089127771f882ce07f7de240b0bbbdd84d5a37e429d73a815d6b95e67cf3ac"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "fcb04afd0365bf93ed0249f28aa862b1a140a9d3",
+      "sha256": "ae47071faa58805e90c4f22eca823c843d24f0b759bd6b04df72bbb2908f5c67"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/FIX-004.md",
+      "git_blob": "bb1cccebbaa7389300eaaf8ba0a9c734b6fefa5c",
+      "sha256": "091e71818224ad05dee800a143c8f4b52a0f1d2adc93376a812964761e10c56b"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/SA-013.md",
+      "git_blob": "09b6d9c128c1f68280582ba29286d060065138b2",
+      "sha256": "5068bb57b69da78c3b68ddb2f1a7398d34a2fe9aef4a0fcd61e8bb8c9433f40b"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/SA-046.md",
+      "git_blob": "249cf5401b473631490ade3db75a8c9b9487e866",
+      "sha256": "9d96fc27765c463bb75318f77bc069b8e53850e75a0616b19ba2c5d925814fb8"
+    },
+    {
+      "path": "src/backend/shared/schemas/dossier.py",
+      "git_blob": "4665e2aa5617e9948d0d23ccb0003283017894e1",
+      "sha256": "342ab7f98a57003fd468e1afc158a481b6e8556981181a3d79ab1cd8b28ccb49"
+    },
+    {
+      "path": "tests/unit/intelligence/rl/test_dossier_dates_fix004.py",
+      "git_blob": "42937848b5e045921f16ef82974cdf8feabeaed9",
+      "sha256": "b314b2881644796085e695bd4d6869ec85cf357fe970d021dd384fc3e705b3c4"
+    },
+    {
+      "path": "tests/unit/intelligence/rl/test_event_ingestor.py",
+      "git_blob": "a149ac476d80637248ab9bbfa868484fad2b2467",
+      "sha256": "e9c61278d406c3a8db8f18cd472691cccf4e9904855b8cecf221c446dab7639e"
+    }
+  ]
+}

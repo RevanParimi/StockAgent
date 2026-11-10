@@ -53,7 +53,7 @@ def _fb_output(miss_type: str = "direction_flip"):
 def _patch_common(dr, monkeypatch, actual_close: float = 98.0):
     # Same seam stack as test_shock_path._patch_common, minus PREDICTION_DATA_DIR
     # (this test controls both roots explicitly).
-    monkeypatch.setattr(dr, "_fetch_actual_close", lambda t, d: actual_close)
+    monkeypatch.setattr(dr, "_fetch_session_close", lambda t, d: dr.SessionClose(actual_close, d, "agree"))
     monkeypatch.setattr(dr, "get_price_history", lambda *a, **k: None)
     monkeypatch.setattr(dr, "_run_todays_agent_scores",
                         lambda *a, **k: {"risk": 0.5, "fundamentals": 0.5})
@@ -67,6 +67,9 @@ def _patch_common(dr, monkeypatch, actual_close: float = 98.0):
     import core.intelligence.rl.stores.offmarket_fetcher as offmarket_mod
     monkeypatch.setattr(offmarket_mod.OffMarketFetcher, "fetch_all",
                         lambda self, t, d: OffMarketSignals(date=d, ticker=t))
+    # ...and the constructor opens no live NSE session (SA-005).
+    monkeypatch.setattr(offmarket_mod.OffMarketFetcher, "__init__",
+                        lambda self: setattr(self, "_nse", None))
     import core.intelligence.rl.algorithms.factor_regime as factor_regime_mod
     monkeypatch.setattr(factor_regime_mod, "get_factor_regime", lambda *a, **k: None)
     import core.intelligence.rl.workflows.month_end_validation as mev

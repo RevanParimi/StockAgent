@@ -22,8 +22,12 @@ def fresh_resolver(tmp_path, monkeypatch):
 
 # ── Tier 1 / Tier 2 cheap resolution (no network) ──────────────────────────
 
-def test_curated_override_wins(fresh_resolver):
-    # TATAMOTORS is a curated override (demerger → TMPV)
+def test_curated_override_wins(fresh_resolver, monkeypatch):
+    # TATAMOTORS is a curated entry in the shipped instrument registry (SA-008:
+    # still fetched from TMPV.NS, its identity unresolved until evidence is recorded)
+    from pathlib import Path
+    monkeypatch.setenv("INSTRUMENT_REGISTRY_PATH",
+                       str(Path(__file__).resolve().parents[2] / "config" / "instruments.yaml"))
     assert fresh_resolver.resolve_yf_symbol("TATAMOTORS") == "TMPV.NS"
     assert fresh_resolver.resolve_yf_symbol("tatamotors") == "TMPV.NS"  # case-insensitive
 

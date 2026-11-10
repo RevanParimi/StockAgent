@@ -59,11 +59,14 @@ def test_exit_sells_all_credits_cash_moves_to_watchlist(tmp_path):
     assert len(txns) == 1
     t = txns[0]
     assert t.side == "SELL" and t.qty == 10 and t.price == 110.0
-    assert t.realized_pnl == pytest.approx(100.0)
-    assert t.cash_after == pytest.approx(1000.0 + 1100.0)
+    assert t.realized_pnl == pytest.approx(100.0)          # before costs
+    # SA-048: on ₹1,100 sold, STT ₹1.10 -> ₹1, NSE ₹0.03, SEBI ₹0.00, GST
+    # ₹0.01, DP ₹15.34: ₹16.38 leaves cash with the sale.
+    assert t.costs.total == pytest.approx(16.38, abs=0.001)
+    assert t.cash_after == pytest.approx(1000.0 + 1100.0 - 16.38, abs=0.001)
     p = s.load()
     assert p.holdings == []
-    assert p.cash_deployable == pytest.approx(2100.0)
+    assert p.cash_deployable == pytest.approx(2083.62, abs=0.001)
     assert any(w.symbol == "MARUTI" and w.source == "autopilot" for w in p.watchlist)
     assert p.last_autopilot_run == D.isoformat()
     assert [x.txn_id for x in s.load_transactions()] == [t.txn_id]

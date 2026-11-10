@@ -15,18 +15,24 @@ def test_discovery_settings_present():
     assert settings.DISCOVERY_CIRCUIT_STREAK_MAX == 3
     assert settings.DISCOVERY_SHORTLIST_SIZE == 80
     assert settings.DISCOVERY_MAX_CANDIDATES == 40
-    assert settings.DISCOVERY_DEEP_DIVE_COUNT == 10
-    assert settings.DISCOVERY_SHELF_SIZE == 10
+    assert settings.DISCOVERY_DEEP_DIVE_COUNT == 20         # PR-004: 10 -> 20
+    assert settings.DISCOVERY_SHELF_SIZE == 20              # PR-004: 10 -> 20
+    assert settings.DISCOVERY_MAX_IDEAS_PER_SECTOR == 3
+    assert settings.DISCOVERY_REDIVE_AFTER_DAYS == 30
+    assert settings.DISCOVERY_WATCHLIST_BUYS is True
     assert settings.DISCOVERY_STALE_DAYS == 60
     assert settings.DISCOVERY_MIN_CONVICTION == 0.55
     assert settings.DISCOVERY_INCLUDE_SME is False
 
 
-def test_discovery_signal_weights_sum_to_one():
+def test_discovery_signal_weights_are_relative():
+    """PR-011 deleted mf_holding's 0.05 without re-tuning the others: the
+    screen renormalises over the available signals, so the weights are
+    relative and sum to 0.95."""
     w = settings.DISCOVERY_SIGNAL_WEIGHTS
     assert set(w) == {"momentum", "delivery_surge", "volume_breakout",
-                      "bulk_block", "high_52wk_rs", "insider_buying", "mf_holding"}
-    assert abs(sum(w.values()) - 1.0) < 1e-9
+                      "bulk_block", "high_52wk_rs", "insider_buying"}
+    assert abs(sum(w.values()) - 0.95) < 1e-9
     assert w["momentum"] == 0.30
 
 

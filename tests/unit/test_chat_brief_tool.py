@@ -7,7 +7,9 @@ from services.api.routes.ui_data import _CHAT_TOOLS, _dispatch_chat_tool
 
 
 def _dispatch(name, args):
-    return asyncio.run(_dispatch_chat_tool(name, args))
+    # FIX-005: the tool reads the caller's own portfolio; these cases are the
+    # default (owner) user's. Cross-user cases: tests/unit/api/test_chat_brief_user_scope_fix005.py
+    return asyncio.run(_dispatch_chat_tool(name, args, user_id=settings.PORTFOLIO_DEFAULT_USER_ID))
 
 
 def test_tool_registered():

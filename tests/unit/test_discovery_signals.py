@@ -86,6 +86,6 @@ def test_high_52wk_rs(window):
 def test_compute_signals_keys_and_dark(window):
     out = sig.compute_signals(window, ["UPTREND", "FLATCO", "DELIVCO", "VOLSPIKE"], None)
     assert set(out) == {"momentum", "delivery_surge", "volume_breakout",
-                        "bulk_block", "high_52wk_rs", "insider_buying", "mf_holding"}
-    assert out["insider_buying"] is None and out["mf_holding"] is None   # dark v1
-    assert out["bulk_block"] is None                                     # no cache passed
+                        "bulk_block", "high_52wk_rs", "insider_buying"}
+    assert out["insider_buying"] is None          # no insider cache passed (PR-011)
+    assert out["bulk_block"] is None              # no cache passed

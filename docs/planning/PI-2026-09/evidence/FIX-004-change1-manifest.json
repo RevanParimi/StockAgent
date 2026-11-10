@@ -1,0 +1,69 @@
+{
+  "story": "FIX-004",
+  "phase": "change_1 implementation",
+  "baseline": "0ebd29bd7d92e4bab1ea87abacd0be8335d4f997",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/FIX-004-implementation.md"
+  ],
+  "note": "STATE.json and HANDOFF.md also carry the previous session's uncommitted push/deploy note (10 Oct, 15:25 IST).",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "core/delivery/brief.py",
+      "git_blob": "cd696fc5232a3db67f6881467fbd79149752a613",
+      "sha256": "bd4dd9e2cc54e5f187573a04782c2ce5e8eb7ee7f753659030db3a2a57443ebe"
+    },
+    {
+      "path": "docs/RL_DESIGN.md",
+      "git_blob": "e65b8aaf9bd6ec3e58a0b5ffbd9ca19dd3e45943",
+      "sha256": "61e0041eb5cb9664361c5a62bdbd20f05f05c97aa6aa99b33af22619f0e5e9e6"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "1d43620c39b9bf3ebdf369748fd16e506f167287",
+      "sha256": "38ee52e9cb1884f3c7a5f9d4ffe20d51fbdde6cd8ba7f6bd0699096a92a157e1"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "1aeff9ae741d1b18d60d6cdb78af877e014c67b5",
+      "sha256": "01015c073217241e33181c6c8455463bce441d96a42f80b561d051708e6ad212"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "115f3d7afd38021efd4054d8c6d8c2b68acb97c0",
+      "sha256": "6b1e4b5e9be86fc8f13579c917542bbf2f75c94b66f17f4aabf00c65470085df"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/FIX-004.md",
+      "git_blob": "a8b779fef4ba2edc064e0ba77af2b495dae4b428",
+      "sha256": "a6eaf479ae34812ce8716b60ea4c729f9cb5a0f31a00a89bf233ad1c03233033"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/SA-046.md",
+      "git_blob": "ae3c993ba34f74c6f30aadf21c802da720aaa18d",
+      "sha256": "a8a1c03122a36a72a448bd16003059117da9a8cd6d30702ca19c5e19e9509791"
+    },
+    {
+      "path": "src/backend/shared/schemas/dossier.py",
+      "git_blob": "441ed6a83af3e6abcd434e223f2eb403d7144723",
+      "sha256": "73770bee52a5a44854bfead91a5f3cdac9e2e0b65f28f16c26254309f528363b"
+    },
+    {
+      "path": "tests/unit/intelligence/rl/test_dossier_dates_fix004.py",
+      "git_blob": "97a7175c9c3ba56b212e7204ec2acb793472c0cc",
+      "sha256": "14d5518fee0abeb8f8be33133f0e27d3bb5a9a6f634aedf0221f7b08d47436e3"
+    },
+    {
+      "path": "tests/unit/test_brief_earnings_watch_fix004.py",
+      "git_blob": "c194e9887d15cda165203bab078f7bd95ba20a99",
+      "sha256": "ee32ef414f59cbcf842ef60d39b6bc958e68de8cfcdc64aac368cc541a89ff7d"
+    },
+    {
+      "path": "tests/unit/test_delivery_brief.py",
+      "git_blob": "ceabcc201d91534e1303ad2619e58196e9f3ee27",
+      "sha256": "5362167beea4cb183145781a2517f2d406f6a5a699c13f1a7bd8bf292362e3da"
+    }
+  ]
+}

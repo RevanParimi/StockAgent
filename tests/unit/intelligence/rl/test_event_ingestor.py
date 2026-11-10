@@ -206,7 +206,7 @@ def _setup_store(tmp_path, monkeypatch, ticker="TESTX", sector="automobile"):
 
 def _patch_common(monkeypatch, events, payload_or_payloads):
     monkeypatch.setattr(ei, "find_qualifying_events",
-                         lambda ticker, days, exclude_keys=None: [
+                         lambda ticker, days, exclude_keys=None, today=None: [
                              e for e in events if e["key"] not in (exclude_keys or set())])
     monkeypatch.setattr(ei, "_build_bundle", lambda ticker, event: "bundle text")
 
@@ -348,7 +348,7 @@ def test_run_flag_off_returns_zero_and_store_untouched(tmp_path, monkeypatch):
 def test_run_never_raises_on_unexpected_exception(tmp_path, monkeypatch):
     _setup_store(tmp_path, monkeypatch)
 
-    def boom(ticker, days, exclude_keys=None):
+    def boom(ticker, days, exclude_keys=None, today=None):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(ei, "find_qualifying_events", boom)

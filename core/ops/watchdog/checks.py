@@ -34,6 +34,10 @@ class CheckResult:
     state: CheckState
     detail: str
     evidence: dict = field(default_factory=dict)
+    # While the entry stays pending/blocked, notify at most once every this
+    # many days. 1 (the default) is the usual daily warning; a check raises it
+    # only for a state the owner has knowingly deferred.
+    repeat_days: int = 1
 
 
 CHECKS: dict[str, Callable[[], CheckResult]] = {}
@@ -355,6 +359,85 @@ def users_mirrored() -> CheckResult:
         "fan-out set.", evidence)
 
 
+_BACKUP_STALE_HOURS = 36      # the backup is nightly; older means a run was missed
+
+
+def _backup_status() -> dict | None:
+    """data/backups/backup_status.json, written by every nightly backup run."""
+    try:
+        return json.loads((_data_dir() / "backups" / "backup_status.json")
+                          .read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+
+
+def _hours_since(stamp: object) -> float | None:
+    try:
+        when = datetime.fromisoformat(str(stamp))
+    except ValueError:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - when).total_seconds() / 3600.0
+
+
+@check("backup_recoverable")
+def backup_recoverable() -> CheckResult:
+    """SA-007. Is last night's archive restorable, and is a copy of it
+    confirmed somewhere the app volume does not host?
+
+    A zip beside the data it protects is not a recovery strategy (audit F17),
+    and before SA-007 its absence only reached a log line. Every miss is
+    reported: the job not running, the restore drill failing, no confirmed
+    off-site copy, and data the drill flagged (a rewritten ledger).
+    """
+    status = _backup_status()
+    if status is None:
+        return CheckResult("pending", "No backup status yet — the nightly backup "
+                           "(23:30 IST) has not completed since this check was deployed.")
+    drill = status.get("drill") or {}
+    offsite = status.get("offsite") or {}
+    run_age = _hours_since(status.get("last_run_at"))
+    copy_age = _hours_since(status.get("last_offsite_confirmed_at"))
+    reason = offsite.get("reason") or "no reason recorded"
+    evidence = {"archive": status.get("archive"),
+                "run_age_hours": None if run_age is None else round(run_age, 1),
+                "drill_ok": drill.get("ok"), "drill_warnings": len(drill.get("warnings") or []),
+                "offsite_target": offsite.get("target"),
+                "offsite_age_hours": None if copy_age is None else round(copy_age, 1),
+                "offsite_reason": offsite.get("reason")}
+    if run_age is None or run_age > _BACKUP_STALE_HOURS:
+        return CheckResult("pending", f"The nightly backup last ran at "
+                           f"{status.get('last_run_at')} — the job has stopped.", evidence)
+    if not drill.get("ok"):
+        first = (drill.get("errors") or ["no error recorded"])[0]
+        return CheckResult("pending", f"{status.get('archive')} FAILED its restore drill "
+                           f"({first}), so it was not sent off-site.", evidence)
+    if copy_age is None:
+        if not offsite.get("target"):
+            # No target configured: the owner deferred the bucket (2026-09-29),
+            # so remind weekly. Data the drill flagged still warns daily.
+            if drill.get("warnings"):
+                return CheckResult("pending", f"The backup's drill flagged: "
+                                   f"{drill['warnings'][0]} (and no off-site target is "
+                                   "configured).", evidence)
+            return CheckResult("pending", f"No off-site copy has ever been confirmed ({reason}). "
+                               "Every backup sits on the volume it protects. This reminder "
+                               "repeats weekly until a target is configured.", evidence,
+                               repeat_days=7)
+        return CheckResult("pending", f"No off-site copy has ever been confirmed ({reason}). "
+                           "Every backup sits on the volume it protects.", evidence)
+    if not offsite.get("confirmed"):
+        return CheckResult("pending", f"Last night's off-site copy was not confirmed "
+                           f"({reason}); the newest confirmed copy is {copy_age:.0f}h old.",
+                           evidence)
+    if drill.get("warnings"):
+        return CheckResult("pending", f"The backup is off-site, but its drill flagged: "
+                           f"{drill['warnings'][0]}", evidence)
+    return CheckResult("satisfied", f"{status.get('archive')} passed its restore drill; "
+                       f"its encrypted copy is confirmed off-site.", evidence)
+
+
 @check("manual_confirmation")
 def manual_confirmation() -> CheckResult:
     """No programmatic signal exists; stays pending until the entry is removed
@@ -542,3 +625,182 @@ def switch_lane_has_sample() -> CheckResult:
         "pending",
         f"Switch lane has {n_eff} independent pair(s) of {floor} needed "
         f"({block.get('n')} raw rows). Still accruing.", evidence)
+
+
+# ---------------------------------------------------------------------------
+# SA-011 — the durable-error backlog
+# ---------------------------------------------------------------------------
+
+def _error_backlog_report() -> dict:
+    """Seam for tests — refresh the backlog and return what needs attention."""
+    from core.ops.error_backlog import report
+    return report(include="attention", limit=5)
+
+
+@check("error_backlog")
+def error_backlog() -> CheckResult:
+    """Pending while an issue in the durable-error backlog is new, regressed
+    or spiking and nobody has triaged it (GET /ops/errors).
+
+    The detail names counts, loggers and fingerprints, never a template: a
+    notice travels by push and email, and a log line's text stays behind the
+    owner-only endpoint. The `error_backlog_triaged` invariant in
+    milestones.yaml uses this check; its notices reach only the owner
+    (FIX-008)."""
+    rep = _error_backlog_report()
+    issues = rep.get("issues") or []
+    n = int((rep.get("counts") or {}).get("attention") or 0)
+    evidence = {"attention": n, "total": (rep.get("counts") or {}).get("total"),
+                "coverage": rep.get("coverage"),
+                "caught_up": (rep.get("refresh") or {}).get("caught_up")}
+    if n == 0:
+        return CheckResult("satisfied", "No new, regressed or spiking issue is untriaged.",
+                           evidence)
+    states: dict[str, int] = {}
+    for i in issues:
+        key = i["state"] + (" spiking" if i.get("spiking") else "")
+        states[key] = states.get(key, 0) + 1
+    top = "; ".join(f"{i['max_level']} {i['logger']} (fp {i['fingerprint']})"
+                    for i in issues[:3])
+    return CheckResult(
+        "pending",
+        f"{n} backlog issue(s) need triage ({', '.join(f'{v} {k}' for k, v in sorted(states.items()))}"
+        f"{' among the top 5' if n > len(issues) else ''}). Top: {top}. "
+        "Triage at GET /ops/errors; mark acknowledged, fixed or wontfix.",
+        evidence)
+
+
+# ---------------------------------------------------------------------------
+# FIX-011 — the sources behind the discovery screen's guards
+# ---------------------------------------------------------------------------
+
+_GUARD_DARK_DAYS = 7
+_GUARD_DARK_EFFECT = {
+    "surveillance": "the ASM/GSM and suspension gates pass every symbol",
+    "float_mcap": "the free-float market-cap floor passes every symbol",
+    "promoter_pledge": "the promoter-pledge gate passes every symbol",
+}
+
+
+def _screen_records() -> list[dict]:
+    """Seam for tests — the persisted screens that ran the guards (a
+    non-empty shortlist), oldest first."""
+    from core.config import settings
+    out = []
+    for path in (Path(settings.DISCOVERY_DATA_DIR) / "screens").glob("*_screen.json"):
+        try:
+            rec = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            logger.warning("[watchdog] screen %s unreadable: %s", path.name, exc)
+            continue
+        if isinstance(rec, dict) and rec.get("shortlist_size") and rec.get("screen_date"):
+            out.append(rec)
+    return sorted(out, key=lambda r: str(r["screen_date"]))
+
+
+@check("discovery_guard_sources")
+def discovery_guard_sources() -> CheckResult:
+    """Pending while a source of the screen's per-symbol guards (NSE's
+    surveillance report, Yahoo's float mcap, NSE's pledge rows) has answered
+    for no symbol in every screen for 7 days or more: two weekly screens in a
+    row. The screen records such a source as one check (`surveillance`,
+    `float_mcap`, `promoter_pledge`), keeps every symbol and says so; this
+    makes the outage loud before it lasts for months, as NSE's per-symbol meta
+    API's did (every cached answer degraded from 11 Jul 2026; found on 20 Oct).
+    The pledge source is not judged while `discovery.pledge_guard` is off.
+    Example: `surveillance` in the screens of 23 and 30 Oct is pending; in
+    the screen of 30 Oct only, it is not yet."""
+    from core.config import settings
+    from core.discovery.guards import GUARD_SOURCES
+
+    screens = _screen_records()
+    if not screens:
+        return CheckResult("satisfied", "No screen has run the guards yet.")
+    latest = screens[-1]["screen_date"]
+    dark_since: dict[str, str] = {}
+    for source in GUARD_SOURCES:
+        if source == "promoter_pledge" and not settings.DISCOVERY_PLEDGE_GUARD:
+            continue
+        for rec in reversed(screens):
+            if source not in (rec.get("degraded_checks") or []):
+                break
+            dark_since[source] = str(rec["screen_date"])
+    evidence = {"latest_screen": latest, "screens": len(screens), "dark_since": dark_since}
+    long_dark = {s: d for s, d in dark_since.items()
+                 if (date.fromisoformat(latest) - date.fromisoformat(d)).days >= _GUARD_DARK_DAYS}
+    if not long_dark:
+        if not dark_since:
+            return CheckResult("satisfied",
+                               f"Every guard source answered in the screen of {latest}.", evidence)
+        return CheckResult(
+            "satisfied",
+            f"{', '.join(sorted(dark_since))} dark in the screen of {latest}, for under "
+            f"{_GUARD_DARK_DAYS} days so far.", evidence)
+    return CheckResult(
+        "pending",
+        "; ".join(f"{s} dark in every screen from {d} to {latest}: {_GUARD_DARK_EFFECT[s]}"
+                  for s, d in sorted(long_dark.items())) + ".",
+        evidence)
+
+
+# ---------------------------------------------------------------------------
+# FIX-026 — every shelf idea and holding has a named sector key
+# ---------------------------------------------------------------------------
+
+# Discovery runs weekly, and a holding's key changes only by hand: a weekly
+# reminder repeats nothing the owner has not seen. The first notice is not
+# delayed unless one went out in the last week.
+_SECTOR_REPEAT_DAYS = 7
+
+
+def _active_shelf_ideas() -> list:
+    """Seam for tests — the discovery shelf's active ideas."""
+    from core.discovery.shelf import ShelfStore
+    return [i for i in ShelfStore().load().ideas if i.status == "active"]
+
+
+def _held_positions() -> list:
+    """Seam for tests — every holding of the portfolios the scheduler runs."""
+    from core.portfolio.store import PortfolioStore, active_user_ids
+    return [h for user_id in active_user_ids()
+            for h in PortfolioStore(user_id=user_id).load().holdings]
+
+
+@check("sector_keys")
+def sector_keys() -> CheckResult:
+    """Pending while an active shelf idea or a holding has no configured
+    sector key, or "generic": SA-050's sector cap and the shelf's cap cannot
+    be checked for it, or count it with unrelated stocks. Also pending while
+    an active idea's latest analysis said Yahoo's labels do not fit, or Yahoo
+    gave none: its key is named, but worth one look. Each stock is named with
+    what its analysis answered (core/discovery/sector_naming.py, FIX-026);
+    reminded weekly. Example: ACME shelved with the answer "Pharmaceuticals"
+    is pending until a re-dive names "pharma"; a holding filed as "generic"
+    stays pending until its key is set."""
+    from core.discovery.sector_naming import GENERIC, configured_sectors, describe, status
+
+    keys = configured_sectors()
+    urgent: list[str] = []
+    look: list[str] = []
+    ideas = _active_shelf_ideas()
+    for idea in ideas:
+        line = f"shelf {describe(idea, keys)}"
+        reading = getattr(idea, "sector_reading", None)
+        if status(idea, keys) != "named":
+            urgent.append(line)
+        elif reading is not None and (reading.yahoo_fits is False or reading.yahoo_gap):
+            look.append(line)
+    held: dict[str, str] = {}
+    for h in _held_positions():
+        key = str(h.sector or "").strip().lower()
+        if key not in keys:
+            held[h.symbol] = ("generic" if key == GENERIC
+                              else f'"{h.sector}", which is not one of our keys')
+    urgent += [f"holding {sym} {what}" for sym, what in sorted(held.items())]
+    evidence = {"ideas": len(ideas), "keyless_or_generic": len(urgent), "to_look_at": len(look)}
+    if not urgent and not look:
+        return CheckResult("satisfied",
+                           "Every active shelf idea and holding has a named sector key.",
+                           evidence)
+    detail = "; ".join(urgent + look) + "."
+    return CheckResult("pending", detail, evidence, repeat_days=_SECTOR_REPEAT_DAYS)

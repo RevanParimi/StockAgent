@@ -19,45 +19,70 @@ function LogsPage({ onNav }) {
   const [filter,     setFilter]     = useLgState('INFO');
   const [search,     setSearch]     = useLgState('');
   const [autoScroll, setAutoScroll] = useLgState(true);
-  const [connStatus, setConnStatus] = useLgState('connecting'); // connecting|live|error|closed
+  const [connStatus, setConnStatus] = useLgState('connecting'); // connecting|live|error|refused|closed
+  const [refusal,    setRefusal]    = useLgState(null);         // plain reason when the server says no
   const [tab,        setTab]        = useLgState('logs');       // logs | tickers
   const bottomRef  = useLgRef(null);
-  const sourceRef  = useLgRef(null);
   const MAX_ENTRIES = 800;
 
   // ── SSE connection ────────────────────────────────────────────────────────
+  // The log routes are owner-only (FIX-007). EventSource cannot send the
+  // session header, so the stream is read with fetch, which index.html's
+  // wrapper signs. A 401/403 is final: say why and stop, rather than retry or
+  // let the wrapper ask a member for the API key.
   useLgEffect(() => {
     let reconnectTimer = null;
+    let stopped = false;
+    const ctrl = new AbortController();
 
-    function connect() {
+    async function connect() {
       setConnStatus('connecting');
-      const src = new EventSource(`/ui/logs/stream?level=DEBUG`);
-      sourceRef.current = src;
+      try {
+        const res = await fetch('/ui/logs/stream?level=DEBUG',
+                                { signal: ctrl.signal, saNoKeyPrompt: true });
+        if (res.status === 401 || res.status === 403) {
+          setRefusal(res.status === 403
+            ? 'Server logs are visible to the owner account only.'
+            : 'Sign in with the owner account to see server logs.');
+          setConnStatus('refused');
+          return;
+        }
+        if (!res.ok || !res.body) throw new Error('stream unavailable');
+        setConnStatus('live');
 
-      src.onopen = () => setConnStatus('live');
-
-      src.onmessage = (e) => {
-        if (e.data.startsWith(':')) return; // keepalive comment
-        try {
-          const entry = JSON.parse(e.data);
-          setEntries(prev => {
-            const next = [...prev, entry];
-            return next.length > MAX_ENTRIES ? next.slice(-MAX_ENTRIES) : next;
-          });
-        } catch {}
-      };
-
-      src.onerror = () => {
-        src.close();
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();  // keep incomplete last line
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue; // keepalive comment or separator
+            try {
+              const entry = JSON.parse(line.slice(6));
+              setEntries(prev => {
+                const next = [...prev, entry];
+                return next.length > MAX_ENTRIES ? next.slice(-MAX_ENTRIES) : next;
+              });
+            } catch {}
+          }
+        }
+        throw new Error('stream ended');
+      } catch {
+        if (stopped) return;
         setConnStatus('error');
         // Auto-reconnect after 5 s
         reconnectTimer = setTimeout(connect, 5000);
-      };
+      }
     }
 
     connect();
     return () => {
-      if (sourceRef.current) sourceRef.current.close();
+      stopped = true;
+      ctrl.abort();
       if (reconnectTimer) clearTimeout(reconnectTimer);
       setConnStatus('closed');
     };
@@ -79,7 +104,7 @@ function LogsPage({ onNav }) {
     return true;
   });
 
-  const statusColor = { connecting: '#f59e0b', live: '#22c55e', error: '#ef4444', closed: '#94a3b8' };
+  const statusColor = { connecting: '#f59e0b', live: '#22c55e', error: '#ef4444', refused: '#ef4444', closed: '#94a3b8' };
 
   return (
     <div className="proto-screen" style={{ minHeight: '100vh', background: '#0f172a', color: '#e2e8f0', display: 'flex', flexDirection: 'column' }}>
@@ -161,7 +186,7 @@ function LogsPage({ onNav }) {
 
       {/* Content */}
       {tab === 'logs' ? (
-        <LogTerminal visible={visible} bottomRef={bottomRef} search={search}/>
+        <LogTerminal visible={visible} bottomRef={bottomRef} search={search} refusal={refusal}/>
       ) : (
         <TickerManager/>
       )}
@@ -172,14 +197,19 @@ function LogsPage({ onNav }) {
 // ---------------------------------------------------------------------------
 // Log terminal pane
 // ---------------------------------------------------------------------------
-function LogTerminal({ visible, bottomRef, search }) {
+function LogTerminal({ visible, bottomRef, search, refusal }) {
   return (
     <div style={{
       flex: 1, overflowY: 'auto', padding: '8px 0',
       fontFamily: 'monospace', fontSize: 12, lineHeight: 1.6,
       background: '#0f172a',
     }}>
-      {visible.length === 0 && (
+      {refusal && (
+        <div role="status" className="logs-refusal" style={{ padding: '40px 24px', color: '#94a3b8', textAlign: 'center' }}>
+          {refusal}
+        </div>
+      )}
+      {!refusal && visible.length === 0 && (
         <div style={{ padding: '40px 24px', color: '#334155', textAlign: 'center' }}>
           No log entries match current filter. Waiting for server activity…
         </div>

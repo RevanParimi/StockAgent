@@ -181,6 +181,14 @@ def get_user(user_id: str) -> dict | None:
     return _row_to_user(row) if row else None
 
 
+def owner_ids() -> list[str]:
+    """Every account whose role is 'owner', sorted. Operator notices go to
+    these accounts alone (core/delivery/alerts.owner_audience)."""
+    rows = _get_conn().execute(
+        "SELECT user_id FROM users WHERE role='owner' ORDER BY user_id").fetchall()
+    return [r["user_id"] for r in rows]
+
+
 def delete_user(user_id: str) -> None:
     conn = _get_conn()
     with _lock:

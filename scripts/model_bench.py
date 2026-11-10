@@ -42,16 +42,13 @@ from services.api.routes import ui_data as U
 
 # OpenRouter ids + price ($ per 1M tokens: in, out) — from openrouter.ai/api/v1/models
 PRICES: dict[str, tuple[float, float]] = {
-    "qwen/qwen3-235b-a22b":        (0.065, 0.26),   # current baseline (from settings)
-    "qwen/qwen3.7-max":            (1.25, 3.75),
-    "qwen/qwen3.6-flash":          (0.1875, 1.125),
-    "google/gemini-3.5-flash":     (1.50, 9.00),
-    "deepseek/deepseek-v4-flash":  (0.0983, 0.1966),
-    "stepfun/step-3.7-flash":      (0.20, 1.15),
-    "moonshotai/kimi-k2.6":        (0.684, 3.42),
-    "z-ai/glm-5.1":                (0.98, 3.08),
+    "deepseek/deepseek-v4.1-flash-1017": (0.15, 0.60),    # current FAST tier
+    "xiaomi/mimo-v2.6-pro":              (0.435, 0.87),   # current REASONING tier = chat fallback
+    "qwen/qwen3.6-flash":                (0.1875, 1.125), # FAST until 2026-10-22
+    "qwen/qwen3.8-flash":                (0.15, 0.47),    # rejected: 33.8 s a turn
+    "anthropic/claude-haiku-5.5":        (0.10, 0.50),    # rejected: fails the JSON battery
 }
-MODELS = list(PRICES)
+MODELS = [m for m in sys.argv[1:] if m in PRICES] or list(PRICES)
 
 # (label, query, expects_self_routed_tools)
 BATTERY = [

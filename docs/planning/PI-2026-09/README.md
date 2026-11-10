@@ -21,14 +21,174 @@ Planning assumption: six two-week sprints, one story implementation and a separa
 | Sprint | Objective | Planned points | Exit evidence |
 |---|---|---:|---|
 | 1 | Learning containment first; security, honest health, action gating, scheduler counts, clean CI; dependency lock, provider-credit alerts, job outcomes, source health, outside witness, milestone hygiene, off-site backup | 41 | Contained learner leaves stored weights untouched and decisions on defaults; browser exploit fixture inert; no-data action/update blocked; counts reconcile; clean Python-3.11 CI baseline |
-| 2 | Delivery, instrument/store identity, benchmark correctness, incident registry; silent-degradation watchdog, deploy hygiene, read-only ops status; same-industry peers | 30 | Mock transport/recovery tests, real verification tracked separately, reviewed migration manifest, correct provider arguments; no stock valued against another sector's peers |
-| 3 | Learning target, immutable issuance, correct dark grading, atomic bounded updates; sector lenses | 23 | Independent numeric/time fixtures; old outcome cannot be regraded with today's decision; crash/retry invariants pass; every managed ticker resolves to one lens with frozen store keys |
+| 2 | Delivery, instrument/store identity, benchmark correctness, incident registry; silent-degradation watchdog, deploy hygiene, read-only ops status; same-industry peers; one sizing rule for every autopilot buy; the portfolio against the Nifty | 35 | Mock transport/recovery tests, real verification tracked separately, reviewed migration manifest, correct provider arguments; no stock valued against another sector's peers |
+| 3 | Learning target, immutable issuance, correct dark grading, atomic bounded updates; sector lenses; trading costs and tax in paper P&L; idle cash put to work in normal markets | 31 | Independent numeric/time fixtures; old outcome cannot be regraded with today's decision; crash/retry invariants pass; every managed ticker resolves to one lens with frozen store keys |
 | 4 | Identifiable credit, historical lineage, complete monthly and weekly/fortnightly cohorts; computed factors, text reader and pooled shadow learner (all shadow) | 29 | Hand-reconciled forecast/outcome IDs and denominators; exited calls retained; wrong-roster history excluded explicitly; factors reproducible and cutoff-safe; the shadow learns beside the defaults while stored weights stay untouched |
 | 5 | Effective samples, calibration, prospective experiments with the observe-exit gates, lesson probation, honest evidence UI; factor-engine decision and shadow comparison | 24 | Reviewed experiment protocol and deterministic end-to-end experiment; engine-vs-analyst paired report; sufficient market evidence may still be pending |
 | 6 | Actual call accounting, retirement of the sector packages and fallback after the engine switch, runtime recovery, current docs | 11 | Cost counts reconcile, owner-loss recovery test, accepted operator documentation |
 | Stretch | Packaging/client build, Atlas projections, comprehensive public-read policy | 11 | Separate capacity/product decision; not selected automatically by “continue” |
 
-The 44 planned stories total 158 points; three stretch stories total 11. Six planned stories (SA-033–SA-038) were added on 2026-09-23 from the [production assurance review](../../audit/2026-09-23-production-assurance-review.md), and SA-007 moved to Sprint 1. Later that day the owner split SA-003's learning containment out as SA-039 (P0, 3 points, first in order), and SA-003 went from 5 points to 4. On 2026-09-24 the owner adopted the [production observability design](../../superpowers/specs/2026-09-24-production-observability-design.md). It adds SA-040 (source health), SA-041 (read-only ops status) and SA-042 (an outside witness on Healthchecks.io, alerting by Telegram), widens SA-034 (5 → 6 points) and SA-036 (3 → 4), and amends SA-035. The design keeps to this PI's small-service rule: no Prometheus, OpenTelemetry SDK or Arize. The one outside service is a free witness, justified by a measured nine-week email outage that nothing detected. On 2026-09-26 the owner adopted a rule for leaving SA-039's `observe` mode. SA-043 (Sprint 3, 3 points) runs a shadow learner that starts from the default weights and records paired default/shadow decisions. SA-022 is amended with predeclared gates: at least 100 effective disagreements over at least 3 months and 3 sectors, with the shadow right on at least 60%, wins that are consistent and robust to dropping the best sector, and sane weights. Promotion resumes from the shadow's weights, never the stored pre-fix weights. Later that day the owner adopted the [one-engine design](../../superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md), which retires the per-sector graphs. Sector knowledge becomes lens YAML. Five computed factors and one LLM reader (with a computed Catalyst) replace five scoring schemes. The LLM explains but does not decide, and learning uses six pooled factor weights. It adds SA-044 (peer fix), SA-045 (factors), SA-046 (reader) and SA-047 (decide, shadow and switch on non-inferiority). SA-026 becomes the lens story (Sprint 6 → 3), SA-043 moves to Sprint 4 on the factors, and SA-027 retires the packages after the switch. Sprint 1 is heavy at 41 points, so re-estimate after it. Dependencies, not numbering alone, determine readiness. Security/privacy issues newly discovered during any story take priority over this provisional order. Production incidents may justify resequencing, recorded in STATE.json with the reason.
+The 48 planned stories total 171 points; three stretch stories total 11. Six planned stories (SA-033–SA-038) were added on 2026-09-23 from the [production assurance review](../../audit/2026-09-23-production-assurance-review.md), and SA-007 moved to Sprint 1. Later that day the owner split SA-003's learning containment out as SA-039 (P0, 3 points, first in order), and SA-003 went from 5 points to 4. On 2026-09-24 the owner adopted the [production observability design](../../superpowers/specs/2026-09-24-production-observability-design.md). It adds SA-040 (source health), SA-041 (read-only ops status) and SA-042 (an outside witness on Healthchecks.io, alerting by Telegram), widens SA-034 (5 → 6 points) and SA-036 (3 → 4), and amends SA-035. The design keeps to this PI's small-service rule: no Prometheus, OpenTelemetry SDK or Arize. The one outside service is a free witness, justified by a measured nine-week email outage that nothing detected. On 2026-09-26 the owner adopted a rule for leaving SA-039's `observe` mode. SA-043 (Sprint 3, 3 points) runs a shadow learner that starts from the default weights and records paired default/shadow decisions. SA-022 is amended with predeclared gates: at least 100 effective disagreements over at least 3 months and 3 sectors, with the shadow right on at least 60%, wins that are consistent and robust to dropping the best sector, and sane weights. Promotion resumes from the shadow's weights, never the stored pre-fix weights. Later that day the owner adopted the [one-engine design](../../superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md), which retires the per-sector graphs. Sector knowledge becomes lens YAML. Five computed factors and one LLM reader (with a computed Catalyst) replace five scoring schemes. The LLM explains but does not decide, and learning uses six pooled factor weights. It adds SA-044 (peer fix), SA-045 (factors), SA-046 (reader) and SA-047 (decide, shadow and switch on non-inferiority). SA-026 becomes the lens story (Sprint 6 → 3), SA-043 moves to Sprint 4 on the factors, and SA-027 retires the packages after the switch. On 2026-09-27, after reviewing the live portfolio screen (81% cash, 2 holdings, a flat total return with nothing to compare it with), the owner added SA-048 (costs and tax in paper P&L), SA-049 (put idle cash to work in normal markets; hold cash on purpose only in a crisis), SA-050 (one sizing rule for every autopilot buy) and SA-051 (the portfolio against the Nifty, with honest labels). Sprint 1 is heavy at 41 points, so re-estimate after it. Dependencies, not numbering alone, determine readiness. Security/privacy issues newly discovered during any story take priority over this provisional order. Production incidents may justify resequencing, recorded in STATE.json with the reason.
+
+## Product results track (added 2026-10-11)
+
+On 2026-10-11 the owner asked for a deep product review: losing sales, code-like reasons, the
+models, a portfolio of only 2 stocks, a jargon-heavy UI and a repetitive morning brief. The
+[product results review](../../audit/2026-10-11-product-results-review.md) traced each one to its
+mechanism and added the stories below. It also moved SA-048 to SA-051 forward and amended SA-049
+with the owner's breadth floor: at least 10 holdings and ₹10 L invested, configurable.
+FIX-007, a privacy defect found on the way, is ordered first under the rule that security and
+privacy findings take priority. In STATE order the block follows SA-011, so it is selected before
+the remaining SA stories. The review explains the trade-off. FIX-008, added on 2026-10-12 at the owner's request, follows FIX-007 under the
+same rule: operator notices go to the owner alone, then the backlog's watchdog entry is
+registered. FIX-009, added on 2026-10-13 from FIX-008's review (finding L2; the owner delegated the call), follows
+FIX-008 under the same rule: an index-change notice tells each account only about stocks it holds or
+watches, plus shelf ideas. It is 1 point and can ship in one deploy with FIX-008.
+FIX-010, added on 2026-10-15 from PR-001's re-review (finding U1; the owner: "add the score-history fix
+before PR-002"), comes directly before PR-002. In production the score history holds no rows
+(nothing has written it since April), while 1,082 analyses were logged elsewhere, so member
+screens show no real analysis state. Every analysis writes it again, and screens that list
+stocks name only the viewer's own, the managed tickers and shelf ideas.
+FIX-011, added on 2026-10-20 from PR-004's implementation (found on the way; routing delegated by
+the owner on 2026-10-13), comes directly before SA-049. NSE's per-symbol meta API answered 404 when
+probed on 2026-10-20, so the screen's surveillance (ASM/GSM) and suspension guards test nothing,
+and no stock outside the registry gets a real sector. SA-049 buys shelf ideas with idle
+cash, so the guards should work first.
+FIX-012, added on 2026-10-22 after the PR-004 and PR-006 push (the owner: "ya go ahead"),
+comes first in the remaining queue. CI's Linux suite has failed on every push since 13 Oct:
+FIX-007's route guard walks `app.routes`, and FastAPI 0.137.0 and later keep included routers
+as wrappers, so the guard finds no route. While CI is red, a new regression cannot be told
+apart from the known failure. It is test-only; pinning FastAPI belongs to SA-033.
+FIX-014, added on 2026-10-23 from PR-011’s fresh re-review (routing delegated by the owner on
+2026-10-13), comes after PR-012. Above 75% promoter holding, discovery drops promoter-group sales
+but keeps purchases, so a purchase and a sale through the market score as a purchase. No company
+showed this on 23 Oct; it moves ahead if guide case 06-I finds one.
+FIX-015, added on 2026-10-23 while implementing PR-009 (routing delegated), comes after FIX-014.
+The advisor's `shock_reforecast` exit compares a stored sentence with trigger keys, so it has never
+fired. Fixing it must not count a thesis-break re-forecast, or the price-path exit would return
+inside the evidence rule. It moves ahead before the owner switches `advisor.exit_rule` to evidence.
+FIX-016 and PR-013, added on 2026-10-24 from the owner's walkthrough of PR-009 (the owner: "i go
+with the recommendations"), close weaknesses of the evidence exit. FIX-016 comes directly after
+PR-009, and PR-009's push waits for it, so the switch gate is still fixed before any shadow row
+exists. A SELL verdict counts only when it is fresh and after the buy, a news article never sells
+alone, each decision is graded against where the money went (cash or the Nifty), and the gate adds
+a money check: "not worse" in count and in money. PR-013 follows PR-005 and reports the average
+loss by exit reason, the fall the evidence rule sits through and the decision pace. PR-005 (5 → 6
+points: the invalidation price's basis and bounds) and PR-012 (2 → 3 points: label accuracy for
+event reading) grew with routed inputs, and SA-049 gained a routed note.
+FIX-017, added on 2026-10-29 from FIX-016's fresh re-review of rework 2 (routing delegated),
+comes after FIX-015. The live holding sync reads some of NSE's own rows wrongly: a bonus of
+preference shares or debentures as an equity bonus, a bonus-and-split row as its bonus alone,
+a split in NSE's short wording not at all, and it asks NSE under the app's code, so two
+registry aliases get no row. A holding can then show a false gain or a false fall, and a stop
+can sell it. It moves ahead if a held stock lists such a row.
+FIX-018 and FIX-019, added on 2026-10-29 from the owner's decision on FIX-016's open question
+RW2-D6 ("go ahead on your recommendation"). FIX-018 comes directly after FIX-016, and PR-009's
+push now waits for both. A decision whose result can never be known, such as a demerger between
+its closes or a stock NSE lists nothing for, would otherwise fail the switch gate for good. It is
+set aside and named on the scorecard; at most 2 decisions and 10% may be set aside before the
+gate says "cannot judge". FIX-019 follows: 14 configured codes got an empty NSE
+corporate-action list on 29 Oct, and the stale ones are mapped with evidence.
+FIX-020, added on 2026-10-30 from the owner's answer to FIX-019's question Q2 ("do as per
+recommendation"; routing delegated), comes after FIX-017. Seven configured codes are not NSE
+codes, so the app has never priced them. NIIT, in the enabled IT sector, is one of them. FIX-020
+corrects them in the sector list. APL is APL Apollo Tubes, decided the same day under the
+owner's delegation, by its configured sector (metals). FIX-020 also moves AAVAS, a
+housing-finance company, out of chemicals.
+FIX-021, added on 2026-10-31 from Serper's email of 30 Oct (routing delegated), comes directly
+before SA-048. Since 30 Oct, Serper returns every link after a search's top 3 as a google.com
+redirect, `/news` included: 5 of the 31 news events stored on 30 Oct carry one. A news event is
+keyed by its link, so an article at rank 2 one run and rank 4 the next would be stored twice.
+FIX-021 drops a redirect link where Serper is read, so the article is skipped and counted. It
+goes first because every run until then can store such rows, and they stay.
+FIX-022, added on 2026-10-31 from SA-048's fresh review (routing delegated), comes after
+FIX-020 at the end of the routed queue. The tax estimate takes a position's average cost where
+the law takes each lot's own, so a sale of long-term and short-term shares bought at different
+prices can read ₹0 where the law gives ₹4,160. FIX-022 takes each lot at its own cost, makes a
+CSV import with a missing rate write nothing, and lets a renamed position keep its buy charges
+and dates.
+FIX-023, added on 2026-11-02 from SA-049's fresh review (routing delegated), comes directly
+after SA-049 and must be accepted before deployment is switched on. When Yahoo's India VIX
+does not answer, the regime detector uses 17.0, so a crisis (VIX 30, Nifty down 3% in five
+sessions) is recorded as RISK_OFF and idle cash is invested toward 50%. With the Nifty dark
+too, the label is NORMAL. FIX-023 opens no position on a label built on a fallback, and
+decides which session's bars the label is read from. SA-049's re-review (2 Nov) added one
+item: when the review session's bar is missing and an earlier close is carried forward, record
+mode can buy an idea dived after that close. FIX-023 refuses such a buy (3 points).
+FIX-024, added on 2026-11-04 from FIX-023's fresh review (routing delegated), comes directly
+after FIX-023 and is recommended before deployment is switched on. A watchlist analysis made on
+a session's day after its 15:30 close is offered for that session and bought at that close, so
+it can act on news from after its price. On a day whose regime is unavailable, ADD still reads
+the last established label. And a fresh regime state can lose its own day to a later dark
+review (2 points).
+FIX-025 and FIX-026, added on 2026-11-04 from the owner's decisions on SA-049's design
+choices, come after FIX-024. FIX-025 drops the hard 10 holdings: the analysis's BUY ideas
+decide how many stocks are held (up to 15, with 10 a soft minimum), and each position is a
+share of equity (80% ÷ 12), so it grows when the user adds money. A top-up now checks NSE's
+surveillance report, and a stock the autopilot sold is re-analysed the next Saturday. It must
+be accepted before deployment is switched on (3 points). FIX-026 lets the deep dive's own
+LLM call name a new stock's sector from our list instead of fixed Yahoo tables, and flags an
+empty, unknown or disputed reading in the weekly summary and the watchdog (3 points).
+FIX-028, added on 2026-11-06 from FIX-025's implementation (routing delegated), comes after FIX-027:
+a stock the autopilot sold keeps its daily review for good, and sold stocks fill the managed list's
+cap of 40. Measure the list before switch-on (2 points).
+FIX-029, added on 2026-11-06 from FIX-025's fresh review (routing delegated), comes after FIX-028:
+a holding with no review entry can top up on a recorded bad day, a SWITCH can buy a stock sold the
+day before, the daily review mostly shuts the watchlist route, and a shelf idea's verdict is not
+read. Recommended before switch-on, not a precondition. A stock on the owner's own watchlist comes
+back by the same bound as a shelf idea, the owner's choice of 2026-11-06 (3 points).
+FIX-027, added on 2026-11-05 from FIX-024's fresh review (routing delegated), comes after FIX-026.
+The 16:30 run on day T can re-forecast before it advises, from a live analysis anchored on T's
+close, and books the resulting ADD or sale at the previous session's close. It is not a precondition
+for switching deployment on; it should precede any reading of the exit-rule gate as a verdict (3
+points).
+
+| Order | Story | Priority | Points | Result | Dependencies |
+|---:|---|---|---:|---|---|
+| 1 | [FIX-007](stories/FIX-007.md) | P1 | 1 | Server logs readable only by the owner | — |
+| 2 | [FIX-008](stories/FIX-008.md) | P1 | 2 | Operator notices reach only the owner; then register the backlog's watchdog entry | SA-011 |
+| 3 | [FIX-009](stories/FIX-009.md) | P2 | 1 | Index-change notices name only the account's own stocks | — |
+| 4 | [PR-001](stories/PR-001.md) | P0 | 3 | Remove invented figures and fixed demo values; hide operator tools from members | — |
+| 5 | [FIX-010](stories/FIX-010.md) | P0 | 3 | Every analysis writes the score history again; screens name only the viewer's stocks | — |
+| 6 | [PR-002](stories/PR-002.md) | P1 | 3 | A weekly results scorecard with a "sold too early" check | — |
+| 7 | [PR-003](stories/PR-003.md) | P1 | 2 | Fresh overnight news: no repeats, published-date freshness, global cues | — |
+| 8 | [SA-050](stories/SA-050.md) | P1 | 3 | One sizing and entry rule for every autopilot buy, against the whole portfolio | — |
+| 9 | [SA-051](stories/SA-051.md) | P1 | 3 | The portfolio against the Nifty, with honest labels | — |
+| 10 | [PR-004](stories/PR-004.md) | P1 | 3 | Enough researched ideas to fill 10+ positions | — |
+| 11 | [PR-006](stories/PR-006.md) | P1 | 3 | A daily company-event feed for held, watched and shelf stocks | — |
+| 12 | [FIX-012](stories/FIX-012.md) | P1 | 1 | CI is red since 13 Oct: make FIX-007's log-route guard work on any FastAPI | — |
+| 13 | [PR-011](stories/PR-011.md) | P1 | 3 | New data: promoter and insider trades, pledges, shareholding changes | PR-006 |
+| 14 | [PR-009](stories/PR-009.md) | P1 | 5 | Exit on evidence, not on a price-path miss (shadow, then switch) | PR-002, PR-006 |
+| 15 | [FIX-016](stories/FIX-016.md) | P1 | 3 | Fix the evidence exit's inputs and its switch gate before the shadow starts | PR-009 |
+| 16 | [FIX-018](stories/FIX-018.md) | P1 | 2 | The switch gate sets aside a decision whose result can never be known: named, and within a cap | FIX-016 |
+| 17 | [FIX-019](stories/FIX-019.md) | P2 | 1 | Find out why NSE lists no corporate action for 14 configured codes, and map the stale ones | — |
+| 18 | [FIX-021](stories/FIX-021.md) | P2 | 1 | A Google redirect link is not an article's identity: the event feed skips it and counts it | — |
+| 19 | [SA-048](stories/SA-048.md) | P1 | 3 | Costs and tax in paper P&L | — |
+| 20 | [FIX-011](stories/FIX-011.md) | P1 | 2 | NSE's per-symbol meta API is gone: restore the surveillance and suspension guards and an industry source | — |
+| 21 | [SA-049](stories/SA-049.md) | P1 | 7 | Idle cash to work, with the breadth floor (12 target holdings) and the ₹2 L top-up | SA-050, SA-051 |
+| 22 | [FIX-023](stories/FIX-023.md) | P1 | 3 | Deployment buys only on a regime read from live inputs, as of the review session | SA-049 |
+| 23 | [FIX-024](stories/FIX-024.md) | P1 | 2 | A buy waits for an analysis made before its close; an unknown regime adds nothing | FIX-023 |
+| 24 | [FIX-025](stories/FIX-025.md) | P1 | 3 | Deployment follows the money and the ideas; a top-up checks NSE's report too | FIX-024 |
+| 25 | [FIX-026](stories/FIX-026.md) | P1 | 3 | The analysis names a new stock's sector from our list; an empty or unknown sector is flagged | FIX-024 |
+| 26 | [FIX-027](stories/FIX-027.md) | P1 | 3 | A decision booked at a session's close reads nothing from after that close | FIX-024 |
+| 26a | [FIX-028](stories/FIX-028.md) | P2 | 2 | A sold stock leaves the daily review | FIX-025 |
+| 26b | [FIX-029](stories/FIX-029.md) | P1 | 3 | Every door to a buy reads the same facts: the day's regime, the sale and the verdict | FIX-025 |
+| 27 | [PR-005](stories/PR-005.md) | P1 | 6 | An investment case for every position | PR-006 |
+| 28 | [PR-013](stories/PR-013.md) | P2 | 2 | Show where losses come from and what waiting costs | PR-002, PR-009 |
+| 29 | [PR-007](stories/PR-007.md) | P1 | 3 | Plain, fact-grounded buy and sell explanations | PR-005, PR-006 |
+| 30 | [PR-008](stories/PR-008.md) | P1 | 3 | "Your stocks overnight" at the top of the brief | PR-003, PR-006 |
+| 31 | [PR-010](stories/PR-010.md) | P1 | 5 | Four screens for members; an Operator menu for the owner | PR-001 |
+| 32 | [PR-012](stories/PR-012.md) | P2 | 3 | Models chosen by role, benched on our own data; cost rates refreshed | PR-007 |
+| 33 | [FIX-014](stories/FIX-014.md) | P2 | 1 | Above the 75% cap, a promoter wash must not score as insider buying | PR-011 |
+| 34 | [FIX-015](stories/FIX-015.md) | P2 | 1 | The shock exit reads the re-forecast's trigger, not its sentence | PR-009 |
+| 35 | [FIX-017](stories/FIX-017.md) | P2 | 2 | The holding sync reads every NSE corporate-action row it is given, under NSE's code | — |
+| 36 | [FIX-020](stories/FIX-020.md) | P2 | 1 | Correct the configured codes NSE does not list, and AAVAS's sector | — |
+| 37 | [FIX-022](stories/FIX-022.md) | P2 | 2 | The tax estimate at each lot's own cost, and SA-048's loose ends | — |
+
+The new stories add 41 points. SA-049 grows from 5 to 7 points and SA-050 from 2 to 3. On 2026-10-12 the owner confirmed this order, chose the ₹2 L paper-capital top-up with 12 target holdings, and moved PR-011 up as P1 ("I need more data"); the production baseline is section 11 of the review. The track makes results
+visible, makes the portfolio broad enough to learn from, and stops one identified source of
+early selling. It cannot promise profit: PR-009 switches only on its predeclared gate, and "no
+benefit" is a valid result.
 
 DOC-001 is an additional user-requested documentation task outside those point
 totals. Its resequencing does not waive SA-031's unresolved dependencies.
@@ -89,6 +249,10 @@ P0 learning defects need a correct target and issuance contract before a safe re
 | [SA-045](stories/SA-045.md) | 4 | P1 | 5 | Compute the five universal factors deterministically | SA-026 |
 | [SA-046](stories/SA-046.md) | 4 | P1 | 3 | Read text into dated events and a Catalyst factor | SA-026 |
 | [SA-047](stories/SA-047.md) | 5 | P1 | 5 | Decide with the factor engine; switch when it is not worse | SA-045, SA-046, SA-014, SA-020 |
+| [SA-048](stories/SA-048.md) | 3 | P1 | 3 | Charge realistic trading costs and tax in paper P&L | — |
+| [SA-049](stories/SA-049.md) | 3 | P1 | 7 | Put idle cash to work in normal markets, with the breadth floor | SA-050, SA-051 |
+| [SA-050](stories/SA-050.md) | 2 | P1 | 3 | Apply one sizing and entry rule to every autopilot buy | — |
+| [SA-051](stories/SA-051.md) | 2 | P1 | 3 | Show the portfolio against the Nifty, with honest labels | — |
 
 Every card has concrete acceptance criteria, independent unit/integration fixtures, hard-review questions and rollout/rollback limits. Use [REVIEW.md](REVIEW.md) for the sign-off gate and [evidence/README.md](evidence/README.md) for durable receipts.
 

@@ -1,0 +1,200 @@
+{
+  "story": "SA-008",
+  "phase": "implementation",
+  "baseline": "e3bb6a30f519a88d6fa2fe4da0207efb98e924a0",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/SA-008-implementation.md",
+    "docs/planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md (SA-039 P2 record, same conversation)",
+    "docs/planning/PI-2026-09/stories/SA-026.md (routed note)"
+  ],
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "b0ba29014d2b80da48a41dc98a6f2e625af55f84",
+      "sha256": "c1962c3264a186983726e32b1fdd23e8121f7d5a59b5d14d75b71602d76d7956"
+    },
+    {
+      "path": "config/instruments.yaml",
+      "git_blob": "86ffa0b5beaeb3d9ec3fca724a893ce2eaee2813",
+      "sha256": "dc47281d09d7677bc745d3eea232c4c39170cd46bf8acbac79a6039cbbc03fb2"
+    },
+    {
+      "path": "core/intelligence/algorithms/indicators/fetcher.py",
+      "git_blob": "39f05c6b488af45496df33d6bcc427839281893d",
+      "sha256": "1f0203aa527207389b725a7e1de895c28706de9ef54691bcbb0bfc48ee333664"
+    },
+    {
+      "path": "core/intelligence/rl/workflows/daily_review.py",
+      "git_blob": "66c19e14610ce7a8249df446604881f8543b9420",
+      "sha256": "1f7cefe05074f9886f83ceb2622aef4e99c47c8e929591a597ddfd9ab70df7c8"
+    },
+    {
+      "path": "core/intelligence/rl/workflows/generate_forecast.py",
+      "git_blob": "f89730f5765ffcfbe41b8820b7e196a103c6079c",
+      "sha256": "d8620d7a78afab1db9c7e47fbd81aedd1aec8928c51fa0796775031e03bfef42"
+    },
+    {
+      "path": "core/portfolio/advisor.py",
+      "git_blob": "c87d6a8083960353232fb313c4e85fef0d012c45",
+      "sha256": "69e819760678d4e65ac08331dd404fa5c97f30535997c1d628c6151f30296f44"
+    },
+    {
+      "path": "core/portfolio/autopilot.py",
+      "git_blob": "c5dbf6902e29add3d98c7fe7060557ae5ad4e42d",
+      "sha256": "5fb450cab2a04c3af043eea1c7103b3e128c91320f11fea15d8b887e36a73f25"
+    },
+    {
+      "path": "core/portfolio/identity_reconcile.py",
+      "git_blob": "d17d11180128d587f3ab79d7baa0419eb5ec78fa",
+      "sha256": "07ef785043a3b322801c226a56606fade2686c2452179304908e010edbe8af2a"
+    },
+    {
+      "path": "core/portfolio/narrator.py",
+      "git_blob": "98b5094bc65fefec57c073b601c6c3855868e646",
+      "sha256": "072fa0ec2967886a97336ed3f1946d41adcd39fef359827dfd13eca244e25c8e"
+    },
+    {
+      "path": "core/portfolio/pipeline.py",
+      "git_blob": "2baaa221a0f00f7c0f3efd86db394c7486ea5fc3",
+      "sha256": "408fdfa1586042db66f07472d2b497f4e7856c0748d0d995b65180bc778fb605"
+    },
+    {
+      "path": "core/portfolio/reconcile.py",
+      "git_blob": "60118a5a3dcaa2bbe0750d9315cbf3c29656d101",
+      "sha256": "f8499f66f13e18f8a9e0250fa3a88093713fc6eca964a8f18c0c90a03a655aca"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "git_blob": "34dd114e55a65d7a71c66dbda24246ea9694533b",
+      "sha256": "431af0532ae4f8260d197d77126d7bc779ee7adc20ef87357bfc55836fbbf2f9"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "92027bc9449a11b4438eac6ed1b018ae192e0737",
+      "sha256": "ba47ad2047bd8ff83c8eb995873e6d8baa9961a2ca482bd66d1173011df5f114"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "3c9b49dd45f5ccfbcdb6368cca9f5380c1040dab",
+      "sha256": "1644e01bc7263daa747a3ee2f41cae1572ebf475ec4b9f0e824f9bac2f99f4d5"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "83a748981e94bc5f311a9014ecdfc6d290555403",
+      "sha256": "1441382ce89f85b31d9914070c0548b8bade374bba80a4f3e4bff5215a44ee07"
+    },
+    {
+      "path": "services/api/routes/ui_data.py",
+      "git_blob": "df71a4c777b41a3004205e2316f1789136e9f0d0",
+      "sha256": "45af14e0363d26f2ebd4d2f2b34b724aa315596fbbc35a29a5fed6f241a0d1df"
+    },
+    {
+      "path": "services/data/context/fetch_result.py",
+      "git_blob": "4d65aefe3300623049d032264be69d4e0c9e7f27",
+      "sha256": "5dfda222511716d4fdc55f6e6d66b8aa8151e05886bc61ef89e3fbcf79fbdc8b"
+    },
+    {
+      "path": "services/data/fetchers/close_verifier.py",
+      "git_blob": "0a08ab1a0f53b5e1a7491e624f84238e59d494b1",
+      "sha256": "b8b114a84a12f56ceda027220bfcf6fec6656c4d12151604f40c6de0684d643f"
+    },
+    {
+      "path": "services/data/fetchers/surveillance.py",
+      "git_blob": "4d71ae9ffae035b328a66bbb95543bc5cabe14f1",
+      "sha256": "dd2650db4b4fdf48f2c6c8dd16daf7352317f8a712906db8b49919efb0aeb2a5"
+    },
+    {
+      "path": "src/backend/sectors/automobile/config/settings.py",
+      "git_blob": "bde88bb1b6b668c86c7ad3950b90e546b35daf3a",
+      "sha256": "b1a049fd4d5c8e2b52f6ec187632adb9fe44479adbb16648735d9652d81982e8"
+    },
+    {
+      "path": "src/backend/sectors/registry.py",
+      "git_blob": "d12bb45e9b631b6bd4c667fffa9ad0bd667d0879",
+      "sha256": "a38811031ad31a638e6f6fd0cc0ecceccda17f9b600e5056f96f972bead6165c"
+    },
+    {
+      "path": "src/backend/shared/config/settings/base.py",
+      "git_blob": "ce00bd8a017c7d10b8ee3bdd4698ce81d6677fdf",
+      "sha256": "578e94fc45b781c27efa7b49b2deca9ef3ec4bd21b7918099712f0f45ef6c7d0"
+    },
+    {
+      "path": "src/backend/shared/data/fetchers/symbol_resolver.py",
+      "git_blob": "52530ee24ca7bea55068ec4aab89720aad0b36bf",
+      "sha256": "a634b7d985ea3ee82d3aaa276af48f9bfec1b16fba41945b5cdd91115fdba757"
+    },
+    {
+      "path": "src/backend/shared/data/instruments.py",
+      "git_blob": "faae8e6bc3a287a09447c2ab941c4cf922b16192",
+      "sha256": "db944087a2bde2bf4552c4bfbadc7fb572f2e5b9abf754cb583dae001d20877a"
+    },
+    {
+      "path": "src/backend/shared/pipeline/base_orchestrator.py",
+      "git_blob": "b607003c4bc373738ec611fbd836de20d70a2572",
+      "sha256": "5cc3c4298e3f7408415028ff3b7a723235fe9fcb44a53555eebbabf4b57128aa"
+    },
+    {
+      "path": "src/backend/shared/pipeline/decision_gate.py",
+      "git_blob": "df8b4ba1d6e51120a4f7ced1dd59b2728cec919f",
+      "sha256": "d26af271820649d665d08a37a36431d516edb98ecd0c19f7ca14a51cc9e63e0d"
+    },
+    {
+      "path": "src/backend/shared/schemas/feedback.py",
+      "git_blob": "036c720c9b2d7a6143cdf7dfc4ecbb322ff07ed0",
+      "sha256": "8c868d05e7a14d49561e50d9389e463cfc1bfd477079a2df4bde90c8f01f28da"
+    },
+    {
+      "path": "src/backend/shared/schemas/pipeline.py",
+      "git_blob": "231879209e11a0c787b13062b34a6ca5a4daac45",
+      "sha256": "9fdcaccfedb389271944496f5d3db5c270849a66630674e0b568826f6450f36e"
+    },
+    {
+      "path": "src/backend/shared/schemas/portfolio.py",
+      "git_blob": "928c558f226b4f37f3e697db9fde4463792660c7",
+      "sha256": "0cfca195bcbfff30270be9a5aba5d548ed163fb5ef90ae0aab54440c7be26fc2"
+    },
+    {
+      "path": "tests/conftest.py",
+      "git_blob": "dbb86aacec6d7b05740a6912d6f753bab70ec088",
+      "sha256": "275466c1e1317a9b1096b655c4a0e8473688cfbb8f05231c9d35d4db4b693ec0"
+    },
+    {
+      "path": "tests/fixtures/instruments_empty.yaml",
+      "git_blob": "011c92680572ce16af367a12ada83353c2d25dfa",
+      "sha256": "3507e399557c0700bf7451188683ca2c732ecade5e2b5366d1b0ee047f59b57d"
+    },
+    {
+      "path": "tests/unit/intelligence/rl/test_identity_review_sa008.py",
+      "git_blob": "83409c1bcab7c4c446312c479979ea024c117d01",
+      "sha256": "aa8fe73b988222fd41b46f82e830644948dd89854f3b7da550bc666b15a7474c"
+    },
+    {
+      "path": "tests/unit/shared/test_instrument_identity_sa008.py",
+      "git_blob": "c24cc9fe73599adca20ab7e52432af6dc1800a05",
+      "sha256": "af513562fa11f10a2843e27f3919cc0ffde505cf4502fc001916fb230c6426b3"
+    },
+    {
+      "path": "tests/unit/test_identity_chain_sa008.py",
+      "git_blob": "ecf48b287fcb33ffd46897459fbd52b7c6b45353",
+      "sha256": "26c696a84fd343ef2b4f251855c26b2a7e066e938ffc576efc28fbba5f36a511"
+    },
+    {
+      "path": "tests/unit/test_identity_portfolio_sa008.py",
+      "git_blob": "61fd4a7ca527335db27dfb5bcb209b03469d24a7",
+      "sha256": "991eac55d28a007fef30ca229078849153b062e598c674cc0f38d0b11bbcbabe"
+    },
+    {
+      "path": "tests/unit/test_symbol_cache_guard.py",
+      "git_blob": "1113458ba0f61a3d92f9bc6a33d3fc57e1b86e1e",
+      "sha256": "fac46b19fc4e4cfdcb2beb690f00e6ec1a000f75c85c00f3701e3832e1a54bf1"
+    },
+    {
+      "path": "tests/unit/test_symbol_resolver.py",
+      "git_blob": "58063fc85215d8f3db0618e7586313e17cc50b21",
+      "sha256": "51dbb408605b181498d7e28447ac65e1b7fa6460b40b7fd1052170e582a4b1fa"
+    }
+  ]
+}

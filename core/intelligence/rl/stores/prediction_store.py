@@ -136,6 +136,13 @@ class PredictionStore:
     def _cycle_prefix(self, cycle_id: str) -> str:
         return cycle_id  # already includes ticker
 
+    def _own_sector(self) -> dict:
+        """SA-009: objects this store creates carry its sector. Before, a new
+        feedback log, weight memory or ledger took the schema default
+        "automobile" in every sector's store. A flat store (no sector) still
+        leaves the default."""
+        return {"sector": self._sector} if self._sector else {}
+
     # ------------------------------------------------------------------
     # File path helpers
     # ------------------------------------------------------------------
@@ -209,6 +216,21 @@ class PredictionStore:
     def _archived_envelopes_dir(self) -> Path:
         return self._dir / "archived_envelopes"
 
+    def load_archived_envelope(self, path: str) -> PredictionEnvelope | None:
+        """FIX-027: the envelope archived at `path` (ReforecastEvent.archived_file),
+        as it stood before that re-forecast. None when the file is not in this
+        ticker's archive folder or cannot be read."""
+        try:
+            target = Path(path).resolve()
+            if target.parent != self._archived_envelopes_dir().resolve():
+                return None
+            data = self._read_json(target)
+            return PredictionEnvelope(**data) if data is not None else None
+        except Exception as exc:
+            logger.warning("[PredictionStore] archived envelope unreadable (%s): %s", path, exc,
+                           exc_info=True)
+            return None
+
     def archive_envelope(self, cycle_id: str | None = None) -> str | None:
         """
         Copy the current envelope file to
@@ -272,7 +294,7 @@ class PredictionStore:
         cid = cycle_id or self.current_cycle_id()
         data = self._read_json(self._feedback_log_path(cid))
         if data is None:
-            return DailyFeedbackLog(ticker=self.ticker, cycle_id=cid)
+            return DailyFeedbackLog(ticker=self.ticker, cycle_id=cid, **self._own_sector())
         return DailyFeedbackLog(**data)
 
     def load_recent_feedback_entries(self, n_cycles: int = 6, recency_weighted: bool = False) -> list:
@@ -383,6 +405,7 @@ class PredictionStore:
                 "max_single_step": settings.WEIGHT_MAX_STEP,
                 "max_total_drift_from_base": settings.WEIGHT_MAX_DRIFT,
             },
+            **self._own_sector(),
         )
         self.save_weight_memory(wm)
         logger.info("[PredictionStore] Initialised fresh WeightMemory for %s", self.ticker)
@@ -440,6 +463,7 @@ class PredictionStore:
             return LearningLedger(
                 ticker=self.ticker,
                 last_updated=date.today().isoformat(),
+                **self._own_sector(),
             )
         return LearningLedger(**data)
 

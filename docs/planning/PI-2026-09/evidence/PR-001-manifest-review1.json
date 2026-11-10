@@ -1,0 +1,122 @@
+{
+  "story": "PR-001",
+  "phase": "implementation (2026-10-13/14)",
+  "baseline": "4c85eec plus FIX-009 accepted, uncommitted (CODEBASE, PRODUCT_MAP, TEAM_TESTING_GUIDE, TECHNICAL_DESIGN, PDF carry both stories, layered)",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/PR-001-implementation.md",
+    "docs/planning/PI-2026-09/stories/SA-031.md (routed I5; bookkeeping)",
+    "docs/README.md (the owner probe line, not PR-001s)",
+    "FIX-009s own code, tests and evidence"
+  ],
+  "note": "Diff base: analysis_data/pr001/base (each file checked against 4c85eec or FIX-009-manifest.json by diff_digest.py).",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "867cbec9137797008791913ab340f71e3d97b334",
+      "sha256": "4520a6dc6470de52784ffc8ae1007ab26076f9f10393257216c2a5c321cbbd67"
+    },
+    {
+      "path": "docs/AUTOPILOT_GUIDE.md",
+      "git_blob": "79c37164470c4cb02b9d417c020679ca3c9a6013",
+      "sha256": "94d531e9ac2f2b4bd043f61199fcb2d249ed13ad0e892f1eaab21d2b2b602b83"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "8945cbf4fc3e2bb03e01532d5cfdef412cc2761b",
+      "sha256": "c8277d4a2d4bb69a24e8908f75ca09b3170d1d7719755c6472a096a8a293371b"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "03b4a0aaa5b6a10911151ccddd8f1b3657dc5871",
+      "sha256": "d7eb79f26f32940edcb1c6fee214792f8dab8c45dac97b35a6236b07c0b2c7cd"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "5e1804141afd55b180e55494b0b2b9d2685b1ebe",
+      "sha256": "c3ef637b64c2bb86341a8460f52e441d0664d1dfc7401c4a58213676fd7f366c"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "43f0a7e06c8ccbc7371c6c3042fd33fc95ab0aff",
+      "sha256": "ff97abc089b6e4ffaec0602bb3ca796ae7f7016e4abe4afc315552a747fa5c07"
+    },
+    {
+      "path": "package.json",
+      "git_blob": "bc635b1195114a84bfb31d1a2bd9828dbcd7e081",
+      "sha256": "25f707d74698d7bc5c8fda8d640867f9e077e8ea229415e74a76e4adefc65075"
+    },
+    {
+      "path": "scripts/ui_responsive_audit.mjs",
+      "git_blob": "c7480271f33d8501d08d69e39a4bbddeddf00725",
+      "sha256": "bb3190bb22cc182d3d3f9030f254f49465a84ac7a91ec1d7d5603213cbb7d961"
+    },
+    {
+      "path": "services/api/routes/ui_data.py",
+      "git_blob": "334a0c9cdec570eadea46cc38470284104db91c0",
+      "sha256": "75005357ef67baf65934975480565796ade2b8f6d396c8915ceed706a08e1757"
+    },
+    {
+      "path": "src/frontend/prototypes/UI_SPEC.md",
+      "git_blob": "cb49f54da6969de477745ef90d51de1ab30a7da4",
+      "sha256": "7cfe70e556259df8fb552be54c860da9981935255216ca64b9654d728fe114ca"
+    },
+    {
+      "path": "src/frontend/prototypes/agents-page.jsx",
+      "git_blob": "1a9d579218f745c990d832fde6071f910d47c7ae",
+      "sha256": "afa649ad2afefccbb1e5eaa5d4ac18883e9665b89c4b0df01f36f7dc8e674ebb"
+    },
+    {
+      "path": "src/frontend/prototypes/auth.jsx",
+      "git_blob": "62e7894860c32e4d22df3b0b58505b5520fe21a8",
+      "sha256": "1aab570ad91336446f8aee6edfe1aeb2285033af869dcf79f79bddfd7cd790d2"
+    },
+    {
+      "path": "src/frontend/prototypes/data.jsx",
+      "git_blob": "32a93be7835b68c7ccc6a94fc2073dedf1bdc887",
+      "sha256": "417cfd76cc8f4d6d1dd0a3e2e43ffe2494eabe6c2018e3a81a38d9dc9570bfb7"
+    },
+    {
+      "path": "src/frontend/prototypes/demo-fixtures.js",
+      "git_blob": "db5619e3add660a115033bd18021e44d3b67fc99",
+      "sha256": "73646cd06ad3344699b205a8846f7cc015ec036da6c0fd978ceb8cf9c486b1d9"
+    },
+    {
+      "path": "src/frontend/prototypes/home.jsx",
+      "git_blob": "08691031d778606cbaa221bcdad536dc830983f8",
+      "sha256": "fd043a75c8f1d9a7a674053f701c229e3a01ed4ee074be950b535555b878b7aa"
+    },
+    {
+      "path": "src/frontend/prototypes/index.html",
+      "git_blob": "5255062f08aa75ed052b2ed8e7cac3ad5ea9bb70",
+      "sha256": "19ae3ff5d097e580f60270c0b4ba5beadb815d73b0e481619288c70f4b9e4e86"
+    },
+    {
+      "path": "src/frontend/prototypes/portfolio.jsx",
+      "git_blob": "f6bfb4097d8132f0adf41cf8fd825910ff0b9144",
+      "sha256": "9bf548a1f1ac19530f2ef6fca5735589f2395bca2540d92b36cd3ac938b74301"
+    },
+    {
+      "path": "src/frontend/prototypes/sw.js",
+      "git_blob": "2a59b83d69a37f0e502c1d86d5879f858cf17775",
+      "sha256": "cee077927a2c4274381bbcfc31798affd6ab4ff01ab79d4f4c9e125dd9f3898a"
+    },
+    {
+      "path": "tests/TEST_DOCUMENTATION.md",
+      "git_blob": "08ba4e2958655ef4292e6b80f94fdd7b780f378f",
+      "sha256": "6481334a31fc071fde2296e521a0897641f208a63c68f1e2378398b51fad541e"
+    },
+    {
+      "path": "tests/frontend/no_invented_figures.test.mjs",
+      "git_blob": "8de346547b0a1400d59e04fce4072780716005cf",
+      "sha256": "acd76d4597e5e879a16e7b5e9a72b59b072773dede12f335e0eb44c4aeb3ea94"
+    },
+    {
+      "path": "tests/unit/test_ui_no_invented_figures_pr001.py",
+      "git_blob": "753c15593baded49d8f2212c06bbbe238664bed0",
+      "sha256": "1a98f532fea1780528bce2813fb03b1eec69880f3edf2f77f5ed650b39b663d2"
+    }
+  ]
+}

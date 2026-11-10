@@ -10,6 +10,9 @@ search_serper(query, n)       → list[dict]  (title, snippet, link, date)
 search_newsapi(query, n)      → list[dict]
 fetch_news_context(queries)   → str   (formatted for prompt injection)
 fetch_news_result(queries)    → FetchResult (the same text + status/source/as-of, SA-002)
+
+A Serper link on google.com is a redirect, not the article's address (FIX-021):
+both Serper parsers return it as link "" with `redirect` True.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import date, timedelta
+from urllib.parse import urlsplit
 
 import requests
 
@@ -71,6 +75,42 @@ _TIMEOUT = _news_settings.SERPER_TIMEOUT_SECONDS
 # Serper (Google Search API)
 # ---------------------------------------------------------------------------
 
+def is_google_link(link) -> bool:
+    """True when `link`'s host is google.com or a subdomain of it.
+
+    Since 30 Oct 2026 Serper returns the links after a search's top 3 as
+    `https://www.google.com/goto?...` redirects. Such a link names no article:
+    the same article comes back under its own address when it ranks higher, so
+    it cannot be an article's identity or a source's domain. Only the host is
+    read: "https://www.livemint.com/google-deal.html" is a publisher's link,
+    and "https://google.com@evil.example/" is evil.example's.
+    """
+    if not isinstance(link, str) or not link.strip():
+        return False
+    s = link.strip()
+    try:
+        host = urlsplit(s if "://" in s or s.startswith("//") else f"//{s}").hostname or ""
+    except ValueError:
+        return False
+    host = host.rstrip(".")
+    return host == "google.com" or host.endswith(".google.com")
+
+
+def _serper_row(item: dict, *fields: str) -> dict:
+    """One Serper result: its title, snippet, link and date, then `fields`,
+    each "" when missing. A Google redirect link becomes "" and the row says
+    `redirect` True, so a caller can count what it loses."""
+    row = {"title":   item.get("title", ""),
+           "snippet": item.get("snippet", ""),
+           "link":    item.get("link", ""),
+           "date":    item.get("date", "")}
+    for field in fields:
+        row[field] = item.get(field, "")
+    if is_google_link(row["link"]):
+        row["link"], row["redirect"] = "", True
+    return row
+
+
 def search_serper(
     query: str,
     n: int = settings.NEWS_ARTICLES_PER_QUERY,
@@ -80,7 +120,8 @@ def search_serper(
     """
     Search Google via Serper API.
 
-    Returns list of dicts: {title, snippet, link, date}
+    Returns list of dicts: {title, snippet, link, date}; a Google redirect
+    link is "" and its row has `redirect` True (`is_google_link`).
     Returns [] if no key is available or request fails.
 
     Parameters
@@ -113,14 +154,7 @@ def search_serper(
         except ValueError as exc:
             logger.warning("[news] Serper returned non-JSON for query %r: %s", query, exc)
             return []
-        results = []
-        for item in data.get("organic", [])[:n]:
-            results.append({
-                "title":   item.get("title", ""),
-                "snippet": item.get("snippet", ""),
-                "link":    item.get("link", ""),
-                "date":    item.get("date", ""),
-            })
+        results = [_serper_row(item) for item in data.get("organic", [])[:n]]
         record_call("serper")
         return results
     except Exception as exc:
@@ -147,13 +181,31 @@ def search_serper_news(
                 Google happily returns months-old articles for a ticker query
                 (measured 2026-07-31: 5 of 5 results were 2-6 months stale).
 
-    Returns list of dicts: {title, snippet, link, date, source}
+    Returns list of dicts: {title, snippet, link, date, source}; a Google
+    redirect link is "" and its row has `redirect` True (`is_google_link`).
+    """
+    return search_serper_news_status(query, n=n, api_key=api_key, geo=geo, tbs=tbs)[0]
+
+
+def search_serper_news_status(
+    query: str,
+    n: int = 5,
+    api_key: str | None = None,
+    geo: str | None = "in",
+    tbs: str | None = None,
+) -> tuple[list[dict], str]:
+    """
+    `search_serper_news` and why it returned what it did: (results, status).
+    status is "ok" (one or more articles), "empty" (none), "no_key",
+    "exhausted" (HTTP 400, the key's credit), "http_<code>" or "error". A
+    caller that must stop when the credit runs out, such as the company-event
+    feed, reads it; everyone else calls `search_serper_news`.
     """
     from backend.shared.config import settings as _s
     key = api_key or _s.SERPER_API_KEY
     if not key:
         logger.debug("[news] No Serper key for /news search — skipping")
-        return []
+        return [], "no_key"
 
     params: dict = {"q": query, "num": n, "hl": "en"}
     if geo:
@@ -170,27 +222,20 @@ def search_serper_news(
         )
         resp.raise_for_status()
         data = resp.json()
-        results = []
-        for item in data.get("news", [])[:n]:
-            results.append({
-                "title":   item.get("title", ""),
-                "snippet": item.get("snippet", ""),
-                "link":    item.get("link", ""),
-                "date":    item.get("date", ""),    # relative: "22 hours ago"
-                "source":  item.get("source", ""),
-            })
+        # date is relative: "22 hours ago"
+        results = [_serper_row(item, "source") for item in data.get("news", [])[:n]]
         record_call("serper")   # counts against same Serper quota as /search calls
-        return results
+        return results, ("ok" if results else "empty")
     except requests.HTTPError as exc:
         code = exc.response.status_code if exc.response is not None else "?"
         if code == 400:
             logger.warning("[news] Serper /news key exhausted for '%s' — will fall back", query)
-        else:
-            logger.warning("[news] Serper /news HTTP %s for '%s': %s", code, query, exc)
-        return []
+            return [], "exhausted"
+        logger.warning("[news] Serper /news HTTP %s for '%s': %s", code, query, exc)
+        return [], f"http_{code}"
     except Exception as exc:
         logger.warning("[news] Serper /news failed for '%s': %s", query, exc)
-        return []
+        return [], "error"
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +425,15 @@ def _company_name_for_news(ticker: str) -> str:
     return ""
 
 
+def company_news_query(ticker: str) -> tuple[str, str]:
+    """(the Serper query for one company's news, the company name or "").
+    The daily review's `get_news_context` and the company-event feed send
+    the same query: the name when known, then the ticker."""
+    company = _company_name_for_news(ticker)
+    prefix = f"{company} " if company and company.upper() != ticker.upper() else ""
+    return f"{prefix}{ticker} NSE India company news", company
+
+
 def _recent_article_lines(
     results: list[dict], max_articles: int, window_days: int
 ) -> tuple[list[str], int]:
@@ -458,14 +512,11 @@ def get_news_context(ticker: str, max_articles: int = 5, window_days: int = 3) -
             logger.debug("[news] get_news_context: no Serper key configured")
             return "Market context unavailable."
 
-        company = _company_name_for_news(ticker)
-
         # Company-specific query — geo=in keeps results India-relevant, and tbs
         # bounds Google to recent articles (without it the top hits are stale
         # "Q3/Q4 results" roundups that the window filter then throws away).
+        query, company = company_news_query(ticker)
         recency = getattr(_s, "NEWS_CONTEXT_RECENCY", "qdr:w") or None
-        prefix  = f"{company} " if company and company.upper() != ticker.upper() else ""
-        query   = f"{prefix}{ticker} NSE India company news"
         results = search_serper_news(query, n=max_articles, api_key=key, geo="in",
                                      tbs=recency)
         lines, dropped = _recent_article_lines(results, max_articles, window_days)

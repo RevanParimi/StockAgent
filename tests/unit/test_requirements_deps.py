@@ -3,7 +3,7 @@ declared — dev venv had it, prod image didn't, so FII/DII/bulk-deal/earnings/
 MF-herding context was silently empty in every prod prompt since first deploy."""
 from pathlib import Path
 
-REQ = Path("requirements.txt").read_text(encoding="utf-8")
+REQ = (Path(__file__).resolve().parents[2] / "requirements.txt").read_text(encoding="utf-8")
 
 
 def _declared(pkg: str) -> bool:

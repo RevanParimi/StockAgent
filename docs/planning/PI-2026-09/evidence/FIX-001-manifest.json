@@ -1,0 +1,53 @@
+{
+  "story": "FIX-001",
+  "phase": "implementation",
+  "baseline": "290b3f78a65a51f810431f1a859e9719fbc060a3",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/FIX-001-implementation.md"
+  ],
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "core/intelligence/rl/workflows/daily_review.py",
+      "git_blob": "8a318f83e597bb295b515edcd9dba82e0862c53a",
+      "sha256": "6e0c560d5d6792559ed58451be80459b4afe9f29afbed6d01cd05a6221d7fb4b"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "1318d25edb7f4935876fa95127fbaeebd52af5fa",
+      "sha256": "f8e3ab9b14956e07879bb24f09de0fd3fff5247d604c5b113df622f5a9b79701"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "86b0991496e87ea8ac13acc558cb3fcd3d24724d",
+      "sha256": "6828b3d0764c8646eba0b5e94ffdc6832d57c1487fbed8157eb7a474d6a2efa6"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "f0e1fa70a121cd007117a28e141c19bb64b67ddd",
+      "sha256": "a85115178bbc511df8cbea8dd1bcda80ac768afaa94389f22b912ee710609a2b"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/FIX-001.md",
+      "git_blob": "507c67edc0c482e8337680543bd1b9f906919fdf",
+      "sha256": "274b2968b3867f137b3066bd12a81ad2f3a6063a90b2264ee2b0659fcf2e1cf5"
+    },
+    {
+      "path": "services/data/fetchers/close_verifier.py",
+      "git_blob": "c6056e45666a800ab30a2e8903eb7e658c825e53",
+      "sha256": "fdb372aa4e75e82b6ff57546f13bd167b634cb12ed0b5a3aa8299459eaf3a0cc"
+    },
+    {
+      "path": "tests/unit/test_one_bar_close_fix001.py",
+      "git_blob": "0b0e0a260fd2357d2309b45342c2dcf7b638ed1c",
+      "sha256": "8ce4b64eb1bd7eae65f457ed2ab0265b9916031aa58db174d7896e9a73f33603"
+    },
+    {
+      "path": "tests/unit/test_session_close_sa003.py",
+      "git_blob": "cd4a986c9340963cd3669f13f3b5b3856dca0458",
+      "sha256": "2b69894c879edad50ea7de3e09939368002558f4433481eafcd6a96960268cc8"
+    }
+  ]
+}

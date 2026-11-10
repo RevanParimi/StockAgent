@@ -38,7 +38,10 @@ def env(tmp_path, monkeypatch):
     atlas_store._reset_for_tests()
     monkeypatch.setattr(user_store, "_DB_PATH", tmp_path / "users.db")
     monkeypatch.setattr(user_store, "_conn_holder", {"conn": None})
-    monkeypatch.delenv("ATLAS_ENABLED", raising=False)
+    # OFF explicitly: clearing the variable falls through to config.yaml, which
+    # ships atlas.enabled: true since the cutover. These tests passed only where
+    # a developer's .env still said false (SA-005).
+    monkeypatch.setenv("ATLAS_ENABLED", "false")
     yield types.SimpleNamespace(tmp=tmp_path,
                                 atlas_db=tmp_path / "atlas.db",
                                 users_db=tmp_path / "users.db")

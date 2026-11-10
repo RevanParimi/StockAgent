@@ -1,0 +1,70 @@
+{
+  "story": "FIX-009",
+  "phase": "implementation (2026-10-13)",
+  "baseline": "4c85eec",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/FIX-009-implementation.md",
+    "docs/README.md (the owner's probe line, not FIX-009's)"
+  ],
+  "note": "Base 4c85eec holds FIX-008 as accepted and committed; no uncommitted change sits under these paths.",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "2e30bd467c8b4698275d2790687bdf0d175d0a08",
+      "sha256": "518074e7fbf29f10b6578e3615b9d005046115ca804dd9bceca635fe79402859"
+    },
+    {
+      "path": "core/delivery/alerts.py",
+      "git_blob": "ac2c3a9df72b687c8ede7ca1c1fa36d10ec645ff",
+      "sha256": "b7fe1256a8f5ee3e8788447451e6249b227bb23467615d81fcb21f5d286a625a"
+    },
+    {
+      "path": "core/delivery/index_watch.py",
+      "git_blob": "0a05ce952945d0754676efacf702ce1802002f38",
+      "sha256": "fe8a1e7d6483fed8e2bfa9d4a1cd892f0d87614464c21f9f78c75ba25061b405"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "git_blob": "51e6a40138d02830c815414670d22ade767f223c",
+      "sha256": "44a6342699d0dafcea6cf05d71e60b472fac5f0fb72a3de8e85e706e56162da1"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "ae2522119adf082c670f2703438b277815a9f3c6",
+      "sha256": "9159bc71db192d872600610cfac6ccd9e3015c678e22332c3ac816d6dccd5a93"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "cf973f00d7939e4a41324dc2b066d30ce452379f",
+      "sha256": "ee0eeebb47fc7c7cf8245be05a05df3c4308ff9d3c4b60da7d2de07b163a17b4"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "6d42d3a56dc9d1ea9cac78b7e6606606a240b350",
+      "sha256": "864a476bbc53b7dfcf91b4680458a733e8fa477990be17571e5facf9f5216cdd"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "58f11e5b7f6038df4d84f83193d0a0dafc9c7964",
+      "sha256": "91c7e427ec024d18a2d4c73185a81612a6d55aae9e84bf314e27dd8ef9ef260c"
+    },
+    {
+      "path": "tests/unit/test_index_watch.py",
+      "git_blob": "1eb47b3899eb477ac35daa03951994ede747858e",
+      "sha256": "75bec543e1b6f7296cc7668ab940dd2ebe0994a2c25c152ab2ed5accbe65131d"
+    },
+    {
+      "path": "tests/unit/test_index_watch_own_accounts_fix009.py",
+      "git_blob": "f7a3cf5ac954ddc5a4d33bf7ff0c916ec41b5028",
+      "sha256": "3f945dbec3e7ee49ecf8dc74cd1ac424f9e1d619a4926f39bf1da8196c5fc5ae"
+    },
+    {
+      "path": "tests/unit/test_operator_notices_owner_only_fix008.py",
+      "git_blob": "12435e143c69d1ec614f444955a9494c32feced5",
+      "sha256": "f82bfcf5a0d00f20ae493f7afb774107c36dd7d370bc6fd617f27a8175fd99c5"
+    }
+  ]
+}

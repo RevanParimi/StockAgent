@@ -9,7 +9,9 @@ Ladder (spec section 7):
     satisfied, previously not     -> resolved, once, then silent forever
     unknown                       -> warning, once per day
     past deadline, not satisfied  -> critical, every 7 days, indefinitely
-    window open (or no window)    -> warning, once per day
+    window open (or no window)    -> warning, once per day (or once every
+                                     `result.repeat_days` days, when the check
+                                     asks for a slower reminder)
     within lead of next window    -> info, once per approach
     otherwise                     -> silent
 
@@ -59,6 +61,19 @@ def _next_window_start(entry: Milestone, today: date) -> date | None:
         if cand.weekday() in entry.window.weekdays:
             return cand
     return None
+
+
+def _repeat_due(last_notified: str | None, today: date, repeat_days: int,
+                notified_today: bool) -> bool:
+    """Daily (repeat_days <= 1): not yet notified today, exactly as before.
+    Slower: at least `repeat_days` days since the last notice for this entry,
+    whatever that notice said — so a switch to a daily-worthy state still
+    warns on its first day."""
+    if repeat_days <= 1:
+        return not notified_today
+    if last_notified is None:
+        return True
+    return (today - date.fromisoformat(last_notified)).days >= repeat_days
 
 
 def _compose(entry: Milestone, result: CheckResult, level: Level,
@@ -159,7 +174,7 @@ def evaluate(entries: list[Milestone],
                               last_notified[:7] == today.isoformat()[:7])
                 if not same_month:
                     fire("warning", "Needs attention.")
-            elif not notified_today:
+            elif _repeat_due(last_notified, today, result.repeat_days, notified_today):
                 if result.state == "blocked":
                     fire("warning",
                          "BLOCKED — a precondition failed, so investigate "

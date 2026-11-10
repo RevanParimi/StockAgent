@@ -387,11 +387,15 @@ def _fetch_fundamentals(query: StockQuery) -> FetchResult:
     return fin
 
 
-def _fetch_technicals(query: StockQuery) -> FetchResult:
-    """Local RSI/MACD/BB + 10-yr history (yfinance, cached) — same as pattern_analysis builder."""
+def _fetch_technicals(query: StockQuery, sector: str) -> FetchResult:
+    """Local RSI/MACD/BB + 10-yr history (yfinance, cached) — same as pattern_analysis builder.
+
+    SA-010: correlation and beta are measured against `sector`'s benchmark
+    index (`fetcher.sector_benchmark`), not the automobile index for all.
+    """
     from core.intelligence.algorithms.indicators.fetcher import get_technical_result
 
-    return get_technical_result(query.ticker)
+    return get_technical_result(query.ticker, sector=sector)
 
 
 def _fetch_commodities(sector: str) -> FetchResult:
@@ -559,7 +563,7 @@ def build_sector_bundle(query: StockQuery, sector: str) -> SectorDataBundle:
     _safe(sections, status, "macro_context", _fetch_macro_context, sector, serper_key, provenance=prov)
     _safe(sections, status, "policy_deep_dive", _fetch_policy_deep_dive, query, sector, provenance=prov)
     _safe(sections, status, "fundamentals", _fetch_fundamentals, query, provenance=prov)
-    _safe(sections, status, "technicals", _fetch_technicals, query, provenance=prov)
+    _safe(sections, status, "technicals", _fetch_technicals, query, sector, provenance=prov)
     _safe(sections, status, "commodities", _fetch_commodities, sector, provenance=prov)
     _safe(sections, status, "flows_sentiment", _fetch_flows_sentiment, query, sector, provenance=prov)
     _safe(sections, status, "peers_valuation", _fetch_peers_valuation, query, sector, provenance=prov)

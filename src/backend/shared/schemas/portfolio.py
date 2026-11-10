@@ -20,7 +20,10 @@ class AppliedCorpAction(BaseModel):
     """One corporate action already applied to a holding (idempotency record)."""
     key: str                       # dedupe key: "{symbol}|{ex_date}|{desc[:40]}"
     ex_date: str                   # ISO date
-    kind: Literal["split", "bonus", "dividend"]
+    # SA-008: rename/demerger/relisting are applied only by the operator's
+    # identity reconciliation (core/portfolio/identity_reconcile.py), never
+    # by the daily sync; ex_date is then the day the new price basis starts.
+    kind: Literal["split", "bonus", "dividend", "rename", "demerger", "relisting"]
     desc: str
     ratio: float = 1.0             # qty multiplier (2.0 for 1:1 bonus, 5.0 for 10→2 split)
     dividend_per_share: float = 0.0
@@ -120,10 +123,43 @@ class AdviceRecord(BaseModel):
     narrative: str = ""            # LLM narration (research tone, never "advice")
     switch_candidate: str = ""     # SWITCH only: the stronger shelf idea's symbol
     rationale_hash: str = ""
+    # SA-003: set when the data gate blocked (enforce) or would have blocked
+    # (record) a risk-increasing action, or when a risk-reducing action rests
+    # on unverified data. {mode, enforced, blocked, reasons, source_run_ids,
+    # price_bar_date}. None when the gate had nothing to say.
+    data_gate: dict | None = None
+    # SA-008: the instrument `close` priced (ticker, provider symbol, price
+    # basis, identity status) on the advice date. {} = written before SA-008.
+    instrument: dict = Field(default_factory=dict)
+    # FIX-024: "market regime unavailable for 2026-10-30: India VIX did not
+    # answer" when the review day's regime was not established (an ADD it
+    # would allow is held, note REGIME_UNAVAILABLE); "" when it was.
+    regime_unavailable: str = ""
+    # FIX-027: set when an ADD only a re-forecast made after the review
+    # session's close would allow was held; says which re-forecast and when.
+    envelope_after_close: str = ""
     # DEPRECATED — never written by anything. See the class docstring.
     outcome_10td: float | None = None
     outcome_30td: float | None = None
     outcome_60td: float | None = None
+
+
+class TradeCosts(BaseModel):
+    """What one virtual BUY or SELL paid on top of its price, in rupees
+    (SA-048, core/portfolio/costs.py). Written on the trade's own ledger row,
+    so a later rate change never alters it."""
+    brokerage: float = 0.0
+    stt: float = 0.0               # securities transaction tax, to the rupee
+    exchange_fee: float = 0.0      # the exchange's transaction charge
+    sebi_fee: float = 0.0
+    stamp_duty: float = 0.0        # BUY only
+    gst: float = 0.0               # on brokerage + exchange fee + SEBI fee
+    dp_charge: float = 0.0         # SELL only, per scrip, GST included
+    total: float = 0.0
+    rates_as_of: str = ""          # the config's portfolio.costs.as_of
+    # True: worked out when read, for a trade made before costs were charged.
+    # Such costs were never taken from cash.
+    estimated: bool = False
 
 
 class TransactionRecord(BaseModel):
@@ -135,14 +171,17 @@ class TransactionRecord(BaseModel):
     ts: str                        # UTC timestamp (ISO)
     user_id: str
     symbol: str
-    side: Literal["BUY", "SELL", "DIV"]   # DIV = dividend cash credit (qty 0)
-    qty: float                     # whole shares (0 for DIV)
+    # DIV = dividend cash credit (qty 0). DEPOSIT = paper capital added by the
+    # owner (SA-049): symbol "CASH", qty 0, value the amount; cash and
+    # capital_in both rise by it.
+    side: Literal["BUY", "SELL", "DIV", "DEPOSIT"]
+    qty: float                     # whole shares (0 for DIV and DEPOSIT)
     price: float
-    value: float                   # qty × price
+    value: float                   # qty × price; a DEPOSIT's amount
     cash_before: float
     cash_after: float
     holding_qty_after: float
-    realized_pnl: float = 0.0      # SELL only
+    realized_pnl: float = 0.0      # SELL only; before costs
     source: Literal["autopilot", "seed", "manual"] = "autopilot"
     verdict: str = ""              # originating advisor verdict, "" for seed/manual
     advice_ref: str = ""           # "<date>|<symbol>|<rationale_hash>"
@@ -153,6 +192,10 @@ class TransactionRecord(BaseModel):
     cost_basis: float | None = None   # SELL: holding adj_avg_price at sale
     pnl_pct: float | None = None      # SELL: realized P&L % vs cost_basis
     reason: str = ""                  # advice narrative at execution time
+    # SA-048: the trade's charges, taken from cash with it. None on a row
+    # written before costs were charged (core/portfolio/costs.py estimates
+    # those when read), on a DIV and on a DEPOSIT.
+    costs: TradeCosts | None = None
 
 
 class CorporateEvent(BaseModel):
@@ -190,3 +233,38 @@ class SwitchEvaluation(BaseModel):
     decision: Literal["taken", "rejected"]
     reason: str = ""               # "" when taken; else the declining branch
     rationale_hash: str = ""       # joins back to the origin's AdviceRecord
+
+
+class ExitShadowRow(BaseModel):
+    """One holding on one review day under both exit rules (PR-009).
+
+    `legacy_*` is the price-path rule (`thesis_break`), `evidence_*` the
+    evidence rule (`case_broken`); `mode` says which one acted. One row per
+    (date, symbol), written once (core/portfolio/exit_shadow.py). The weekly
+    scorecard grades a holding's first disagreeing row only, 10 and 30
+    sessions after `date`, from `close`, against the row's `benchmark`.
+    """
+    date: str                      # the review day (ISO)
+    user_id: str
+    symbol: str
+    buy_date: str                  # with `symbol`, names the holding: one decision per holding
+    mode: Literal["shadow", "evidence"]   # shadow: legacy acted; evidence: evidence acted
+    close: float                   # the review session's close both rules used
+    price_bar_date: str = ""       # the session that close came from; earlier = carried forward
+    legacy_verdict: str
+    legacy_triggers: list[str] = Field(default_factory=list)
+    evidence_verdict: str
+    evidence_triggers: list[str] = Field(default_factory=list)
+    # Exactly one of the two sells the whole position (EXIT or SWITCH).
+    disagree: bool
+    # Where a disagreement's sale put the money, fixed on this day: "cash" for
+    # a plain EXIT whose proceeds wait in cash, "nifty" for a SWITCH or once
+    # the portfolio deploys its cash; "" when the rules agree. Never re-derived.
+    benchmark: Literal["", "cash", "nifty"] = ""
+    # Why the reason to own it broke, whether or not case_broken fired (it
+    # waits out advisor.min_hold_sessions); [] when nothing broke.
+    case_broken_reasons: list[str] = Field(default_factory=list)
+    sessions_held: int | None = None
+    # The inputs read: event ids, the research verdict and its run time, the
+    # invalidation level and its source, and any source that could not be read.
+    evidence: dict = Field(default_factory=dict)

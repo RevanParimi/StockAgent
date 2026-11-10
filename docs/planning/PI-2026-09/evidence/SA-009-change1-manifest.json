@@ -1,0 +1,58 @@
+{
+  "story": "SA-009",
+  "phase": "implementation (change_1)",
+  "baseline": "e698c686945f5535ac12732b0ad151c9088fb3d7",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/evidence/SA-009-implementation.md"
+  ],
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "7cf1921faf796f7445f809c71e6e48d2a6218eff",
+      "sha256": "9f01704dbcd226a0d3bb8c0e2000fcb0d8905b64e28cdec239d910f1bb2674a8"
+    },
+    {
+      "path": "core/intelligence/rl/stores/store_inventory.py",
+      "git_blob": "dc933917e59f4a6085cb45aed5db2c63af336c1d",
+      "sha256": "ae52279db63367b7ccbbb1e7f7aa2a2bffea7284a895145a9c796b08b133fde6"
+    },
+    {
+      "path": "core/intelligence/rl/stores/store_migration.py",
+      "git_blob": "9c2a436bc7c758a6e9af1a54660df177218d0e7d",
+      "sha256": "fb0d625a10a8e81bdc130546d670d514df0fde3004f1c5bab7bdd17c40581eee"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "git_blob": "76b4792f891b3ea87fc5b155d318784c434b0131",
+      "sha256": "23389ca595ef0f51be7e5031ae1bcd13afaac9b131237abd1e2885935edadfe0"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "eff03b8847fac4117288b9ee8d1576b1bf67955c",
+      "sha256": "886773bb84717f02b772669220484304f2fd85e2c7d0bc67a4be432f727130a0"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "fc8d4dea5de9a9669d1b285cc2ca101388c80b0e",
+      "sha256": "7872b41c58e1f1f366fd974a844fafc0783e2863bc4701f6896a487fc9dbc923"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "04dbc5d6b112b96ebe895f959e21b92823b3c027",
+      "sha256": "111996325dd506496baf6a2e2aca0266498371097a774ef516219e621f9510f7"
+    },
+    {
+      "path": "tests/unit/intelligence/rl/test_store_inventory_sa009.py",
+      "git_blob": "23a3aa9ec5d245b30c60ad290bc1d23e82ae3c04",
+      "sha256": "f0abb0f70aafaa960ce9d46cfd3ca927c49f6b464c96b75fc21f749d282a33a0"
+    },
+    {
+      "path": "tests/unit/intelligence/rl/test_store_migration_sa009.py",
+      "git_blob": "12bde0a25cb394d0c3132649c8788a4742aaf0e4",
+      "sha256": "687b8daccc2d7525e4b858d0f199120c477589d99eae6060f1c4aec39f8210f5"
+    }
+  ]
+}

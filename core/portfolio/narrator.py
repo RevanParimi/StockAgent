@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 _TRIGGER_TEXT = {
     "stop_breach": "the position has breached its volatility-scaled stop",
     "thesis_break": "the original thesis is assessed as broken while the forecast points down",
+    "case_broken": "the reason to own the stock broke: a material negative company event, an actionable SELL research verdict, or the price at its invalidation level",
     "shock_reforecast": "a shock re-forecast moved against the position",
     "crisis_regime_bearish": "the regime is MACRO_CRISIS with a bearish envelope",
     "trailing_stop_breach": "the position gave back its volatility budget from the peak, so profit is being booked",
@@ -38,7 +39,12 @@ _TRIGGER_TEXT = {
 _NOTE_TEXT = {
     "WAIT_FOR_LTCG": "the position crosses the 12-month LTCG boundary soon, so the trim signal is noted rather than acted on",
     "EARNINGS_GAP_PROTECTION": "results are due within days — a profit-protection review is flagged",
-    "SECTOR_CONCENTRATION_HIGH": "position weight is above the concentration comfort band",
+    "POSITION_LARGE": "this holding is above the position cap of the whole portfolio, so the autopilot will not add to it",
+    "SECTOR_CONCENTRATION_HIGH": "this sector's holdings together are above the sector cap of the whole portfolio, so the autopilot will not buy more in it",
+    "DATA_GATE": "an add or switch was withheld because the price or the forecast behind it is not verified",
+    "REGIME_UNAVAILABLE": "an add was withheld because the market regime of the review day is not known: an input it is read from did not answer",
+    "ENVELOPE_AFTER_CLOSE": "an add was withheld because only a forecast made after the review session's close would allow it",
+    "IDENTITY": "every action is held because the price is not verified as this holding's own: the listing's identity is unresolved, or it changed (a demerger or relisting) since purchase, and the holding needs reconciling",
 }
 
 _PROMPT = """You are the narration layer of a personal stock-research tool.
@@ -56,7 +62,9 @@ Respond with JSON: {{"narrative": "<2-3 sentences>"}}"""
 
 def fallback_narrative(rec: AdviceRecord) -> str:
     reasons = [_TRIGGER_TEXT.get(t, t) for t in rec.triggers]
-    notes = [_NOTE_TEXT.get(n, n) for n in rec.notes]
+    notes = [f"an add was withheld: {rec.regime_unavailable}"
+             if n == "REGIME_UNAVAILABLE" and rec.regime_unavailable else _NOTE_TEXT.get(n, n)
+             for n in rec.notes]
     parts = [f"{rec.verdict} — " + ("; ".join(reasons) if reasons else "no rule fired, thesis intact")]
     if notes:
         parts.append("Also: " + "; ".join(notes) + ".")

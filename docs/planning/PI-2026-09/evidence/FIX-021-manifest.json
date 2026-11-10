@@ -1,0 +1,55 @@
+{
+  "story": "FIX-021",
+  "phase": "implementation",
+  "head": "FIX-019 docs commit on 4aa4c83",
+  "date": "2026-10-31",
+  "note": "re-recorded after FIX-019 was committed, before any review; supersedes 8ab98d70, whose KT, guide and PDF sat on FIX-019 uncommitted reviewed bytes",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "core/events/feed.py",
+      "git_blob": "b0c93c6b806b78872e9327ccbb1f4d64b0efb330",
+      "sha256": "e63fd303cf933dceaf920f4164b0bfb2de8f51f99eb0ec92b8b33e163d5c57b3"
+    },
+    {
+      "path": "core/events/sources.py",
+      "git_blob": "bc00c4774be711ea1bd11c80cdb6dbb753a5dd5b",
+      "sha256": "5736fc1852f7567b33a13bd86b72c5b3a55e4fa792d037c92660a6b6d57bf51f"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "41f05a6052f1a0618cfc1de6f770191dd7a52f62",
+      "sha256": "6b37164640bf1371325216f80737aeab6407924f21130c33f1fe70cdee5558a0"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "871d4b5749b3283b71f50441179d192f98bc2133",
+      "sha256": "3e2285988539c3dc3693cc724fb33c23acd70920c51c22c9b240cbf8339e12f1"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "c40ac87f34f275e8a8b588376db929d6da990dd7",
+      "sha256": "ae2e1e791ec62bd5c29f0470af3790f524fb01670ec851d6aa971cd3b8264563"
+    },
+    {
+      "path": "services/api/routes/ui_data.py",
+      "git_blob": "cbefd0377c974e5f92480ee0e5fd3037c0a73da0",
+      "sha256": "fd131f92661543c227e988bb6225a31700ea2df42234649380154f4f347449ae"
+    },
+    {
+      "path": "services/background/macro_news_fetcher.py",
+      "git_blob": "57d1f0be92941cb64b60500532b967cebb46b03f",
+      "sha256": "bfa072f54f03a24bb855163930df5e52ba33d085c211243a87a1035b6600426f"
+    },
+    {
+      "path": "services/data/fetchers/news.py",
+      "git_blob": "0dd31b2e8c964b80b3010dbf1db3c0398192903c",
+      "sha256": "26d35a58bbe18300067dd7b9ff4a062bf12615d82e1a5c984eed8bd0678a6483"
+    },
+    {
+      "path": "tests/unit/test_serper_redirect_fix021.py",
+      "git_blob": "da72ddb111a6edea690016215211ac5da6ef9833",
+      "sha256": "85f4481422b81523128e953f1458d5158017aa9145456d98a4a3ab1bb7346ac8"
+    }
+  ]
+}

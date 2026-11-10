@@ -29,8 +29,10 @@ import argparse
 import logging
 import sys
 from datetime import date, timedelta
+from typing import NamedTuple
 
 from core.config import settings
+from backend.shared.pipeline import decision_gate as dg
 from core.intelligence.rl.agents.feedback_agent import (
     FeedbackAgent,
     classify_direction,
@@ -66,10 +68,12 @@ from core.intelligence.rl.conviction.tracker import (
 from core.intelligence.algorithms.indicators.fetcher import get_price_history
 from core.intelligence.seasonal.calendar import SeasonalCalendar
 from core.intelligence.regime.detector import RegimeDetector, apply_regime_multipliers
-from core.intelligence.regime.state import update_sticky_regime, _read_state, _state_path
+from core.intelligence.regime.state import (
+    label_recorded_for, record_unavailable_day, update_sticky_regime, _read_state, _state_path)
 from core.schemas.feedback import RegimeSnapshot, ThesisReview
 from core.intelligence.rl.agents.thesis_reviewer import ThesisReviewer, THESIS_REVIEW_THRESHOLD
 from core.intelligence.rl.workflows.generate_forecast import regenerate_envelope
+from core.intelligence.rl.workflows.sector_router import get_sector_weights
 from services.data.stores.log_store import configure_logging
 
 # E1: one setup for every entry point. Idempotent, so importing this module
@@ -131,7 +135,31 @@ def _resolve_cycle_and_forecast(
     return cycle_id, envelope, forecast
 
 
+class SessionClose(NamedTuple):
+    """SA-003: a close and the session it belongs to.
+
+    `bar_date` is the date of the bar the close was actually taken from. The
+    fetchers below fall back to the newest earlier bar when the requested
+    session has none (a suspended or renamed symbol, a provider lag), so
+    `bar_date` can be earlier than the session asked for. `fresh` is the
+    minimum price freshness for grading and for trading: the bar IS the
+    session. None when there is no close, or its bar is undated.
+    """
+    close: float | None
+    bar_date: date | None
+    source: str
+
+    def fresh_for(self, session: date) -> bool:
+        return self.close is not None and self.bar_date == session
+
+
 def _fetch_actual_close(ticker: str, target_date: date) -> float | None:
+    """The close `_fetch_session_close` finds, without its date. Kept for the
+    portfolio's `close_on` and other callers that want only the number."""
+    return _fetch_session_close(ticker, target_date).close
+
+
+def _fetch_session_close(ticker: str, target_date: date) -> SessionClose:
     """
     Fetch the actual closing price for a specific date via yfinance.
 
@@ -143,61 +171,76 @@ def _fetch_actual_close(ticker: str, target_date: date) -> float | None:
     EOD close (close_verifier.cross_check_close) — a single extra NSE call,
     no re-fetch of yfinance — guarding against symbol-cache poisoning / stale
     yfinance data on the RL scoring path.
+
+    SA-003: the selection is unchanged; the result also names the session of
+    the bar the chosen close came from, so a carried-forward close is visible.
+
+    SA-008: every attempt prices the instrument the ticker resolves to on
+    `target_date` (the instrument registry's symbol for that day), including
+    the BSE and legacy fallbacks, which used to ask for "{TICKER}.BO" and the
+    self-healing fetcher: another instrument's close cannot stand in. Whether
+    that identity may be graded or traded is the caller's check
+    (symbol_resolver.resolve_identity), not this fetcher's.
     """
     import yfinance as yf
     from datetime import timedelta
-    from core.config import settings
-    from services.data.fetchers.close_verifier import cross_check_close
+    from backend.shared.data.fetchers.symbol_resolver import resolve_identity
+    from backend.shared.data.instruments import symbol_root
+    from services.data.fetchers.close_verifier import cross_check_close, nse_session_close
 
-    suffix = ".NS"
-    yf_sym = settings.YF_SYMBOL_OVERRIDES.get(ticker.upper()) or (
-        ticker if ticker.endswith(suffix) else f"{ticker}{suffix}"
-    )
+    yf_sym = resolve_identity(ticker, target_date).symbol
     # Fetch 7-day window to ensure we catch the target date even with holidays
     start = (target_date - timedelta(days=7)).isoformat()
     end   = (target_date + timedelta(days=1)).isoformat()
 
-    def _extract(df) -> float | None:
+    def _extract(df) -> tuple[float | None, date | None]:
         if df is None or df.empty:
-            return None
-        close = df["Close"].squeeze()
+            return None, None
+        # FIX-001: no squeeze(). On a one-bar frame (a listing day) squeeze()
+        # gave a scalar, .dropna() raised, and the session's own close was lost.
+        close = df["Close"]
         if hasattr(close, "columns"):          # multi-level columns — take first
             close = close.iloc[:, 0]
         close = close.dropna()
         target_str = target_date.isoformat()
         mask = close.index.astype(str) == target_str
         if mask.any():
-            return float(close[mask].iloc[-1])
+            return float(close[mask].iloc[-1]), target_date
         available = close[close.index.date <= target_date]
-        return float(available.iloc[-1]) if not available.empty else None
+        if available.empty:
+            return None, None
+        return float(available.iloc[-1]), available.index[-1].date()
 
     yf_close: float | None = None
+    yf_date: date | None = None
 
     # Attempt 1: yf.download() — handles crumb refresh automatically
     try:
         df = yf.download(yf_sym, start=start, end=end, progress=False, auto_adjust=True)
-        yf_close = _extract(df)
+        yf_close, yf_date = _extract(df)
         if yf_close is None:
             logger.debug("[daily_review] yf.download() returned empty for %s on %s", yf_sym, target_date)
     except Exception as exc:
         logger.warning("[daily_review] yf.download() failed for %s: %s", yf_sym, exc)
 
-    # Attempt 2: BSE fallback (.BO suffix) — Yahoo sometimes serves BSE when NSE is stale
+    # Attempt 2: BSE fallback (.BO suffix) — Yahoo sometimes serves BSE when NSE is stale.
+    # SA-008: the BSE listing of the SAME instrument (TMPV.BO, not TATAMOTORS.BO).
     if yf_close is None:
-        bse_sym = ticker if ticker.endswith(".BO") else f"{ticker}.BO"
+        bse_sym = f"{symbol_root(yf_sym)}.BO"
         try:
             df = yf.download(bse_sym, start=start, end=end, progress=False, auto_adjust=True)
-            yf_close = _extract(df)
+            yf_close, yf_date = _extract(df)
             if yf_close is not None:
                 logger.debug("[daily_review] Used .BO fallback price for %s", ticker)
         except Exception as exc:
             logger.debug("[daily_review] BSE fallback failed for %s: %s", bse_sym, exc)
 
-    # Attempt 3: get_price_history() (C++ fetcher, 1-year window, legacy path)
+    # Attempt 3: get_price_history() (C++ fetcher, 1-year window, legacy path).
+    # SA-008: asked for the resolved symbol itself, which it never self-heals.
     if yf_close is None:
         try:
-            df = get_price_history(ticker, years=1)
-            yf_close = _extract(df)
+            df = get_price_history(yf_sym, years=1)
+            yf_close, yf_date = _extract(df)
         except Exception as exc:
             logger.warning("[daily_review] get_price_history() failed for %s on %s: %s", ticker, target_date, exc)
 
@@ -206,9 +249,78 @@ def _fetch_actual_close(ticker: str, target_date: date) -> float | None:
     close, source = cross_check_close(ticker, yf_close, target_date=target_date)
     if close is None:
         logger.warning("[daily_review] Could not fetch actual close for %s on %s (source=%s)", ticker, target_date, source)
-    elif source != "agree":
+        return SessionClose(None, None, source)
+    if source != "agree":
         logger.info("[daily_review] Actual close for %s on %s sourced from %s: %.2f", ticker, target_date, source, close)
-    return close
+    if source == "nse":
+        # The same cached NSE fetch the cross-check just made.
+        bar_date = nse_session_close(ticker, target_date)[1]
+    else:
+        bar_date = yf_date
+    return SessionClose(close, bar_date, source)
+
+
+_GATED_REVIEW_SKIPS = ("grading, FeedbackAgent, weight update or proposal, lessons, "
+                       "envelope revision, streak, feedback entry, dossier and control lane")
+
+
+def _review_gate(
+    ticker: str, date_str: str, *, paper: bool, stage: str, status: str,
+    reasons: list[str], run_id: str,
+) -> dict:
+    """SA-003: record a review input that is not actionable. The returned row
+    has enforced=True when the gate is enforcing: the caller must stop."""
+    return dg.record_gate_decision(
+        consumer="paper_review" if paper else "daily_review", ticker=ticker,
+        skipped=_GATED_REVIEW_SKIPS, status=status, reasons=reasons, run_id=run_id,
+        enforced=dg.enforcing(), on_date=date_str, extra={"stage": stage},
+    )
+
+
+def _identity_review_reasons(ticker: str, review_date: date, envelope, row) -> list[str]:
+    """
+    SA-008: why `row` may not be graded on `review_date`'s close ([] = it may).
+
+    The session's identity must be resolved, and the price basis the row was
+    issued on must be the session's. A row stamped with its instrument says
+    its basis; an older row is judged by the registry between the envelope's
+    issue date and the session (a demerger or relisting in between breaks it).
+    """
+    from backend.shared.data.fetchers.symbol_resolver import identity_break, resolve_identity
+
+    ident = resolve_identity(ticker, review_date)
+    reasons: list[str] = []
+    if not ident.resolved:
+        reasons.append(f"identity {ident.status} on {review_date.isoformat()}: {ident.reason_text()}")
+    stamp = getattr(row, "instrument", None) or {}
+    if stamp.get("basis"):
+        if stamp["basis"] != ident.basis:
+            reasons.append(
+                f"row issued on price basis {stamp['basis']} ({stamp.get('symbol') or '?'}); "
+                f"the session {review_date.isoformat()} is on {ident.basis} ({ident.symbol})")
+    else:
+        try:
+            issued = date.fromisoformat(str(getattr(envelope, "generated_at", ""))[:10])
+        except ValueError:
+            issued = None
+        if issued is not None and issued <= review_date:
+            broken = identity_break(ticker, issued, review_date)
+            if broken:
+                reasons.append(f"row issued {issued.isoformat()} carries no instrument: {broken}")
+    return reasons
+
+
+def _gated_summary(ticker: str, sector: str, date_str: str, mode: str,
+                   paper: bool, gate_row: dict) -> dict:
+    """What a review stopped by the gate returns: no side effect was written."""
+    logger.warning(
+        "[daily_review] %s %s: data gate — review skipped at %s (%s)",
+        ticker, date_str, gate_row.get("stage"), "; ".join(gate_row.get("reasons") or []),
+    )
+    return {
+        "status": "data_gated", "ticker": ticker, "sector": sector, "paper": paper,
+        "date": date_str, "learning_mode": mode, "data_gate": [gate_row],
+    }
 
 
 def _run_todays_agent_scores(
@@ -445,17 +557,23 @@ def run_daily_review(
     try:
         regime_snapshot = RegimeDetector().detect(review_date, sector)
         logger.info(
-            "[daily_review] Regime detected: %s (VIX=%.1f, FII_proxy=%+.2f%%, RSI=%.1f)",
+            "[daily_review] Regime detected: %s (VIX=%s, FII_proxy=%s%%, RSI=%s)%s",
             regime_snapshot.regime_label,
             regime_snapshot.vix_value,
             regime_snapshot.fii_proxy_5d_pct,
             regime_snapshot.sector_rsi,
+            f"; unavailable: {regime_snapshot.unavailable}" if regime_snapshot.unavailable else "",
         )
     except Exception as exc:
         logger.warning(
             "[daily_review] %s: RegimeDetector failed — using NORMAL regime (non-fatal): %s",
             ticker, exc,
         )
+        # FIX-023: the NORMAL default is the learning loop's neutral, never
+        # the day's regime: the sticky layer records the day unavailable.
+        regime_snapshot = RegimeSnapshot(vix_value=None, fii_proxy_5d_pct=None,
+                                         sector_rsi=None,
+                                         unavailable="the regime detector failed")
 
     # ------------------------------------------------------------------ #
     # Living Envelope, Component 1: sticky regime label (hysteresis).
@@ -466,6 +584,12 @@ def run_daily_review(
     # after RL_REGIME_CALM_DAYS milder detections). The STICKY label drives
     # regime weight multipliers and the cycle-log/feedback regime field
     # below. Never fatal — falls back to the raw detected label.
+    #
+    # FIX-023: a day whose label the live inputs do not establish
+    # (regime_snapshot.unavailable) never moves the hysteresis on a guess:
+    # record_unavailable_day keeps the sticky label (entering only a severer
+    # one the live inputs establish) and marks the day, so idle-cash
+    # deployment opens nothing on it. Its multipliers come from that kept label.
     # ------------------------------------------------------------------ #
     sticky_regime_label = regime_snapshot.regime_label
     prior_sticky_label: str | None = None
@@ -478,9 +602,16 @@ def run_daily_review(
         try:
             prior_state = _read_state(_state_path())
             prior_sticky_label = prior_state.label if prior_state else None
-            new_regime_state = update_sticky_regime(regime_snapshot.regime_label, review_date.isoformat())
-            sticky_regime_label = new_regime_state.label
-            if sticky_regime_label != regime_snapshot.regime_label:
+            if regime_snapshot.unavailable:
+                new_regime_state = record_unavailable_day(
+                    review_date.isoformat(), regime_snapshot.unavailable,
+                    regime_snapshot.floor_label)
+            else:
+                new_regime_state = update_sticky_regime(regime_snapshot.regime_label,
+                                                        review_date.isoformat())
+            if new_regime_state is not None:
+                sticky_regime_label = new_regime_state.label
+            if new_regime_state is not None and sticky_regime_label != regime_snapshot.regime_label:
                 logger.info(
                     "[daily_review] Sticky regime: raw=%s sticky=%s (calm_streak=%d)",
                     regime_snapshot.regime_label, sticky_regime_label, new_regime_state.calm_streak,
@@ -490,6 +621,15 @@ def run_daily_review(
                 "[daily_review] %s: sticky regime update failed — using raw label (non-fatal): %s",
                 ticker, exc,
             )
+    # FIX-024: why the label this review writes to the feedback log is not
+    # established for its day ("" when it is): the inputs left its severity
+    # open and no review established the day, so the label is the kept sticky
+    # one (the raw one with no sticky state, or in the paper lane). The
+    # advisor holds ADD on such an entry; the crisis exit still reads it.
+    regime_kept_why = ""
+    if regime_snapshot.unavailable and (
+            paper or label_recorded_for(review_date.isoformat()) is None):
+        regime_kept_why = regime_snapshot.unavailable
 
     # Sticky-label-driven regime multipliers: recompute from settings using the
     # STICKY label (not the raw one) so the weight adjustment reflects the
@@ -523,13 +663,61 @@ def run_daily_review(
     # streak is then advanced using today's verdict (Step 6.5).
     existing_streak = envelope.conviction_streak
 
+    # SA-003: what the gate would have stopped (record mode keeps going and
+    # reports these; enforce mode returns at the first one, before any write).
+    gate_rows: list[dict] = []
+
+    # The row being graded must come from an actionable analysis: learning
+    # from a forecast issued on missing data teaches the weights noise.
+    if not dg.is_actionable(today_forecast.data_gate):
+        row = _review_gate(
+            ticker, date_str, paper=paper, stage="forecast_row",
+            status=today_forecast.data_gate,
+            reasons=[dg.row_gate_reason(today_forecast.data_gate,
+                                        today_forecast.source_run_id)],
+            run_id=today_forecast.source_run_id,
+        )
+        if row["enforced"]:
+            return _gated_summary(ticker, sector, date_str, mode, paper, row)
+        gate_rows.append(row)
+
+    # SA-008: the session's close must price the instrument the row was
+    # issued on. An unresolved identity grades nothing, and a row issued on
+    # one price basis is never graded against a close on another.
+    identity_reasons = _identity_review_reasons(ticker, review_date, envelope, today_forecast)
+    if identity_reasons:
+        row = _review_gate(
+            ticker, date_str, paper=paper, stage="identity", status="identity",
+            reasons=identity_reasons, run_id=today_forecast.source_run_id,
+        )
+        if row["enforced"]:
+            return _gated_summary(ticker, sector, date_str, mode, paper, row)
+        gate_rows.append(row)
+
     # ------------------------------------------------------------------ #
     # Step 2: Fetch actual close + volume context
     # ------------------------------------------------------------------ #
-    actual_close = _fetch_actual_close(ticker, review_date)
+    session_close = _fetch_session_close(ticker, review_date)
+    actual_close = session_close.close
     if actual_close is None:
         logger.error("[daily_review] Could not fetch actual close for %s on %s", ticker, date_str)
         return {"status": "no_actual_data", "ticker": ticker, "date": date_str}
+
+    # SA-003: minimum price freshness. A close carried forward from an earlier
+    # session would grade the day as flat — a valid-looking zero return that
+    # never happened.
+    if not session_close.fresh_for(review_date):
+        bar = session_close.bar_date.isoformat() if session_close.bar_date else "undated"
+        row = _review_gate(
+            ticker, date_str, paper=paper, stage="actual_close", status="stale_price",
+            reasons=[f"no close dated the session {date_str}: the close found "
+                     f"({actual_close:.2f}, source {session_close.source}) is from "
+                     f"bar {bar}"],
+            run_id=today_forecast.source_run_id,
+        )
+        if row["enforced"]:
+            return _gated_summary(ticker, sector, date_str, mode, paper, row)
+        gate_rows.append(row)
 
     # Volume-vs-20d-avg: tells FeedbackAgent if today's move was institutional or noise.
     volume_vs_20d_avg: float | None = None
@@ -599,6 +787,19 @@ def run_daily_review(
             learned_weights=decision_weights(wm_for_scores, sector),
             capture=_todays_capture,
         )
+        # SA-003: a re-run on missing essential data produces fabricated drift
+        # and, under hard-bind, the verdict the day is graded against.
+        _rerun_report = _todays_capture.get("report")
+        if _rerun_report is not None:
+            _rerun_status, _rerun_id, _rerun_reasons = dg.report_gate(_rerun_report)
+            if not dg.is_actionable(_rerun_status):
+                row = _review_gate(
+                    ticker, date_str, paper=paper, stage="rerun", status=_rerun_status,
+                    reasons=_rerun_reasons, run_id=_rerun_id,
+                )
+                if row["enforced"]:
+                    return _gated_summary(ticker, sector, date_str, mode, paper, row)
+                gate_rows.append(row)
         if not todays_scores and today_forecast.predicted_agent_scores:
             todays_scores = dict(today_forecast.predicted_agent_scores)
             logger.info(
@@ -1047,6 +1248,11 @@ def run_daily_review(
     except Exception as exc:
         logger.debug("[daily_review] %s: Factor regime unavailable (non-fatal): %s", ticker, exc)
 
+    # SA-009: a missing (or unreadable) weight file is rebuilt from the
+    # dimensions of the graph this sector runs, as generate_forecast does.
+    # It used the automobile table for every sector, so a banking store
+    # gained automobile dimensions.
+    base_weights = get_sector_weights(sector)
     if paper:
         # PAPER-LANE ISOLATION: weight memory is never persisted for paper
         # ideas — get_or_init_weight_memory() would WRITE a fresh file into
@@ -1059,15 +1265,15 @@ def run_daily_review(
                 ticker=ticker,
                 last_updated=date.today().isoformat(),
                 weight_version=0,
-                current_weights=dict(settings.AGENT_WEIGHTS),
-                base_weights=dict(settings.AGENT_WEIGHTS),
+                current_weights=dict(base_weights),
+                base_weights=dict(base_weights),
                 adjustment_bounds={
                     "max_single_step": settings.WEIGHT_MAX_STEP,
                     "max_total_drift_from_base": settings.WEIGHT_MAX_DRIFT,
                 },
             )
     else:
-        wm = store.get_or_init_weight_memory(settings.AGENT_WEIGHTS)
+        wm = store.get_or_init_weight_memory(base_weights)
     # feedback_log was loaded above (before the external_shock rate-cap block);
     # reuse the same object here rather than reloading.
 
@@ -1218,7 +1424,8 @@ def run_daily_review(
         streak_days=updated_streak.streak_days,
         verdict=today_forecast.predicted_verdict,
         todays_agent_scores=todays_scores,
-        sector_rsi=regime_snapshot.sector_rsi,
+        sector_rsi=(settings.RSI_FALLBACK if regime_snapshot.sector_rsi is None
+                    else regime_snapshot.sector_rsi),    # FIX-023: no RSI, no amplifier
     )
     logger.info(
         "[daily_review] Conviction streak: '%s' %d day(s) | "
@@ -1411,6 +1618,7 @@ def run_daily_review(
         direction_correct=direction_correct,
         graded_verdict=graded_verdict,
         regime_label=sticky_regime_label,
+        regime_unavailable=regime_kept_why,
         event_tags=today_tags,
         claims_fired=claims_fired,
         volume_vs_20d_avg=volume_vs_20d_avg,
@@ -1568,11 +1776,15 @@ def run_daily_review(
         "regime_vix":               regime_snapshot.vix_value,
         "regime_fii_proxy_pct":     regime_snapshot.fii_proxy_5d_pct,
         "regime_sector_rsi":        regime_snapshot.sector_rsi,
+        "regime_dark_inputs":       regime_snapshot.dark_inputs,
+        "regime_unavailable":       regime_snapshot.unavailable,
         "regime_effective_weights": regime_effective_weights,
         # Living Envelope, Component 2: re-forecast trigger/outcome for this run.
         "reforecast_trigger":       reforecast_trigger,
         "reforecast_fired":         reforecast_envelope is not None,
         "reforecast_count":         reforecast_envelope.reforecast_count if reforecast_envelope else None,
+        # SA-003 record mode: inputs the gate would have stopped this review on.
+        "data_gate":                gate_rows,
     }
 
     logger.info(

@@ -1,0 +1,85 @@
+# SA-005: the repository's test baseline on Linux / Python 3.11 (the production
+# image's interpreter). No job uses a secret; the checkout token is read-only
+# and is not persisted. Tests run without .env, without the production volume
+# and with outbound network blocked by tests/conftest.py.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-tests:
+    name: Python tests (Linux, 3.11)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      PYTHON_DOTENV_DISABLED: "1"
+      PYTHONUTF8: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-test.txt
+      # sentence-transformers pulls torch; the CPU wheel keeps the CUDA
+      # libraries (several GB) out of a test run that never uses a GPU.
+      - name: Install CPU torch
+        run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Install runtime and test dependencies
+        run: python -m pip install -r requirements.txt -r requirements-test.txt
+      - name: Record the installed set
+        run: python -m pip freeze --all | sort
+      - name: Run the suite
+        run: python -m pytest -q -rfEs -p no:cacheprovider tests
+
+  guards:
+    name: Broad-except and KT document guards
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0   # check_kt_docs verifies the KT header revision with git
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.11"
+      - name: No new unlogged broad exception swallowing
+        run: python scripts/ci/check_broad_except.py
+      - name: Install documentation tools
+        run: python -m pip install -r scripts/docs/requirements.txt
+      - name: KT links, config values and PDF freshness
+        run: python scripts/docs/check_kt_docs.py
+
+  browser:
+    name: Browser security suite (Chromium)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Chat Markdown sanitizer in a real browser (SA-001)
+        run: npm run test:frontend

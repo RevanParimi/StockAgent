@@ -140,10 +140,17 @@ class ContextBuilder:
             parts.append(nse_ctx)
         return "\n\n".join(parts)
 
+    def _benchmark_sector(self) -> str:
+        """SA-010: the sector whose benchmark index this call's technicals use.
+        An empty sector is the automobile agents' (they declare none; see
+        `build`'s routing), so it stays automobile. Every other agent names
+        its own, and an unregistered one gets the generic market benchmark."""
+        return getattr(self, "_sector", "") or "automobile"
+
     def _build_pattern_analysis(self, query: StockQuery) -> str:
         from core.intelligence.algorithms.indicators.fetcher import get_technical_context
 
-        tech = get_technical_context(query.ticker)
+        tech = get_technical_context(query.ticker, sector=self._benchmark_sector())
         return (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n"
@@ -824,7 +831,7 @@ class ContextBuilder:
     def _build_technical(self, query: StockQuery) -> str:
         from core.intelligence.algorithms.indicators.fetcher import get_technical_context
 
-        tech = get_technical_context(query.ticker)
+        tech = get_technical_context(query.ticker, sector=self._benchmark_sector())
         return (
             f"Stock: {query.ticker} | Company: {query.company_name} | "
             f"Date: {query.analysis_date}\n\n{tech}"

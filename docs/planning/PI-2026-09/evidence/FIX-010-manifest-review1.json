@@ -1,0 +1,109 @@
+{
+  "story": "FIX-010",
+  "phase": "implementation (2026-10-15), in the same conversation as PR-001's re-review, at the owner's word",
+  "baseline": "4c85eec plus the accepted, uncommitted PR-001 (manifest 1c7ea945) and FIX-009 (11c2c620) work; FIX-010 layers on PR-001's ui_data.py, portfolio.jsx, data.jsx, index.html, its two test files and five docs",
+  "excluded": [
+    "docs/planning/PI-2026-09/STATE.json",
+    "docs/planning/PI-2026-09/HANDOFF.md",
+    "docs/planning/PI-2026-09/README.md",
+    "docs/planning/PI-2026-09/stories/FIX-010.md",
+    "docs/planning/PI-2026-09/stories/SA-031.md",
+    "docs/planning/PI-2026-09/evidence/*",
+    "docs/README.md (the owner's probe line)",
+    "PR-001's and FIX-009's own files"
+  ],
+  "note": "Diff base: analysis_data/fix010/base (PR-001's accepted bytes or HEAD, SHA-256 checked) and HEAD for analytics.py; new files against /dev/null; analysis_data/fix010/manifest_and_digest.py.",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "fd47f4d56f1fbeba6f8a0cee7627813673f17cb6",
+      "sha256": "cab95987f86472bcf4c4466497ebc24c5ecb5c5d1b8d3f3f629d3e7208bdb3a4"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "80dff5df0d648c26a2eeaa0e0e1df0fadc3acb67",
+      "sha256": "0679d296e90ba1bba0e69716c8adb2dc1e440c34b42ad60d8ec3821b227e214c"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "2fc590e5f344a820b2be30e0025b88e1e7ff4bc5",
+      "sha256": "353fad4429699c1338b940987bfdd2d092d429ceb8dffdc26233a8bc62428798"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "35d5d9fed075800180a1563332da9acf27927b7b",
+      "sha256": "31bb7a99bceddd93baaf9d9c4a9a00de26c9e365c2683a25c6fa0a2796fca212"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "755e739eb3cd1ab0f190287ed88023ab49616e57",
+      "sha256": "0ced16a2b3f013c35ed4f2823e46540f72f2c295b087438afde1c0254332a10d"
+    },
+    {
+      "path": "scripts/backfill_score_history.py",
+      "git_blob": "b9a65d08ad5577cd55f1c1bd964c5e7e986ce7bb",
+      "sha256": "1daa96dd62642fa2a816e29149beef491844e4810e8847ac3e2193a04d8c44d5"
+    },
+    {
+      "path": "services/api/routes/analytics.py",
+      "git_blob": "64a84afd5a60a320489058aaaefbd78e4c0c00f9",
+      "sha256": "16ecce751e83ccbbae7707117de2f99424796c3ec970036be58ee140541b2029"
+    },
+    {
+      "path": "services/api/routes/ui_data.py",
+      "git_blob": "9c229355255c501e51102938420154f7028929e8",
+      "sha256": "f4f093a4a3a595c9bf4fe8aec591d616937e8f288ad655a28b4af0b5aa60520b"
+    },
+    {
+      "path": "src/backend/shared/pipeline/base_orchestrator.py",
+      "git_blob": "c1f823ef51483d4c2d69e6833671684f9315ca0f",
+      "sha256": "72663de28d0365c2f5dbd7d70d76c1641e53913bdd9aff207ed6a7166bf4326f"
+    },
+    {
+      "path": "src/frontend/prototypes/UI_SPEC.md",
+      "git_blob": "cf08e6dc4b50e33249fe3ea0772d90830cf91afd",
+      "sha256": "1bc99d21274e3128eb1c3436580557f72dbf90aa2824caf59c6ac4aa3ea59a93"
+    },
+    {
+      "path": "src/frontend/prototypes/data.jsx",
+      "git_blob": "025e498e6562dd848d9d3d80eabb65398d3b22fa",
+      "sha256": "98d030c6f53666f911c41992cd62a3043e081fe30b668d558baf2a36412d9969"
+    },
+    {
+      "path": "src/frontend/prototypes/index.html",
+      "git_blob": "781e1d3845ee97cf65d2aec39d31015f0720a7e9",
+      "sha256": "cee8e18a12f321a2142b4a1fa3ff86df8ad6af7ceb3e3cd7e5a619cc11a21f41"
+    },
+    {
+      "path": "src/frontend/prototypes/portfolio.jsx",
+      "git_blob": "298af6b35907c41415c89c216cd7b37892609644",
+      "sha256": "f02f9f5514929e71322817ed0919767fc7cd347d18954baf05da3adb8553dfa3"
+    },
+    {
+      "path": "tests/frontend/no_invented_figures.test.mjs",
+      "git_blob": "d3c77aa59a822f9c0bfae1978ff3f9b918073902",
+      "sha256": "853afe267e2f3a724dd58005de7b1584ef0b7fb64baa224e39e568c49783d0f5"
+    },
+    {
+      "path": "tests/unit/api/test_chat_brief_user_scope_fix005.py",
+      "git_blob": "75f2ed84c8a2ce01c0c6d0da5facbc3774d1034c",
+      "sha256": "3f89d72f683c2842319613e131cabb2a2d953ca3a0a5ae479a9c5990ab6461a4"
+    },
+    {
+      "path": "tests/unit/test_chat_session_memory.py",
+      "git_blob": "3bbed7f14a1352a3875e299e3ee6739a1c94cff2",
+      "sha256": "e83acd0fecf85c9c66c1a75402344b78e948efaf56c2e72744df15a432db2f48"
+    },
+    {
+      "path": "tests/unit/test_score_history_fix010.py",
+      "git_blob": "3e333c73e521dd5840a2996f2c6544e3861938c9",
+      "sha256": "24e6b917b822a3f441d5e884958501a1be24108fe794cdbe805916873d3819c6"
+    },
+    {
+      "path": "tests/unit/test_ui_no_invented_figures_pr001.py",
+      "git_blob": "d2460954a3bdebcd898917cc3dc453d298cc5036",
+      "sha256": "7658a406da10570e021d02e809c01cf6140f8958dbaf494a766b4fa651e02e90"
+    }
+  ]
+}

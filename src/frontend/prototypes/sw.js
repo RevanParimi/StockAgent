@@ -10,13 +10,15 @@
 // cached shell must refresh or /ws/stream is rejected until revalidation.
 // v8 (SA-001): chat Markdown is sanitized by chat-markdown.js; drop the cached
 // pre-fix sphere.jsx and the unpinned marked@12 CDN entry.
-const VERSION = 'v8';
+// v9 (PR-001): data.jsx no longer carries sample market data (demo-fixtures.js
+// does, for ?demo=1 only); drop the cached screens that still show it.
+const VERSION = 'v9';
 const SHELL_CACHE = `sa-shell-${VERSION}`;
 const RUNTIME_CACHE = `sa-runtime-${VERSION}`;
 
 const SHELL = [
   '/', '/index.html', '/styles.css', '/manifest.json',
-  '/chat-markdown.js',
+  '/chat-markdown.js', '/demo-fixtures.js',
   '/data.jsx', '/icons.jsx', '/sphere.jsx', '/auth.jsx', '/home.jsx',
   '/agents-page.jsx', '/portfolio.jsx', '/learn.jsx', '/tweaks-panel.jsx',
   '/prompt-lab.jsx', '/analytics.jsx', '/logs.jsx', '/rl-data.jsx', '/rl-monitor.jsx',

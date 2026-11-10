@@ -29,6 +29,7 @@ import asyncio
 import json
 import logging
 import re
+import sqlite3
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -117,6 +118,14 @@ class BaseSectorOrchestrator(ABC):
         # once the aggregator has one. Reset per run — an orchestrator instance
         # is long-lived, and a stale record on the next report would be a lie.
         self._last_data_health: dict | None = None
+        # SA-003: what the decision gate is computed from — the unified run's
+        # section statuses and dimension counts. None means the run built no
+        # bundle (legacy worker pool), which the gate treats as unverified.
+        self._last_gate_inputs: dict | None = None
+        # FIX-026: the deep dive's sector question for the run in flight, and
+        # the analysis's answer to it (unvalidated). Reset per run.
+        self._sector_question: str | None = None
+        self._last_sector_answer = None
         self._worker_pool_graph = _build_worker_pool_graph(self._sub_agents, self.SECTOR_NAME)
 
     # ------------------------------------------------------------------
@@ -138,6 +147,9 @@ class BaseSectorOrchestrator(ABC):
             started_at = datetime.now(timezone.utc)
             api_snapshot = snapshot_usage()
             self._last_data_health = None
+            self._last_gate_inputs = None
+            self._sector_question = None
+            self._last_sector_answer = None
             logger.info("[%s] Async run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
 
             query = await asyncio.to_thread(self._resolve_ticker, user_input, run_id)
@@ -175,6 +187,8 @@ class BaseSectorOrchestrator(ABC):
             # B2: the run's health record travels with its verdict. None on the
             # legacy worker-pool path, which builds no bundle to describe.
             report.data_health = self._last_data_health
+            # SA-003: the decision gate, before anything logs or returns the verdict.
+            self._apply_decision_gate(report, query.ticker, run_id)
 
             pipeline_run.report = report
             pipeline_run.status = "completed"
@@ -193,6 +207,7 @@ class BaseSectorOrchestrator(ABC):
                 agent_scores={n: o.overall_score for n, o in agent_outputs.items()},
                 errors=errors,
             )
+            self._record_score_history(report)
             log_run_api_usage(run_id, query.ticker, api_snapshot)
             log_analysis(
                 report=report, run_id=run_id,
@@ -210,8 +225,14 @@ class BaseSectorOrchestrator(ABC):
         self,
         user_input: str,
         progress_callback: Callable[[str, float], None] | None = None,
+        *,
+        sector_question: str | None = None,
     ) -> FinalReport:
-        """Sync end-to-end analysis. Used by CLI and scheduler."""
+        """Sync end-to-end analysis. Used by CLI and scheduler.
+
+        `sector_question` (the discovery deep dive's, FIX-026) rides in the
+        unified analyst's one call, no extra call; the answer comes back as
+        `report.sector_answer`, unvalidated."""
         run_id = str(uuid.uuid4())[:8]
         # E1: everything this run logs at WARNING+ is stamped with the run id,
         # so a degradation can be traced back to the verdict it damaged. The
@@ -221,6 +242,9 @@ class BaseSectorOrchestrator(ABC):
             started_at = datetime.now(timezone.utc)
             api_snapshot = snapshot_usage()
             self._last_data_health = None
+            self._last_gate_inputs = None
+            self._sector_question = sector_question
+            self._last_sector_answer = None
             logger.info("[%s] Run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
 
             query = self._resolve_ticker(user_input, run_id=run_id)
@@ -250,6 +274,11 @@ class BaseSectorOrchestrator(ABC):
             # B2: the run's health record travels with its verdict. None on the
             # legacy worker-pool path, which builds no bundle to describe.
             report.data_health = self._last_data_health
+            # FIX-026: the sector answer, None unless a question was asked and
+            # the unified call answered it.
+            report.sector_answer = self._last_sector_answer
+            # SA-003: the decision gate, before anything logs or returns the verdict.
+            self._apply_decision_gate(report, query.ticker, run_id)
 
             pipeline_run.report = report
             pipeline_run.status = "completed"
@@ -268,6 +297,7 @@ class BaseSectorOrchestrator(ABC):
                 agent_scores={n: o.overall_score for n, o in agent_outputs.items()},
                 errors=errors,
             )
+            self._record_score_history(report)
             log_run_api_usage(run_id, query.ticker, api_snapshot)
             log_analysis(
                 report=report, run_id=run_id,
@@ -280,6 +310,24 @@ class BaseSectorOrchestrator(ABC):
                 report.verdict, report.final_score,
             )
             return report
+
+    def _record_score_history(self, report: FinalReport) -> None:
+        """One score-history row per completed analysis, with the verdict the
+        run returns (after the decision gate).
+
+        Member screens read it: dated scores on Home and the watchlist, the
+        verdict changes on Portfolio, and the chat's current verdicts. Every
+        entry point (the 16:30 review, the monthly forecast, discovery deep
+        dives, /analyse, the stream and the chat) ends here, so this is the one
+        writer. A failed write is a warning; it never fails the analysis."""
+        from services.data.stores.score_store import ScoreStore
+        try:
+            ScoreStore().save(report)
+        # The store's own failures, and a report that will not serialize
+        # (pydantic's serialization error is a ValueError).
+        except (sqlite3.Error, OSError, ValueError, TypeError) as exc:
+            logger.warning("[%s] score history not written for %s: %s",
+                           self.SECTOR_NAME, report.ticker, exc, exc_info=True)
 
     # ------------------------------------------------------------------
     # RL learned weights
@@ -364,10 +412,13 @@ class BaseSectorOrchestrator(ABC):
 
     def _managed_tickers(self) -> set[str]:
         """
-        Return this sector's managed ticker symbols (uppercased), cached on
+        Return this sector's static TICKERS setting (uppercased), cached on
         the instance. Lazy-imports `backend.sectors.{SECTOR_NAME}.config.settings`
         and reads its TICKERS list. Any failure (missing module, missing
         attribute, bad shape) yields an empty set — never raises.
+
+        Most production-managed tickers are not in it; _tracked_tickers holds
+        those (FIX-002).
         """
         cached = getattr(self, "_managed_tickers_cache", None)
         if cached is not None:
@@ -386,14 +437,36 @@ class BaseSectorOrchestrator(ABC):
         self._managed_tickers_cache = tickers
         return tickers
 
+    def _tracked_tickers(self) -> set[str]:
+        """
+        FIX-002: every ticker the app already tracks under its own code, in
+        any sector — each managed-list entry (data/managed_tickers.json,
+        enabled or not) and each instrument-registry record. Read on every
+        call, so a ticker the owner adds is known at once; both reads are
+        read-only and never raise.
+
+        Before this, a managed ticker missing from its sector's TICKERS went
+        to the LLM: on 1 Oct the monthly forecast for TATAELXSI analysed
+        TATAMOTORS. A retired or unresolved ticker resolves to itself too;
+        SA-008's identity gate decides whether it may act.
+        """
+        from backend.shared.data.instruments import recorded_tickers
+        from services.api.log_buffer import managed_symbols
+        return managed_symbols() | recorded_tickers()
+
     def _yf_info(self, ticker: str) -> dict:
         """
         Fetch yfinance `.info` for a ticker, applying the same symbol-override
         and exchange-suffix logic used everywhere else. Any failure -> {}.
+
+        Only the instrument registry's symbol or the naive listing: never the
+        learned symbol cache (a fuzzy match must not name the company).
         """
         import yfinance as yf
+        from backend.shared.data.instruments import registry_identity
         suffix = settings.YFINANCE_SUFFIX
-        yf_ticker = settings.YF_SYMBOL_OVERRIDES.get(ticker.upper()) or (
+        registered = registry_identity(ticker, date.today())
+        yf_ticker = registered.symbol if registered is not None else (
             ticker if ticker.endswith(suffix) else f"{ticker}{suffix}"
         )
         return yf.Ticker(yf_ticker).info or {}
@@ -425,7 +498,7 @@ class BaseSectorOrchestrator(ABC):
         self._last_resolve_usage = (0, 0)  # AUD-087: reset per run
 
         candidate = user_input.strip().upper()
-        if candidate in self._managed_tickers():
+        if candidate in self._managed_tickers() or candidate in self._tracked_tickers():
             return StockQuery(
                 ticker=candidate,
                 company_name=self._company_name_for(candidate),
@@ -546,7 +619,13 @@ class BaseSectorOrchestrator(ABC):
             self.SECTOR_NAME, bundle.api_calls_made, bundle.has_real_data,
         )
         analyst = UnifiedAnalyst()
-        outputs = analyst.run(query, bundle, self.SECTOR_NAME, run_id=run_id)
+        question = getattr(self, "_sector_question", None)
+        if question:
+            outputs = analyst.run(query, bundle, self.SECTOR_NAME, run_id=run_id,
+                                  sector_question=question)
+            self._last_sector_answer = analyst._last_sector_answer
+        else:
+            outputs = analyst.run(query, bundle, self.SECTOR_NAME, run_id=run_id)
         self._record_data_health(query, bundle, outputs, run_id)
         if outputs:
             # AUD-087: one LLM call produced all outputs — stamp totals on one
@@ -584,6 +663,11 @@ class BaseSectorOrchestrator(ABC):
         numbers are meant to agree.
 
         Never raises, and never changes the run's outcome.
+
+        SA-003: the same section statuses and dimension counts are kept as the
+        decision gate's inputs before the row is written, so the gate does not
+        depend on the row being recorded (the observability flag is only the
+        row's rollback line).
         """
         self._last_data_health = None
         try:
@@ -596,6 +680,12 @@ class BaseSectorOrchestrator(ABC):
             else:
                 # The analyst returned nothing: every dimension is missing.
                 missing = list(expected)
+            self._last_gate_inputs = {
+                "section_status": dict(getattr(bundle, "section_status", None) or {}),
+                "section_provenance": getattr(bundle, "section_provenance", None),
+                "dimensions_expected": expected,
+                "dimensions_missing": missing,
+            }
             self._last_data_health = record_data_health(
                 run_id=run_id,
                 ticker=query.ticker,
@@ -609,6 +699,50 @@ class BaseSectorOrchestrator(ABC):
         except Exception as exc:
             logger.warning("[%s] data_health record failed (non-fatal): %s",
                            self.SECTOR_NAME, exc, exc_info=True)
+
+    def _apply_decision_gate(self, report: FinalReport, ticker: str, run_id: str) -> None:
+        """
+        SA-003: attach the decision gate to the report. In enforce mode an
+        abstaining gate withholds the verdict (INSUFFICIENT DATA). Every
+        abstention is recorded with its reasons and this run id, in both modes.
+
+        Never raises. If the gate itself cannot be computed, the run abstains:
+        an analysis nobody could check is not evidence.
+
+        SA-008: the ticker's identity for today joins the gate. An unresolved
+        identity, or price history fetched for another symbol, abstains.
+        """
+        from backend.shared.pipeline import decision_gate as dg
+        from backend.shared.data.fetchers.symbol_resolver import resolve_identity
+        try:
+            inputs = self._last_gate_inputs
+            if inputs is None:
+                gate = dg.no_provenance_gate(
+                    run_id, "no structured provenance: this run's outputs came from "
+                            "the legacy worker pool, which builds no data bundle")
+            else:
+                gate = dg.assess_analysis(run_id=run_id, **inputs)
+            provenance = (inputs or {}).get("section_provenance") or {}
+            price_symbol = (provenance.get("technicals") or {}).get("symbol")
+            dg.apply_identity(gate, resolve_identity(ticker, date.today()), price_symbol)
+        except Exception as exc:
+            logger.error("[%s] decision gate failed for %s — abstaining: %s",
+                         self.SECTOR_NAME, ticker, exc, exc_info=True)
+            gate = dg.no_provenance_gate(
+                run_id, f"decision gate evaluation failed: {type(exc).__name__}")
+        try:
+            dg.apply_gate(report, gate)
+            if gate.status == dg.ABSTAIN:
+                dg.record_gate_decision(
+                    consumer="analysis", ticker=ticker,
+                    skipped=f"actionable verdict {gate.withheld_verdict or report.verdict}",
+                    status=gate.status, reasons=gate.reasons, run_id=run_id,
+                    enforced=gate.enforced, on_date=date.today().isoformat(),
+                    extra={"sector": self.SECTOR_NAME},
+                )
+        except Exception as exc:
+            logger.error("[%s] decision gate could not be applied for %s: %s",
+                         self.SECTOR_NAME, ticker, exc, exc_info=True)
 
     def _run_agents(
         self,
@@ -635,6 +769,9 @@ class BaseSectorOrchestrator(ABC):
             # `dimensions_scored: 0` beside a full set of agent outputs would
             # be a lie about the run that actually produced them.
             self._last_data_health = None
+            # SA-003: likewise the gate inputs. The legacy pool builds no
+            # bundle, so the gate has no provenance for its outputs.
+            self._last_gate_inputs = None
             # Wave I: fallback costs ~6-8x the Serper credits of the unified
             # path — record it so /scheduler/status can surface the rate.
             try:

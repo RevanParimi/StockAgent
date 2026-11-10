@@ -16,12 +16,13 @@ import json
 import logging
 import re
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from filelock import FileLock
 
 from core.config import settings
+from core.utils.atomic_io import replace_with_retry
 from backend.shared.schemas.portfolio import (
     AdviceRecord,
     Holding,
@@ -113,7 +114,7 @@ class PortfolioStore:
         tmp = path.with_suffix(".tmp")
         try:
             tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-            tmp.replace(path)
+            replace_with_retry(tmp, path)
         except OSError as exc:
             logger.error("[PortfolioStore] Write failed for %s: %s", path.name, exc)
             try:
@@ -147,10 +148,10 @@ class PortfolioStore:
     def _alert_quarantine(self, quarantine: Path) -> None:
         """One critical push alert per quarantine event (AUD-050/039). Never raises."""
         try:
-            # AUD-015: ops-severity event — broadcast to the whole alert
-            # audience (the affected user is named in the message).
-            from core.delivery.alerts import AlertEvent, emit_alerts_broadcast
-            emit_alerts_broadcast([AlertEvent(
+            # FIX-008: an operator notice, so the owner only — the message
+            # names the affected user, which no member may read.
+            from core.delivery.alerts import AlertEvent, emit_owner_alerts
+            emit_owner_alerts([AlertEvent(
                 date=datetime.now(timezone.utc).date().isoformat(),
                 kind="portfolio_corrupt", symbol="",
                 message=(f"portfolio.json for user '{self.user_id}' was corrupt and "
@@ -267,6 +268,50 @@ class PortfolioStore:
             except Exception as exc:
                 logger.warning("[PortfolioStore] skipping bad switch-eval line: %s", exc)
         return out
+
+    def _exit_shadow_path(self) -> Path:
+        return self._dir / "exit_shadow.jsonl"
+
+    def append_exit_shadow_once(self, rows: list) -> int:
+        """PR-009: append the rows whose (date, symbol) is not stored yet; a
+        stored row wins, so a re-run of the pipeline adds nothing. The check
+        and the append share one lock. Returns how many were appended."""
+        if not rows:
+            return 0
+        with FileLock(str(self._dir / "exit_shadow.lock"), timeout=30):
+            seen = {(r.get("date"), r.get("symbol")) for r in self.load_exit_shadow()}
+            new = []
+            for rec in rows:
+                key = (rec.date, rec.symbol)
+                if key in seen:
+                    continue
+                seen.add(key)
+                new.append(rec)
+            if new:
+                with open(self._exit_shadow_path(), "a", encoding="utf-8") as fh:
+                    for rec in new:
+                        fh.write(json.dumps(rec.model_dump(), ensure_ascii=False) + "\n")
+            return len(new)
+
+    def load_exit_shadow(self) -> list[dict]:
+        """Every stored exit-shadow row, file order. A corrupt line is skipped
+        and logged."""
+        path = self._exit_shadow_path()
+        if not path.exists():
+            return []
+        rows: list[dict] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError as exc:
+                logger.warning("[PortfolioStore] skipping bad exit-shadow line: %s", exc)
+                continue
+            if isinstance(row, dict):
+                rows.append(row)
+        return rows
 
     def append_advice(self, rec: AdviceRecord) -> None:
         with open(self._ledger_path(), "a", encoding="utf-8") as fh:
@@ -398,6 +443,22 @@ class PortfolioStore:
     def load_latest_brief(self) -> dict | None:
         return self._load_latest_dated("briefs")
 
+    def load_recent_briefs(self, before: date, n: int) -> list[dict]:
+        """The last `n` briefs dated strictly before `before`, oldest first. A
+        rerun on the same day therefore sees the same history; an unreadable
+        file is skipped with a warning."""
+        d = self._dir / "briefs"
+        if n <= 0 or not d.exists():
+            return []
+        cutoff = f"{before.isoformat()}.json"
+        out: list[dict] = []
+        for f in [f for f in sorted(d.glob("*.json")) if f.name < cutoff][-n:]:
+            try:
+                out.append(json.loads(f.read_text(encoding="utf-8")))
+            except Exception as exc:
+                logger.warning("[PortfolioStore] skipping unreadable brief %s: %s", f, exc)
+        return out
+
     def save_weekly(self, review: dict) -> Path:
         path = self._dated_dir("weekly") / f"{review['date']}.json"
         self._write_json(path, review)
@@ -405,6 +466,48 @@ class PortfolioStore:
 
     def load_latest_weekly(self) -> dict | None:
         return self._load_latest_dated("weekly")
+
+    # ------------------------------------------------------------------
+    # Weekly results scorecard (append-only JSONL, one row per ISO week)
+    # ------------------------------------------------------------------
+    @property
+    def base_dir(self) -> str:
+        """The directory holding every user's folder (this one's parent)."""
+        return str(self._dir.parent)
+
+    def _scorecard_path(self) -> Path:
+        return self._dir / "weekly_scorecard.jsonl"
+
+    def load_scorecards(self) -> list[dict]:
+        """Every stored row, file order. A corrupt line is skipped and logged."""
+        path = self._scorecard_path()
+        if not path.exists():
+            return []
+        rows: list[dict] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except Exception as exc:
+                logger.warning("[PortfolioStore] skipping bad scorecard line: %s", exc)
+        return rows
+
+    def load_scorecard(self, week: str) -> dict | None:
+        return next((r for r in self.load_scorecards() if r.get("week") == week), None)
+
+    def append_scorecard_once(self, row: dict) -> tuple[dict, bool]:
+        """Append `row` unless its week is already stored; the stored row wins.
+        Returns (the stored row, whether this call appended). The check and the
+        append share one lock, so two concurrent runs cannot both append."""
+        with FileLock(str(self._dir / "weekly_scorecard.lock"), timeout=30):
+            existing = self.load_scorecard(row["week"])
+            if existing is not None:
+                return existing, False
+            with open(self._scorecard_path(), "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+            return row, True
 
 
 # ---------------------------------------------------------------------------
@@ -419,9 +522,15 @@ def import_csv(
     base_dir: str | None = None,
     price_lookup=None,
 ) -> dict:
+    from core.portfolio.autopilot import make_txn_id
+    from core.portfolio.costs import trade_costs
+
     store = PortfolioStore(user_id=user_id, base_dir=base_dir)
-    imported, errors, total_value = 0, [], 0.0
+    imported, errors = 0, []
+    rows: list[tuple[int, Holding]] = []
     reader = csv.DictReader(io.StringIO(text))
+    # Parse and price every row first: the price lookup is a network call,
+    # and the user's lock below must stay milliseconds wide (AUD-001/007).
     for i, row in enumerate(reader, start=2):   # row 1 = header
         try:
             symbol = (row["symbol"] or "").strip().upper()
@@ -435,23 +544,52 @@ def import_csv(
                 price = float(price_lookup(symbol, buy_date))
             else:
                 raise ValueError("avg_buy_price blank and no price_lookup available")
-            store.add_holding(Holding(
+            rows.append((i, Holding(
                 symbol=symbol, sector=sector, qty=qty, avg_buy_price=price,
                 adj_avg_price=price, adj_qty=qty, buy_date=buy_date,
-            ))
-            imported += 1
-            total_value += qty * price
+            )))
         except Exception as exc:
             errors.append({"row": i, "error": str(exc)})
-    # Fresh capital in, matching POST /holdings (AUD-007 parity): imported
-    # positions raise capital_in when cash accounting is on, so total_pnl
-    # (= equity − capital_in) isn't inflated by the import.
-    if imported and total_value > 0:
-        with store.locked():
+    # One critical section for the holdings, their ledger rows and the fresh
+    # capital, as for POST /holdings (AUD-007 parity): with cash accounting on,
+    # each imported position raises capital_in by its cost (so total_pnl =
+    # equity − capital_in isn't inflated) and what buying it cost (SA-048), and
+    # gets the same "manual" BUY row, with those costs, and no cash moved.
+    # The ledger then nets every held quantity
+    # (reconcile), and the Nifty comparison values the position on the day
+    # it arrived (results.capital_flows), not at its cost.
+    with store.locked():
+        cash_on = store.load().cash_deployable is not None
+        txns: list[TransactionRecord] = []
+        fresh_capital = 0.0
+        for i, h in rows:
+            try:
+                p = store.add_holding(h)
+            except Exception as exc:
+                errors.append({"row": i, "error": str(exc)})
+                continue
+            imported += 1
+            value = round(h.qty * h.avg_buy_price, 2)
+            fresh_capital += value
+            if cash_on:
+                charges = trade_costs("BUY", value)
+                fresh_capital += charges.total
+                ts = datetime.now(timezone.utc).isoformat()
+                txns.append(TransactionRecord(
+                    txn_id=make_txn_id(store.user_id, h.buy_date, h.symbol, "BUY",
+                                       f"csv-import|{ts}|{i}|{h.qty:g}|{h.avg_buy_price:g}"),
+                    date=h.buy_date, ts=ts, user_id=store.user_id, symbol=h.symbol,
+                    side="BUY", qty=h.qty, price=h.avg_buy_price, value=value,
+                    cash_before=p.cash_deployable, cash_after=p.cash_deployable,
+                    holding_qty_after=next((x.adj_qty for x in p.holdings
+                                            if x.symbol == h.symbol), h.qty),
+                    source="manual", note="csv import (fresh capital)", costs=charges))
+        if cash_on and imported and fresh_capital > 0:
             p = store.load()
-            if p.cash_deployable is not None:
-                p.capital_in = round(p.capital_in + total_value, 2)
-                store.save(p)
+            p.capital_in = round(p.capital_in + fresh_capital, 2)
+            for txn in txns:
+                store.append_transaction(txn)
+            store.save(p)
     return {"imported": imported, "errors": errors}
 
 

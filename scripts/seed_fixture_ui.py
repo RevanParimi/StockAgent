@@ -62,8 +62,54 @@ _WEEKLY = {
                        "entry_low": 9100.0, "entry_high": 9600.0,
                        "invalidation_level": 8650.0}},
     ],
-    "scoreboard": {"checked": 12, "correct": 8},
 }
+
+
+def _weekly_scorecard() -> dict:
+    """The weekly's results row, built by the real builder from a small
+    fixture ledger, so the screen shows the wording production sends."""
+    from datetime import date
+    from backend.shared.schemas.audit import AuditOutcome
+    from backend.shared.schemas.portfolio import TransactionRecord
+    from core.portfolio.results import build_row, covered_week
+
+    def txn(d, sym, side, qty, price, after, **kw):
+        return TransactionRecord(
+            txn_id=f"{d}{sym}{side}", date=d, ts=f"{d}T10:00:00+00:00",
+            user_id="primary", symbol=sym, side=side, qty=qty, price=price,
+            value=round(qty * price, 2), cash_before=0.0, cash_after=0.0,
+            holding_qty_after=after, **kw)
+
+    txns = [
+        txn("2026-07-01", "KPITTECH", "BUY", 50, 1250.0, 50, source="seed"),
+        txn("2026-07-01", "TATAMOTORS", "BUY", 90, 703.2, 90, source="seed"),
+        txn("2026-07-10", "KPITTECH", "SELL", 50, 1300.0, 0, realized_pnl=2500.0,
+            cost_basis=1250.0, verdict="EXIT", triggers=["thesis_break"],
+            advice_ref="2026-07-10|KPITTECH|a1"),
+        txn("2026-07-24", "TATAMOTORS", "SELL", 90, 642.0, 0, realized_pnl=-5508.0,
+            cost_basis=703.2, verdict="SWITCH",
+            triggers=["stop_breach", "thesis_break", "switch_candidate_available"],
+            advice_ref="2026-07-24|TATAMOTORS|b2"),
+    ]
+    grade = AuditOutcome(
+        ref="2026-07-10|KPITTECH|a1", lane="advice", user_id="primary",
+        symbol="KPITTECH", verdict="EXIT", issued_on="2026-07-10", horizon_td=10,
+        graded_on="2026-07-24", entry_close=1300.0, exit_close=1369.0,
+        return_pct=5.3, bench_entry=25200.0, bench_exit=25100.0, bench_pct=-0.4,
+        excess_pct=5.7, correct=False, graded_at="2026-07-24T18:00:00+00:00")
+    points = [
+        {"date": "2026-07-01", "market_value": 125700.0, "cash": 874300.0,
+         "total_equity": 1000000.0, "capital_in": 1000000.0},
+        {"date": "2026-07-17", "market_value": 61200.0, "cash": 939500.0,
+         "total_equity": 1000700.0, "capital_in": 1000000.0},
+        {"date": "2026-07-24", "market_value": 0.0, "cash": 997280.0,
+         "total_equity": 997280.0, "capital_in": 1000000.0},
+    ]
+    closes = {date(2026, 7, 1): 25500.0, date(2026, 7, 17): 25300.0,
+              date(2026, 7, 24): 25100.0}
+    return build_row(week=covered_week(date.fromisoformat(_WEEKLY["date"])),
+                     txns=txns, points=points, audit_rows=[grade],
+                     close_on=closes.__getitem__, holdings=2)
 
 
 # Alerts tab fixtures (2026-08-20). Deliberately mixed: two rows carrying the
@@ -122,7 +168,7 @@ def main() -> None:
     store = PortfolioStore(user_id="primary", base_dir=args.data_dir)
     store.save_brief(json.loads(_FIXTURE.read_text(encoding="utf-8")))
     store.save_digest(_DIGEST)
-    store.save_weekly(_WEEKLY)
+    store.save_weekly({**_WEEKLY, "scorecard": _weekly_scorecard()})
     print(f"[seed] brief + digest + weekly written under {args.data_dir}")
 
     if args.with_alerts:

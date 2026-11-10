@@ -96,6 +96,9 @@ class ReforecastEvent(BaseModel):
     reason: str             # "external_shock" | "thesis_break" | "regime_flip" | "preopen_shock" | "manual_verification" | ...
     trigger: str = ""       # free-text detail (e.g. which signal fired)
     archived_file: str = ""  # path to the archived superseded envelope, if any
+    # FIX-027: when it ran, ISO with the IST offset. "" = stored before the
+    # field existed; such an event counts as made before any decision.
+    at: str = ""
 
 
 class PredictionEnvelope(BaseModel):

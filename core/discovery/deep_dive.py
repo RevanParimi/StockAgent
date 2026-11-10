@@ -12,6 +12,12 @@ run, a failed call included. Skipped BEFORE any call: a symbol NSE does not
 list as a company, a managed symbol unless the autopilot sold it (flag "sold",
 FIX-025), and one already on the shelf unless the candidate is a re-dive (flag
 "redive", PR-004).
+
+FIX-026: the same analyst call names the stock's sector key from the
+configured list (core/discovery/sector_naming.py). Yahoo Finance's
+classification (FIX-011's one industry source: it tells an insurer from a
+bank and a defence maker from other capital goods) goes into the question as
+evidence and is stored beside the key; no fixed table maps it to a key.
 """
 from __future__ import annotations
 
@@ -23,6 +29,9 @@ import pandas as pd
 from core.config import settings
 from backend.shared.pipeline import decision_gate as dg
 from backend.shared.schemas.discovery import DeepDiveResult, DiscoveryCandidate
+from core.discovery.sector_naming import (
+    configured_sectors, decide_key, graph_guess, known_key, read_answer, sector_question,
+    unnamed_why)
 from core.discovery.shelf import ShelfStore
 from core.discovery.universe import COMPANY, instrument_kind
 from core.intelligence.rl.workflows.sector_router import NATIVE_SECTORS, get_orchestrator
@@ -32,112 +41,6 @@ from services.data.fetchers.surveillance import market_classification
 from services.data.stores.eod_store import EodStore
 
 logger = logging.getLogger(__name__)
-
-# The one industry source (FIX-011) is Yahoo Finance's classification, the
-# one PR-004's shelf sector cap stores: it answers for nearly every NSE
-# company, and its industries tell an insurer from a bank and a defence maker
-# from other capital goods. NSE's own industry is in its index lists only
-# (750 companies) and is coarser; its per-symbol meta API answers 404.
-# Probed 2026-11-01 over the registry's 202 tickers: Yahoo classified 193,
-# NSE's Nifty Total Market list held 176.
-#
-# Yahoo industry -> our sector key, exact match; then Yahoo sector -> key for
-# the sectors that name one key whatever the industry. Anything else is
-# "generic". The keys follow the registry's curated map, so power utilities
-# are "renewable_energy" and coal is "metals"; every key is a registry sector.
-_YAHOO_INDUSTRY_SECTOR: dict[str, str] = {
-    **dict.fromkeys(("Auto Manufacturers", "Auto Parts", "Auto & Truck Dealerships",
-                     "Recreational Vehicles", "Farm & Heavy Construction Machinery"),
-                    "automobile"),
-    **dict.fromkeys(("Insurance - Life", "Insurance - Diversified",
-                     "Insurance - Property & Casualty", "Insurance - Reinsurance",
-                     "Insurance - Specialty", "Insurance Brokers"), "insurance"),
-    **dict.fromkeys(("Information Technology Services", "Software - Application",
-                     "Software - Infrastructure"), "it_sector"),
-    **dict.fromkeys(("Consumer Electronics", "Electronic Components", "Semiconductors",
-                     "Semiconductor Equipment & Materials", "Computer Hardware",
-                     "Communication Equipment", "Scientific & Technical Instruments",
-                     "Electronics & Computer Distribution",
-                     "Furnishings, Fixtures & Appliances"), "tech"),
-    **dict.fromkeys(("Solar", "Utilities - Renewable", "Utilities - Independent Power Producers",
-                     "Utilities - Regulated Electric", "Utilities - Diversified"),
-                    "renewable_energy"),
-    "Utilities - Regulated Gas": "oilgas",
-    **dict.fromkeys(("Steel", "Aluminum", "Copper", "Other Industrial Metals & Mining", "Gold",
-                     "Silver", "Other Precious Metals & Mining", "Thermal Coal", "Coking Coal"),
-                    "metals"),
-    **dict.fromkeys(("Specialty Chemicals", "Chemicals"), "chemicals"),
-    "Agricultural Inputs": "agrochem",
-    **dict.fromkeys(("Building Materials", "Engineering & Construction",
-                     "Infrastructure Operations"), "infra"),
-    "Residential Construction": "realestate",
-    "Aerospace & Defense": "defence",
-    **dict.fromkeys(("Specialty Industrial Machinery", "Electrical Equipment & Parts",
-                     "Industrial Distribution", "Building Products & Equipment", "Conglomerates",
-                     "Tools & Accessories", "Metal Fabrication",
-                     "Pollution & Treatment Controls"), "capgoods"),
-    **dict.fromkeys(("Integrated Freight & Logistics", "Railroads", "Marine Shipping",
-                     "Airlines", "Airports & Air Services", "Trucking"), "logistics"),
-    "Telecom Services": "telecom",
-    **dict.fromkeys(("Broadcasting", "Entertainment", "Electronic Gaming & Multimedia",
-                     "Publishing", "Advertising Agencies"), "media"),
-    **dict.fromkeys(("Lodging", "Resorts & Casinos", "Restaurants", "Travel Services"),
-                    "hospitality"),
-    **dict.fromkeys(("Apparel Retail", "Apparel Manufacturing", "Department Stores",
-                     "Internet Retail", "Specialty Retail", "Home Improvement Retail",
-                     "Luxury Goods", "Footwear & Accessories", "Discount Stores",
-                     "Grocery Stores"), "retail"),
-    **dict.fromkeys(("Household & Personal Products", "Packaged Foods",
-                     "Beverages - Non-Alcoholic", "Beverages - Brewers",
-                     "Beverages - Wineries & Distilleries", "Tobacco", "Confectioners",
-                     "Farm Products", "Food Distribution"), "fmcg"),
-}
-_YAHOO_SECTOR_SECTOR: dict[str, str] = {
-    "Healthcare": "pharma", "Financial Services": "banking_bfsi",
-    "Real Estate": "realestate", "Energy": "oilgas",
-}
-
-
-def sector_from_classification(classification: dict | None) -> str:
-    """Our sector key for a Yahoo classification ({"sector", "industry"}),
-    "generic" when neither names one. Example: {"sector": "Healthcare",
-    "industry": "Drug Manufacturers - Specialty & Generic"} is "pharma";
-    {"sector": "Industrials", "industry": "Aerospace & Defense"} is "defence";
-    {"sector": "Industrials", "industry": "Staffing & Employment Services"}
-    is "generic"."""
-    classification = classification or {}
-    industry = str(classification.get("industry") or "").strip()
-    sector = str(classification.get("sector") or "").strip()
-    return (_YAHOO_INDUSTRY_SECTOR.get(industry)
-            or _YAHOO_SECTOR_SECTOR.get(sector) or "generic")
-
-
-def infer_sector(symbol: str, classification: dict | None = None) -> str:
-    """Best-effort sector key: the registry's ticker map, else the market
-    classification (`classification` when the caller has it, else Yahoo's,
-    fetched here), else "generic". Never raises.
-
-    A key decides the graph (automobile, banking_bfsi, it_sector and
-    renewable_energy have native graphs; every other key runs the generic
-    graph) and the prediction-store directory. When a stock is bought, its
-    managed record's sector always wins over this key
-    (`candidates.holding_sector`); the deep dive reaches a managed stock only
-    once the autopilot has sold it."""
-    symbol = symbol.strip().upper()
-    try:
-        from backend.sectors.registry import TICKER_SECTOR
-        if symbol in TICKER_SECTOR:
-            return TICKER_SECTOR[symbol]
-    except Exception as exc:
-        logger.debug("[deep_dive] registry lookup failed for %s: %s", symbol, exc)
-
-    try:
-        if classification is None:
-            classification = market_classification(symbol)
-        return sector_from_classification(classification)
-    except Exception as exc:
-        logger.debug("[deep_dive] classification lookup failed for %s: %s", symbol, exc)
-    return "generic"
 
 
 def _atr_pct(sym_win: pd.DataFrame, period: int = 20) -> float:
@@ -192,16 +95,29 @@ def run_deep_dives(
     dive memo remembers it, the shelf refuses a new idea from it under the
     enforced gate (`ShelfStore.apply_deep_dives`) and drops a re-dived idea
     with the reason. A candidate without a close (a re-dive carries 0.0)
-    takes its latest close in the EOD window."""
+    takes its latest close in the EOD window.
+
+    Each call also names the stock's sector key (FIX-026): a stock that has
+    one keeps it (its managed record's, the ticker map's, or its idea's
+    named key) and runs that key's graph; another runs `graph_guess`'s graph
+    and takes the answer, checked against the configured keys. The dive
+    records how (`sector_reading`)."""
     limit = max_n or settings.DISCOVERY_DEEP_DIVE_COUNT
     try:
-        managed = {t["sym"] for t in load_managed_tickers() if t.get("enabled", True)}
+        tickers = [t for t in load_managed_tickers() if isinstance(t, dict)]
     except Exception:
-        managed = set()
+        tickers = []
+    managed = {t["sym"] for t in tickers if t.get("sym") and t.get("enabled", True)}
+    # Every managed record's key, enabled or not, read as the daily review
+    # reads it (default "automobile"), the key its forecasts live under.
+    managed_keys = {str(t.get("sym") or "").strip().upper(): str(t.get("sector", "automobile") or "")
+                    for t in tickers if str(t.get("sym") or "").strip()}
     try:
-        shelved = {i.symbol for i in ShelfStore().load().ideas if i.status == "active"}
+        ideas = {i.symbol: i for i in ShelfStore().load().ideas if i.status == "active"}
     except Exception:
-        shelved = set()
+        ideas = {}
+    shelved = set(ideas)
+    keys = configured_sectors()
     if listing is None:
         listing = load_listing()
     if listing is None:
@@ -238,8 +154,13 @@ def run_deep_dives(
         attempted.add(cand.symbol)
         try:
             classified = market_classification(cand.symbol)
-            sector = infer_sector(cand.symbol, classified)
-            report = get_orchestrator(sector).analyse(cand.symbol)
+            known = known_key(cand.symbol, managed=managed_keys,
+                              idea=ideas.get(cand.symbol), keys=keys)
+            route = known[0] or graph_guess(classified)
+            report = get_orchestrator(route).analyse(
+                cand.symbol, sector_question=sector_question(classified, keys))
+            reading = read_answer(getattr(report, "sector_answer", None), keys, classified)
+            sector, reading = decide_key(reading, known)
             # SA-003: a shelf idea is a future SWITCH destination (a buy), so
             # it must not be minted from an abstained analysis. The shelf
             # applies that; the result is still returned so the memo keeps it.
@@ -251,10 +172,10 @@ def run_deep_dives(
                     enforced=dg.enforcing(), on_date=on.isoformat(),
                 )
             entry_low, entry_high, invalidation = entry_levels(close, sym_win)
-            results.append(DeepDiveResult(
+            result = DeepDiveResult(
                 symbol=cand.symbol,
                 sector=sector,
-                graph="native" if sector in NATIVE_SECTORS else "generic",
+                graph="native" if route in NATIVE_SECTORS else "generic",
                 conviction=float(report.final_score),
                 verdict=str(report.verdict),
                 thesis=str(report.investment_thesis)[:800],
@@ -267,9 +188,18 @@ def run_deep_dives(
                 data_gate=gate_status,
                 market_sector=classified.get("sector", ""),
                 industry=classified.get("industry", ""),
-            ))
-            logger.info("[deep_dive] %s sector=%s conviction=%.2f verdict=%s",
-                        cand.symbol, sector, report.final_score, report.verdict)
+                sector_reading=reading,
+            )
+            results.append(result)
+            logger.info("[deep_dive] %s sector=%s (%s) conviction=%.2f verdict=%s",
+                        cand.symbol, sector, reading.source, report.final_score, report.verdict)
+            # Loud in the week's summary and the watchdog's sector_keys check;
+            # INFO here so one problem does not also open an error-backlog issue.
+            unnamed = unnamed_why(result, keys)
+            if unnamed:
+                logger.info("[deep_dive] %s has no sector key: %s; filed under the generic "
+                            "graph, not bought until an analysis names one",
+                            cand.symbol, unnamed)
         except Exception as exc:
             logger.warning("[deep_dive] %s failed (non-fatal): %s", cand.symbol, exc)
     return results

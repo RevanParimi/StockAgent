@@ -180,3 +180,23 @@ invariants:
       dark_checks. Fetch the source by hand from the server; a changed file
       name or column fails the same way as an outage.
     docs: docs/TECHNICAL_DESIGN.md
+
+  - id: sector_keys_named
+    kind: invariant
+    title: "Every shelf idea and holding has a named sector key"
+    check: sector_keys
+    action: >
+      A shelf idea or a holding has no configured sector key (an empty,
+      unknown or malformed answer from its deep dive's analysis), or is filed
+      as "generic", so SA-050's sector cap and the shelf's cap cannot be
+      checked for it or count it with unrelated stocks; or an idea's analysis
+      said Yahoo's labels do not fit, or Yahoo gave none. Reminded weekly.
+      Nothing buys a shelf idea with no key: Saturday's discovery run
+      re-dives it first and its analysis names one, so no action is needed
+      unless it stays unnamed. For a disputed idea, compare the key with the
+      company's business. Read the week's sectors in the scheduler's
+      "Discovery sectors" log lines and in data/discovery/shelf.json (sector,
+      sector_reading). A holding added by hand outside the ticker map is
+      filed as "generic" by the portfolio API, no route changes a holding's
+      key, and a later analysis never re-keys a held stock.
+    docs: docs/TECHNICAL_DESIGN.md

@@ -684,21 +684,22 @@ def test_the_shadow_rows_switch_test_agrees_with_the_executor_on_surveillance():
     assert xs.switch_buy_lands(quote, D, idea, surveillance_issue=watched) is False
 
 
-def test_a_generic_idea_is_offered_under_its_classifications_key():
-    """Shelved as "generic" before infer_sector read Yahoo's classification;
-    the stored classification maps it, so SA-050's sector cap counts it with
-    the drug makers. One with no classification stays generic; a real key
-    is kept."""
-    from core.discovery.candidates import buy_candidates, shelf_sector
+def test_a_generic_idea_waits_for_an_analysis_to_name_its_key():
+    """FIX-026 replaces SA-049's mapping by Yahoo's stored classification:
+    an idea shelved as "generic" before the analysis named sectors waits for
+    its re-dive whatever Yahoo says; a configured key is kept, Yahoo's labels
+    beside it being evidence only."""
+    from core.discovery.candidates import buy_candidates
     pharma = _idea("GENX", 100.0, sector="generic", market_sector="Healthcare",
                    industry="Drug Manufacturers - Specialty & Generic")
     bare = _idea("BARE", 100.0, sector="generic")
     real = _idea("REAL", 100.0, sector="chemicals", market_sector="Healthcare")
-    assert [shelf_sector(i) for i in (pharma, bare, real)] == ["pharma", "generic", "chemicals"]
     portfolio = SimpleNamespace(holdings=[], watchlist=[])
-    out, _ = buy_candidates(portfolio, D, [pharma, bare, real], managed={})
-    assert [(i.symbol, i.sector) for i in out] == [("GENX", "pharma"), ("BARE", "generic"),
-                                                   ("REAL", "chemicals")]
+    out, excluded = buy_candidates(portfolio, D, [pharma, bare, real], managed={})
+    assert [(i.symbol, i.sector) for i in out] == [("REAL", "chemicals")]
+    waits = ('sector unnamed: filed as "generic" before the analysis named sectors; '
+             "waits for a re-dive to name it")
+    assert excluded == {"GENX": waits, "BARE": waits}
 
 
 def test_a_sale_on_the_day_of_the_latest_dive_waits_for_a_newer_dive(tmp_path, monkeypatch):
@@ -1430,6 +1431,13 @@ def _pipeline_world(tmp_path, monkeypatch, holdings, cash, ideas, prices):
     monkeypatch.setattr(pipeline, "VerdictStore", _NoArtifacts)
     monkeypatch.setattr("core.discovery.shelf.ShelfStore.load", lambda self: Shelf(ideas=ideas))
     monkeypatch.setattr("core.discovery.candidates._managed_sectors", lambda: {})
+    # FIX-026: the candidates offer only an idea filed under a configured key;
+    # the fixture's one-per-idea sectors are configured here, as a toggle row.
+    from backend.sectors import registry
+    for i in ideas:
+        if i.sector not in registry._TOGGLES and i.sector != "generic":
+            monkeypatch.setitem(registry._TOGGLES, i.sector,
+                                {"enabled": False, "tier": "core", "display": i.sector})
     emitted = []
     monkeypatch.setattr(alerts_mod, "emit_alerts",
                         lambda events, **k: emitted.extend(events) or {"emitted": 0})

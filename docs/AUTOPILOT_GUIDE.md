@@ -182,11 +182,15 @@ count:
 
 - a managed stock: its managed entry's sector, enabled or not, because the
   review and the monthly forecast write its predictions there;
-- otherwise a shelf idea's own sector (the deep dive's `infer_sector`), and a
-  watchlist stock's item sector when it is a well-formed key, else
-  `infer_sector`. Never a fixed `generic`. `infer_sector` takes the
-  registry's ticker map, else Yahoo's industry mapped to a registry sector
-  ("Auto Parts" is `automobile`), else `generic`.
+- otherwise a shelf idea's own key, the one its deep dive's analysis named
+  from the configured list (`core/discovery/sector_naming.py`). An idea with
+  no key named yet (an empty, malformed or unknown answer, or one shelved as
+  `generic` before the analysis named sectors) is not a candidate: it waits
+  for the re-dive that names one, since neither sector cap can be checked
+  for it. A `generic` the analysis chose, with its reason, is a candidate;
+- a watchlist stock that is not managed: its item sector when that is a
+  configured key, else the registry's ticker map's; with neither it is not a
+  candidate. No Yahoo table and never a fixed `generic`.
 
 **Example:** on Friday 16 Oct a shelf idea last dived on 12 Sep is not a
 candidate. A watchlist stock analysed on Thu 15 Oct at 18:00 IST as a BUY at

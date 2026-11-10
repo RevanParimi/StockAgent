@@ -30,7 +30,7 @@ import core.discovery.shelf as shelf_mod
 import services.data.fetchers.bhavcopy as bhav
 from backend.shared.schemas.audit import AuditOutcome
 from backend.shared.schemas.discovery import (
-    DeepDiveResult, DiscoveryCandidate, ScreenResult, Shelf, ShelfIdea,
+    DeepDiveResult, DiscoveryCandidate, ScreenResult, SectorReading, Shelf, ShelfIdea,
 )
 from backend.shared.schemas.portfolio import Holding, WatchlistItem
 from core.config import settings
@@ -59,13 +59,37 @@ def companies(*symbols):
     return {s: {"series": "EQ", "isin": f"INE{i:06d}01X"} for i, s in enumerate(symbols)}
 
 
-def dive(symbol, conviction, sector="", on="2026-07-04", gate="actionable", close=100.0):
-    return DeepDiveResult(symbol=symbol, sector="generic", graph="generic",
+# FIX-026: the key the stub analysis answers for a stock in each Yahoo sector,
+# so a fixture's sectors stay one key each (the per-sector cap counts the key).
+# A fixture choice, not a production table.
+_KEY_OF = {"healthcare": "pharma", "industrials": "capgoods", "technology": "it_sector",
+           "financial services": "banking_bfsi", "consumer cyclical": "retail",
+           "basic materials": "metals", "energy": "oilgas", "utilities": "renewable_energy"}
+
+
+def key_for(yahoo_sector: str) -> str:
+    return _KEY_OF.get(str(yahoo_sector or "").strip().casefold(), "")
+
+
+def reading(key: str = "") -> SectorReading:
+    """An analysis's reading: `key` named, or "generic" chosen with a reason."""
+    if key:
+        return SectorReading(answer=key, reason="stub analysis", yahoo_fits=True)
+    return SectorReading(answer="generic", reason="stub analysis: none of our keys fits")
+
+
+def dive(symbol, conviction, sector="", on="2026-07-04", gate="actionable", close=100.0,
+         key=None):
+    """A dive whose analysis named `key` (default: the fixture's key for the
+    Yahoo `sector`, else an explicit "generic")."""
+    key = key_for(sector) if key is None else key
+    return DeepDiveResult(symbol=symbol, sector=key or "generic", graph="generic",
                           conviction=conviction, verdict="BUY", thesis=f"t {symbol}",
                           entry_low=round(close * 0.97, 2), entry_high=round(close * 1.02, 2),
                           invalidation_level=round(close * 0.88, 2), close=close,
                           composite=0.5, dive_date=on, data_gate=gate,
-                          market_sector=sector, industry=f"{sector} industry" if sector else "")
+                          market_sector=sector, industry=f"{sector} industry" if sector else "",
+                          sector_reading=reading(key))
 
 
 @pytest.fixture
@@ -261,25 +285,39 @@ def test_without_a_listing_the_screen_says_so(screen_env, monkeypatch):
 # ---------------------------------------------------------------------------
 
 class Analyst:
-    """Stub analyst: conviction and gate per symbol; records every call."""
+    """Stub analyst: conviction, gate and sector answer per symbol; records
+    every call, the graph it ran and the sector question it was asked. The
+    sector answer defaults to an explicit "generic" with a reason."""
 
-    def __init__(self, conviction=None, gate=None, fail=()):
+    def __init__(self, conviction=None, gate=None, fail=(), key_of=None):
         self.conviction, self.gate, self.fail = conviction or {}, gate or {}, set(fail)
+        self.key_of = dict(key_of or {})
         self.calls: list[str] = []
+        self.graphs: list[str] = []
+        self.questions: list[str | None] = []
+
+    def answer(self, symbol):
+        key = self.key_of.get(symbol, "")
+        return ({"key": key, "reason": "stub analysis", "yahoo_fits": True} if key
+                else {"key": "generic", "reason": "stub analysis: none of our keys fits",
+                      "yahoo_fits": None})
 
     def orchestrator(self, sector):
         analyst = self
+        analyst.graphs.append(sector)
 
         class _O:
-            def analyse(self, symbol):
+            def analyse(self, symbol, sector_question=None):
                 analyst.calls.append(symbol)
+                analyst.questions.append(sector_question)
                 if symbol in analyst.fail:
                     raise RuntimeError("LLM down")
                 return SimpleNamespace(
                     final_score=analyst.conviction.get(symbol, 0.7), verdict="BUY",
                     investment_thesis=f"thesis {symbol}",
                     decision_gate=SimpleNamespace(status=analyst.gate.get(symbol, "actionable"),
-                                                  run_id=f"r-{symbol}", reasons=[]))
+                                                  run_id=f"r-{symbol}", reasons=[]),
+                    sector_answer=analyst.answer(symbol))
         return _O()
 
 
@@ -295,7 +333,6 @@ def dive_env(tmp_path, monkeypatch):
         def load_window(self, end, sessions):
             return state["window"]
     monkeypatch.setattr(dd, "EodStore", _Store)
-    monkeypatch.setattr(dd, "infer_sector", lambda s, c=None: "generic")
     monkeypatch.setattr(dd, "market_classification",
                         lambda s: {"sector": state["sector_of"].get(s, ""), "industry": ""})
     analyst = Analyst()
@@ -490,22 +527,28 @@ def test_a_fourth_idea_replaces_its_sectors_weakest_only_if_stronger(shelf, tmp_
     assert sorted(i.symbol for i in active(shelf)) == ["H1", "H2", "H5"]
     drop = [e for e in events(tmp_path) if e["event"] == "dropped"][-1]
     assert drop["symbol"] == "H3"
-    assert drop["detail"] == ("sector cap: 3 ideas in Healthcare; replaced by H5 "
+    # FIX-026: the cap counts the sector key ("pharma"), not Yahoo's label.
+    assert drop["detail"] == ("sector cap: 3 ideas in pharma; replaced by H5 "
                               "(0.80 > 0.60)")
 
 
 def test_an_unclassified_idea_is_not_capped_and_generic_never_counts(shelf):
-    """Five ideas with no market sector and a `sector` of "generic" all stay:
-    the routing label is not a sector, and neither is "unknown"."""
+    """Five ideas filed as "generic" all stay: lumping stocks of unrelated
+    sectors together is not a sector (FIX-026: an analysis's explicit
+    "generic", and one with no key named, alike)."""
     shelf.apply_deep_dives([dive(f"U{k}", 0.6 + k / 100) for k in range(5)],
                            on=date(2026, 7, 4))
-    assert len(active(shelf)) == 5
+    shelf.apply_deep_dives([dive(f"N{k}", 0.6 + k / 100).model_copy(update={
+        "sector_reading": SectorReading(answer="Pharmaceuticals", problem="not_a_key",
+                                        source="unnamed")}) for k in range(5)],
+                           on=date(2026, 7, 4))
+    assert len(active(shelf)) == 10
 
 
-def test_sector_names_compare_without_case(shelf):
-    shelf.apply_deep_dives([dive("A", 0.7, "Healthcare"), dive("B", 0.69, "healthcare"),
-                            dive("C", 0.68, "HEALTHCARE ")], on=date(2026, 7, 4))
-    out = shelf.apply_deep_dives([dive("D", 0.60, "Healthcare")], on=date(2026, 7, 11))
+def test_sector_keys_compare_without_case(shelf):
+    shelf.apply_deep_dives([dive("A", 0.7, key="pharma"), dive("B", 0.69, key="Pharma"),
+                            dive("C", 0.68, key="PHARMA ")], on=date(2026, 7, 4))
+    out = shelf.apply_deep_dives([dive("D", 0.60, key="pharma")], on=date(2026, 7, 11))
     assert out["capped"] == ["D"]
 
 
@@ -526,9 +569,9 @@ class MemoryShelf(shelf_mod.ShelfStore):
 
 
 def test_property_no_sector_ever_exceeds_the_cap(shelf, monkeypatch):
-    """Random sequences of adds, re-dives (which may name a sector for the
+    """Random sequences of adds, re-dives (which may name a sector key for the
     first time), backfills, manual drops and rotations. After every step: no
-    market sector holds more than 3 active ideas, the shelf holds at most 20,
+    sector key holds more than 3 active ideas, the shelf holds at most 20,
     and no symbol is active twice."""
     shelf = MemoryShelf()
     rng = random.Random(9)
@@ -639,9 +682,12 @@ def test_old_values_reproduce_todays_shelf_exactly(shelf, monkeypatch, tmp_path)
 
 
 def test_old_values_offer_every_active_idea_and_no_watchlist(monkeypatch):
+    """FIX-026: every idea whose sector key is named; one shelved as "generic"
+    before the analysis named sectors is not offered (the story's tests)."""
     monkeypatch.setattr(settings, "DISCOVERY_REDIVE_AFTER_DAYS", 0)
     monkeypatch.setattr(settings, "DISCOVERY_WATCHLIST_BUYS", False)
-    ideas = [ShelfIdea(symbol=s, sector="generic", added=a, conviction=0.7)
+    ideas = [ShelfIdea(symbol=s, sector="generic", added=a, conviction=0.7,
+                       sector_reading=reading())
              for s, a in [("OLD", "2025-01-01"), ("NEW", "2026-07-10")]]
     portfolio = SimpleNamespace(holdings=[], watchlist=[WatchlistItem(
         symbol="W", added="2026-07-01")])
@@ -671,11 +717,14 @@ def test_old_values_send_the_cycle_exactly_the_ipo_and_screen_candidates(
 # Re-dives
 # ---------------------------------------------------------------------------
 
-def _idea(symbol, added, *, gate="actionable", dived="", conviction=0.7, sector=""):
-    return ShelfIdea(symbol=symbol, sector="generic", added=added, conviction=conviction,
+def _idea(symbol, added, *, gate="actionable", dived="", conviction=0.7, sector="", key=None):
+    """An idea whose analysis named `key` (default: the fixture's key for the
+    Yahoo `sector`, else an explicit "generic")."""
+    key = key_for(sector) if key is None else key
+    return ShelfIdea(symbol=symbol, sector=key or "generic", added=added, conviction=conviction,
                      data_gate=gate, dived=dived, source_screen_date=added,
                      entry_low=97.0, entry_high=102.0, invalidation_level=88.0,
-                     close_at_add=100.0, market_sector=sector)
+                     close_at_add=100.0, market_sector=sector, sector_reading=reading(key))
 
 
 def test_redive_queue_unverified_first_then_oldest_dive(shelf):
@@ -779,13 +828,21 @@ def test_a_non_company_is_dropped_and_an_unknown_one_kept(shelf, tmp_path):
     assert shelf.drop_non_companies(None) == {}        # no listing: nothing judged
 
 
-def test_backfill_names_sectors_and_then_enforces_the_cap(shelf):
+def test_backfill_names_yahoos_labels_and_never_the_key(shelf):
+    """FIX-026: Yahoo's labels are evidence only. Five generic ideas named
+    "Healthcare" by the backfill keep their key, so the cap (which counts the
+    key) drops none; five named "pharma" by their analysis keep 3."""
     shelf.save(Shelf(ideas=[_idea(f"P{k}", "2026-06-20", conviction=0.6 + k / 100)
                             for k in range(5)]))
     named = shelf.backfill_classification(lambda s: {"sector": "Healthcare",
                                                      "industry": "Drug Manufacturers"})
     assert named == ["P0", "P1", "P2", "P3", "P4"]
-    assert sorted(i.symbol for i in active(shelf)) == ["P2", "P3", "P4"]   # the 3 strongest
+    assert [(i.sector, i.market_sector) for i in active(shelf)] == \
+        [("generic", "Healthcare")] * 5
+    shelf.save(Shelf(ideas=[_idea(f"Q{k}", "2026-06-20", conviction=0.6 + k / 100,
+                                  key="pharma") for k in range(5)]))
+    shelf.backfill_classification(lambda s: {"sector": "Healthcare", "industry": ""})
+    assert sorted(i.symbol for i in active(shelf)) == ["Q2", "Q3", "Q4"]   # the 3 strongest
 
 
 # ---------------------------------------------------------------------------
@@ -823,14 +880,15 @@ def _cycle_env(tmp_path, monkeypatch, *, screen, ipo=(), listing=None, sector_of
     monkeypatch.setattr(disc, "market_classification", classify)
     monkeypatch.setattr(dd, "market_classification", classify)
     monkeypatch.setattr(dd, "load_managed_tickers", lambda: [])
-    monkeypatch.setattr(dd, "infer_sector", lambda s, c=None: "generic")
     window = _eod_window(symbols, days=25, end=date(2026, 7, 3))
 
     class _Store:
         def load_window(self, end, sessions):
             return window
     monkeypatch.setattr(dd, "EodStore", _Store)
-    analyst = Analyst(conviction=conviction, gate=gate)
+    # FIX-026: the stub analysis names the fixture's key for each Yahoo sector.
+    analyst = Analyst(conviction=conviction, gate=gate,
+                      key_of={k: key_for(v) for k, v in sector_of.items() if key_for(v)})
     monkeypatch.setattr(dd, "get_orchestrator", analyst.orchestrator)
     env["analyst"] = analyst
     import core.delivery.alerts as alerts
@@ -1004,15 +1062,14 @@ def portfolio(watch=(), holdings=()):
 
 @pytest.fixture
 def fresh_rules(monkeypatch):
-    """The window rules, and infer_sector as a recorder: for a symbol outside
-    the registry it would ask NSE's meta API, which the hermetic boundary
-    refuses."""
+    """The window rules, and the ticker map's lookup as a recorder (FIX-026:
+    the last source of a watchlist stock's key, no Yahoo table)."""
     monkeypatch.setattr(settings, "DISCOVERY_REDIVE_AFTER_DAYS", 30)
     monkeypatch.setattr(settings, "DISCOVERY_STALE_DAYS", 60)
     monkeypatch.setattr(settings, "DISCOVERY_WATCHLIST_BUYS", True)
     monkeypatch.setattr(settings, "DISCOVERY_MIN_CONVICTION", 0.55)
     inferred: list[str] = []
-    monkeypatch.setattr(cands_mod, "infer_sector",
+    monkeypatch.setattr(cands_mod, "ticker_map_sector",
                         lambda s: inferred.append(s) or "inferred")
     return inferred
 
@@ -1142,9 +1199,11 @@ def _sectorless(symbol, source="user"):
 @pytest.mark.parametrize("managed, own, expected, inferred", [
     ({"W": "automobile"}, "", "automobile", []),        # the home page stores no sector
     ({"W": "automobile"}, "pharma", "automobile", []),  # the managed record's forecasts win
-    ({}, " Pharma ", "pharma", []),                     # not managed: its own, as promotion keys it
-    ({}, "", "inferred", ["W"]),                        # neither: the deep dive's rule
+    ({}, " Pharma ", "pharma", []),                     # not managed: its own configured key
+    ({}, "", "inferred", ["W"]),                        # neither: the registry's ticker map
     ({}, "Auto Parts", "inferred", ["W"]),              # a malformed sector is not a key
+    ({}, "generic", "inferred", ["W"]),                 # FIX-026: "generic" is not a key
+    ({}, "biotech", "inferred", ["W"]),                 # FIX-026: well formed, not configured
     ({"W": ""}, "", "inferred", ["W"]),                 # an empty managed sector is none
 ])
 def test_a_watchlist_candidate_carries_the_sector_its_forecasts_use(
@@ -1155,6 +1214,20 @@ def test_a_watchlist_candidate_carries_the_sector_its_forecasts_use(
                                          managed)
     assert (why, idea.sector) == ("", expected)
     assert fresh_rules == inferred
+
+
+def test_a_watchlist_stock_with_no_key_anywhere_is_not_offered(monkeypatch):
+    """FIX-026: not managed, no configured key of its own, not in the ticker
+    map (the real one): no Yahoo table fills the gap and no fixed "generic"."""
+    monkeypatch.setattr(settings, "DISCOVERY_REDIVE_AFTER_DAYS", 30)
+    monkeypatch.setattr(settings, "DISCOVERY_MIN_CONVICTION", 0.55)
+    window = _eod_window(["NEWSMALLCO"], days=60, end=date(2026, 7, 12), close=500.0)
+    item = WatchlistItem(symbol="NEWSMALLCO", sector="generic", added="2026-07-01")
+    idea, why = cands_mod.watchlist_idea(item, D, lambda s: record(), window,
+                                         companies("NEWSMALLCO"), {})
+    assert idea is None
+    assert why == ("sector unnamed: not managed, its watchlist entry names no configured "
+                   "key and the ticker map has none")
 
 
 def test_the_managed_record_is_read_from_the_managed_file_enabled_or_not(fresh_rules):
@@ -1204,8 +1277,8 @@ def test_a_home_page_watchlist_buy_counts_in_its_real_sector_for_the_cap(
     sector stored), a fresh BUY at ₹5,000. Under "automobile" the 30% cap
     leaves ₹20,000: 4 shares, and automobile ends at exactly 30%. As
     "generic" it would take the full 10% position: 20 shares, 38%.
-    With the managed file, the record says "automobile"; without it, the real
-    infer_sector finds HEROMOTOCO in the registry (no network)."""
+    With the managed file, the record says "automobile"; without it, the
+    registry's ticker map has HEROMOTOCO (no network)."""
     from core.portfolio import sizing
     monkeypatch.setattr(settings, "DISCOVERY_REDIVE_AFTER_DAYS", 30)
     monkeypatch.setattr(settings, "DISCOVERY_MIN_CONVICTION", 0.55)

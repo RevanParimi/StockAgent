@@ -216,6 +216,20 @@ class PredictionStore:
     def _archived_envelopes_dir(self) -> Path:
         return self._dir / "archived_envelopes"
 
+    def load_archived_envelope(self, path: str) -> PredictionEnvelope | None:
+        """FIX-027: the envelope archived at `path` (ReforecastEvent.archived_file),
+        as it stood before that re-forecast. None when the file is not in this
+        ticker's archive folder or cannot be read."""
+        try:
+            target = Path(path).resolve()
+            if target.parent != self._archived_envelopes_dir().resolve():
+                return None
+            data = self._read_json(target)
+            return PredictionEnvelope(**data) if data is not None else None
+        except Exception as exc:
+            logger.warning("[PredictionStore] archived envelope unreadable (%s): %s", path, exc)
+            return None
+
     def archive_envelope(self, cycle_id: str | None = None) -> str | None:
         """
         Copy the current envelope file to

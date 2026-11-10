@@ -39,13 +39,15 @@ managed record's sector: the daily review and the monthly forecast write its
 predictions there, and `promote_symbol` keeps that record when the
 autopilot buys it. So a fresh shelf idea whose stock is managed under
 another sector is offered under the managed one. A shelf idea that is not
-managed keeps its own key, except "generic", which yields to the key its
-stored Yahoo classification maps to (`shelf_sector`). A watchlist stock that is
-not managed takes the item's own sector, else the deep dive's
-`infer_sector`; never a fixed "generic". Example: HEROMOTOCO added on the
-home page is stored with no sector, but it is managed under "automobile",
-so it is bought as "automobile" and SA-050's sector cap counts it with
-MARUTI and M&M.
+managed keeps the key its deep dive's analysis named (FIX-026); one with no
+key named yet (`sector_naming.unnamed_why`) is not offered and waits for the
+re-dive that names it, since neither SA-050's sector cap nor the shelf's can
+be checked for it. A watchlist stock that is not managed takes the item's
+own sector when it is a configured key, else the registry's ticker map's;
+with neither it is not offered. Never a fixed "generic", and no Yahoo table.
+Example: HEROMOTOCO added on the home page is stored with no sector, but it
+is managed under "automobile", so it is bought as "automobile" and SA-050's
+sector cap counts it with MARUTI and M&M.
 
 `buy_candidates` is pure given its readers: the pipeline passes the score
 history, the EOD window and the NSE listing; tests pass fakes.
@@ -62,12 +64,12 @@ import pandas as pd
 from backend.shared.pipeline import decision_gate as dg
 from backend.shared.schemas.discovery import ShelfIdea
 from core.config import settings
-from core.discovery.deep_dive import entry_levels, infer_sector, sector_from_classification
+from core.discovery.deep_dive import entry_levels
+from core.discovery.sector_naming import configured_sectors, ticker_map_sector, unnamed_why
 from core.discovery.shelf import (
     close_before_decision, close_before_dive, dive_is_fresh, last_dived)
 from core.discovery.universe import COMPANY, instrument_kind
 from core.intelligence.rl.nse_calendar import session_close_at
-from core.portfolio.promotion import is_valid_sector
 
 logger = logging.getLogger(__name__)
 
@@ -109,32 +111,20 @@ def _managed_sectors() -> dict[str, str]:
     return managed_sectors()
 
 
-def holding_sector(symbol: str, own_sector: str, managed: dict[str, str]) -> str:
+def holding_sector(symbol: str, own_sector: str, managed: dict[str, str],
+                   keys: dict[str, str] | None = None) -> str:
     """The sector a bought candidate is held under: the managed record's when
-    the stock is managed, else its own well-formed sector, else
-    `infer_sector` (the registry's ticker map, Yahoo's classification, "generic")."""
+    the stock is managed, else its own sector when it is a configured key
+    ("generic" is not one), else the registry's ticker map's; "" when none
+    names a key (FIX-026: no Yahoo table, never a fixed "generic")."""
     symbol = symbol.strip().upper()
     if managed.get(symbol):
         return managed[symbol]
+    keys = configured_sectors() if keys is None else keys
     own = (own_sector or "").strip().lower()
-    if own and is_valid_sector(own):
+    if own in keys:
         return own
-    return infer_sector(symbol)
-
-
-def shelf_sector(idea) -> str:
-    """A shelf idea's sector key: its own, or, when that is "generic", the key
-    its stored market classification maps to (`sector_from_classification`),
-    still "generic" when the classification names none. Example: an idea
-    shelved in September as "generic" with market sector "Healthcare" and
-    industry "Drug Manufacturers - Specialty & Generic" is "pharma", so
-    SA-050's sector cap counts it with the other drug makers, not with every
-    other stock outside the ticker map."""
-    sector = (idea.sector or "").strip().lower()
-    if sector != "generic":
-        return idea.sector
-    return sector_from_classification({"sector": getattr(idea, "market_sector", ""),
-                                       "industry": getattr(idea, "industry", "")})
+    return ticker_map_sector(symbol)
 
 
 def watchlist_window_days() -> int:
@@ -202,8 +192,12 @@ def watchlist_idea(item, on: date, latest_analysis: Callable[[str], dict | None]
     day = analysed.isoformat()
     if managed is None:
         managed = _managed_sectors()
+    sector = holding_sector(symbol, item.sector, managed)
+    if not sector:
+        return None, ("sector unnamed: not managed, its watchlist entry names no configured "
+                      "key and the ticker map has none")
     return ShelfIdea(
-        symbol=symbol, sector=holding_sector(symbol, item.sector, managed), added=day,
+        symbol=symbol, sector=sector, added=day,
         conviction=conviction, verdict=verdict,
         thesis=str(record.get("investment_thesis") or "")[:800],
         entry_low=entry_low, entry_high=entry_high, invalidation_level=invalidation,
@@ -228,14 +222,16 @@ def buy_candidates(portfolio, on: date, shelf_ideas: list, *,
     offered from the watchlist (the shelf idea, fresh or not, is the record of
     it). Each carries the
     sector it will be held under: a shelf idea whose stock is managed under
-    another sector is offered as a copy under that one; a watchlist stock
-    takes `holding_sector`.
+    another sector is offered as a copy under that one; one that is not
+    managed is offered only once its key is named (FIX-026); a watchlist
+    stock takes `holding_sector`.
     Readers default to the score history, the EOD store and the cached NSE
     listing, each read only when a watchlist item needs it, and the managed
     file (`managed`), read when there is a fresh shelf idea or a watchlist
     item to check."""
     out: list = []
     excluded: dict[str, str] = {}
+    keys: dict[str, str] | None = None
     active = [i for i in shelf_ideas if getattr(i, "status", "active") == "active"]
     for idea in active:
         late = close_before_dive(on, idea)
@@ -244,11 +240,17 @@ def buy_candidates(portfolio, on: date, shelf_ideas: list, *,
         elif dive_is_fresh(idea, on):
             if managed is None:
                 managed = _managed_sectors()
-            # Its own sector came from the deep dive's infer_sector; one
-            # shelved as "generic" before infer_sector read Yahoo's
-            # classification takes the key the classification stored on it
-            # (a re-dive refreshes market_sector and industry, never sector).
-            sector = managed.get(idea.symbol.strip().upper()) or shelf_sector(idea)
+            sector = managed.get(idea.symbol.strip().upper())
+            if not sector:
+                # FIX-026: the key its deep dive's analysis named; an idea
+                # with none waits for the re-dive that names one.
+                keys = configured_sectors() if keys is None else keys
+                why = unnamed_why(idea, keys)
+                if why:
+                    excluded[idea.symbol] = (f"sector unnamed: {why}; waits for a re-dive "
+                                             "to name it")
+                    continue
+                sector = idea.sector
             out.append(idea if sector == idea.sector
                        else idea.model_copy(update={"sector": sector}))
         else:

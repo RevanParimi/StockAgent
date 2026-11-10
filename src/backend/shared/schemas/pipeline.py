@@ -279,6 +279,11 @@ class FinalReport(BaseModel):
     # report built outside the orchestrator.
     decision_gate: DecisionGate | None = None
 
+    # FIX-026: the analysis's answer to the deep dive's sector question, as the
+    # model wrote it (unvalidated; core/discovery/sector_naming.py reads it).
+    # None when no question was asked or the answer block is missing.
+    sector_answer: Any | None = None
+
     def verdict_emoji(self) -> str:
         mapping = {
             "STRONG BUY": "🟢",

@@ -21,6 +21,7 @@ from core.discovery.deep_dive import run_deep_dives
 from core.discovery.guards import GUARD_SOURCES
 from core.discovery.paper_lane import run_paper_reviews
 from core.discovery.screen import load_latest_screen, run_screen
+from core.discovery.sector_naming import summarise as summarise_sectors
 from core.discovery.shelf import ShelfStore, autopilot_sales, no_longer_held, sold_since_dive
 from services.data.fetchers.bhavcopy import load_listing, refresh_listing, sync_recent
 from services.data.fetchers.bulk_block import refresh_bulk_block
@@ -162,6 +163,13 @@ def run_discovery_cycle(on: date | None = None) -> dict:
         shelf_store.record_dives(dives, on=on)
     except Exception as exc:
         logger.warning("[discovery] dive memo not written (non-fatal): %s", exc)
+    # FIX-026: how each dive's sector key was named, every stock named.
+    try:
+        sectors = summarise_sectors(dives)
+    except Exception as exc:
+        logger.warning("[discovery] sector summary failed (non-fatal): %s", exc)
+        errors.append(f"sector summary failed: {exc}")
+        sectors = {}
 
     redived: dict = {"refreshed": [], "dropped": {}, "capped": []}
     try:
@@ -219,6 +227,7 @@ def run_discovery_cycle(on: date | None = None) -> dict:
         "listing": listing_info,
         "hygiene": hygiene,
         "deep_dives": len(dives),
+        "sectors": sectors,
         "redived": redived,
         "shelf": shelf_summary,
         "rotated_stale": rotated,

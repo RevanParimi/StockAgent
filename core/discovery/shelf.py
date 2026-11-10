@@ -8,19 +8,22 @@ old rotates out. One-command promote-to-watchlist hands an idea to the Phase A
 portfolio machinery (source="discovery", weekly cadence).
 
 PR-004, enough diverse, checked ideas to fill 12 holdings:
-- At most DISCOVERY_MAX_IDEAS_PER_SECTOR active ideas share a market sector
-  (0 = no cap). A newcomer to a full sector replaces that sector's weakest
-  idea only when its conviction is higher; the drop event says so. An idea
-  with no known market sector is not capped: a missing classification is
-  not a sector, and lumping unknowns together is the "generic" label again.
+- At most DISCOVERY_MAX_IDEAS_PER_SECTOR active ideas share a sector key
+  (0 = no cap), the key SA-050's sector cap counts too (FIX-026). A newcomer
+  to a full sector replaces that sector's weakest idea only when its
+  conviction is higher; the drop event says so. An idea with no key named
+  yet, or "generic", is not capped: lumping stocks of unknown or unrelated
+  sectors together is not a sector.
 - An idea is re-dived once its latest deep dive is older than
   DISCOVERY_REDIVE_AFTER_DAYS, sooner when it was shelved before the data gate
-  existed, and first of all when the autopilot sold its stock since its latest
-  dive (FIX-025). A re-dive refreshes the idea in place, or drops it
-  with the reason when its analysis is not actionable or its conviction
-  falls below the floor. The rotation clock counts from the latest dive, so
-  an idea that keeps passing its monthly re-dive stays; one that fails is
-  dropped, and one that cannot be re-dived ages out.
+  existed or no analysis has named its sector key, and first of all when the
+  autopilot sold its stock since its latest dive (FIX-025). A re-dive
+  refreshes the idea in place, or drops it with the reason when its analysis
+  is not actionable or its conviction falls below the floor. It names the
+  key of an idea that has none (or "generic"), and never changes a named one
+  (FIX-026). The rotation clock counts from the latest dive, so an idea that
+  keeps passing its monthly re-dive stays; one that fails is dropped, and one
+  that cannot be re-dived ages out.
 - An idea NSE lists as something other than a company is dropped.
 - A dive memo (dives.json) keeps each dive's date and result for
   DISCOVERY_REDIVE_AFTER_DAYS, an abstained one included in either gate
@@ -44,16 +47,20 @@ from core.intelligence.rl.nse_calendar import IST, session_close_at
 from backend.shared.pipeline import decision_gate as dg
 from backend.shared.schemas.discovery import DeepDiveResult, Shelf, ShelfIdea
 from backend.shared.schemas.portfolio import WatchlistItem
+from core.discovery.sector_naming import configured_sectors, key_named, unnamed_why
 from core.portfolio.promotion import promote_symbol
 from core.portfolio.store import PortfolioStore
 
 logger = logging.getLogger(__name__)
 
 
-def cap_key(idea) -> str:
-    """The sector max_ideas_per_sector counts: the market sector, case-folded.
-    "" = unknown, never capped."""
-    return str(getattr(idea, "market_sector", "") or "").strip().casefold()
+def cap_key(idea, keys: dict[str, str] | None = None) -> str:
+    """The sector max_ideas_per_sector counts: the idea's sector key, the one
+    SA-050's sector cap counts (FIX-026). "" = never capped: no key named
+    yet, or "generic". Example: two drug makers shelved as "pharma" share a
+    cap whatever Yahoo calls them."""
+    keys = configured_sectors() if keys is None else keys
+    return str(idea.sector).strip().lower() if key_named(idea, keys) else ""
 
 
 def last_dived(idea) -> date | None:
@@ -246,12 +253,13 @@ class ShelfStore:
 
     def apply_deep_dives(self, dives: list[DeepDiveResult], on: date) -> dict:
         """Add qualifying dives (conviction >= floor), strongest first. A dive
-        whose market sector is full replaces that sector's weakest idea if it
+        whose sector key is full replaces that sector's weakest idea if it
         is stronger, else is skipped (`capped`); otherwise, when the shelf is
         full, it displaces the weakest active idea if it is stronger. Under
         the enforced data gate a dive that is not actionable is skipped
         (`gated`, SA-003); in record mode, which withholds nothing, it is
-        kept."""
+        kept. A dive with no sector key named is shelved too (FIX-026): its
+        paper lane runs and its re-dive asks again, but nothing buys it."""
         shelf = self.load()
         added: list[str] = []
         displaced: list[str] = []
@@ -260,6 +268,7 @@ class ShelfStore:
         gated: list[str] = []
         cap = settings.DISCOVERY_MAX_IDEAS_PER_SECTOR
         enforced = dg.enforcing()
+        keys = configured_sectors()
 
         for dive in sorted(dives, key=lambda d: d.conviction, reverse=True):
             if enforced and not dg.is_actionable(dive.data_gate):
@@ -276,21 +285,21 @@ class ShelfStore:
                 skipped.append(dive.symbol)
                 continue
             active = [i for i in shelf.ideas if i.status == "active"]
-            key = cap_key(dive)
-            peers = [i for i in active if key and cap_key(i) == key] if cap > 0 else []
+            key = cap_key(dive, keys)
+            peers = [i for i in active if key and cap_key(i, keys) == key] if cap > 0 else []
             if cap > 0 and len(peers) >= cap:
                 weakest = min(peers, key=lambda i: i.conviction)
                 if weakest.conviction >= dive.conviction:
                     skipped.append(dive.symbol)
                     capped.append(dive.symbol)
                     logger.info("[shelf] %s not added: %d ideas already in %s, weakest %s "
-                                "%.2f >= %.2f", dive.symbol, len(peers), dive.market_sector,
+                                "%.2f >= %.2f", dive.symbol, len(peers), key,
                                 weakest.symbol, weakest.conviction, dive.conviction)
                     continue
                 weakest.status = "dropped"
                 displaced.append(weakest.symbol)
                 self._event("dropped", weakest.symbol,
-                            f"sector cap: {len(peers)} ideas in {dive.market_sector}; "
+                            f"sector cap: {len(peers)} ideas in {key}; "
                             f"replaced by {dive.symbol} "
                             f"({dive.conviction:.2f} > {weakest.conviction:.2f})")
             elif len(active) >= settings.DISCOVERY_SHELF_SIZE:
@@ -312,6 +321,7 @@ class ShelfStore:
                 close_at_add=dive.close, source_screen_date=dive.dive_date,
                 data_gate=dive.data_gate, dived=dive.dive_date,
                 market_sector=dive.market_sector, industry=dive.industry,
+                sector_reading=dive.sector_reading,
             ))
             added.append(dive.symbol)
             self._event("added", dive.symbol, f"conviction={dive.conviction:.2f}")
@@ -326,24 +336,26 @@ class ShelfStore:
         return summary
 
     def _enforce_sector_cap(self, shelf: Shelf) -> list[str]:
-        """Drop the weakest active ideas of any market sector holding more
-        than the cap. Adds never overfill a sector; this catches a re-dive or
-        a backfill that names an idea's sector for the first time."""
+        """Drop the weakest active ideas of any sector key holding more than
+        the cap. Adds never overfill a sector; this catches a re-dive that
+        names an idea's key for the first time."""
         cap = settings.DISCOVERY_MAX_IDEAS_PER_SECTOR
         if cap <= 0:
             return []
+        keys = configured_sectors()
         groups: dict[str, list[ShelfIdea]] = defaultdict(list)
         for idea in shelf.ideas:
-            if idea.status == "active" and cap_key(idea):
-                groups[cap_key(idea)].append(idea)
+            key = cap_key(idea, keys) if idea.status == "active" else ""
+            if key:
+                groups[key].append(idea)
         dropped: list[str] = []
-        for ideas in groups.values():
+        for key, ideas in groups.items():
             ideas.sort(key=lambda i: i.conviction, reverse=True)
             for idea in ideas[cap:]:
                 idea.status = "dropped"
                 dropped.append(idea.symbol)
                 self._event("dropped", idea.symbol,
-                            f"sector cap: {len(ideas)} ideas in {idea.market_sector}, "
+                            f"sector cap: {len(ideas)} ideas in {key}, "
                             f"weakest beyond {cap} ({idea.conviction:.2f})")
         return dropped
 
@@ -352,12 +364,21 @@ class ShelfStore:
         reason: the analysis is not actionable (abstain, or no gate), or its
         conviction is below the floor. `added` and `close_at_add` stay, so the
         auditor's shelf grades keep their start; the new `dived` date restarts
-        the rotation clock."""
+        the rotation clock.
+
+        FIX-026: the re-dive's sector reading replaces the idea's. Its key
+        changes only when the idea has no configured key yet (unnamed, or
+        "generic"): a named key is decided once, so a different answer is
+        recorded, never applied. The paper lane then writes under the new key.
+        Example: an idea filed as "generic" in October, re-dived with the
+        answer "pharma", becomes a "pharma" idea; one named "pharma" stays
+        "pharma" whatever a later answer says."""
         shelf = self.load()
         by_symbol = {d.symbol: d for d in dives}
         refreshed: list[str] = []
         dropped: dict[str, str] = {}
         floor = settings.DISCOVERY_MIN_CONVICTION
+        keys = configured_sectors()
         for idea in shelf.ideas:
             dive = by_symbol.get(idea.symbol)
             if idea.status != "active" or dive is None:
@@ -382,10 +403,17 @@ class ShelfStore:
             idea.data_gate, idea.dived = dive.data_gate, dive.dive_date
             if dive.market_sector:
                 idea.market_sector, idea.industry = dive.market_sector, dive.industry
+            named = ""
+            if dive.sector_reading is not None:
+                if dive.sector != idea.sector and not key_named(idea, keys):
+                    named = f", sector {idea.sector} -> {dive.sector}"
+                    idea.sector, idea.graph = dive.sector, dive.graph
+                idea.sector_reading = dive.sector_reading
             refreshed.append(idea.symbol)
             self._event("redived", idea.symbol,
                         f"conviction {before:.2f} -> {dive.conviction:.2f}, "
-                        f"gate {dive.data_gate}, band {dive.entry_low:g}-{dive.entry_high:g}")
+                        f"gate {dive.data_gate}, band {dive.entry_low:g}-{dive.entry_high:g}"
+                        f"{named}")
         capped = self._enforce_sector_cap(shelf)
         if refreshed or dropped or capped:
             self.save(shelf)
@@ -395,24 +423,28 @@ class ShelfStore:
         """Active ideas to re-dive, most urgent first, each group oldest dive
         first: those whose stock was sold on or after their latest dive
         (`sold` maps a symbol to its latest autopilot sale), since a re-dive is
-        all that can bring them back; those shelved before the data gate
-        existed (no gate status); then those whose latest dive is older than
-        DISCOVERY_REDIVE_AFTER_DAYS. An idea that rotates out this run (its
-        latest dive more than DISCOVERY_STALE_DAYS old) is left to rotate. []
-        when re-dives are off (0). Example: analysed 24 Oct and sold 27 Oct,
-        an idea is due on Sat 31 Oct, not Sat 28 Nov."""
+        all that can bring them back; those not yet verified: shelved before
+        the data gate existed (no gate status), or with no sector key named
+        (FIX-026), which nothing buys until a re-dive names one; then those
+        whose latest dive is older than DISCOVERY_REDIVE_AFTER_DAYS. An idea
+        that rotates out this run (its latest dive more than
+        DISCOVERY_STALE_DAYS old) is left to rotate. [] when re-dives are off
+        (0). Example: analysed 24 Oct and sold 27 Oct, an idea is due on Sat
+        31 Oct, not Sat 28 Nov."""
         days = settings.DISCOVERY_REDIVE_AFTER_DAYS
         if days <= 0:
             return []
         sold = sold or {}
+        keys = configured_sectors()
         active = [i for i in self.load().ideas if i.status == "active"
                   and _dive_age(i, on) <= settings.DISCOVERY_STALE_DAYS]
         oldest = lambda i: last_dived(i) or date.min       # noqa: E731
         was_sold = [i for i in active if sold_since_dive(i, sold.get(i.symbol))]
         rest = [i for i in active if not sold_since_dive(i, sold.get(i.symbol))]
-        pre_gate = sorted((i for i in rest if not i.data_gate), key=oldest)
-        stale = sorted((i for i in rest if i.data_gate and not dive_is_fresh(i, on)),
-                       key=oldest)
+        unverified = {i.symbol for i in rest if not i.data_gate or unnamed_why(i, keys)}
+        pre_gate = sorted((i for i in rest if i.symbol in unverified), key=oldest)
+        stale = sorted((i for i in rest if i.symbol not in unverified
+                        and not dive_is_fresh(i, on)), key=oldest)
         return sorted(was_sold, key=oldest) + pre_gate + stale
 
     # -- the dive memo --------------------------------------------------------
@@ -529,13 +561,20 @@ class ShelfStore:
 
     def promote(self, symbol: str, user_id: str | None = None) -> dict:
         """One-command promote-to-watchlist (spec §6.3): watchlist item with
-        source='discovery' + managed-universe promotion (weekly cadence)."""
+        source='discovery' + managed-universe promotion (weekly cadence).
+        An idea with no sector key named is refused (`sector_unnamed`,
+        FIX-026): the managed record would keep "generic" for good."""
         symbol = symbol.strip().upper()
         shelf = self.load()
         idea = next((i for i in shelf.ideas
                      if i.symbol == symbol and i.status == "active"), None)
         if idea is None:
             return {"status": "not_on_shelf", "symbol": symbol}
+        why = unnamed_why(idea, configured_sectors())
+        if why:
+            return {"status": "sector_unnamed", "symbol": symbol,
+                    "detail": f"{symbol} has no sector key yet ({why}); its next deep dive "
+                              "names one"}
 
         item = WatchlistItem(
             symbol=symbol, sector=idea.sector, added=date.today().isoformat(),

@@ -31,6 +31,7 @@ from core.schemas.feedback import (
 )
 from core.schemas.pipeline import FinalReport
 from core.intelligence.rl.stores.prediction_store import PredictionStore
+from core.intelligence.rl.nse_calendar import now_ist
 from core.intelligence.algorithms.indicators.fetcher import get_price_history
 from core.intelligence.seasonal.calendar import SeasonalCalendar
 from core.intelligence.prompt_enhancer.enhancer import PromptEnhancer
@@ -99,6 +100,22 @@ def _fetch_actual_close(ticker: str) -> float | None:
     elif source != "agree":
         logger.info("[generate_forecast] Base close for %s sourced from %s: %.2f", ticker, source, close)
     return close
+
+
+def _review_session_close(ticker: str, review_date: date) -> float | None:
+    """FIX-027: the close the re-forecast of `review_date` anchors on. Today (or
+    later): the most recent close, as before. An earlier session (the 16:30
+    review of the previous session, run on the day after it): that session's
+    own close, never the later one the run can see; None when that session's
+    bar is not available, so the re-forecast is skipped and the envelope stays.
+    Example: Monday's close is 1,000 and Tuesday's 1,100; Tuesday's review of
+    Monday anchors on 1,000."""
+    from core.intelligence.rl.nse_calendar import now_ist
+    if review_date >= now_ist().date():
+        return _fetch_actual_close(ticker)
+    from core.intelligence.rl.workflows.daily_review import _fetch_session_close
+    quote = _fetch_session_close(ticker, review_date)
+    return quote.close if quote.fresh_for(review_date) else None
 
 
 _LESSON_CATEGORY_TO_AGENTS: dict[str, list[str]] = {
@@ -717,7 +734,7 @@ def regenerate_envelope(
 
         # Fresh baseline close — the new MC paths anchor on today's actual
         # close, not the month-start base_close.
-        base_close = _fetch_actual_close(ticker)
+        base_close = _review_session_close(ticker, review_date)
         if base_close is None:
             logger.warning(
                 "[regenerate_envelope] %s: could not fetch actual close — aborting "
@@ -763,6 +780,7 @@ def regenerate_envelope(
             reason=reason,
             trigger=trigger,
             archived_file=archived_file,
+            at=now_ist().isoformat(),
         ))
 
         # The new forecast profile / weight version describe the regenerated

@@ -4,8 +4,9 @@
   report, once a run, dated on or before the screen's latest session.
 - A source that answers for no symbol is one dark check a run, the weekly
   summary names it, and the watchdog warns once it lasts a week.
-- `infer_sector` reads Yahoo's classification; a managed record's sector and a
-  shelf idea's stored sector are never re-keyed.
+- Yahoo's classification is stored beside every dive as evidence; since
+  FIX-026 the analysis names the key (tests/unit/test_sector_naming_fix026.py),
+  and a managed record's sector and a shelf idea's named key are never re-keyed.
 
 No test reaches the network: the NSE client and Yahoo are fakes
 (tests/hermetic.py fails any test that tries).
@@ -22,19 +23,16 @@ import pytest
 
 import core.discovery as disc
 import core.discovery.candidates as cands_mod
-import core.discovery.deep_dive as dd
 import core.discovery.guards as guards
 import services.data.fetchers.surveillance as surv
-from backend.sectors.registry import TICKER_SECTOR, SectorRegistry
+from backend.sectors.registry import TICKER_SECTOR
 from backend.shared.schemas.discovery import (
-    DeepDiveResult, DiscoveryCandidate, ScreenResult, Shelf, ShelfIdea,
+    DeepDiveResult, ScreenResult, SectorReading, Shelf, ShelfIdea,
 )
 from core.config import settings
 from core.discovery.shelf import ShelfStore
 from core.intelligence.rl.stores.prediction_store import PredictionStore
-from core.intelligence.rl.workflows.sector_router import NATIVE_SECTORS, get_orchestrator_class
 from core.ops.watchdog import checks as wd
-from core.portfolio.promotion import is_valid_sector
 
 # The first 19 of the report's 63 columns, as NSE published them on 29 Oct 2026.
 HEADER = ("ScripCode,Symbol,Nse Exclusive,Status,Series,GSM,"
@@ -351,133 +349,74 @@ def test_the_registry_watches_the_guard_sources():
 
 
 # ---------------------------------------------------------------------------
-# The industry source
+# The industry source (FIX-026: evidence for the analysis, never a key)
 # ---------------------------------------------------------------------------
-
-REGISTRY_SECTORS = {s["sector"] for s in SectorRegistry.all_sectors()}
-
-
-def test_a_fixture_industry_outside_the_ticker_map_maps_to_a_real_key(monkeypatch):
-    monkeypatch.setattr(dd, "market_classification",
-                        lambda s: {"sector": "Industrials", "industry": "Aerospace & Defense"})
-    assert "NEWDEFCO" not in TICKER_SECTOR
-    assert dd.infer_sector("NEWDEFCO") == "defence"
-    assert "defence" in REGISTRY_SECTORS
-
-
-def test_every_key_either_table_names_is_a_registry_sector():
-    keys = set(dd._YAHOO_INDUSTRY_SECTOR.values()) | set(dd._YAHOO_SECTOR_SECTOR.values())
-    assert keys <= REGISTRY_SECTORS
-    assert all(is_valid_sector(k) for k in keys)
-
-
-@pytest.mark.parametrize("classification, key", [
-    ({"sector": "Healthcare", "industry": "Drug Manufacturers - Specialty & Generic"}, "pharma"),
-    ({"sector": "Healthcare", "industry": "Medical Care Facilities"}, "pharma"),
-    ({"sector": "Financial Services", "industry": "Insurance - Life"}, "insurance"),
-    ({"sector": "Financial Services", "industry": "Credit Services"}, "banking_bfsi"),
-    ({"sector": "Consumer Cyclical", "industry": "Auto Parts"}, "automobile"),
-    ({"sector": "Basic Materials", "industry": "Agricultural Inputs"}, "agrochem"),
-    ({"sector": "Utilities", "industry": "Utilities - Regulated Gas"}, "oilgas"),
-    ({"sector": "Industrials", "industry": "Staffing & Employment Services"}, "generic"),
-    ({"sector": "Consumer Cyclical", "industry": "Textile Manufacturing"}, "generic"),
-    ({"sector": "", "industry": ""}, "generic"),          # Yahoo knows nothing (a fund)
-    (None, "generic"),
-])
-def test_sector_from_classification(classification, key):
-    assert dd.sector_from_classification(classification) == key
-
-
-def test_the_registry_wins_and_yahoo_is_asked_only_when_needed(monkeypatch):
-    asked = []
-    monkeypatch.setattr(dd, "market_classification",
-                        lambda s: asked.append(s) or {"sector": "Financial Services",
-                                                      "industry": "Banks - Regional"})
-    assert dd.infer_sector("MARUTI") == "automobile"
-    assert dd.infer_sector("NEWAUTO", {"sector": "Consumer Cyclical",
-                                       "industry": "Auto Parts"}) == "automobile"
-    assert asked == []
-    assert dd.infer_sector("NEWBANK") == "banking_bfsi" and asked == ["NEWBANK"]
-
-
-@pytest.mark.parametrize("yahoo_sector, industry, key, graph", [
-    ("Consumer Cyclical", "Auto Parts", "automobile", "automobile"),
-    ("Financial Services", "Banks - Regional", "banking_bfsi", "banking_bfsi"),
-    ("Technology", "Information Technology Services", "it_sector", "it_sector"),
-    ("Utilities", "Utilities - Renewable", "renewable_energy", "renewable_energy"),
-    ("Basic Materials", "Specialty Chemicals", "chemicals", "generic"),
-    ("Consumer Defensive", "Packaged Foods", "fmcg", "generic"),
-    ("Consumer Cyclical", "Textile Manufacturing", "generic", "generic"),
-])
-def test_characterization_what_a_classified_stock_changes_in_graph_routing(
-        monkeypatch, yahoo_sector, industry, key, graph):
-    """Before FIX-011 every stock outside the ticker map was "generic": the
-    generic graph, data/predictions/generic/<SYMBOL>. Now a stock whose key has
-    a native graph runs that graph; any other key keeps the generic graph and
-    changes only the store directory and the sector ledger."""
-    monkeypatch.setattr(dd, "load_managed_tickers", lambda: [])
-    monkeypatch.setattr(dd, "ShelfStore", lambda: SimpleNamespace(load=lambda: Shelf()))
-    monkeypatch.setattr(dd, "EodStore",
-                        lambda: SimpleNamespace(load_window=lambda end, sessions: _window(["NEWCO"])))
-    classified = []
-    monkeypatch.setattr(dd, "market_classification", lambda s: classified.append(s) or
-                        {"sector": yahoo_sector, "industry": industry})
-    routed = []
-
-    class _Report:
-        final_score, verdict, investment_thesis = 0.7, "BUY", "x"
-        decision_gate = None
-
-    monkeypatch.setattr(dd, "get_orchestrator", lambda sector: routed.append(sector) or
-                        SimpleNamespace(analyse=lambda t: _Report()))
-    listing = {"NEWCO": {"series": "EQ", "isin": "INE000000000"}}
-    out = dd.run_deep_dives([DiscoveryCandidate(symbol="NEWCO", close=100.0, composite=0.9)],
-                            on=FRI, listing=listing)
-    assert routed == [key] and out[0].sector == key
-    assert classified == ["NEWCO"]                     # Yahoo asked once a dive, not twice
-    assert out[0].industry == industry
-    assert SectorRegistry.get_graph_sector(key) == graph
-    assert out[0].graph == ("native" if graph in NATIVE_SECTORS else "generic")
-    assert (get_orchestrator_class(key) is get_orchestrator_class("generic")) == (graph == "generic")
-
+#
+# FIX-011's Yahoo-to-key tables (`sector_from_classification`, `infer_sector`)
+# are gone: the deep dive's analysis names the key from the configured list
+# (tests/unit/test_sector_naming_fix026.py pins the naming, the graph guess and
+# the routing). What FIX-011 promised and still holds is below.
 
 def test_an_existing_holdings_store_is_never_rekeyed(monkeypatch, tmp_path):
-    """The hard-review question: a stock held under "generic" before FIX-011,
-    that Yahoo now calls a chemicals maker, keeps its managed sector, so its
-    forecasts stay in data/predictions/generic/<SYMBOL>; Yahoo is not asked."""
-    monkeypatch.setattr(cands_mod, "infer_sector",
-                        lambda s: pytest.fail("a managed stock's sector was re-inferred"))
+    """The hard-review question: a stock held under "generic" keeps its
+    managed sector, so its forecasts stay in data/predictions/generic/<SYMBOL>;
+    nothing else is asked."""
+    monkeypatch.setattr(cands_mod, "ticker_map_sector",
+                        lambda s: pytest.fail("a managed stock's sector was looked up again"))
     sector = cands_mod.holding_sector("CHEMCO", "", {"CHEMCO": "generic"})
     assert sector == "generic"
     store = PredictionStore("CHEMCO", sector=sector, base_dir=str(tmp_path))
     assert store._dir == tmp_path / "generic" / "CHEMCO"
 
 
-def test_a_shelf_ideas_sector_and_paper_store_survive_its_redive(monkeypatch, tmp_path):
-    """A re-dive refreshes the idea's market classification, never its sector:
-    its paper-lane store (keyed by sector) stays where it is, and it is bought
-    under that same sector."""
+def _redive(symbol, key, *, source="analysis", answer=None):
+    return DeepDiveResult(symbol=symbol, sector=key, graph="generic", conviction=0.7,
+                          verdict="BUY", thesis="t", entry_low=97.0, entry_high=102.0,
+                          invalidation_level=85.0, close=100.0, composite=0.0,
+                          dive_date="2026-10-31", data_gate="actionable",
+                          market_sector="Basic Materials", industry="Specialty Chemicals",
+                          sector_reading=SectorReading(answer=answer or key, source=source))
+
+
+def test_a_named_ideas_key_and_paper_store_survive_its_redive(monkeypatch, tmp_path):
+    """A re-dive refreshes the idea's market classification and its reading,
+    never a named key: its paper-lane store (keyed by sector) stays where it
+    is, and it is bought under that same key. The answer is recorded."""
+    monkeypatch.setattr(settings, "DISCOVERY_DATA_DIR", str(tmp_path))
+    store = ShelfStore()
+    store.save(Shelf(ideas=[ShelfIdea(
+        symbol="CHEMCO", sector="chemicals", added="2026-09-05", conviction=0.6,
+        data_gate="actionable", sector_reading=SectorReading(answer="chemicals"))]))
+    # The dive kept the earlier key and recorded the other answer.
+    dive = _redive("CHEMCO", "chemicals", source="earlier", answer="agrochem")
+    assert store.apply_redives([dive], on=date(2026, 10, 31))["refreshed"] == ["CHEMCO"]
+    idea = store.load().ideas[0]
+    assert (idea.sector, idea.industry) == ("chemicals", "Specialty Chemicals")
+    assert idea.sector_reading.answer == "agrochem"
+    assert cands_mod.holding_sector("CHEMCO", idea.sector, {}) == "chemicals"
+
+
+def test_an_idea_shelved_as_generic_is_named_by_its_redive(monkeypatch, tmp_path):
+    """FIX-026: an idea with no key (here shelved as "generic" before the
+    analysis named sectors) takes the key its re-dive names; its paper lane
+    then writes under the new key (the card accepts that split for an idea
+    no portfolio holds)."""
     monkeypatch.setattr(settings, "DISCOVERY_DATA_DIR", str(tmp_path))
     store = ShelfStore()
     store.save(Shelf(ideas=[ShelfIdea(symbol="CHEMCO", sector="generic", added="2026-09-05",
                                       conviction=0.6, data_gate="actionable")]))
-    dive = DeepDiveResult(symbol="CHEMCO", sector="chemicals", graph="generic", conviction=0.7,
-                          verdict="BUY", thesis="t", entry_low=97.0, entry_high=102.0,
-                          invalidation_level=85.0, close=100.0, composite=0.0,
-                          dive_date="2026-10-31", data_gate="actionable",
-                          market_sector="Basic Materials", industry="Specialty Chemicals")
-    assert store.apply_redives([dive], on=date(2026, 10, 31))["refreshed"] == ["CHEMCO"]
+    store.apply_redives([_redive("CHEMCO", "chemicals")], on=date(2026, 10, 31))
     idea = store.load().ideas[0]
-    assert (idea.sector, idea.industry) == ("generic", "Specialty Chemicals")
-    assert cands_mod.holding_sector("CHEMCO", idea.sector, {}) == "generic"
+    assert (idea.sector, idea.sector_reading.source) == ("chemicals", "analysis")
 
 
-def test_a_watchlist_stock_outside_the_ticker_map_is_held_under_its_industry(monkeypatch):
-    """PR-004 re-review RR-L1: CEATLTD is outside the ticker map. Not managed,
-    a watchlist BUY of it was "generic"; Yahoo calls it Auto Parts (probed 1
-    Nov 2026), so it is held as "automobile" and SA-050's cap counts it with
-    MARUTI and M&M."""
-    monkeypatch.setattr(dd, "market_classification",
-                        lambda s: {"sector": "Consumer Cyclical", "industry": "Auto Parts"})
+def test_a_watchlist_stock_outside_the_ticker_map_needs_a_key(monkeypatch):
+    """PR-004 re-review RR-L1, under FIX-026: CEATLTD is outside the ticker
+    map. Managed under "automobile" (the home page's record), it is held as
+    "automobile" and SA-050's cap counts it with MARUTI and M&M. Not managed
+    and with no configured key of its own, no Yahoo table names one: it is
+    not offered (`watchlist_idea` says why)."""
     assert "CEATLTD" not in TICKER_SECTOR
-    assert cands_mod.holding_sector("CEATLTD", "", {}) == "automobile"
+    assert cands_mod.holding_sector("CEATLTD", "", {"CEATLTD": "automobile"}) == "automobile"
+    assert cands_mod.holding_sector("CEATLTD", "automobile", {}) == "automobile"
+    assert cands_mod.holding_sector("CEATLTD", "", {}) == ""

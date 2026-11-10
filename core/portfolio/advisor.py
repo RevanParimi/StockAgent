@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from pydantic import BaseModel, Field
 
@@ -58,6 +58,12 @@ class AdvisorSignals(BaseModel):
     thesis_intact: bool | None = None      # latest ThesisReview outcome, None = never reviewed
     reforecast_reason: str = ""            # latest reforecast event reason this cycle
     envelope_direction: str = "FLAT"       # UP | DOWN | FLAT remaining-forecast drift
+    # FIX-027: set when a re-forecast was made after the review session's close.
+    # `envelope_direction` then reads the envelope as it stood at that close (the
+    # archive made before the first such re-forecast), and the later path's drift
+    # is kept here only so an ADD it alone would allow is named, never taken.
+    envelope_after_close: str = ""
+    envelope_late_direction: str = ""
     confidence_trend: float = 0.0          # last remaining conf − first remaining conf
     reversion_prior: float = 0.0
     direction_accuracy_7d: float | None = None
@@ -172,6 +178,73 @@ def compute_stop_pct(atr_pct_value: float, cap_bucket: str, risk_profile: str) -
 # Signal assembly from existing RL artifacts
 # ---------------------------------------------------------------------------
 
+class LateReforecast(BaseModel):
+    """FIX-027: what the advisor found when a re-forecast was made after the
+    review session's close: `why` for the record, and the envelope as it is
+    now (`current`), whose path the decision may not act on."""
+    model_config = {"arbitrary_types_allowed": True}
+    why: str
+    current: object
+
+
+def reforecasts_after_close(env, review_date: date) -> list:
+    """The envelope's re-forecasts made after session `review_date`'s close
+    (15:30 IST, itself included, as `close_before_decision` has it), in order. One with no time (stored before FIX-027) counts as
+    made before it; one whose time cannot be read counts as after, as it
+    cannot be shown to be before."""
+    from core.intelligence.rl.nse_calendar import IST, session_close_at
+    closed = session_close_at(review_date)
+    late = []
+    for ev in env.reforecast_history:
+        if not getattr(ev, "at", ""):
+            continue
+        try:
+            at = datetime.fromisoformat(ev.at)
+            if at.tzinfo is None:
+                at = at.replace(tzinfo=IST)
+        except ValueError:
+            late.append(ev)
+            continue
+        if at >= closed:
+            late.append(ev)
+    return late
+
+
+def envelope_at_close(env, review_date: date, store: VerdictStore):
+    """(envelope, late): the envelope a decision at `review_date`'s close may
+    read. With no re-forecast after that close: the envelope itself and None.
+    With one: the archive made before the first such re-forecast (the
+    envelope as it stood), with a `LateReforecast` naming it; when that
+    archive cannot be read the envelope is None, so no path is read at all
+    (direction FLAT: an ADD does not fire, and a sale needs its other triggers).
+    Example: Monday's close; Tuesday 16:45 the review of Monday re-forecast
+    from a rise. Monday's decision reads the path archived at 16:45, not the
+    new one. An envelope re-forecast last week is read as it is."""
+    late = reforecasts_after_close(env, review_date)
+    if not late:
+        return env, None
+    first = late[0]
+    when = first.at or first.date
+    why = (f"the {first.reason} re-forecast of {when} is after the close of "
+           f"{review_date.isoformat()}")
+    archived = store.load_archived_envelope(first.archived_file) if first.archived_file else None
+    if archived is None:
+        why += " and the envelope before it is not available"
+    return archived, LateReforecast(why=why, current=env)
+
+
+def _drift_direction(env, review_date: date, close: float) -> str:
+    """UP | DOWN | FLAT drift of `env`'s remaining rows from `close`; "" when none."""
+    try:
+        remaining = [f for f in env.daily_forecasts if f.date >= review_date.isoformat()]
+        if not remaining or not close:
+            return ""
+        drift_pct = (remaining[-1].predicted_close - close) / close * 100
+        band = settings.ADVISOR_ENVELOPE_FLAT_BAND_PCT
+        return "UP" if drift_pct > band else "DOWN" if drift_pct < -band else "FLAT"
+    except Exception:
+        return ""
+
 def build_signals(
     holding: Holding,
     portfolio: Portfolio,
@@ -214,6 +287,12 @@ def build_signals(
     # Envelope state
     try:
         env = store.load_envelope(store.cycle_id_for(review_date))
+        if env:
+            env, late = envelope_at_close(env, review_date, store)
+            if late is not None:
+                sig.envelope_after_close = late.why
+                sig.envelope_late_direction = _drift_direction(
+                    late.current, review_date, close)
         if env and env.daily_forecasts:
             remaining = [f for f in env.daily_forecasts if f.date >= review_date.isoformat()]
             if remaining:
@@ -609,6 +688,14 @@ def decide(
             if not signals.regime_unavailable and not add_blocks:
                 triggers.append("add_bullish_healthy")
                 add_fired = True
+        elif (signals.envelope_late_direction == "UP" and signals.envelope_after_close
+                and signals.regime_label not in ("MACRO_CRISIS", "RISK_OFF")
+                and signals.position_weight_pct < settings.ADVISOR_MAX_POSITION_PCT
+                and (signals.direction_accuracy_7d or 0.0)
+                >= settings.ADVISOR_ADD_MIN_DIRECTION_ACCURACY):
+            # FIX-027: an ADD only the path made after the session's close
+            # would allow is not taken; the note says so.
+            notes.append("ENVELOPE_AFTER_CLOSE")
 
     # -- Precedence: EXIT > TRIM > ADD > HOLD -------------------------------
     if exit_fired:
@@ -671,4 +758,5 @@ def decide(
         switch_candidate=switch_candidate,
         rationale_hash=hashlib.sha256(rationale.encode()).hexdigest()[:16],
         regime_unavailable=signals.regime_unavailable,
+        envelope_after_close=signals.envelope_after_close if "ENVELOPE_AFTER_CLOSE" in notes else "",
     )

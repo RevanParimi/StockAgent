@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "pi": "PI-2026-09",
-  "updated_at": "2026-11-07",
+  "updated_at": "2026-11-09",
   "baseline_commit": "9a805878ed19c0cda7833d5b897ac05ee407436d",
   "audit": {
     "status": "complete",
@@ -9,8 +9,8 @@
     "production_modified": false
   },
   "active_task": null,
-  "next_task": "FIX-026",
-  "next_phase": "FIX-025 ACCEPTED (fresh review) and COMMITTED at the owner's 'ya, commit and push and 2,3 go as per recommendation' (6 Nov, session stockagent-main-02): code b065da3 (the 33 reviewed files, verify --rev 0 mismatches, 33b944df) plus this docs commit. PUSHED (0f0d7f6..bed0a0a, 00:10:18 IST on 7 Nov) and DEPLOYED (Railway b5d01545 SUCCESS by 00:36:58 IST; /health 200); production pending_observation; the switch is off. That record, KT s1 and the guide's four FIX-025 status lines are committed in the docs commit after bed0a0a, at the owner's 'commit and push' of 7 Nov; that commit's own push redeploys the same code. The owner continues from another device: HANDOFF's START HERE says what stays on the laptop. Owner answered 6 Nov: portfolio.max_holdings stays at 15 for now, raised in config when money is added (no deposit is planned and it does not limit today's Rs 10 L book; Rs 40 L arriving on 12 holdings stops at 15 holdings, 37.0% invested). FIX-029's M4 is Option A: a stock the autopilot sold is not offered from the watchlist until the Saturday after the sale, however new its analysis is. Next continue, in a new conversation: FIX-026 implementation; then FIX-027, FIX-028, FIX-029. The switch stays off, and FIX-028's measurement comes first. FIX-023 and FIX-024 production pending_observation (0f0d7f6, Railway 56676660, 5 Nov); SA-049 pending_observation; FIX-011 pending_observation (guide 06-J on the Saturday 7 Nov discovery run); SA-048 pending_observation (guide 08-F).",
+  "next_task": "FIX-027",
+  "next_phase": "FIX-026 fresh review ACCEPTED (9 Nov, evidence/FIX-026-review.md; focused 292 passed, manifest 253620a2 verified 0 mismatches; the full suite and mutants were the implementer's, not re-run). Next continue, in a new conversation: FIX-027 (implementation), then FIX-028, FIX-029. FIX-026 is uncommitted: commit-time edits (KT header/s1/s12, guide 06-M status, PDF) wait for the owner's word. Production pending_deployment; deploying changes production with the switch off (legacy generic ideas unbuyable until re-dived). The switch stays off.",
   "scope": "One implementation or fresh-session review phase per conversation. Default queue is planned stories; stretch requires explicit promotion.",
   "pending_production_checks": [
     {"id": "PR-011-P1", "story": "PR-011", "due_ist": "before PR-011 is pushed", "status": "passed", "check": "The owner runs, from Git Bash in the repository: railway ssh \"cd /app && echo $(gzip -9c analysis_data/pr011/prod_probe.py | base64 -w0) | base64 -d | python -c 'import sys,zlib;exec(zlib.decompress(sys.stdin.buffer.read(),31))'\" and pastes the output. Pass: every source http 200 with fields_present true, both documents has_marker true. A failing source is switched off before the push (events.disclosures.<source> false or discovery.pledge_guard false); if the insider list or its XBRL fails, delete insider_buying from discovery.signal_weights, the fallback and the signal slots too (receipt D13).", "record_in": "docs/planning/PI-2026-09/evidence/PR-011-implementation.md (Production probe)", "checked_ist": "2026-10-23 15:42", "result": "Owner ran analysis_data/pr011/prod_probe.py in the production container via railway ssh, 23 Oct 15:42:30 IST (raw copy analysis_data/pr011/prod_probe_2026-10-23_1542IST.txt, ignored): 8 of 8 checks passed. Insider list corporates-pit-gg 7 days 200/19 rows, 28 days 200/351; SAST Reg 29 7 days 200/35; Reg 31 7 days 200/12; MARUTI pledge snapshot 200/1; MARUTI shareholding list 200/22 quarters; fields present in all six; insider XBRL 10,821 B and shareholding XBRL 605,702 B, fact names present. No source switched off; receipt D13 stands (everything ships enabled). Public NSE data only; no application data, logs or env."},
@@ -1639,15 +1639,37 @@
       "points": 3,
       "priority": "P1",
       "scope": "planned",
-      "status": "todo",
+      "status": "done",
+      "implementation_started": "2026-11-09 about 21:00 IST, a new conversation opened with 'continue' (session stockagent-main-22 [d97f79]); origin/main at 412645f, nothing new from the other device; no peer session running; baseline HEAD 412645f, working tree clean",
       "origin": "Owner decisions 2026-11-04 (session stockagent-main-9b [e55bfb], 'agreed on all') on SA-049's design choices in evidence/SA-049-implementation.md: T7 (sector named by the deep dive's own LLM call from the configured keys, no fixed Yahoo tables; empty, unknown or disputed readings flagged in the weekly summary and the watchdog; decided once)",
       "depends_on": ["FIX-024"],
       "sequencing_note": "Placed after FIX-025, before PR-005 (FIX-024 edits candidates.py and shelf.py). Recommended before deployment is switched on, not a precondition. A wrong sector can block buys (generic lumps stocks under one 30% cap) or allow too much (one sector under two keys).",
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
+      "implementation": {
+        "date": "2026-11-09",
+        "context": "a new conversation opened with 'continue', about 21:00-22:10 IST (session stockagent-main-22 [d97f79]), including a same-conversation self-review (not the fresh review); no peer session running; origin/main 412645f, nothing from the other device",
+        "baseline": "HEAD 412645f, working tree clean",
+        "change": "unified_analyst.run(sector_question=) appends the question and keeps the sector_key block; base_orchestrator.analyse(*, sector_question=) per-run state, report.sector_answer; FinalReport.sector_answer; SectorReading on DeepDiveResult and ShelfIdea; new core/discovery/sector_naming.py; deep_dive asks and decides, tables deleted; shelf: cap on the key, re-dive names a missing key only, unnamed re-dived first, promote refused; candidates: unnamed not offered, holding_sector managed > own configured > ticker map > none; cycle result sectors; scheduler counts line; watchdog sector_keys + milestones sector_keys_named; discovery_api 409",
+        "decisions": "F26-D1 the question rides in the unified call; D2 the 22 toggle keys, generic only with a reason; D3 graph guess for the four native graphs only; D4 managed > ticker map > earlier > answer, asked even when known; D5 unnamed shelved, never bought, re-dived first, legacy generic counts as unnamed; D6 shelf cap on the key; D7 watchlist stock with no key not offered; D8 watchdog weekly; D9 INFO log; D10 the paper lane moves when a key is named",
+        "tests": "story file tests/unit/test_sector_naming_fix026.py 62 passed (acceptance 1-3 by hand-worked figures through the real dive, shelf, candidates, sizing, cycle, scheduler job and watchdog; 19 answer shapes; a 3,000 x 13 membership and Yahoo-independence property; a 60 x 12-week decided-once property; a 2,000-shelf buy-rule property with completeness; byte-identical prompt without the question, one call); reworked PR-004 92 passed, FIX-011, SA-049, SA-003 and deep-dive files; mutants 33/33 + 3 re-runs (analysis_data/fix026/mutants.py, mutants.log, mutants2.log); full suite 6,203 passed / 12 skipped / 1 xfailed / 0 failed, pytest rc 0, 14m07s, 21:51-22:05 IST, git status identical before and after (analysis_data/fix026/full_suite.txt)",
+        "found_not_changed": "configured list overlaps (power vs renewable_energy; UI folds tech into it_sector) -> SA-026; portfolio API files a hand-added stock outside the map as generic -> SA-026; SA-050 lumps generic holdings (KT limit)",
+        "review_input": {
+          "manifest": "docs/planning/PI-2026-09/evidence/FIX-026-manifest.json",
+          "manifest_sha256": "253620a2d214f9df266695f3f8a616f4a6c9dbf3c4ade97fc1c862daf1262f5b",
+          "files": 25,
+          "diff_sha256": "0da6b47aac46dd1c170acfd6c7a04075db17a7a1e2a867082669dc9ee37bc5e6",
+          "diff_bytes": 195461,
+          "diff_paths": 24,
+          "against": "HEAD 412645f",
+          "end_tree": "0e1866ac0908ed7cd730066f04aec404f7caa8a3",
+          "digest_script": "analysis_data/fix026/digest.py"
+        },
+        "commit_time_edits": "KT header (clears check_kt_docs' expected error for the new linked module); KT s1 'the inspected code adds FIX-026 ... not yet deployed'; KT s12 FIX-026 Done; guide 06-M status line; PDF"
+      },
+      "implementation_receipt": "docs/planning/PI-2026-09/evidence/FIX-026-implementation.md",
+      "review_receipt": "docs/planning/PI-2026-09/evidence/FIX-026-review.md",
+      "reviewed_revision": "working tree on HEAD 412645f, manifest 253620a2 (25 files, kt_manifest verify 0 mismatches), stored diff 0da6b47a (195,461 B)",
       "production_verification": {
-        "status": "not_started",
+        "status": "pending_deployment",
         "evidence": null
       },
       "blocked_reason": null
@@ -1660,11 +1682,12 @@
       "points": 3,
       "priority": "P1",
       "scope": "planned",
-      "status": "todo",
+      "status": "review_required",
       "origin": "FIX-024's fresh review 2026-11-05 (session stockagent-main-31 [fa7ce5]; evidence/FIX-024-review.md finding M1, medium, pre-existing)",
       "depends_on": ["FIX-024"],
       "sequencing_note": "Routing delegated (owner, 2026-10-13). Placed after FIX-026, before PR-005: the owner's order for the switch-on preconditions is unchanged, and deployment does not read the envelope. The sale's handling is an owner decision, from the card's example, before implementation.",
-      "implementation_receipt": null,
+      "owner_decision": "2026-11-10: sale = WAIT. The owner first chose 'book at the latest close it read'; shown the cost (a second sell step, the run marker, Monday's value point, shadow and advice dates, the switch buy leg) they chose Wait. Probe: proceed, run later.",
+      "implementation_receipt": "docs/planning/PI-2026-09/evidence/FIX-027-implementation.md",
       "review_receipt": null,
       "reviewed_revision": null,
       "production_verification": {
@@ -2953,6 +2976,9 @@
     }
   ],
   "history": [
+    {"date": "2026-11-09", "event": "FIX-026 fresh review -> ACCEPTED (new conversation, receipt evidence/FIX-026-review.md). Read sector_naming and the dive, candidates, shelf, analyst, orchestrator, API diffs; traced the buy path (buy_candidates gates every route, promote 409). Focused 292 passed; check_broad_except OK; manifest verify 0 mismatches; KT hash equals the PDF source. Findings: M-1 low (disclosed) a valid-but-wrong key with yahoo_fits true passes, caught only by a human reading the summary; M-2 note whether native prompts answer the appended block, production only; M-3 rollout watch. Not re-run: full suite, mutants, real LLM/Yahoo. active_task null; next_task FIX-027. Nothing committed, pushed, deployed or configured."},
+    {"date": "2026-11-09", "event": "FIX-026 IMPLEMENTED -> review_required (session stockagent-main-22 [d97f79], about 21:00-22:10 IST 9 Nov; receipt evidence/FIX-026-implementation.md). The deep dive's own unified-analyst call names the sector key from the 22 configured keys (config/sector_toggles.json) with Yahoo's labels as evidence; checked by membership (an explicit generic needs a reason); FIX-011's Yahoo-to-key tables, infer_sector and shelf_sector deleted. Decided once: managed record, ticker map, an idea's named key, then the answer; a re-dive names a missing key and never changes a named one. An idea with no key named is shelved, never bought or promoted, re-dived first; legacy generic ideas count as unnamed. The shelf's cap counts the key, as SA-050 does. Weekly summary 'sectors', scheduler counts line, watchdog check sector_keys (invariant sector_keys_named, weekly). story file 62 tests (tests/unit/test_sector_naming_fix026.py); mutants 33/33 + 3 re-runs, all caught; full suite 6,203 passed / 12 skipped / 1 xfailed / 0 failed (pytest rc 0, 14m07s); check_broad_except OK (148, unchanged); check_kt_docs one expected error (sector_naming.py absent at b065da3, cleared by the commit-time header bump); PDF 69 pages, source 30df47f0. Manifest 253620a2 (25 files), diff 0da6b47a (195,461 B, 24 paths) vs HEAD 412645f. Nothing committed, pushed, deployed or configured; no production read, no LLM call."},
+    {"date": "2026-11-09", "event": "Correction to the 2026-11-07 entry below: the docs commit 412645f was not held to about 06:40 IST. It was pushed at about 06:20 IST at the owner's 'push it now, its okay' (told of the 06:30 ops_watchdog) and redeployed the same code (Railway 7a0719d2). Recorded in the next docs change, without a push of its own."},
     {"date": "2026-11-07", "event": "Deploy record committed at the owner's 'commit and push, i will start the continue fri another device' (session stockagent-main-02): STATE, HANDOFF, KT s1 and edition, guide 06-K, 06-L, 07-G and 07-O status lines, PDF. No code changed. Push held to about 06:40 IST: at 06:17 the 06:30 ops_watchdog fell inside the deploy, and the next job is the 08:00 ipo_refresh_am."},
     {"date": "2026-11-07", "event": "FIX-025 PUSHED AND DEPLOYED (session stockagent-main-02): 0f0d7f6..bed0a0a at 00:10:18 IST by the waiter; Railway b5d01545 created 00:10:18 IST, not queued; DEPLOYING by 00:18:05; SUCCESS by 00:36:58 (railway deployment list, read-only; 56676660 REMOVED); public /health 200 at 00:36:58. Full suite on the pushed tree: 6,161 passed / 12 skipped / 1 xfailed / 0 failed, pytest rc 0, 13m17s, 22:29-22:42 IST on 6 Nov, status clean before and after (analysis_data/fix025_commit/full_suite.txt). Production pending_observation; deployment's switch is off. Record uncommitted; KT s1 and the guide's FIX-025 status lines are commit-time edits for the next docs commit."},
     {"date": "2026-11-06", "event": "FIX-025 COMMITTED at the owner's 'ya, commit and push and 2,3 go as per recommendation' (session stockagent-main-02, about 22:27-22:28 IST): b065da3 = the 33 reviewed files (verify 0 mismatches, 33b944df) + docs commit with the receipt's edits 1-9. Push held to 00:10-05:30 IST on 7 Nov for the nightly jobs. Owner answered: portfolio.max_holdings stays at 15 for now, raised in config when money is added (no deposit is planned and it does not limit today's Rs 10 L book; Rs 40 L arriving on 12 holdings stops at 15 holdings, 37.0% invested). FIX-029's M4 is Option A: a stock the autopilot sold is not offered from the watchlist until the Saturday after the sale, however new its analysis is."},

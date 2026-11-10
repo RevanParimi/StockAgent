@@ -135,6 +135,9 @@ class AdviceRecord(BaseModel):
     # answer" when the review day's regime was not established (an ADD it
     # would allow is held, note REGIME_UNAVAILABLE); "" when it was.
     regime_unavailable: str = ""
+    # FIX-027: set when an ADD only a re-forecast made after the review
+    # session's close would allow was held; says which re-forecast and when.
+    envelope_after_close: str = ""
     # DEPRECATED — never written by anything. See the class docstring.
     outcome_10td: float | None = None
     outcome_30td: float | None = None

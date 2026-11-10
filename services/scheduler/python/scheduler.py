@@ -634,18 +634,29 @@ class AutomobileScheduler:
         """Weekly discovery funnel (spec §6): non-fatal by construction —
         run_discovery_cycle() contains every stage failure."""
         from core.discovery import run_discovery_cycle
+        from core.discovery.sector_naming import counts_line
 
         _job_banner("Weekly Discovery Funnel")
         try:
             result = run_discovery_cycle()
             logger.info(
                 "[Scheduler] Discovery — universe=%s candidates=%s dives=%s "
-                "shelf_added=%s paper_reviewed=%s dark=%s dark_checks=%s errors=%s",
+                "shelf_added=%s paper_reviewed=%s dark=%s dark_checks=%s "
+                "sectors=[%s] errors=%s",
                 result.get("universe_size"), result.get("candidates"),
                 result.get("deep_dives"), result.get("shelf", {}).get("added"),
                 result.get("paper", {}).get("reviewed"),
-                result.get("dark_signals"), result.get("dark_checks"), result.get("errors"),
+                result.get("dark_signals"), result.get("dark_checks"),
+                counts_line(result.get("sectors")), result.get("errors"),
             )
+            # FIX-026: each stock whose sector key is not cleanly named.
+            sectors = result.get("sectors") or {}
+            for kind in ("generic", "unnamed", "invalid", "disputed", "kept"):
+                if sectors.get(kind):
+                    logger.info("[Scheduler] Discovery sectors %s: %s", kind, sectors[kind])
+            if sectors.get("no_yahoo"):
+                logger.info("[Scheduler] Discovery sectors no Yahoo labels: %s",
+                            sectors["no_yahoo"])
             try:
                 from core.delivery.ops_alerts import alert_job_zero_output
                 alert_job_zero_output(

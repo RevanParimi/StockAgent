@@ -70,6 +70,15 @@ class VerdictStore:
                            self.ticker, exc)
             return None
 
+    def load_archived_envelope(self, path: str):
+        """FIX-027: an archived envelope (the one before a re-forecast); None on any failure."""
+        try:
+            return self._ps.load_archived_envelope(path)
+        except Exception as exc:
+            logger.warning("[verdict_store] archived envelope read failed for %s (non-fatal): %s",
+                           self.ticker, exc)
+            return None
+
     def load_feedback_log(self, cycle_id: str | None = None):
         """Delegate to PredictionStore; None on any failure (the advisor reads
         `log.entries if log else []`, so None degrades to no entries)."""

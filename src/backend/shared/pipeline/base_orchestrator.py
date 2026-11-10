@@ -122,6 +122,10 @@ class BaseSectorOrchestrator(ABC):
         # section statuses and dimension counts. None means the run built no
         # bundle (legacy worker pool), which the gate treats as unverified.
         self._last_gate_inputs: dict | None = None
+        # FIX-026: the deep dive's sector question for the run in flight, and
+        # the analysis's answer to it (unvalidated). Reset per run.
+        self._sector_question: str | None = None
+        self._last_sector_answer = None
         self._worker_pool_graph = _build_worker_pool_graph(self._sub_agents, self.SECTOR_NAME)
 
     # ------------------------------------------------------------------
@@ -144,6 +148,8 @@ class BaseSectorOrchestrator(ABC):
             api_snapshot = snapshot_usage()
             self._last_data_health = None
             self._last_gate_inputs = None
+            self._sector_question = None
+            self._last_sector_answer = None
             logger.info("[%s] Async run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
 
             query = await asyncio.to_thread(self._resolve_ticker, user_input, run_id)
@@ -219,8 +225,14 @@ class BaseSectorOrchestrator(ABC):
         self,
         user_input: str,
         progress_callback: Callable[[str, float], None] | None = None,
+        *,
+        sector_question: str | None = None,
     ) -> FinalReport:
-        """Sync end-to-end analysis. Used by CLI and scheduler."""
+        """Sync end-to-end analysis. Used by CLI and scheduler.
+
+        `sector_question` (the discovery deep dive's, FIX-026) rides in the
+        unified analyst's one call, no extra call; the answer comes back as
+        `report.sector_answer`, unvalidated."""
         run_id = str(uuid.uuid4())[:8]
         # E1: everything this run logs at WARNING+ is stamped with the run id,
         # so a degradation can be traced back to the verdict it damaged. The
@@ -231,6 +243,8 @@ class BaseSectorOrchestrator(ABC):
             api_snapshot = snapshot_usage()
             self._last_data_health = None
             self._last_gate_inputs = None
+            self._sector_question = sector_question
+            self._last_sector_answer = None
             logger.info("[%s] Run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
 
             query = self._resolve_ticker(user_input, run_id=run_id)
@@ -260,6 +274,9 @@ class BaseSectorOrchestrator(ABC):
             # B2: the run's health record travels with its verdict. None on the
             # legacy worker-pool path, which builds no bundle to describe.
             report.data_health = self._last_data_health
+            # FIX-026: the sector answer, None unless a question was asked and
+            # the unified call answered it.
+            report.sector_answer = self._last_sector_answer
             # SA-003: the decision gate, before anything logs or returns the verdict.
             self._apply_decision_gate(report, query.ticker, run_id)
 
@@ -602,7 +619,13 @@ class BaseSectorOrchestrator(ABC):
             self.SECTOR_NAME, bundle.api_calls_made, bundle.has_real_data,
         )
         analyst = UnifiedAnalyst()
-        outputs = analyst.run(query, bundle, self.SECTOR_NAME, run_id=run_id)
+        question = getattr(self, "_sector_question", None)
+        if question:
+            outputs = analyst.run(query, bundle, self.SECTOR_NAME, run_id=run_id,
+                                  sector_question=question)
+            self._last_sector_answer = analyst._last_sector_answer
+        else:
+            outputs = analyst.run(query, bundle, self.SECTOR_NAME, run_id=run_id)
         self._record_data_health(query, bundle, outputs, run_id)
         if outputs:
             # AUD-087: one LLM call produced all outputs — stamp totals on one

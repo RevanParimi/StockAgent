@@ -741,3 +741,66 @@ def discovery_guard_sources() -> CheckResult:
         "; ".join(f"{s} dark in every screen from {d} to {latest}: {_GUARD_DARK_EFFECT[s]}"
                   for s, d in sorted(long_dark.items())) + ".",
         evidence)
+
+
+# ---------------------------------------------------------------------------
+# FIX-026 — every shelf idea and holding has a named sector key
+# ---------------------------------------------------------------------------
+
+# Discovery runs weekly, and a holding's key changes only by hand: a weekly
+# reminder repeats nothing the owner has not seen. The first notice is not
+# delayed unless one went out in the last week.
+_SECTOR_REPEAT_DAYS = 7
+
+
+def _active_shelf_ideas() -> list:
+    """Seam for tests — the discovery shelf's active ideas."""
+    from core.discovery.shelf import ShelfStore
+    return [i for i in ShelfStore().load().ideas if i.status == "active"]
+
+
+def _held_positions() -> list:
+    """Seam for tests — every holding of the portfolios the scheduler runs."""
+    from core.portfolio.store import PortfolioStore, active_user_ids
+    return [h for user_id in active_user_ids()
+            for h in PortfolioStore(user_id=user_id).load().holdings]
+
+
+@check("sector_keys")
+def sector_keys() -> CheckResult:
+    """Pending while an active shelf idea or a holding has no configured
+    sector key, or "generic": SA-050's sector cap and the shelf's cap cannot
+    be checked for it, or count it with unrelated stocks. Also pending while
+    an active idea's latest analysis said Yahoo's labels do not fit, or Yahoo
+    gave none: its key is named, but worth one look. Each stock is named with
+    what its analysis answered (core/discovery/sector_naming.py, FIX-026);
+    reminded weekly. Example: ACME shelved with the answer "Pharmaceuticals"
+    is pending until a re-dive names "pharma"; a holding filed as "generic"
+    stays pending until its key is set."""
+    from core.discovery.sector_naming import GENERIC, configured_sectors, describe, status
+
+    keys = configured_sectors()
+    urgent: list[str] = []
+    look: list[str] = []
+    ideas = _active_shelf_ideas()
+    for idea in ideas:
+        line = f"shelf {describe(idea, keys)}"
+        reading = getattr(idea, "sector_reading", None)
+        if status(idea, keys) != "named":
+            urgent.append(line)
+        elif reading is not None and (reading.yahoo_fits is False or reading.yahoo_gap):
+            look.append(line)
+    held: dict[str, str] = {}
+    for h in _held_positions():
+        key = str(h.sector or "").strip().lower()
+        if key not in keys:
+            held[h.symbol] = ("generic" if key == GENERIC
+                              else f'"{h.sector}", which is not one of our keys')
+    urgent += [f"holding {sym} {what}" for sym, what in sorted(held.items())]
+    evidence = {"ideas": len(ideas), "keyless_or_generic": len(urgent), "to_look_at": len(look)}
+    if not urgent and not look:
+        return CheckResult("satisfied",
+                           "Every active shelf idea and holding has a named sector key.",
+                           evidence)
+    detail = "; ".join(urgent + look) + "."
+    return CheckResult("pending", detail, evidence, repeat_days=_SECTOR_REPEAT_DAYS)

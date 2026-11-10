@@ -43,6 +43,7 @@ _NOTE_TEXT = {
     "SECTOR_CONCENTRATION_HIGH": "this sector's holdings together are above the sector cap of the whole portfolio, so the autopilot will not buy more in it",
     "DATA_GATE": "an add or switch was withheld because the price or the forecast behind it is not verified",
     "REGIME_UNAVAILABLE": "an add was withheld because the market regime of the review day is not known: an input it is read from did not answer",
+    "ENVELOPE_AFTER_CLOSE": "an add was withheld because only a forecast made after the review session's close would allow it",
     "IDENTITY": "every action is held because the price is not verified as this holding's own: the listing's identity is unresolved, or it changed (a demerger or relisting) since purchase, and the holding needs reconciling",
 }
 

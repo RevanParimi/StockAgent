@@ -111,6 +111,7 @@ def _patch_pipeline(monkeypatch, tmp_path, report=None, base_close=1050.0, raise
     monkeypatch.setattr(gf, "get_orchestrator", _get_orchestrator)
     monkeypatch.setattr(gf, "get_sector_weights", lambda sector: {"sales_demand": 1.0})
     monkeypatch.setattr(gf, "_fetch_actual_close", lambda ticker: base_close)
+    monkeypatch.setattr(gf, "_review_session_close", lambda ticker, on: base_close)   # FIX-027
     monkeypatch.setattr(gf, "get_price_history", lambda *a, **k: None)
     monkeypatch.setattr(
         RegimeDetector, "detect",

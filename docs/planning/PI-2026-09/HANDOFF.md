@@ -1,4 +1,13 @@
-# Current handoff - 2026-11-07 (updated about 06:20 IST)
+# Current handoff - 2026-11-10 (FIX-027 implemented, fresh review next)
+
+## 10 Nov: FIX-027 implemented (`review_required`)
+
+Owner chose **Wait** for sales (after seeing the cost of booking at the later close). Receipt:
+[evidence/FIX-027-implementation.md](evidence/FIX-027-implementation.md). Targeted 861 tests pass; full suite not run;
+production probe not run. FIX-026 (accepted) is still uncommitted in the tree, together with FIX-027's edits: commit
+awaits the owner's word. Next `continue`, in a new conversation: **FIX-027's fresh review**; then FIX-028, FIX-029.
+
+# Earlier handoff - 2026-11-09 (after FIX-026's fresh review)
 
 ## Also 22 Oct (about 22:30 IST to 00:30 IST 23 Oct): FIX-013, LLM tier switch, committed and pushed (separate conversation)
 
@@ -126,6 +135,40 @@ the code, the docs, STATE and this file. These stay on the laptop:
   - **Owner setup waits for rollout:** Railway alerts, the OpenRouter key limit, Healthchecks.io with Telegram, SA-007's
     backup bucket. Remind the owner then.
 
+**FIX-026 fresh review → ACCEPTED** (9 Nov, a new conversation opened with "continue"). Receipt:
+[FIX-026-review](evidence/FIX-026-review.md). Focused tests 292 passed; manifest verified; the full suite
+and mutants are the implementer's and were not re-run. Findings: none above low (a valid-but-wrong key with
+`yahoo_fits: true` passes unnoticed; the first Saturday's sample checks it). STATE: FIX-026 `done`,
+production `pending_deployment`; `active_task` null; `next_task` FIX-027. Uncommitted: commit-time edits
+wait for the owner's word. Next `continue`, in a new conversation: **FIX-027**'s implementation.
+
+**FIX-026 IMPLEMENTED → review_required** (9 Nov, about 21:00–22:10 IST, session
+stockagent-main-22 [d97f79], a new conversation opened with "continue" on the laptop; `origin/main` was
+`412645f`, so nothing had arrived from the other device; no peer running). Receipt:
+[FIX-026-implementation](evidence/FIX-026-implementation.md). STATE: FIX-026 `review_required` with an
+`implementation` entry; `active_task` and `next_task` FIX-026. Nothing committed, pushed, deployed or
+configured; no production state read, no LLM called.
+
+- **What it does:** the deep dive's own analyst call names the sector key from the 22 configured keys,
+  with Yahoo's labels as evidence; membership, not a pattern; FIX-011's Yahoo tables are gone. Decided
+  once (managed record, ticker map, an idea's named key, then the answer). An idea with no key named is
+  shelved but never bought or promoted, and re-dived first; ideas shelved as `generic` before it count as
+  unnamed. The shelf's cap counts the key, as SA-050 does. Weekly summary `sectors`, the scheduler's
+  counts line, watchdog invariant `sector_keys_named` (weekly).
+- **Evidence:** story file 62 tests (tests/unit/test_sector_naming_fix026.py); mutants 33/33 + 3 re-runs, all caught; full suite 6,203 passed / 12 skipped / 1 xfailed / 0 failed (pytest rc 0, 14m07s);
+  `check_broad_except` OK (148, unchanged); `check_kt_docs` one expected error (sector_naming.py absent at b065da3, cleared by the commit-time header bump); PDF 69 pages, source 30df47f0.
+- **Review input:** manifest `253620a2` (25 files), diff `0da6b47a`
+  (195,461 B, 24 paths) against HEAD `412645f`, end tree
+  `0e1866ac` (`analysis_data/fix026/digest.py`; on another device, recompute from the
+  receipt's recipe).
+- **Routed:** the configured list's overlaps (`power` beside `renewable_energy`) and the home page's
+  `generic` for a hand-added stock -> SA-026.
+- **Deploying it changes production with the switch off** (receipt, Rollout): legacy `generic` ideas take
+  the first Saturday's re-dives and are not bought until named; the watchdog may notify on its first run.
+- **The 7 Nov docs commit** was pushed at about 06:20 IST, not held to 06:40 as the committed text said;
+  corrected above and in STATE's history.
+- Next `continue`, in a new conversation: **FIX-026's fresh review**; then FIX-027, FIX-028, FIX-029.
+
 **FIX-025 PUSHED AND DEPLOYED** (7 Nov, 00:10–00:37 IST, session stockagent-main-02, at the owner's word; this
 record is in the docs commit after `bed0a0a`):
 
@@ -141,8 +184,8 @@ record is in the docs commit after `bed0a0a`):
   - First read-only looks: guide 06-K and 06-L after the Saturday 7 Nov discovery run, and 07-O after the next 16:30
     review (counts and fields only).
 - **The same docs commit** (the owner's "commit and push", 7 Nov) holds KT section 1 and its edition, the guide's 06-K,
-  06-L, 07-G and 07-O status lines, and the PDF. No code changed. Its push was held to about 06:40 IST, past the 06:30
-  `ops_watchdog`, and redeploys the same code.
+  06-L, 07-G and 07-O status lines, and the PDF. No code changed. It was pushed at about 06:20 IST at the owner's
+  "push it now, its okay" (told of the 06:30 `ops_watchdog`) and redeployed the same code (Railway `7a0719d2`).
 - Next `continue`, in a new conversation: **FIX-026**'s implementation.
 
 **FIX-025 COMMITTED; push held to the 00:10 window** (6 Nov, about 22:27-22:28 IST, session stockagent-main-02, at the

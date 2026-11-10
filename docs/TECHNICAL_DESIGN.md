@@ -1145,15 +1145,30 @@ become SWITCH when an eligible replacement exists. A holding-age rule can
 soften certain TRIM actions to HOLD; it does not override EXIT. These are
 product rules, not individualized tax or investment advice.
 
-**Limit.** The advisor reads the envelope as it stands when the run starts,
-and a re-forecast made after the review session's close is in it: the review's
-own (a thesis break, a shock, a flip into crisis) or that morning's pre-open
-check. Its analysis reads news up to that moment, and the review's re-forecast
-anchors its path on the most recent close. So an ADD or a sale booked at the
-review session's close can rest on what happened after that close: with
-Monday's close at ₹1,000 and Tuesday's at ₹1,100, Tuesday's run can ADD at
-₹1,000. A stock has at most 2 re-forecasts a month; how often this has happened
-is not measured. **Planned:** FIX-027.
+**The envelope at the session's close.** A decision booked at a session's
+close reads the envelope as it stood at that close. Each re-forecast records
+the time it ran (`ReforecastEvent.at`, IST; an event stored without one counts
+as made before). One made at or after the reviewed session's 15:30 close, by
+the same clock as a buy's analysis (`close_before_decision`), is not read: the
+review's own (a thesis break, a shock, a flip into crisis), run on the next
+afternoon, and that morning's pre-open check. The advisor takes the direction,
+the confidence and the shock reason from the envelope archived before the
+first such re-forecast (`envelope_at_close`); when that archive cannot be read
+it reads no path at all (FLAT). The review's re-forecast anchors its path on
+the reviewed session's own close, and is skipped when that session's bar is
+not available. An ADD only the later path would allow is not taken: the note
+`ENVELOPE_AFTER_CLOSE` and the record's `envelope_after_close` name the
+re-forecast and the close. A sale waits in the same way. Monday closes at
+₹1,000 and Tuesday at ₹900; Tuesday 16:45 the review of Monday re-forecasts a
+path ending at ₹900 and says "not intact". Tuesday's and Wednesday's runs (they
+review Monday and Tuesday, both closed before 16:45) do not sell on it; the
+run that reviews Wednesday does, at Wednesday's close. The cost is a sale two
+sessions after the news; the alternative, booking at the later close the run
+read, would put two sessions' closes in one run and was not chosen. A
+re-forecast made before the close still counts: an envelope re-forecast last
+week ADDs as today. Not covered: `thesis_intact`, the review's re-scoring and
+the case events the evidence rule reads may also reflect news after the
+reviewed close; this has not been checked.
 
 ### Two exit rules
 
@@ -2206,13 +2221,14 @@ The shelf exists to supply enough checked, varied ideas to fill and keep about
    kind, or for a symbol the listing does not know. With no listing at all,
    nothing is dived that week, and the run says why.
 3. **Shelf upkeep.** An idea NSE lists as a fund, REIT or InvIT is dropped,
-   with its series and ISIN in the reason. An idea without a market sector
-   gets one (below).
+   with its series and ISIN in the reason. An idea without Yahoo's sector
+   and industry gets them (below).
 4. **Re-dives first.** An active idea whose stock the autopilot sold on or after
    its latest dive comes first, since a new dive is all that can bring it back.
-   Then ideas shelved before the decision gate existed (no `data_gate`), then
-   ideas whose latest dive is older than `discovery.redive_after_days` (30),
-   each group oldest first. A stock analysed on 24 Oct and sold on 27 Oct is
+   Then unverified ideas: shelved before the decision gate existed (no
+   `data_gate`), or with no sector key named (below), which nothing buys until
+   a re-dive names one. Then ideas whose latest dive is older than
+   `discovery.redive_after_days` (30), each group oldest first. A stock analysed on 24 Oct and sold on 27 Oct is
    re-dived on Sat 31 Oct, not Sat 28 Nov. A sale the user made by hand and a
    TRIM that leaves shares do not count. Re-dives take the budget
    first but leave the IPO slots free. A re-dive refreshes the idea in place:
@@ -2243,7 +2259,7 @@ The shelf exists to supply enough checked, varied ideas to fill and keep about
    0.55 or more, strongest first. Under the enforced data gate only an
    actionable or degraded dive becomes an idea; in `record` mode an abstained
    one is shelved, as the mode's "nothing withheld" says. At most `discovery.max_ideas_per_sector` (3)
-   share a market sector. A newcomer to a full sector replaces that sector's
+   share a sector key (below). A newcomer to a full sector replaces that sector's
    weakest idea only if it is stronger, and the drop event says so. Otherwise,
    when the shelf is full, a stronger newcomer displaces the weakest idea.
    An idea whose latest dive is more than `stale_days` (60) old rotates out.
@@ -2359,50 +2375,77 @@ pledge source is not judged while `discovery.pledge_guard` is off. Example:
 `surveillance` dark in the screens of 23 and 30 Oct warns; dark on 30 Oct
 alone does not yet.
 
-**Market sector.** Each idea carries `market_sector` and `industry` from
-Yahoo Finance's classification (for example "Healthcare" and "Drug
-Manufacturers - General"). The idea's `sector` field is a routing key, set by
-the deep dive's `infer_sector` ([deep_dive.py](../core/discovery/deep_dive.py)):
-the registry's ticker map, else that classification mapped to a registry
-sector (an industry table, then the Yahoo sector for Healthcare, Financial
-Services, Real Estate and Energy), else `generic`. Yahoo is the one industry
-source because it answers for nearly every NSE company and tells an insurer
-from a bank and a defence maker from other capital goods. NSE gives an
-industry only in its index lists (750 companies), in coarser classes. Over the
-registry's 202 tickers on 1 Nov, Yahoo classified 193 and the table agreed
-with the curated map for 184 (BEL and HAL read `defence`, the map says
-`capgoods`); the map still wins for its own tickers. Of 150 Nifty Total
-Market companies outside the registry, sampled that day, 146 were classified
-and 4 of those read `generic`.
+**Sector key.** A stock's sector key decides SA-050's 30% sector cap, the
+shelf's cap of 3, the graph its later analyses run (automobile, banking_bfsi,
+it_sector and renewable_energy have native graphs; every other key runs the
+generic graph) and the prediction-store directory its forecasts, and an
+idea's paper lane, are written under. A wrong key works both ways: `generic`
+puts unrelated stocks under one cap, and one sector under two keys passes it
+twice.
 
-The key picks the analysis graph: automobile, banking_bfsi, it_sector and
-renewable_energy have native graphs, and every other key runs the generic
-graph, so for those the key changes only the prediction-store directory and
-the sector ledger. After a buy it is the holding's `sector`: the advisor
-reads the holding's predictions under it, and SA-050's sector cap counts it.
-The daily review and the monthly forecast write a managed stock's predictions
-under its managed-ticker record's sector, which promotion keeps once it
-exists. So a buy candidate carries its managed record's sector when the stock
-is managed (below), and the deep dive skips managed stocks, but for the re-dive
-of an idea the autopilot sold. A re-dive
-refreshes an idea's `market_sector` and `industry` but never its `sector`, so
-an idea keeps the sector it was shelved under, `generic` included, and with
-it its paper-lane store. Re-keying an existing `sector` belongs to the
-sector-lens work (SA-026). When an idea that is not managed is offered for
-purchase, though, a stored `generic` yields to the key its stored
-classification maps to (`shelf_sector` in candidates.py), so the buy is held,
-and SA-050's sector cap counts it, under a real sector. Example: an idea
-shelved in September as `generic`, later classified Healthcare / "Drug
-Manufacturers - Specialty & Generic", is bought as `pharma`. Without that,
-twelve ₹83,000 positions mostly from the screen would share `generic`, and the
-fourth would be cut by the 30% cap though they are a pharma, a cable maker
-and others. The shelf's cap counts `market_sector`. An idea
-with no known market sector is not capped, rather than lumped with other
-unknowns.
+The deep dive's own analyst call names the key
+([sector_naming.py](../core/discovery/sector_naming.py)); there is no extra
+call. The unified analyst's prompt gains one block: the configured keys
+(`config/sector_toggles.json`, the registry's 22, each with its display name)
+and Yahoo Finance's sector and industry as evidence, or a note that Yahoo gave
+none. The answer is a `sector_key` block: one key, a one-line reason, and
+whether Yahoo's labels describe the business. It is checked by membership in
+the configured list, trimmed and lower-cased, never by a pattern; `generic`
+counts only as an explicit "none of ours fits" with its reason. Every other
+analysis (the daily review, the monthly forecast, a manual run) sends the
+prompt unchanged. Each idea keeps how its key was named (`sector_reading`)
+and Yahoo's labels beside it (`market_sector`, `industry`). Yahoo stays the
+evidence because it answers for nearly every NSE company and tells an
+insurer from a bank; NSE gives an industry only in its index lists (750
+companies), in coarser classes.
 
-**Example.** A week's best dives include four Healthcare ideas at 0.80, 0.70,
+The key is decided once. A stock that already has one keeps it, and the
+answer is recorded beside it: its managed-ticker record's key (enabled or
+not), since the daily review and the monthly forecast write its predictions
+there and promotion keeps that record; else the registry's ticker map's (our
+configuration); else the key an earlier analysis named for its shelf idea.
+Only a stock with none of these takes the answer. A re-dive therefore names
+an idea that has no key yet, or `generic`, and never changes a named one; the
+paper lane of an idea it names then writes under the new key. The call needs
+a graph before it answers: a stock with a key runs that key's graph; another
+runs one of the four native graphs when Yahoo's industry is clearly theirs
+("Auto Parts", "Software - Application", "Utilities - Renewable", or Yahoo's
+"Financial Services" outside insurance), else the generic graph. That guess
+only chooses the graph and is never stored as a key.
+
+Nothing is silently `generic`. An empty, malformed or unknown answer ("not
+one of our keys") leaves the idea under the generic graph with the problem
+recorded. It is shelved, so its paper lane runs and Saturday's run re-dives it
+first, but nothing buys it until an analysis names its key: neither cap can
+be checked for a stock whose sector is not known. A manual promote of such an
+idea is refused (409). An idea shelved as `generic` before the analysis named
+sectors counts as unnamed too. The weekly run's summary (`sectors`) names
+every dive under named (with Yahoo's labels beside the key), generic,
+unnamed, invalid, disputed (the analysis said Yahoo's labels do not fit), no
+Yahoo labels, and kept (a key decided before, the analysis answering another),
+and the scheduler's Discovery log line counts them, with a "Discovery
+sectors" line naming each stock that is not cleanly named. The watchdog's
+`sector_keys_named` invariant ([checks.py](../core/ops/watchdog/checks.py))
+is pending while an active shelf idea or a holding has no configured key or
+is `generic`, or an idea's analysis disputed Yahoo's labels or had none to
+read, and names each stock with what its analysis answered, at most once a
+week. The shelf's cap counts the same key SA-050's sector cap counts. An idea
+with no key named, or `generic`, is not capped, rather than lumped with
+unrelated stocks.
+
+Example: a drug maker outside the ticker map, which Yahoo calls Healthcare /
+"Drug Manufacturers - Specialty & Generic", runs the generic graph; its
+analysis answers `pharma` ("makes generic formulations"). It is shelved as
+`pharma` and counted with the other drug makers: with three `pharma` ideas on
+the shelf it must outrank the weakest to get in, and with SUNPHARMA and CIPLA
+at 28% of a ₹10 L portfolio, a ₹1 L position of it is cut to ₹20,000 by the
+30% sector cap. Answered "Pharmaceuticals", it is shelved with "the analysis
+answered 'Pharmaceuticals', not one of our keys", is not bought, and next
+Saturday's re-dive asks again.
+
+**Example.** A week's best dives include four `pharma` ideas at 0.80, 0.70,
 0.65 and 0.60. The first three take the sector's places and 0.60 is turned
-away. A later Healthcare idea at 0.75 replaces the 0.65 idea. One at 0.62
+away. A later `pharma` idea at 0.75 replaces the 0.65 idea. One at 0.62
 does not get in.
 
 **Buy candidates.** The autopilot buys only from
@@ -2435,10 +2478,13 @@ review, whether as a SWITCH destination or with idle cash (section 6):
 Each candidate carries the sector it will be held under, the key its
 forecasts are written under: a managed stock's managed-record sector,
 whether the record is enabled or not (promotion re-enables it as it is). A
-watchlist stock that is not managed takes the item's own well-formed
-sector, else `infer_sector`, never a fixed `generic`. A shelf idea whose
-stock is managed under another sector is offered under the managed one; the
-shelf keeps its own record. Example: the home page saves a watchlist stock
+shelf idea that is not managed carries the key its analysis named, and one
+with no key named is not offered ("sector unnamed: …; waits for a re-dive to
+name it"). A watchlist stock that is not managed takes the item's own sector
+when it is a configured key, else the registry's ticker map's; with neither
+it is not offered. No Yahoo table and never a fixed `generic`. A shelf idea
+whose stock is managed under another sector is offered under the managed
+one; the shelf keeps its own record. Example: the home page saves a watchlist stock
 with no sector. HEROMOTOCO added there is managed under `automobile`, so a
 SWITCH buys it as `automobile`. With MARUTI and M&M at 28% of ₹10 L, the
 30% sector cap then allows 4 shares at ₹5,000, not the 20 a `generic` label
@@ -2456,10 +2502,19 @@ would let through (38%).
   every ESM stock and all but 2 of the 56 IRP stocks were in a
   trade-for-trade series (BE, BZ, SZ) or on the SME platform, which the
   universe leaves out.
-- Yahoo names an industry in its own taxonomy. One the table does not name,
-  under a Yahoo sector that maps to no key (Industrials or Basic Materials,
-  for example), reads `generic`. TIINDIA reads `capgoods` (Yahoo:
-  Conglomerates) where NSE says automobile components.
+- A valid but wrong answer (a bank named `it_sector`) is caught only when
+  the analysis itself says Yahoo's labels do not fit, or when someone reads
+  the week's summary, which prints Yahoo's labels beside each named key. No
+  sample of real answers has been compared with Yahoo's labels yet.
+- The configured list overlaps: `power` ("Power & Utilities") sits beside
+  `renewable_energy` ("Renewable Energy & Power"), under which the ticker map
+  files every power utility, so a new thermal utility named `power` is capped
+  apart from them. **Planned:** SA-026's one sector list.
+- A new stock's first dive runs the graph Yahoo's labels suggest; when the
+  analysis names a key with another graph (a "regional bank" named
+  `insurance`), its later analyses run the named key's graph.
+- SA-050's sector cap counts a `generic` holding with every other `generic`
+  one.
 - The morning brief's earnings watch-line and a holding added by hand without
   a sector take the sector from the registry's ticker map
   (`SectorRegistry.resolve`), so a stock outside the map reads `generic`
@@ -3384,6 +3439,7 @@ section 10) are part of the current design.
 | [FIX-023](planning/PI-2026-09/stories/FIX-023.md) | Deployment buys only on a regime read from live inputs, as of the review session | Done | 6 Portfolio; 5 Learning | SA-049 |
 | [FIX-024](planning/PI-2026-09/stories/FIX-024.md) | A buy waits for an analysis made before its close; an unknown regime adds nothing | Done | 6 Portfolio; 8 Discovery | FIX-023 |
 | [FIX-025](planning/PI-2026-09/stories/FIX-025.md) | Deployment follows the money and the ideas; a top-up checks NSE's report too | Done | 6 Portfolio; 8 Discovery | FIX-024 |
+| [FIX-026](planning/PI-2026-09/stories/FIX-026.md) | The analysis names a new stock's sector from our list; an empty or unknown sector is flagged | Open | 8 Discovery; 4 Research | FIX-024 |
 | [FIX-027](planning/PI-2026-09/stories/FIX-027.md) | A decision booked at a session's close reads nothing from after that close | Open | 6 Portfolio | FIX-024 |
 | [FIX-028](planning/PI-2026-09/stories/FIX-028.md) | A sold stock leaves the daily review | Open | 6 Portfolio; 8 Discovery | FIX-025 |
 | [FIX-029](planning/PI-2026-09/stories/FIX-029.md) | Every door to a buy reads the same facts: the day's regime, the sale and the verdict | Open | 6 Portfolio; 8 Discovery | FIX-025 |

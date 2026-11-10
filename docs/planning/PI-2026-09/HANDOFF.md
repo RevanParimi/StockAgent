@@ -1,5 +1,26 @@
 # Current handoff - 2026-11-10 (FIX-027 deployed before its fresh review; review next)
 
+## 10 Nov: FIX-026 second review pass and bench; FIX-030
+
+- The owner asked for a stricter pass (session stockagent-main-09). **Acceptance stands.**
+  Receipt: [evidence/FIX-026-review-2.md](evidence/FIX-026-review-2.md).
+- **What ran at the deployed `4d98c76`** (detached worktrees):
+  - full suite 6,255 passed, 14 skipped, 1 xfailed, 0 failed;
+  - mutants 34 of 34 caught;
+  - 12 reviewer cases passed.
+- **Bench of 3 real analyses, at the owner's word** (20:19–20:26 IST, $0.021):
+  - **M1 did not occur:** all three prompt families wrote the sector block.
+  - **New M2:** RAINBOW, a children's hospital chain, was answered `automobile`. The generic graph's
+    bundle names automobile peers (SA-044) and automobile ETF flows (no story). Its verdict inputs are
+    affected as well.
+- **Order.** [FIX-030](stories/FIX-030.md) takes M2's ETF half, plus L1 and L2. SA-044 runs right
+  before it, after FIX-029.
+- **Watch Saturday 14 Nov** (guide 06-M). Promote both ahead of FIX-028 if either shows:
+  - non-auto companies filed as `automobile` among the disputed dives;
+  - most dives unnamed.
+- KT section 1 now says the review fixes are live (`794968e`).
+- The next phase is unchanged: FIX-027's fresh review.
+
 ## 10 Nov: FIX-027 implemented, committed with FIX-026, deployed; review fixes
 
 - **FIX-027** (`review_required`): a decision booked at a session's close reads the envelope as it stood
@@ -12,6 +33,8 @@
   failed 2 guard tests, FIX-026's commit-time edits were skipped, and living docs and these files were
   stale. Fixed in `794968e` (code and tests, no behaviour change) and the docs commit after it. Full suite
   after the fixes: 6,257 passed, 12 skipped, 1 xfailed, 0 failed.
+- **The fixes are deployed too:** pushed `c94dc17..4d98c76` at 14:28:44 IST; Railway `fca9e161` SUCCESS by
+  14:30:26 IST. KT section 1 now says production runs `794968e`, deployed at about 14:30 IST.
 - **Production checks:** FIX-026, guide 06-M after Saturday 14 Nov's discovery run. FIX-027, guide 06-N's
   production line after the first run that follows a re-forecast. FIX-027's counts probe is not run.
 - **Next `continue`, in a new conversation: FIX-027's fresh review.** Input: FIX-027's files in

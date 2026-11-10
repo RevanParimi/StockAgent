@@ -35,12 +35,10 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs code `c94dc17` (FIX-026, and FIX-027 ahead of its fresh
-review), deployed at about 13:20 IST on 10 November 2026 (the deployment list
-showed it SUCCESS; `/health` was not read), with idle-cash deployment off. The
-inspected revision adds only review fixes to it (a traceback on one log line,
-one error handler removed, tests); it is committed, not yet deployed at this
-edition. The table gives the configuration that
+Production runs the inspected code, `794968e` (FIX-026, and FIX-027 ahead of
+its fresh review, with that review's fixes), deployed at about 14:30 IST on
+10 November 2026 (the deployment list showed it SUCCESS; `/health` was not
+read), with idle-cash deployment off. The table gives the configuration that
 differs from the repository and the state of each operational control.
 
 | Area | State in production | Evidence |
@@ -2416,7 +2414,12 @@ a graph before it answers: a stock with a key runs that key's graph; another
 runs one of the four native graphs when Yahoo's industry is clearly theirs
 ("Auto Parts", "Software - Application", "Utilities - Renewable", or Yahoo's
 "Financial Services" outside insurance), else the generic graph. That guess
-only chooses the graph and is never stored as a key.
+only chooses the graph and is never stored as a key. The answer reads the
+same data bundle as the analysis, and the generic graph's bundle carries
+automobile evidence: its peers are car makers and its fund-flow line reads the
+automobile ETFs (**Planned:** SA-044 and FIX-030). A generic-graph company can
+therefore be answered `automobile`. Yahoo's labels then disagree, so the dive
+counts as disputed and the watchdog names it.
 
 Nothing is silently `generic`. An empty, malformed or unknown answer ("not
 one of our keys") leaves the idea under the generic graph with the problem
@@ -3237,7 +3240,8 @@ All five graphs already run one bundle and one reasoning-model call; the
 LangGraph pool is only a fallback. They differ mainly in five scoring schemes
 (37 dimension slots under 24 names), and the LLM re-scores numbers the code
 has already computed. Generic-graph stocks are valued against automobile
-peers, and missing data is scored 0.5. The
+peers and read the automobile ETFs' fund flows, and missing data is scored
+0.5. The
 [one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md),
 adopted on 2026-09-26, replaces the per-sector graphs in four parts:
 
@@ -3448,6 +3452,7 @@ section 10) are part of the current design.
 | [FIX-027](planning/PI-2026-09/stories/FIX-027.md) | A decision booked at a session's close reads nothing from after that close | Open | 6 Portfolio | FIX-024 |
 | [FIX-028](planning/PI-2026-09/stories/FIX-028.md) | A sold stock leaves the daily review | Open | 6 Portfolio; 8 Discovery | FIX-025 |
 | [FIX-029](planning/PI-2026-09/stories/FIX-029.md) | Every door to a buy reads the same facts: the day's regime, the sale and the verdict | Open | 6 Portfolio; 8 Discovery | FIX-025 |
+| [FIX-030](planning/PI-2026-09/stories/FIX-030.md) | A generic-graph analysis sees no automobile evidence; a key the old Yahoo table set is re-examined; an unnamed idea stops taking a weekly re-dive | Open | 4 Research; 8 Discovery | FIX-026 |
 | [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Done | 6 Portfolio | None |
 | [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Done | 7 Marksheets; 10 Interface | None |
 | [FIX-006](planning/PI-2026-09/stories/FIX-006.md) | An anonymous watchlist read never falls back to the owner | Open | 10 Interface | None |

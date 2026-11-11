@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-11-10 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-11-11 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `794968ecadd4a72872322f01519e9f7016069286`
+**Code inspected:** `245e29ea5d44ea0f12a3c3ac3d836b66eecdf8af`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,10 +35,12 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs the inspected code, `794968e` (FIX-026, and FIX-027 ahead of
-its fresh review, with that review's fixes), deployed at about 14:30 IST on
-10 November 2026 (the deployment list showed it SUCCESS; `/health` was not
-read), with idle-cash deployment off. The table gives the configuration that
+The inspected code, `245e29e`, adds FIX-028 (a sold stock leaves the daily
+review) to what production runs. It was committed at the owner's word before
+its fresh review and is not yet deployed. Production runs `794968e` (FIX-026,
+and FIX-027 with its review's fixes; FIX-027's fresh review accepted it on
+10 November), deployed at about 14:30 IST on 10 November 2026 (the deployment
+list showed it SUCCESS; `/health` was not read), with idle-cash deployment off. The table gives the configuration that
 differs from the repository and the state of each operational control.
 
 | Area | State in production | Evidence |
@@ -1167,9 +1169,10 @@ run that reviews Wednesday does, at Wednesday's close. The cost is a sale two
 sessions after the news; the alternative, booking at the later close the run
 read, would put two sessions' closes in one run and was not chosen. A
 re-forecast made before the close still counts: an envelope re-forecast last
-week ADDs as today. Not covered: `thesis_intact`, the review's re-scoring and
-the case events the evidence rule reads may also reflect news after the
-reviewed close; this has not been checked.
+week ADDs as today. Not covered: the thesis review the legacy rule sells on
+reads company news up to the run, so it can rest on news after the reviewed
+close; the evidence rule counts filings and analyses by the calendar day, so
+one published that evening counts for that close. **Planned:** FIX-031.
 
 ### Two exit rules
 
@@ -1219,9 +1222,10 @@ included, is the same code under both
 its analysis of 24 September said SELL. On 23 October, ten sessions later, the
 evidence rule keeps it: that SELL was known when the stock was bought. A SELL
 from an analysis on 9 October would sell it, until that analysis is 22
-sessions old or a newer one says otherwise. Every held stock is managed, and
-the 1st-of-month forecast re-analyses each managed stock, so a holding has a
-fresh verdict each month.
+sessions old or a newer one says otherwise. Every held stock is managed (one
+the list's cap keeps out is named in the digest, below), and the 1st-of-month
+forecast re-analyses each managed stock, so a holding has a fresh verdict each
+month.
 
 **Example.** A stock is bought at ₹500 for its order book. On day 4 the market
 falls 2% and the stock 4%, to ₹480. The miss triggers a review, the review
@@ -1670,6 +1674,34 @@ the check never forces a sale, and writes no BUY, so its cooldown does not
 start. The digest and the morning brief keep the ADD and say why no shares were
 bought: "top-up skipped: under LT-ASM in NSE's surveillance report of
 2026-11-03". A holding of 100 RAILCO at ₹800 would otherwise have bought 25 more.
+
+**The managed list follows the holdings.** A holding is reviewed daily and
+forecast monthly because it has an entry in the managed list
+(`data/managed_tickers.json`, section 3). Once a run's trades are saved, under
+the portfolio's lock, [promotion.py](../core/portfolio/promotion.py)'s
+`release_unheld` reads every portfolio on disk. An entry promoted for a
+holding that no portfolio holds any more is disabled, its sector and history
+kept. While a user's own watchlist lists the stock (added on the home page or
+promoted from the shelf, not the autopilot's own exit entry), it becomes a
+weekly watchlist entry instead, which the cap may evict. The original universe
+is never touched, and a TRIM that leaves shares changes nothing. Then the
+positions the run opened are promoted (a re-buy under the sector its entry
+had), and so is each holding the list is waiting for: one with no entry, a
+disabled held entry or a watchlist entry. An original entry the owner
+disabled by hand stays disabled unless the run bought the stock. A sale's
+room is therefore free before the same run's buy asks for it, and a stock
+sold before this rule existed leaves on the next run. A holding the
+cap (`portfolio.max_managed_tickers`, 40) still keeps out gets no daily review
+or forecast; its digest row (`not_reviewed`), the digest's text and the
+morning brief say "no daily review or forecast: managed-ticker cap 40
+reached", and every run tries again. A portfolio file that cannot be read
+releases nothing that run. The auditor grades a sale from prices (section 7),
+so stopping a sold stock's reviews costs no grade.
+
+Example: 25 original entries and 15 held stocks fill the 40. A SWITCH sells
+OLD for NEW: OLD's entry is disabled first, so NEW takes its place, and
+OLD's 16:30 review and monthly forecast stop. The manual delete routes
+demote too, looking only at the user's own portfolio.
 
 ### Sizing every buy
 
@@ -2247,7 +2279,10 @@ The shelf exists to supply enough checked, varied ideas to fill and keep about
    budget again. The memo keeps every answered dive, an abstained one too,
    in either gate mode; a failed call is not an answer and is tried again.
    A managed stock takes no dive unless the autopilot sold it. A stock the
-   autopilot bought stays managed after its sale, and buying it back needs a new
+   autopilot sold leaves the managed list once no portfolio holds it and no
+   user's own watchlist lists it (section 6); one that stays managed, an
+   original-universe stock or one a user watches, is still dived for its sale.
+   Buying a sold stock back needs a new
    dive. Step 4 gives one to a stock whose idea is still on the shelf. A stock
    whose idea has gone (an idea rotates out 60 days after its latest dive, even
    while the stock is held) takes its rank in the screen like any other stock,
@@ -2255,9 +2290,7 @@ The shelf exists to supply enough checked, varied ideas to fill and keep about
    names it. Example: dived 1 Aug, idea rotated out on 3 Oct, sold on 14 Oct. If
    the screen ranks it on Sat 17 Oct it is analysed, and at 0.55 or more it is a
    new idea, first offered by Tuesday's run. Below the floor it stays out, and
-   the memo holds a repeat for 30 days. However long it stays out, a sold stock
-   keeps its daily review and counts against `portfolio.max_managed_tickers`.
-   **Planned:** FIX-028.
+   the memo holds a repeat for 30 days.
 6. **Shelf.** Up to `discovery.shelf_size` (20) active ideas at conviction
    0.55 or more, strongest first. Under the enforced data gate only an
    actionable or degraded dive becomes an idea; in `record` mode an abstained
@@ -3449,10 +3482,11 @@ section 10) are part of the current design.
 | [FIX-024](planning/PI-2026-09/stories/FIX-024.md) | A buy waits for an analysis made before its close; an unknown regime adds nothing | Done | 6 Portfolio; 8 Discovery | FIX-023 |
 | [FIX-025](planning/PI-2026-09/stories/FIX-025.md) | Deployment follows the money and the ideas; a top-up checks NSE's report too | Done | 6 Portfolio; 8 Discovery | FIX-024 |
 | [FIX-026](planning/PI-2026-09/stories/FIX-026.md) | The analysis names a new stock's sector from our list; an empty or unknown sector is flagged | Done | 8 Discovery; 4 Research | FIX-024 |
-| [FIX-027](planning/PI-2026-09/stories/FIX-027.md) | A decision booked at a session's close reads nothing from after that close | Open | 6 Portfolio | FIX-024 |
+| [FIX-027](planning/PI-2026-09/stories/FIX-027.md) | A decision booked at a session's close reads nothing from after that close | Done | 6 Portfolio | FIX-024 |
 | [FIX-028](planning/PI-2026-09/stories/FIX-028.md) | A sold stock leaves the daily review | Open | 6 Portfolio; 8 Discovery | FIX-025 |
 | [FIX-029](planning/PI-2026-09/stories/FIX-029.md) | Every door to a buy reads the same facts: the day's regime, the sale and the verdict | Open | 6 Portfolio; 8 Discovery | FIX-025 |
 | [FIX-030](planning/PI-2026-09/stories/FIX-030.md) | A generic-graph analysis sees no automobile evidence; a key the old Yahoo table set is re-examined; an unnamed idea stops taking a weekly re-dive | Open | 4 Research; 8 Discovery | FIX-026 |
+| [FIX-031](planning/PI-2026-09/stories/FIX-031.md) | Every input a decision at a session's close reads is from before that close | Open | 6 Portfolio; 5 Learning | FIX-027 |
 | [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Done | 6 Portfolio | None |
 | [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Done | 7 Marksheets; 10 Interface | None |
 | [FIX-006](planning/PI-2026-09/stories/FIX-006.md) | An anonymous watchlist read never falls back to the owner | Open | 10 Interface | None |

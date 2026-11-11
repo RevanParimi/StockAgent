@@ -1,4 +1,80 @@
-# Current handoff - 2026-11-10 (FIX-027 deployed before its fresh review; review next)
+# Current handoff - 2026-11-11 (FIX-028 implemented and committed; its fresh review next)
+
+## 11 Nov: FIX-028 implemented → review_required
+
+- **Session `stockagent-main-63`**, a new conversation opened with "continue", about 00:15 to 01:20 IST.
+  - `origin/main` was `02f3ad7`, the same as HEAD: nothing had arrived from the other device. Peers were idle.
+  - Receipt: [evidence/FIX-028-implementation.md](evidence/FIX-028-implementation.md).
+- **What it does:** once an autopilot run's trades are saved, the managed list follows the holdings.
+  - A `held` entry that no portfolio holds any more is disabled, keeping its sector and history. While a user's
+    own watchlist lists the stock, the entry becomes a weekly `watchlist` entry instead.
+  - Original entries are never touched. A TRIM that leaves shares changes nothing.
+  - Then the run's new positions are promoted, and so is any holding the list is waiting for.
+  - A holding the cap keeps out is named on its digest row, in the digest's text and in the brief, every run.
+  - Stocks the autopilot sold before the deploy leave on the first run after it.
+- **What ran:**
+  - story file: 23 passed;
+  - focused (92 files): 2,644 passed, 1 xfailed, 0 failed;
+  - mutants: 19 of 19 caught (M17 after its test was tightened);
+  - full suite: 6,280 passed / 12 skipped / 1 xfailed / 0 failed (rc 0, 19m06s).
+- **Measure first (the card): not run.** A read-only probe that prints counts only is ready. The owner's command is
+  in the receipt. If its `enabled_after_first_run` plus about 13 holdings passes 40, FIX-028 becomes a switch-on
+  precondition.
+- **Routed:** two low, pre-existing findings go to SA-026. The owner's dashboard routes take no lock, and the
+  API's delete routes look only at the user's own portfolio.
+- **Review input:** manifest `5358ec75` (15 files), diff `6338bdb8`
+  (77,712 B, 14 paths) against HEAD `02f3ad7`, end tree `289ee1f5`
+  (`analysis_data/fix028/digest.py`).
+- **Committed at the owner's word, before FIX-028's fresh review (recorded deviation, as with FIX-027).**
+  - The owner said "commit and push now" at about 07:25 IST.
+  - Code `245e29e`: the 9 code and test files, byte-identical to the manifest.
+  - The docs commit after it holds FIX-028's docs with its status edits, and FIX-027's review documents with
+    their three commit-time edits. KT header `245e29e`, edition 2026-11-11; PDF 68 pages.
+  - The fresh review reviews `245e29e` and that docs commit.
+  - **Push:** recorded in this file once it happens, uncommitted until the next docs commit.
+  - **Deploying changes production with the switch off.** The first 16:30 run after the deploy disables
+    the held entries of stocks no portfolio holds. The probe can still read the count before that run.
+- **Next `continue`, in a new conversation: FIX-028's fresh review.** Then FIX-029, SA-044, FIX-030 and FIX-031.
+  The switch stays off. The Saturday 14 Nov watch below still applies.
+
+# Earlier handoff - 2026-11-10 (FIX-027 accepted after its fresh review; FIX-028 next)
+
+## 10 Nov: FIX-027 fresh review → ACCEPTED
+
+- **Session `stockagent-main-77`**, a new conversation opened with "continue", about 21:15 to 22:00 IST.
+  - `origin/main` was `02f3ad7`, so nothing had arrived from the other device. Peers were idle.
+  - Receipt: [evidence/FIX-027-review.md](evidence/FIX-027-review.md).
+- **Reviewed `794968e`, the deployed code.** The 9 FIX-027 files are byte-identical at HEAD. Their
+  diff from `412645f` is 38,229 B, sha256 `2c7c32e6…`.
+- **What ran:**
+  - an independent trace (RV1): two real re-forecasts on one day, read back for three sessions,
+    each equal to the test's own snapshot;
+  - focused tests: 181 passed;
+  - mutants: 11 of 13 caught;
+  - reviewer cases: 4 passed + 4 strict xfail;
+  - full suite: 6,257 passed, 12 skipped, 1 xfailed, 0 failed (rc 0, 23m04s, 21:28-21:51 IST, git status unchanged).
+- **Findings.** None in the change is above low. The card's hard-review questions found two
+  **pre-existing medium** issues:
+  - **F1, live:** the legacy sale reads `thesis_intact`, which the next afternoon's review judged on
+    that day's news. The review's news has no upper bound.
+  - **F2, shadow:** the evidence rule counts an evening filing or analysis for that day's close.
+- **Routed to new [FIX-031](stories/FIX-031.md)** (P1, 5 points, after FIX-030, before PR-005):
+  - F1 and F2;
+  - I-1: the watchlist reads the latest analysis made before the close (decided);
+  - I-2: a re-forecast rewrites an already-closed row, which is then graded;
+  - test housekeeping (L2, L3).
+
+  L1 (the record names the event's sentence, not its trigger) is noted on FIX-015.
+- **STATE:**
+  - FIX-027 is `done`, with production `pending_observation`: guide 06-N's production line, after
+    the first run that follows a re-forecast.
+  - `active_task` is null and `next_task` is FIX-028.
+- **Uncommitted, waiting for the owner's word:**
+  - the receipt, the FIX-031 card, the FIX-015 note, STATE and this file;
+  - three commit-time edits (receipt section "Commit-time edits"): the KT section 6 "Not covered"
+    sentence, a KT section 12 row, and guide 06-N's status line. Regenerate the PDF with them.
+- **Next `continue`, in a new conversation: FIX-028's implementation.** Then FIX-029, SA-044,
+  FIX-030 and FIX-031. The switch stays off. The Saturday 14 Nov watch below still applies.
 
 ## 10 Nov: FIX-026 second review pass and bench; FIX-030
 
@@ -19,7 +95,7 @@
   - non-auto companies filed as `automobile` among the disputed dives;
   - most dives unnamed.
 - KT section 1 now says the review fixes are live (`794968e`).
-- The next phase is unchanged: FIX-027's fresh review.
+- The next phase was FIX-027's fresh review (done; see above).
 
 ## 10 Nov: FIX-027 implemented, committed with FIX-026, deployed; review fixes
 

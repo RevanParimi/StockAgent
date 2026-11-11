@@ -347,6 +347,7 @@ Any symbol you hold or watchlist is **automatically promoted into the managed un
 | Review cadence | **Held names review daily; watchlist names weekly** (Fridays) — this is what keeps LLM spend governed. |
 | Cap | 40 managed tickers max (`portfolio.max_managed_tickers`). At the cap, the **oldest watchlist-origin** name rotates out. |
 | Protection | Held positions and the original manually-managed tickers are **never** rotated out. |
+| Release | Once no portfolio holds a stock, its held entry is disabled after the autopilot's next run (sector and history kept; a weekly watchlist entry while a user still watches it). A holding the cap keeps out is named in the digest. |
 
 ### What lands on disk
 

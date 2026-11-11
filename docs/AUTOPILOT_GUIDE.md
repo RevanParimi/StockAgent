@@ -21,9 +21,10 @@ Three rules hold throughout:
    deterministic; the narrator writes the explanation after the decision, and
    a template replaces it when the call fails.
 3. **The money path stays in its own store.** The autopilot writes only under
-   `data/portfolio/<user>/`, plus one designed exception: a SWITCH buy promotes
-   the new symbol into the managed list (section 12). It never writes a
-   prediction store or the paper lane.
+   `data/portfolio/<user>/`, plus one designed exception: after its trades
+   are saved, the managed list follows the holdings, so a bought symbol is
+   promoted and a symbol no portfolio holds any more is released (section 12).
+   It never writes a prediction store or the paper lane.
 
 ---
 
@@ -354,9 +355,9 @@ SELL's note records why, for example `exit_full; buy leg skipped: WELCORP:
 stays in cash`. The `switch_buy_skipped` alert repeats that reason. It matches
 each buy leg to its own SELL by the `advice_ref` they share, so a second
 switch into the same stock that day, or an idle-cash buy of it, never hides a
-skipped leg. A completed buy promotes the destination into the managed list
-(section 12). The pipeline reads the surveillance report once a run, before
-any user's lock.
+skipped leg. Once the run's trades are saved, a completed buy is promoted
+into the managed list (section 12). The pipeline reads the surveillance
+report once a run, before any user's lock.
 
 **Order.** Sells first (EXIT, SWITCH sell legs and TRIM, by symbol), so cash
 is freed before it is spent. Then buys: SWITCH buy legs, then ADDs by
@@ -693,7 +694,7 @@ under a "Sample data" banner.
 ## 12. Promotion into the managed list
 
 [promotion.py](../core/portfolio/promotion.py). A symbol that becomes a
-holding (manual buy, CSV import, SWITCH buy) or a watchlist entry (manual, or
+holding (manual buy, CSV import, a SWITCH or idle-cash buy) or a watchlist entry (manual, or
 a shelf idea) is added to `data/managed_tickers.json`, so the scheduled jobs
 give it envelopes, reviews and a dossier.
 
@@ -708,10 +709,39 @@ give it envelopes, reviews and a dossier.
   names only on Fridays (`portfolio.weekly_review_weekday`). The scheduled
   16:30 job does not read it, so every enabled entry is reviewed every
   weekday.
+- **The list follows the holdings.** Once an autopilot run's trades are
+  saved, under the portfolio's lock, `release_unheld` reads every portfolio
+  on disk. A held-origin entry that no portfolio holds any more is disabled,
+  its sector and history kept. While a user's own watchlist lists the stock
+  (added on the home page or promoted from the shelf; the autopilot's own
+  `autopilot_exit` entry does not count) it becomes a watchlist-origin entry
+  instead: weekly, and evictable at the cap. Original entries are never
+  touched, and a TRIM that leaves shares changes nothing. Then the positions
+  the run opened are promoted, so a sale's room is free before the same run's
+  buy asks for it, and so is each holding the list is waiting for: one with
+  no entry (the cap refused it, or a promotion failed), a disabled held entry
+  or a watchlist entry. An original entry the owner disabled by hand stays
+  disabled unless the run bought the stock. A stock sold before this rule
+  existed leaves on the next run.
+- **A holding the cap keeps out is named.** Its digest row carries
+  `not_reviewed` ("no daily review or forecast: managed-ticker cap 40
+  reached"), the digest's text and the morning brief repeat it, and every
+  run tries the promotion again. Example: 25 original entries and 15 held
+  stocks fill the 40. A SWITCH from OLD to NEW frees OLD's place first, so
+  NEW is promoted. A deployment buy with no sale that day is held without a
+  review and named, until a sale or a disabled entry makes room.
+- **Never on a guess.** A portfolio file that cannot be read stops the
+  release for that run (nothing is released, and the file is not
+  quarantined); with no managed file nothing is written. Promotion's reads
+  and writes of the list hold one lock (`managed_tickers_lock`); the owner's
+  dashboard edits (`/ui/tickers/managed`) do not take it. Every save goes
+  through a temporary file, so a write cut short leaves the old list.
 - Removing a holding or watchlist entry demotes the symbol: a held or
   watchlist-origin entry is disabled, with its history kept. The original,
-  manually managed entries are never touched.
-- Promoting a symbol whose entry is disabled re-enables it. Promotion does
+  manually managed entries are never touched. These routes look only at the
+  user's own portfolio.
+- Promoting a symbol whose entry is disabled re-enables it, under the sector
+  it had. Promotion does
   not consult the instrument registry, so buying or watching a retired
   ticker such as TATAMOTORS puts it back on the schedule. Its identity is
   still unresolved, so in `enforce` mode its advice is held and its reviews
@@ -760,6 +790,7 @@ run is hermetic (KT section 13). A quick loop:
 | `test_regime_inputs_fix023.py` | The regime deployment trusts: inputs read as of the review session, a missing input with no value, a day whose label the live inputs do not establish opening nothing (the reason names the inputs), the hysteresis on dark days, a detector exception; and no position opened at a close from before its idea's latest dive, in either gate mode |
 | `test_autopilot_pipeline.py`, `test_portfolio_pipeline.py`, `test_scheduler_portfolio_hook.py` | The pipeline steps, digest trades and the `switch_buy_skipped` alert |
 | `test_autopilot_isolation.py` | Executor writes stay inside `data/portfolio/<user>/` |
+| `test_sold_stock_leaves_review_fix028.py` | The managed list follows the holdings, through the real executor and a real managed file: a full exit and a last-share TRIM release, while a partial TRIM, another portfolio's holding, a user's own watchlist and an original entry do not; a stock sold earlier leaves on the next run; a re-buy re-enables the old sector; a sale's room before the same run's buy; a capped buy named in the digest, its text and the brief on every run until it gets an entry; an unreadable portfolio, no managed file, the lock and a failed save |
 | `test_autopilot_wave1.py`, `test_portfolio_locking.py`, `test_portfolio_reconcile.py` | Locking with a fresh reload, future-date refusal, reconciliation |
 | `test_portfolio_advisor.py`, `test_portfolio_advisor_switch.py`, `test_portfolio_store_switch_evals.py` | The cascade, SWITCH and candidate evaluation rows |
 | `test_decision_gate_portfolio_sa003.py`, `test_identity_portfolio_sa008.py`, `test_identity_chain_sa008.py` | The data and identity checks, and reconciliation |
@@ -800,8 +831,6 @@ encode the two constraints most likely to fail silently.
   session's close is not bought at that close) and FIX-025 (deployment follows
   the money and the ideas) first, then a read of the paper lane's record, then
   `portfolio.overrides.primary.deploy_idle_cash` (SA-049's rollout).
-- A sold stock leaving the daily review (FIX-028): today a stock the autopilot
-  bought stays managed after its sale.
 - The tax estimate at each lot's own cost (FIX-022).
 - A safe `identity_reconcile apply` (SA-008 change 1).
 - Learning from executed advice remains future work: every autopilot row

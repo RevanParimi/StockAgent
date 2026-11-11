@@ -1,0 +1,84 @@
+{
+  "story": "FIX-028",
+  "phase": "implementation",
+  "head": "02f3ad7",
+  "date": "2026-11-11",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "README.md",
+      "git_blob": "3d713d4e0eda84b5d3a7d17b2e39d7f8a1acf5c6",
+      "sha256": "9f207bc1f48bb4e714ca0ca03a150d27b6f7a7eeadcd41486538a53acfdc608e"
+    },
+    {
+      "path": "core/delivery/brief.py",
+      "git_blob": "c41111aae4b3ea1366b9b8c4292cee8051a6cbec",
+      "sha256": "0c12418b3f9375736951ffc22a48cab10e4084e878e550c1ee87225f30aebf3c"
+    },
+    {
+      "path": "core/portfolio/autopilot.py",
+      "git_blob": "c66d00195907894fc47cce55957e99644a7f9939",
+      "sha256": "35bf68630f74c82dfc051c6b819e70beed33f1f1d3e4f6f9a95f4420494401f4"
+    },
+    {
+      "path": "core/portfolio/digest.py",
+      "git_blob": "e52f3089c9ecfd00b992a9f32a02b78f126a1365",
+      "sha256": "b7d2e27d4c4776aa586040e1c8194ac33b481557bdc0b252f71f6158fc609071"
+    },
+    {
+      "path": "core/portfolio/digest_text.py",
+      "git_blob": "eec2bc863b0e9484cec4db2482bacf7c3f9d500c",
+      "sha256": "638bde1788b9f183d95dd018434663372758bdfd29b35cecf93fda956288e996"
+    },
+    {
+      "path": "core/portfolio/pipeline.py",
+      "git_blob": "27c490cdc7dce6301e21a7bad8481fcaf54962d0",
+      "sha256": "14842fe3c2ce90378ba0b8e39130ad079656496da6d0b7c44ae38dd222cd930e"
+    },
+    {
+      "path": "core/portfolio/promotion.py",
+      "git_blob": "5929f60831dae1f9ccbd97a809f4bc9a7be58972",
+      "sha256": "bef880643b3ce08797d6c98c6ea17adced2f9575698209cce88be0955fe39f4e"
+    },
+    {
+      "path": "docs/AUTOPILOT_GUIDE.md",
+      "git_blob": "3ddfb9bc28f7be8f2e4b8bd344297b08030cefb8",
+      "sha256": "9deeddb835d286bab8b0ffe7c72f51709026f587bf02d0e414e1b998b664429d"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "afe11aebd1b8bdc28e09d1f5e3987a20ab9bac1b",
+      "sha256": "84d204cb0106cccfbe223e4d4c4e4031fc964cf978f24dcad1ae3fa04b3cb654"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "4d76635ab148c3a2581c6f2db3b5bfbc220f0729",
+      "sha256": "a24a833d9b9364fe81d864920b1c4fef6ef42c0401360417b688b715da73ea70"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "71a9084a6a148b0de2d5d9cb7f41a127ae04508e",
+      "sha256": "ee91ea966feae30692e23c727e1a36371a5027d00c3d43cf2b9b3113b248f3a1"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/SA-026.md",
+      "git_blob": "a94b987d8cab65309817cdd8cea3afaffc575dd5",
+      "sha256": "527096089dbc4273096788d982ded498285e0b231c6640a01e8a57b80ac138af"
+    },
+    {
+      "path": "services/api/log_buffer.py",
+      "git_blob": "dcc1be1fd3f40ab6b593456afd70c59e06611c06",
+      "sha256": "dc6826c58d4efbd96087a7dae4f6db4a9ea90843f4bcfd388e55de155ec2d041"
+    },
+    {
+      "path": "tests/unit/test_deployment_follows_money_fix025.py",
+      "git_blob": "7e0fdedacc7a01254416c2bf01015dcbd6148b19",
+      "sha256": "0725595a98f8ef44a2fc7971d6f92fabe50a31458ebbddf22691032c81b310bf"
+    },
+    {
+      "path": "tests/unit/test_sold_stock_leaves_review_fix028.py",
+      "git_blob": "aa773d6b5a72ffb9ed5ee1c6d4d4e4a4a44e0bea",
+      "sha256": "6e0c516dec45f226255927965a8bdf44b120e0789dc57ce5de0a7c19ea4bb860"
+    }
+  ]
+}

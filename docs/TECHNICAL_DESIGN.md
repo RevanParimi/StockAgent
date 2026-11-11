@@ -35,12 +35,11 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-The inspected code, `245e29e`, adds FIX-028 (a sold stock leaves the daily
-review) to what production runs. It was committed at the owner's word before
-its fresh review and is not yet deployed. Production runs `794968e` (FIX-026,
-and FIX-027 with its review's fixes; FIX-027's fresh review accepted it on
-10 November), deployed at about 14:30 IST on 10 November 2026 (the deployment
-list showed it SUCCESS; `/health` was not read), with idle-cash deployment off. The table gives the configuration that
+Production runs the inspected code, `245e29e` (FIX-028, a sold stock leaves
+the daily review, on top of FIX-026 and FIX-027; FIX-028's fresh review
+accepted it on 11 November), pushed at about 07:37 IST on 11 November 2026
+(the deployment list showed it SUCCESS; `/health` was not read), with
+idle-cash deployment off. The table gives the configuration that
 differs from the repository and the state of each operational control.
 
 | Area | State in production | Evidence |
@@ -1681,7 +1680,7 @@ forecast monthly because it has an entry in the managed list
 the portfolio's lock, [promotion.py](../core/portfolio/promotion.py)'s
 `release_unheld` reads every portfolio on disk. An entry promoted for a
 holding that no portfolio holds any more is disabled, its sector and history
-kept. While a user's own watchlist lists the stock (added on the home page or
+kept. While a user's own watchlist lists the stock (added by the user or
 promoted from the shelf, not the autopilot's own exit entry), it becomes a
 weekly watchlist entry instead, which the cap may evict. The original universe
 is never touched, and a TRIM that leaves shares changes nothing. Then the
@@ -1696,7 +1695,12 @@ or forecast; its digest row (`not_reviewed`), the digest's text and the
 morning brief say "no daily review or forecast: managed-ticker cap 40
 reached", and every run tries again. A portfolio file that cannot be read
 releases nothing that run. The auditor grades a sale from prices (section 7),
-so stopping a sold stock's reviews costs no grade.
+so stopping a sold stock's reviews costs no grade. Not covered: a watchlist
+entry kept for a user's watch is not released when the watch ends on the home
+page (the API's delete route demotes it); a home-page save drops the
+watchlist stocks the home page does not list; and an account whose portfolio
+file is quarantined is not read, so its stocks can be released. **Planned:**
+FIX-032.
 
 Example: 25 original entries and 15 held stocks fill the 40. A SWITCH sells
 OLD for NEW: OLD's entry is disabled first, so NEW takes its place, and
@@ -3483,10 +3487,11 @@ section 10) are part of the current design.
 | [FIX-025](planning/PI-2026-09/stories/FIX-025.md) | Deployment follows the money and the ideas; a top-up checks NSE's report too | Done | 6 Portfolio; 8 Discovery | FIX-024 |
 | [FIX-026](planning/PI-2026-09/stories/FIX-026.md) | The analysis names a new stock's sector from our list; an empty or unknown sector is flagged | Done | 8 Discovery; 4 Research | FIX-024 |
 | [FIX-027](planning/PI-2026-09/stories/FIX-027.md) | A decision booked at a session's close reads nothing from after that close | Done | 6 Portfolio | FIX-024 |
-| [FIX-028](planning/PI-2026-09/stories/FIX-028.md) | A sold stock leaves the daily review | Open | 6 Portfolio; 8 Discovery | FIX-025 |
+| [FIX-028](planning/PI-2026-09/stories/FIX-028.md) | A sold stock leaves the daily review | Done | 6 Portfolio; 8 Discovery | FIX-025 |
 | [FIX-029](planning/PI-2026-09/stories/FIX-029.md) | Every door to a buy reads the same facts: the day's regime, the sale and the verdict | Open | 6 Portfolio; 8 Discovery | FIX-025 |
 | [FIX-030](planning/PI-2026-09/stories/FIX-030.md) | A generic-graph analysis sees no automobile evidence; a key the old Yahoo table set is re-examined; an unnamed idea stops taking a weekly re-dive | Open | 4 Research; 8 Discovery | FIX-026 |
 | [FIX-031](planning/PI-2026-09/stories/FIX-031.md) | Every input a decision at a session's close reads is from before that close | Open | 6 Portfolio; 5 Learning | FIX-027 |
+| [FIX-032](planning/PI-2026-09/stories/FIX-032.md) | A home-page watchlist save keeps what it does not show, and a removal there leaves the daily review | Open | 6 Portfolio; 10 Interface | FIX-028 |
 | [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Done | 6 Portfolio | None |
 | [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Done | 7 Marksheets; 10 Interface | None |
 | [FIX-006](planning/PI-2026-09/stories/FIX-006.md) | An anonymous watchlist read never falls back to the owner | Open | 10 Interface | None |

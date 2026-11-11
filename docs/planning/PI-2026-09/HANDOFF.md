@@ -1,4 +1,43 @@
-# Current handoff - 2026-11-11 (FIX-028 implemented and committed; its fresh review next)
+# Current handoff - 2026-11-11 (FIX-028 accepted by its fresh review; FIX-029 next)
+
+## 11 Nov: FIX-028 fresh review → ACCEPTED
+
+- **Session `stockagent-main-38`**, a new conversation opened with "continue", about 11:34 to 12:40 IST.
+  - `origin/main` was `1eb1b29`, the same as HEAD: nothing had arrived from the other device. Peers were idle.
+  - Receipt: [evidence/FIX-028-review.md](evidence/FIX-028-review.md).
+- **Reviewed** code `245e29e` (the 9 code and test files; diff from `02f3ad7` 56,297 B, sha256 `38afcb5d…`,
+  unchanged at HEAD) and the FIX-028 documents in `1eb1b29`.
+- **What ran:**
+  - reviewer cases: 452 passed + 3 strict xfail. RV1: 300 random states of the release against the
+    review's own oracle. RV2: 150 random runs, after which every holding is reviewed or named. RV3: the
+    lock holds across two processes;
+  - the story file against `02f3ad7`: 17 failed, and the 6 that pass are the cases where nothing must change;
+  - focused tests: 372 passed; `check_broad_except` OK (148); `check_kt_docs` `errors: []`;
+  - full suite: 6,279 passed / 12 skipped / 1 xfailed / **1 failed** (rc 1, 24m21s). The failure is
+    environmental: a delivery test expects a refused loopback connection, and this laptop today times
+    out on any closed loopback port (`analysis_data/fix028_review/loopback_probe.py`). FIX-028 changes
+    no delivery code. Re-run it where loopback refuses.
+- **Findings: none above low in FIX-028's change.** New [FIX-032](stories/FIX-032.md) (P2, 2 points,
+  after FIX-031, before PR-005):
+  - **RV5, medium, pre-existing:** any home-page watchlist save drops every watchlist stock outside the
+    home page's 16 names: the API's additions, shelf promotions, the autopilot's notes.
+  - **RV4b, low:** a sold stock FIX-028 keeps for a user's watch stays in the daily review after the user
+    removes it on the home page. The API's delete route demotes it.
+  - **RV6, low:** while an account's `portfolio.json` is quarantined, the release treats its stocks as
+    held by nobody.
+  - I-3, a stale comment in `deep_dive.py`. I-1 (the brief prints `NO_DATA`; the page and a same-day re-run
+    drop `not_reviewed`) is routed input on PR-007.
+- **Production:** Railway `8c88aa72` shows SUCCESS (deployment list, read-only, 12:06 IST), so production
+  runs `245e29e`. FIX-028 production is `pending_observation`. The first run is today's 16:30 review; then
+  read guide 07-P's production line. The measure-first probe is still not run. Before 16:30 it can still
+  read what the first run will release (the owner's command is in the implementation receipt).
+- **STATE:** FIX-028 `done`; FIX-032 `todo`; `active_task` null; `next_task` FIX-029.
+- **Committed at the owner's word** ("commit and push", about 14:00 IST): the receipt, the FIX-032
+  card, PR-007's note, STATE, this file, the push record below, and the receipt's six commit-time
+  edits (KT sections 1, 6 and 12, AUTOPILOT_GUIDE section 12, guide 07-P, the PDF). Docs only.
+  The push is recorded here once it happens, uncommitted until the next docs commit.
+- **Next `continue`, in a new conversation: FIX-029's implementation.** Then SA-044, FIX-030, FIX-031 and
+  FIX-032. The switch stays off. The Saturday 14 Nov watch below still applies.
 
 ## 11 Nov: FIX-028 implemented → review_required
 
@@ -31,7 +70,11 @@
   - The docs commit after it holds FIX-028's docs with its status edits, and FIX-027's review documents with
     their three commit-time edits. KT header `245e29e`, edition 2026-11-11; PDF 68 pages.
   - The fresh review reviews `245e29e` and that docs commit.
-  - **Push:** recorded in this file once it happens, uncommitted until the next docs commit.
+  - **Pushed** `02f3ad7..1eb1b29` at about 07:37:46 IST. The owner chose "Push now" after being told
+    the restart would land on the morning jobs (07:30 macro news, 08:00 IPO refresh, 08:15 company
+    events). Railway `8c88aa72` was BUILDING at 07:37:47 IST; its SUCCESS and `/health` were not read.
+    Whether a morning job was cut off is not checked. The fresh review read SUCCESS at 12:06 IST.
+  - KT section 1 and guide 07-P's status line say deployed in the review's docs commit.
   - **Deploying changes production with the switch off.** The first 16:30 run after the deploy disables
     the held entries of stocks no portfolio holds. The probe can still read the count before that run.
 - **Next `continue`, in a new conversation: FIX-028's fresh review.** Then FIX-029, SA-044, FIX-030 and FIX-031.

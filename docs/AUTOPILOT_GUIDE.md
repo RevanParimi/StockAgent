@@ -713,9 +713,11 @@ give it envelopes, reviews and a dossier.
   saved, under the portfolio's lock, `release_unheld` reads every portfolio
   on disk. A held-origin entry that no portfolio holds any more is disabled,
   its sector and history kept. While a user's own watchlist lists the stock
-  (added on the home page or promoted from the shelf; the autopilot's own
+  (added by the user or promoted from the shelf; the autopilot's own
   `autopilot_exit` entry does not count) it becomes a watchlist-origin entry
-  instead: weekly, and evictable at the cap. Original entries are never
+  instead: weekly, and evictable at the cap. When the watch ends through
+  `DELETE /portfolio/watchlist/{symbol}` the entry is disabled; a removal on
+  the home page leaves it enabled (FIX-032). Original entries are never
   touched, and a TRIM that leaves shares changes nothing. Then the positions
   the run opened are promoted, so a sale's room is free before the same run's
   buy asks for it, and so is each holding the list is waiting for: one with
@@ -732,7 +734,9 @@ give it envelopes, reviews and a dossier.
   review and named, until a sale or a disabled entry makes room.
 - **Never on a guess.** A portfolio file that cannot be read stops the
   release for that run (nothing is released, and the file is not
-  quarantined); with no managed file nothing is written. Promotion's reads
+  quarantined); an account whose file is already quarantined is not read,
+  so its stocks can be released (FIX-032); with no managed file nothing is
+  written. Promotion's reads
   and writes of the list hold one lock (`managed_tickers_lock`); the owner's
   dashboard edits (`/ui/tickers/managed`) do not take it. Every save goes
   through a temporary file, so a write cut short leaves the old list.

@@ -20,18 +20,22 @@ def build_digest(
     transactions: list | None = None,
     deployment: dict | None = None,
     top_ups_skipped: list[dict] | None = None,
+    not_reviewed: list[dict] | None = None,
 ) -> dict:
     """`deployment` is the autopilot's idle-cash record for the day
     (core/portfolio/deployment.py `run_record`), present only when deployment
     is on for the portfolio: what it bought and why any idle cash stayed.
     `top_ups_skipped` names each ADD NSE's surveillance report refused
     ({"symbol", "why"}); its row keeps the ADD verdict and says why no shares
-    were bought."""
+    were bought. `not_reviewed` names each holding the managed list could not
+    take ({"symbol", "why"}, FIX-028: the list's cap): its row says it has no
+    daily review or monthly forecast."""
     value = 0.0
     cost = 0.0
     rows = []
     by_symbol = {a.symbol: a for a in advice}
     skipped = {s["symbol"]: s["why"] for s in (top_ups_skipped or [])}
+    unreviewed = {s["symbol"]: s["why"] for s in (not_reviewed or [])}
     for h in portfolio.holdings:
         close = closes.get(h.symbol)
         if close is not None:
@@ -53,6 +57,7 @@ def build_digest(
             # SWITCH reached "Needs attention" as a verdict with no object.
             "switch_candidate": rec.switch_candidate if rec else "",
             **({"top_up_skipped": skipped[h.symbol]} if h.symbol in skipped else {}),
+            **({"not_reviewed": unreviewed[h.symbol]} if h.symbol in unreviewed else {}),
         })
     escalations = sorted(a.symbol for a in advice if a.verdict in ("TRIM", "EXIT", "SWITCH"))
     digest = {

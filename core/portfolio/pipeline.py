@@ -462,7 +462,8 @@ def run_post_review_pipeline(review_date: date) -> dict:
             store.save_digest(build_digest(user_id, review_date, advice, portfolio,
                                            closes, transactions=txns,
                                            deployment=run_report.get("deployment"),
-                                           top_ups_skipped=run_report.get("top_ups_skipped")))
+                                           top_ups_skipped=run_report.get("top_ups_skipped"),
+                                           not_reviewed=run_report.get("not_reviewed")))
         except Exception as exc:
             logger.warning("[portfolio_pipeline] digest failed for %s: %s", user_id, exc)
 

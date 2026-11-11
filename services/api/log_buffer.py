@@ -26,6 +26,10 @@ import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from filelock import FileLock
+
+from core.utils.atomic_io import atomic_write_text
+
 # ---------------------------------------------------------------------------
 # Ring buffer — last 1 000 log records
 # ---------------------------------------------------------------------------
@@ -196,13 +200,54 @@ def load_managed_tickers() -> list[dict]:
 
 
 def save_managed_tickers(tickers: list[dict]) -> None:
-    _MANAGED_TICKERS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _MANAGED_TICKERS_PATH.write_text(json.dumps(tickers, indent=2), encoding="utf-8")
+    # Temp file + rename (FIX-028): a write cut short must never leave a torn
+    # file, which load_managed_tickers would replace with the five-ticker seed.
+    atomic_write_text(_MANAGED_TICKERS_PATH, json.dumps(tickers, indent=2))
     abs_path = _MANAGED_TICKERS_PATH.resolve()
     _log.info(
         "[managed_tickers] Written %d tickers to %s: %s",
         len(tickers), abs_path, [t.get("sym") for t in tickers],
     )
+
+
+_MANAGED_LOCKS: dict[str, FileLock] = {}
+_MANAGED_LOCKS_GUARD = threading.Lock()
+
+
+def managed_tickers_lock() -> FileLock:
+    """
+    The lock promotion's reads and writes of the managed list hold (FIX-028),
+    one instance per file so a holder may take it again. The API's promotions
+    and demotions run beside the scheduler's pipeline; without it, two writers
+    that read the same list each save their own copy, and one change is lost.
+    The owner's dashboard routes (ui_data `/tickers/managed`) do not take it.
+    """
+    path = str(_MANAGED_TICKERS_PATH.resolve()) + ".lock"
+    _MANAGED_TICKERS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with _MANAGED_LOCKS_GUARD:
+        lock = _MANAGED_LOCKS.get(path)
+        if lock is None:
+            lock = _MANAGED_LOCKS[path] = FileLock(path, timeout=30)
+    return lock
+
+
+def read_managed_tickers() -> list[dict] | None:
+    """
+    The managed list as stored, or None when there is no file or it cannot be
+    read as a list (FIX-028). Unlike load_managed_tickers it never seeds or
+    replaces the file, so a caller that only narrows the list cannot create one.
+    """
+    try:
+        raw = json.loads(_MANAGED_TICKERS_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
+        _log.warning("[managed_tickers] %s unreadable: %s", _MANAGED_TICKERS_PATH, exc)
+        return None
+    if not isinstance(raw, list):
+        _log.warning("[managed_tickers] %s is not a list", _MANAGED_TICKERS_PATH)
+        return None
+    return raw
 
 
 def managed_symbols() -> set[str]:

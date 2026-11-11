@@ -909,13 +909,16 @@ def build_morning_brief(
         held = [r["symbol"] for r in digest.get("holdings", [])]
         advisor_flags = [
             {"symbol": r["symbol"], "verdict": r["verdict"],
-             # FIX-025: "Add more" with the reason no shares were bought.
-             "reason": (f"{r.get('reason', '')} ({r['top_up_skipped']})".strip()
-                        if r.get("top_up_skipped") else r.get("reason", "")),
+             # FIX-025: "Add more" with the reason no shares were bought;
+             # FIX-028: a holding with no daily review says so, whatever its verdict.
+             "reason": " ".join(p for p in (
+                 r.get("reason", ""),
+                 *(f"({r[k]})" for k in ("top_up_skipped", "not_reviewed") if r.get(k)))
+                 if p).strip(),
              "notes": r.get("notes", []),
              "switch_candidate": r.get("switch_candidate", "")}
             for r in digest.get("holdings", [])
-            if r.get("verdict") not in ("HOLD", "NO_DATA")
+            if r.get("verdict") not in ("HOLD", "NO_DATA") or r.get("not_reviewed")
         ]
 
     prev = store.load_latest_brief()

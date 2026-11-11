@@ -33,6 +33,12 @@ SA-048: every BUY and SELL pays its trading costs (core/portfolio/costs.py),
 written on its own ledger row and taken from cash with it, so the txn_id
 dedupe that stops a re-run trading twice also stops it charging twice. A
 SWITCH buy leg asks for the sale's proceeds net of the sale's costs.
+
+FIX-028: once the trades are saved, the managed list follows the holdings
+(`_follow_holdings`): a stock no portfolio holds any more leaves the daily
+review (unless a user's own watchlist lists it), then each holding without
+an entry is promoted, the run's buys included. A holding the list's cap
+keeps out is named in the day's digest.
 """
 from __future__ import annotations
 
@@ -56,9 +62,12 @@ from core.portfolio import costs, deployment, sizing
 from core.portfolio.store import PortfolioStore
 from core.portfolio.identity_reconcile import symbol_identity_issue
 from core.portfolio.pricing import session_close
-from core.portfolio.promotion import promote_symbol
+from core.portfolio.promotion import promote_symbol, release_unheld, without_daily_review
 
 logger = logging.getLogger(__name__)
+
+# What promote_symbol answers when the stock gets no enabled entry.
+_NOT_PROMOTED = ("cap_full", "invalid_sector")
 
 
 def make_txn_id(user_id: str, d: str, symbol: str, side: str, ref: str) -> str:
@@ -361,11 +370,6 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
         txns.append(_txn(portfolio, rec, side="BUY", qty=qty, price=price,
                          cash_before=cash_before, holding_qty_after=qty_after,
                          realized=0.0, note=note, charges=charges, symbol=cand))
-        try:
-            promote_symbol(cand, sector, origin="held")
-        except Exception as exc:
-            logger.warning("[autopilot] promotion failed for %s (non-fatal): %s",
-                           cand, exc)
 
     adds = sorted((a for a in advice if a.verdict == "ADD"),
                   key=lambda a: (-a.confidence, a.symbol))
@@ -577,10 +581,6 @@ def _deploy_idle_cash(portfolio: Portfolio, closes: dict[str, float],
             reason=str(getattr(idea, "thesis", "") or ""), costs=charges))
         existing_ids.add(txn_id)
         outcomes.append({**row, "outcome": "bought", "why": note})
-        try:
-            promote_symbol(symbol, sector, origin="held")
-        except Exception as exc:
-            logger.warning("[autopilot] promotion failed for %s (non-fatal): %s", symbol, exc)
     record = deployment.run_record(
         on=review_date, t=t, b=b, equity=equity, invested_before=invested_before,
         invested_after=invested, holdings_before=holdings_before,
@@ -589,6 +589,49 @@ def _deploy_idle_cash(portfolio: Portfolio, closes: dict[str, float],
     logger.info("[autopilot] %s deploy for %s: bought %s; %s", day, portfolio.user_id,
                 record["bought"] or "nothing", "; ".join(record["reasons"]))
     return txns, record
+
+
+def _follow_holdings(portfolio: Portfolio, txns: list[TransactionRecord]) -> dict:
+    """FIX-028: once a run's trades are saved, the managed list follows the
+    holdings. First every `held` entry no portfolio holds is released
+    (`promotion.release_unheld`), so a sale's room is free before a buy asks
+    for it; then the positions the run opened are promoted, as before, and so
+    is each holding the list is waiting for (`without_daily_review`): one the
+    cap kept out or a promotion that failed on an earlier run, a disabled
+    held entry, a watchlist entry. An original entry the owner disabled stays
+    disabled unless this run opened the position.
+
+    Returns {"released": ..., "to_watchlist": ..., "not_reviewed": [{"symbol",
+    "why"}]} (and "error" when the release did not run); a holding named in
+    "not_reviewed" has no daily review or monthly forecast. Never raises: the
+    trades stand either way."""
+    try:
+        out = release_unheld(portfolio)
+    except Exception as exc:
+        logger.warning("[autopilot] managed release failed (non-fatal): %s", exc)
+        out = {"released": [], "to_watchlist": [], "error": f"release failed: {exc}"}
+    holdings = {h.symbol: h for h in portfolio.holdings}
+    # The positions this run opened are promoted as before, a disabled
+    # original entry included; the rest only when the list waits for them.
+    wanted = {t.symbol for t in txns if t.side == "BUY" and t.verdict != "ADD"} & set(holdings)
+    try:
+        wanted |= without_daily_review(holdings) or set()
+    except Exception as exc:
+        logger.warning("[autopilot] managed list unread (non-fatal): %s", exc)
+    not_reviewed: list[dict] = []
+    for symbol in sorted(wanted):
+        try:
+            result = promote_symbol(symbol, holdings[symbol].sector, origin="held")
+        except Exception as exc:
+            logger.warning("[autopilot] promotion failed for %s (non-fatal): %s", symbol, exc)
+            result = {"status": "error", "detail": f"promotion failed: {exc}"}
+        status = (result or {}).get("status")
+        if status in _NOT_PROMOTED or status == "error":
+            why = f"no daily review or forecast: {result.get('detail') or status}"
+            logger.warning("[autopilot] %s holds %s with %s", portfolio.user_id, symbol, why)
+            not_reviewed.append({"symbol": symbol, "why": why})
+    out["not_reviewed"] = not_reviewed
+    return out
 
 
 def execute_advice(store: PortfolioStore, portfolio: Portfolio,
@@ -620,8 +663,12 @@ def execute_advice(store: PortfolioStore, portfolio: Portfolio,
     fetched before the lock (one missing is fetched here); `surveillance`
     returns NSE's surveillance report, read once (default: read here when a
     buy first needs it); `report`, when given, receives the deployment
-    record under "deployment" and the top-ups NSE's report refused under
-    "top_ups_skipped"."""
+    record under "deployment", the top-ups NSE's report refused under
+    "top_ups_skipped", and the holdings left with no daily review under
+    "not_reviewed" (FIX-028, `_follow_holdings`).
+    FIX-028: after the save, the managed list follows the holdings: a stock
+    no portfolio holds any more leaves the daily review, and a stock bought
+    joins it."""
     if not settings.AUTOPILOT_ENABLED:
         return []
     day = review_date.isoformat()
@@ -682,11 +729,18 @@ def execute_advice(store: PortfolioStore, portfolio: Portfolio,
             # but avoid rewriting portfolio.json when nothing happened at all.
             portfolio.last_autopilot_run = day
             store.save(portfolio)
-            return []
-        for t in txns:
-            store.append_transaction(t)
-        portfolio.last_autopilot_run = day
-        store.save(portfolio)
+        else:
+            for t in txns:
+                store.append_transaction(t)
+            portfolio.last_autopilot_run = day
+            store.save(portfolio)
+        # FIX-028: under this portfolio's lock, so what it holds cannot move
+        # while the managed list is set to follow it.
+        managed = _follow_holdings(portfolio, txns)
+    if report is not None and managed["not_reviewed"]:
+        report["not_reviewed"] = managed["not_reviewed"]
+    if not txns:
+        return []
     logger.info("[autopilot] %s executed %d trade(s) for %s",
                 day, len(txns), portfolio.user_id)
     return txns

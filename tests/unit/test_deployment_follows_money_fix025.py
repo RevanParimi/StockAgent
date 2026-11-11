@@ -740,12 +740,13 @@ def test_each_flag_passes_only_its_own_skip(tmp_path, monkeypatch, symbol, flags
     assert env["analyst"].calls == ([symbol] if called else [])
 
 
-def test_d4_end_to_end_bought_sold_and_re_dived_though_still_managed(tmp_path, monkeypatch):
+def test_d4_end_to_end_bought_sold_and_re_dived(tmp_path, monkeypatch):
     """Nothing faked between the buy and the dive but the analyst. The real
     executor buys BACK (dived Sat 4 Jul) and the real promotion makes it managed;
-    the real executor exits it, and nothing demotes it; the real ledger reader
-    finds the sale (stamped 13 Jul); the real cycle on Sat 18 Jul dives it though
-    it is managed, its dive only 14 days old, so only the sale makes it due."""
+    the real executor exits it, and the real release takes it off the daily
+    review (FIX-028); the real ledger reader finds the sale (stamped 13 Jul); the
+    real cycle on Sat 18 Jul dives it, its dive only 14 days old, so only the
+    sale makes it due."""
     from core.portfolio import promotion
     monkeypatch.setenv("ATLAS_ENABLED", "false")
     monkeypatch.setattr(settings, "PORTFOLIO_DATA_DIR", str(tmp_path / "pf"))
@@ -756,6 +757,7 @@ def test_d4_end_to_end_bought_sold_and_re_dived_though_still_managed(tmp_path, m
                            conviction={"BACK": 0.7})
     managed: list = []
     monkeypatch.setattr(promotion, "load_managed_tickers", lambda: managed)
+    monkeypatch.setattr(promotion, "read_managed_tickers", lambda: managed)
     monkeypatch.setattr(promotion, "save_managed_tickers",
                         lambda tickers: managed.__setitem__(slice(None), tickers))
     monkeypatch.setattr(promotion, "resolve_company_name", lambda sym: sym)
@@ -771,7 +773,7 @@ def test_d4_end_to_end_bought_sold_and_re_dived_though_still_managed(tmp_path, m
                         unrealised_pnl_pct=0.0, stop_pct=12.0, rationale_hash="x1")
     sold, _ = story._run(s, [idea], {"BACK": 1000.0}, on=date(2026, 7, 9), advice=[sell])
     assert [t.side for t in sold] == ["SELL"]
-    assert (managed[0]["sym"], managed[0]["enabled"]) == ("BACK", True)
+    assert (managed[0]["sym"], managed[0]["enabled"]) == ("BACK", False)
     result = disc.run_discovery_cycle(on=date(2026, 7, 18))
     assert env["analyst"].calls == ["BACK"]
     assert result["hygiene"]["redive_sold"] == ["BACK"]
@@ -805,7 +807,7 @@ def test_returning_a_stock_held_past_its_ideas_60_days_can_come_back(tmp_path, m
     Aug's close, 80 shares at ₹1,000. On Sat 3 Oct its dive is 63 days old, past
     60, so the idea rotates out while the stock is held, and though the screen
     ranks BACK no analyst is called. The autopilot exits it on Wed 14 Oct and
-    nothing demotes it. On Sat 17 Oct there is no idea to re-dive and the screen
+    it leaves the daily review (FIX-028). On Sat 17 Oct there is no idea to re-dive and the screen
     ranks it: the analyst is called and 0.70 shelves it as a new idea dated 17
     Oct. Monday's run does not offer it (Friday's close is before the dive);
     Tuesday's real candidate list does, at Monday 19 Oct's close, 80 shares."""
@@ -817,6 +819,7 @@ def test_returning_a_stock_held_past_its_ideas_60_days_can_come_back(tmp_path, m
                            conviction={"BACK": 0.70})
     managed: list = []
     monkeypatch.setattr(promotion, "load_managed_tickers", lambda: managed)
+    monkeypatch.setattr(promotion, "read_managed_tickers", lambda: managed)
     monkeypatch.setattr(promotion, "save_managed_tickers",
                         lambda tickers: managed.__setitem__(slice(None), tickers))
     monkeypatch.setattr(promotion, "resolve_company_name", lambda sym: sym)
@@ -839,7 +842,7 @@ def test_returning_a_stock_held_past_its_ideas_60_days_can_come_back(tmp_path, m
                         unrealised_pnl_pct=0.0, stop_pct=12.0, rationale_hash="x1")
     sold, _ = story._run(s, [], {"BACK": 1000.0}, on=date(2026, 10, 14), advice=[sell])
     assert [t.side for t in sold] == ["SELL"]
-    assert (managed[0]["sym"], managed[0]["enabled"]) == ("BACK", True)
+    assert (managed[0]["sym"], managed[0]["enabled"]) == ("BACK", False)
 
     back = disc.run_discovery_cycle(on=date(2026, 10, 17))
     assert env["analyst"].calls == ["BACK"]

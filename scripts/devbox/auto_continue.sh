@@ -13,6 +13,9 @@
 #   auto_continue.sh pause                                   stop after the current phase
 #   auto_continue.sh resume [--target ID] [--max-phases N]  clear PAUSE, then start
 #   auto_continue.sh status                                  running or not; recent log
+#   auto_continue.sh briefings [--all | --done]              unread briefings; all; mark read
+#
+# Every briefing is also appended to ~/.autocontinue/briefings.md for the morning review.
 #
 # Settings live in ~/.autocontinue/config (chmod 600; never in git). All optional:
 #   NTFY_TOPIC, NTFY_SERVER        phone notifications through ntfy
@@ -27,6 +30,8 @@ REPO="${REPO:-$HOME/project/StockAgent}"
 STATE_DIR="${STATE_DIR:-$HOME/.autocontinue}"
 LOG_DIR="$STATE_DIR/logs"
 PAUSE_FILE="$STATE_DIR/PAUSE"
+BRIEF_FILE="$STATE_DIR/briefings.md"
+READ_MARK="$STATE_DIR/briefings.read"
 mkdir -p "$LOG_DIR"
 # shellcheck disable=SC1091
 [ -f "$STATE_DIR/config" ] && . "$STATE_DIR/config"
@@ -46,6 +51,7 @@ ascii() { printf '%s' "$1" | LC_ALL=C tr -cd '\40-\176' | cut -c1-80; }
 
 notify() {  # $1 = title, $2 = body. A failed notification never stops the loop.
   local title body
+  { printf '\n## %s | %s\n\n' "$(date '+%a %d %b %H:%M %Z')" "$1"; printf '%s\n' "$2"; } >>"$BRIEF_FILE"
   title="$(ascii "$1")"
   body="${2:0:3000}"
   if [ -n "${NTFY_TOPIC:-}" ]; then
@@ -187,7 +193,14 @@ case "$cmd" in
     if flock -n "$STATE_DIR/lock" true 2>/dev/null; then echo "not running"; else echo "running"; fi
     [ -f "$PAUSE_FILE" ] && echo "PAUSE file present"
     tail -n 15 "$STATE_DIR/loop.log" 2>/dev/null || true ;;
+  briefings)
+    touch "$BRIEF_FILE"
+    case "${1:-}" in
+      --all) cat "$BRIEF_FILE" ;;
+      --done) wc -l <"$BRIEF_FILE" >"$READ_MARK"; echo "Marked all briefings as read." ;;
+      *) tail -n +"$(( $(cat "$READ_MARK" 2>/dev/null || echo 0) + 1 ))" "$BRIEF_FILE" ;;
+    esac ;;
   *)
-    sed -n '2,24p' "$SELF"
+    sed -n '2,25p' "$SELF"
     exit 2 ;;
 esac

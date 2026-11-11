@@ -68,6 +68,22 @@ scripts/devbox/auto_continue.sh resume                   # clear the pause and c
   - `LOOP_ALLOW_LOCAL_COMMIT=1`: lets a phase commit accepted work locally, so the loop can
     move on to the next story. It still never pushes.
 
+## Morning review
+
+Every briefing the loop sends is also appended to `~/.autocontinue/briefings.md` on the box,
+newest at the bottom: the phase, the outcome, the tests run, what comes next and why the loop
+stopped.
+
+```bash
+scripts/devbox/auto_continue.sh briefings          # only what is new since you last marked it read
+scripts/devbox/auto_continue.sh briefings --done   # mark everything as read
+```
+
+To go through a night's work with Claude, open a session on the box from the Claude app and
+say: *"Read ~/.autocontinue/briefings.md (the unread part) and walk me through each phase
+before I approve the commit and push."* That session can also open each phase's receipt and
+diff.
+
 ## What it cannot see
 
 - **Loop sessions don't appear in the Claude app's session list.** Briefings come by

@@ -13,9 +13,25 @@
     section 12 FIX-029 Done; guide 07-G, 07-O and 02-O; PDF 70 pages; `check_kt_docs` `errors: []`.
   - At HEAD every code and test file of both manifests matches (0 mismatches); the KT, the guide
     and the PDF differ from them by the commit-time edits only.
-- **Push:** recorded below, after it happens (for the next docs commit).
+- **Pushed and deployed** (this record is committed in the docs commit after `6a2b83a`):
+  - full suite on the committed tree: 6,382 passed / 12 skipped / 1 xfailed / 0 failed, rc 0,
+    20m34s (14:14-14:35 IST), status clean before and after;
+  - asked the push timing (the 15:00 macro-news fetch, the 16:30 review); the owner chose
+    "push after the suite"; pushed `581eb90..6a2b83a` at about 14:35:20 IST;
+  - Railway `3acbc77f` created 14:35:25, SUCCESS by 14:36:54 (read-only deployment list;
+    `cfdb3183` REMOVED); the public `/health` answered 200 at 14:36:59. Production runs
+    `f368f20`;
+  - first runs: today's 16:30 review (FIX-029's doors; SA-044 on a cold peer cache, up to 25
+    Yahoo lookups per analysis), then Saturday's discovery. Read-only looks: guide 07-G, 07-O
+    and 02-O;
+  - the docs commit after `6a2b83a` (the owner's word, about 16:03 IST: "commit and push, its okay"):
+    KT section 1 (production runs `f368f20`), guide 07-G, 07-O and 02-O status (deployed
+    12 Nov), a note in SA-044's receipt, PDF. So the KT, the guide and the PDF differ from
+    SA-044's manifest by these edits too; its code, test and config files do not;
+  - that commit's push was held out of the 16:25-17:05 daily review window (today's review
+    is the first live run of both): see the push line below once it happens.
 - **STATE:** FIX-029 `done`; SA-044 `review_required` (active and next); both production
-  `pending_deployment` until the push record says otherwise.
+  `pending_observation`.
 - **Next `continue`, in a new conversation: SA-044's fresh review of `f368f20`.** Its review input
   is unchanged. Then FIX-030, FIX-031 and FIX-032. The switch stays off.
 

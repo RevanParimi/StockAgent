@@ -213,4 +213,8 @@ before its fresh review, as FIX-028's was:
   FIX-029 Done; guide 07-G and 07-O; the PDF) and SA-044's (the same header and section 1, guide
   02-O's status, this section and D1). So the KT, the guide and the PDF differ from this
   manifest by exactly those edits.
-- The push and its deployment are recorded in STATE and HANDOFF.
+- The push and its deployment are recorded in STATE and HANDOFF. The docs commit after
+  `6a2b83a` (12 Nov, at the owner's word, "commit and push, its okay") records the deploy: KT section 1
+  (production runs `f368f20`), the status lines of guide cases 07-G, 07-O and 02-O, and the
+  PDF. So the KT, the guide and the PDF also differ from this manifest by those edits; the
+  code, test and config files do not.

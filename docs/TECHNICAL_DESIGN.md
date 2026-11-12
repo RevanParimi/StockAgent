@@ -35,15 +35,13 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-The inspected code, `f368f20`, adds FIX-029 (every door to a buy reads the
-same facts; its fresh review accepted it on 12 November) and SA-044 (a
-valuation is compared only with same-industry peers; committed at the
-owner's word before its fresh review) to what production runs. Neither is
-deployed at this edition. Production runs `245e29e` (FIX-028, a sold stock
-leaves the daily review, on top of FIX-026 and FIX-027; FIX-028's fresh
-review accepted it on 11 November), pushed at about 07:37 IST on 11 November
-2026 (the deployment list showed it SUCCESS; `/health` was not read), with
-idle-cash deployment off. The table gives the configuration that
+Production runs the inspected code, `f368f20`: FIX-029 (every door to a buy
+reads the same facts; its fresh review accepted it on 12 November) and SA-044
+(a valuation is compared only with same-industry peers; committed at the
+owner's word before its fresh review), on top of FIX-028 (a sold stock leaves
+the daily review). It was pushed at about 14:35 IST on 12 November 2026 (the
+deployment list showed it SUCCESS; `/health` answered 200), with idle-cash
+deployment off. The table gives the configuration that
 differs from the repository and the state of each operational control.
 
 | Area | State in production | Evidence |

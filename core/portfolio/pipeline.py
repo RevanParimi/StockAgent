@@ -225,7 +225,11 @@ def run_post_review_pipeline(review_date: date) -> dict:
             logger.debug("[portfolio_pipeline] shelf unavailable (non-fatal): %s", exc)
         try:
             from core.discovery.candidates import buy_candidates
-            shelf_ideas, not_offered = buy_candidates(portfolio, review_date, shelf_ideas)
+            from core.discovery.shelf import ledger_sales
+            # FIX-029: this portfolio's exits decide what may be bought back.
+            shelf_ideas, not_offered = buy_candidates(
+                portfolio, review_date, shelf_ideas,
+                sales=ledger_sales(store.load_transactions(limit=2000)))
             if not_offered:
                 logger.info("[portfolio_pipeline] %s: %d buy candidate(s), %d not offered: %s",
                             user_id, len(shelf_ideas), len(not_offered),

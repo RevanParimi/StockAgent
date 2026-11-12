@@ -12,18 +12,26 @@ from this list, which has two sources:
   at the review session's 15:30 IST close, so an idea decided after that
   close waits for a review of a later session: it read news that came after
   the price (`shelf.close_before_dive`). A deep dive keeps only its day, so
-  it counts as made after that day's close.
+  it counts as made after that day's close. Its verdict must be a BUY or
+  STRONG BUY (`shelf.verdict_wait`, FIX-029): the conviction floor reads the
+  model's score, the verdict a separate number.
 - **The user's own watchlist BUYs** (DISCOVERY_WATCHLIST_BUYS). A stock the
-  user added, or promoted from the shelf, qualifies when its latest analysis
-  in the score history is a BUY or STRONG BUY, passed the data gate as
-  actionable, reaches the shelf's conviction floor, is fresh by the same
-  rule (and within DISCOVERY_STALE_DAYS), was run before the review
-  session's close, and NSE lists it as a company. It gets an entry band and
-  an invalidation level from the last close the analysis could have read,
-  exactly as a deep dive sets them from the close it read, so SA-050's entry
-  rule applies to it unchanged. A stock the autopilot sold onto the watchlist
-  (source "autopilot") does not qualify: the exit rule has just sold it,
-  and buying it back needs a new deep dive.
+  user added, or promoted from the shelf, qualifies when the newest analysis
+  in the score history run before the review session's close (FIX-029) is a
+  BUY or STRONG BUY, passed the data gate as actionable, reaches the shelf's
+  conviction floor, is fresh by the same rule (and within
+  DISCOVERY_STALE_DAYS), and NSE lists it as a company. An analysis run after
+  that close, a BUY or a SELL, counts from the next session's close. It gets
+  an entry band and an invalidation level from the last close the analysis
+  could have read, exactly as a deep dive sets them from the close it read,
+  so SA-050's entry rule applies to it unchanged. A stock the autopilot sold
+  onto the watchlist (source "autopilot") does not qualify: the exit rule has
+  just sold it, and buying it back needs a new deep dive.
+- **After an exit** (`shelf.resale_wait`, FIX-029): a stock this portfolio
+  sold since its idea was decided is not offered, and from the watchlist a
+  stock the autopilot sold counts only an analysis made on or after the
+  Saturday after the exit, whoever added it (the owner's Option A). A SWITCH
+  leg and idle-cash deployment re-check the same rule against the ledger.
 
 Example: on Tuesday 20 Oct, a shelf idea last dived on 12 Sep (38 days ago)
 is not a candidate until Saturday's re-dive. An idea Saturday 31 Oct's run
@@ -32,6 +40,9 @@ Oct; Tuesday's run, reviewing Monday, offers it. A watchlist BUY analysed on
 Mon 2 Nov at 20:00 IST is not offered for Monday's close (Tuesday's run) but
 is for Tuesday's (Wednesday's run), its band 97-102% of Monday's close; one
 analysed at 11:00 IST is offered for Monday's close, its band from Friday's.
+A stock in the daily review is re-analysed at about 16:35 IST each day, after
+the session the 16:30 job reviews has closed: that run reads the analysis of
+the day before, so the stock is offered every day its analysis is a BUY.
 
 **The sector a candidate carries** is the one it will be held under, so it
 must be the key its forecasts are written under. A managed stock keeps its
@@ -67,14 +78,14 @@ from core.config import settings
 from core.discovery.deep_dive import entry_levels
 from core.discovery.sector_naming import configured_sectors, ticker_map_sector, unnamed_why
 from core.discovery.shelf import (
-    close_before_decision, close_before_dive, dive_is_fresh, last_dived)
+    BUY_VERDICTS, Sales, close_before_decision, close_before_dive, dive_is_fresh, last_dived,
+    verdict_wait)
 from core.discovery.universe import COMPANY, instrument_kind
 from core.intelligence.rl.nse_calendar import session_close_at
 
 logger = logging.getLogger(__name__)
 
 IST = timezone(timedelta(hours=5, minutes=30))
-BUY_VERDICTS = ("BUY", "STRONG BUY")
 # The autopilot's own exits land on the watchlist with this source.
 _NOT_QUALIFYING_SOURCES = ("autopilot",)
 
@@ -136,19 +147,24 @@ def watchlist_window_days() -> int:
     return days
 
 
-def watchlist_idea(item, on: date, latest_analysis: Callable[[str], dict | None],
+def watchlist_idea(item, on: date, analysis_before: Callable[[str, datetime], dict | None],
                    window: pd.DataFrame | None, listing: dict | None,
                    managed: dict[str, str] | None = None,
                    ) -> tuple[ShelfIdea | None, str]:
     """(the candidate built from one watchlist item, "") or (None, why not).
-    `managed` maps managed symbols to their sectors (default: the managed
-    file, read once every other check has passed)."""
+    `analysis_before(symbol, at)` answers the newest analysis run strictly
+    before `at`; it is asked for the one before the review session's 15:30
+    close (FIX-029), and a record it returns from after that close is still
+    refused. A later analysis counts from the next session's close, a BUY
+    and a SELL alike. `managed` maps managed symbols to their sectors
+    (default: the managed file, read once every other check has passed)."""
     symbol = item.symbol.strip().upper()
     if item.source in _NOT_QUALIFYING_SOURCES:
         return None, "sold onto the watchlist by the autopilot"
-    record = latest_analysis(symbol)
+    close_at = session_close_at(on)
+    record = analysis_before(symbol, close_at)
     if not record:
-        return None, "no analysis in the score history"
+        return None, f"no analysis in the score history before the close of {on}"
     verdict = str(record.get("verdict") or "").strip().upper()
     if verdict not in BUY_VERDICTS:
         return None, f"latest analysis is {verdict or 'without a verdict'}"
@@ -207,10 +223,11 @@ def watchlist_idea(item, on: date, latest_analysis: Callable[[str], dict | None]
 
 
 def buy_candidates(portfolio, on: date, shelf_ideas: list, *,
-                   latest_analysis: Callable[[str], dict | None] | None = None,
+                   analysis_before: Callable[[str, datetime], dict | None] | None = None,
                    window: pd.DataFrame | None = None,
                    listing: dict | None = None,
-                   managed: dict[str, str] | None = None) -> tuple[list, dict[str, str]]:
+                   managed: dict[str, str] | None = None,
+                   sales: Sales | None = None) -> tuple[list, dict[str, str]]:
     """(the ideas this portfolio may buy on `on`, {excluded symbol: why}).
 
     `on` is the review session, whose close the trades are booked at: an
@@ -225,18 +242,36 @@ def buy_candidates(portfolio, on: date, shelf_ideas: list, *,
     another sector is offered as a copy under that one; one that is not
     managed is offered only once its key is named (FIX-026); a watchlist
     stock takes `holding_sector`.
-    Readers default to the score history, the EOD store and the cached NSE
-    listing, each read only when a watchlist item needs it, and the managed
-    file (`managed`), read when there is a fresh shelf idea or a watchlist
-    item to check."""
+
+    FIX-029, the list every buy door reads: a shelf idea whose verdict is
+    not a BUY is not offered (`shelf.verdict_wait`), nor is a stock not held
+    now whose exit came since its idea was decided, or, from the watchlist,
+    one the autopilot sold before the Saturday after its exit
+    (`shelf.resale_wait` over `sales`, this portfolio's exits; the pipeline
+    passes its ledger's, and none are known when omitted). A SWITCH then
+    takes its next-best idea. A held stock is left to each door's own
+    "already held" check.
+    Readers default to the score history (`get_latest_before`), the EOD
+    store and the cached NSE listing, each read only when a watchlist item
+    needs it, and the managed file (`managed`), read when there is a fresh
+    shelf idea or a watchlist item to check."""
     out: list = []
     excluded: dict[str, str] = {}
     keys: dict[str, str] | None = None
+    sales = sales or Sales()
+    held = {h.symbol.strip().upper() for h in portfolio.holdings}
     active = [i for i in shelf_ideas if getattr(i, "status", "active") == "active"]
     for idea in active:
         late = close_before_dive(on, idea)
-        if late:
+        is_held = idea.symbol.strip().upper() in held
+        sold = "" if is_held else sales.wait(idea)
+        not_a_buy = "" if is_held else verdict_wait(idea)
+        if sold:
+            excluded[idea.symbol] = sold
+        elif late:
             excluded[idea.symbol] = f"{late}; waits for a review of a later session"
+        elif not_a_buy:
+            excluded[idea.symbol] = not_a_buy
         elif dive_is_fresh(idea, on):
             if managed is None:
                 managed = _managed_sectors()
@@ -268,9 +303,9 @@ def buy_candidates(portfolio, on: date, shelf_ideas: list, *,
         for w in items:
             excluded[w.symbol.strip().upper()] = "sold onto the watchlist by the autopilot"
         return out, excluded
-    if latest_analysis is None:
+    if analysis_before is None:
         from services.data.stores.score_store import ScoreStore
-        latest_analysis = ScoreStore().get_latest
+        analysis_before = ScoreStore().get_latest_before
     if window is None:
         from services.data.stores.eod_store import EodStore
         window = EodStore().load_window(end=on, sessions=90)
@@ -281,12 +316,14 @@ def buy_candidates(portfolio, on: date, shelf_ideas: list, *,
         managed = _managed_sectors()
     for item in items:
         try:
-            idea, why = watchlist_idea(item, on, latest_analysis, window, listing, managed)
+            idea, why = watchlist_idea(item, on, analysis_before, window, listing, managed)
         except Exception as exc:
             logger.warning("[candidates] watchlist %s not read (non-fatal): %s",
                            item.symbol, exc)
             idea, why = None, f"could not be read: {exc}"
-        if idea is None:
+        if idea is not None:
+            why = sales.wait(idea)
+        if idea is None or why:
             excluded[item.symbol.strip().upper()] = why
         else:
             out.append(idea)

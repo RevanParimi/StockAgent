@@ -282,7 +282,8 @@ def _switch_world():
     holding = _holding("BBB", 200.0, sessions=20)
     ev = xs.exit_evidence(holding, D, records=[_record("BBB", "SELL")])
     idea = ShelfIdea(symbol="ZZZ", sector="it", added="2026-10-01", dived="2026-10-01",
-                     conviction=0.9, status="active", entry_low=48.5, entry_high=51.0)
+                     conviction=0.9, verdict="BUY", status="active", entry_low=48.5,
+                     entry_high=51.0)
     return holding, ev, dict(shelf_ideas=[idea], sector_weights={"automobile": 40.0},
                              held_symbols={"BBB"})
 
@@ -1030,10 +1031,10 @@ def test_a_switch_buy_lands_only_where_the_executor_would_buy():
     buys at a carried-forward close or an unresolved identity, and warns."""
     from core.portfolio.pricing import SessionClose
     idea = ShelfIdea(symbol="ZZZ", sector="it", added="2026-10-01", dived="2026-10-01",
-                     conviction=0.9, status="active", entry_low=48.5, entry_high=51.0,
-                     invalidation_level=45.0)
+                     conviction=0.9, verdict="BUY", status="active", entry_low=48.5,
+                     entry_high=51.0, invalidation_level=45.0)
     no_band = ShelfIdea(symbol="ZZZ", sector="it", added="2026-10-01", dived="2026-10-01",
-                        conviction=0.9, status="active")
+                        conviction=0.9, verdict="BUY", status="active")
     fresh, stale = SessionClose(50.0, D, "agree"), SessionClose(50.0, date(2026, 10, 22), "agree")
     cases = [
         (fresh, idea, {}, True),

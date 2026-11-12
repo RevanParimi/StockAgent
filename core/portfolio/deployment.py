@@ -70,7 +70,8 @@ CALM = ("NORMAL", "RISK_ON", "MOMENTUM_EXTENDED", "OVERSOLD")
 # "3 ideas above entry band".
 OUTCOME_WORDS = {
     "held": "already held",
-    "sold": "sold after the latest deep dive",
+    "sold": "sold since the idea was decided",
+    "verdict": "not rated a BUY by the analysis",
     "gate": "withheld by the data gate",
     "price": "without a close for the review session",
     "before_dive": "priced at a close from before its latest deep dive or analysis",

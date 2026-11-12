@@ -437,7 +437,7 @@ def _idea(sym, price, conviction, sector, dived, source="discovery"):
                      conviction=conviction, data_gate="actionable", close_at_add=price,
                      entry_low=round(price * 0.96, 2), entry_high=round(price * 1.04, 2),
                      invalidation_level=round(price * 0.90, 2), thesis=f"why {sym}",
-                     source=source)
+                     source=source, verdict="BUY")
 
 
 @pytest.mark.parametrize("mode", ["record", "enforce"])
@@ -544,7 +544,7 @@ def test_a_watchlist_buy_analysed_after_the_review_session_waits_for_the_next_ru
 
     def offered(on):
         return cands_mod.buy_candidates(pr004.portfolio(watch=[("W", "user")]), on, [],
-                                        latest_analysis=lambda s: rec, window=window,
+                                        analysis_before=lambda s, before: rec, window=window,
                                         listing=pr004.companies("W"), managed={})
     out, excluded = offered(FRI)
     assert out == [] and excluded == {"W": (    # FIX-024: the reason names both times

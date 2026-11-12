@@ -34,6 +34,13 @@ written on its own ledger row and taken from cash with it, so the txn_id
 dedupe that stops a re-run trading twice also stops it charging twice. A
 SWITCH buy leg asks for the sale's proceeds net of the sale's costs.
 
+FIX-029: a buy that opens a position, a SWITCH leg or a deployment buy,
+re-reads the candidate list's rule against this portfolio's ledger and this
+run's own exits: never a stock sold since its idea was decided (from the
+watchlist, after an autopilot exit, not before the Saturday after it), nor
+an idea whose analysis does not rate it a BUY (`shelf.resale_wait`,
+`shelf.verdict_wait`). A skipped SWITCH leg says why on its SELL.
+
 FIX-028: once the trades are saved, the managed list follows the holdings
 (`_follow_holdings`): a stock no portfolio holds any more leaves the daily
 review (unless a user's own watchlist lists it), then each holding without
@@ -46,7 +53,7 @@ import hashlib
 import logging
 import math
 from datetime import date, datetime, timedelta, timezone
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from core.config import settings
 from backend.shared.schemas.portfolio import (
@@ -63,6 +70,9 @@ from core.portfolio.store import PortfolioStore
 from core.portfolio.identity_reconcile import symbol_identity_issue
 from core.portfolio.pricing import session_close
 from core.portfolio.promotion import promote_symbol, release_unheld, without_daily_review
+
+if TYPE_CHECKING:
+    from core.discovery.shelf import Sales
 
 logger = logging.getLogger(__name__)
 
@@ -277,15 +287,25 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
                   shelf_index: dict | None = None,
                   surveillance: Callable[[], Report] | None = None,
                   top_ups_skipped: list[dict] | None = None,
+                  sales: Sales | None = None,
                   ) -> list[TransactionRecord]:
-    from core.discovery.shelf import close_before_dive
+    from core.discovery.shelf import Sales, close_before_dive, verdict_wait
     txns: list[TransactionRecord] = []
     floor_cash = settings.AUTOPILOT_MIN_CASH_FLOOR
     surveillance = surveillance or _once(lambda: surveillance_report(review_date))
+    sales = sales or Sales()
 
     for proceeds, rec, sell in switch_proceeds:
         cand = rec.switch_candidate.strip().upper()
         if not cand:
+            continue
+        # FIX-029: the list's rule again, against the ledger: not a stock
+        # sold since its idea was decided, nor an idea not rated a BUY.
+        idea = (shelf_index or {}).get(cand)
+        wait = (sales.wait(idea) or verdict_wait(idea)) if idea is not None else ""
+        if wait:
+            logger.info("[autopilot] SWITCH buy %s skipped: %s", cand, wait)
+            _note_skipped_buy(sell, cand, proceeds, wait)
             continue
         try:
             quote, session = session_close(cand, review_date)
@@ -425,33 +445,23 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
     return txns
 
 
-def _last_sales(store: PortfolioStore, this_run: list[TransactionRecord]) -> dict[str, date]:
-    """Each symbol's latest sale, from the ledger and this run's own sells, on
-    the day it was decided (`sale_day`)."""
-    from core.discovery.shelf import sale_day
-    out: dict[str, date] = {}
-    for t in [*store.load_transactions(limit=2000), *this_run]:
-        if t.side == "SELL":
-            day = sale_day(t)
-            if day is not None:
-                out[t.symbol] = max(day, out.get(t.symbol, day))
-    return out
-
-
-def _deploy_check(idea, symbol: str, portfolio: Portfolio, sold: dict[str, date],
+def _deploy_check(idea, symbol: str, portfolio: Portfolio, sales: Sales,
                   quotes: dict, review_date: date,
                   surveillance: Callable[[], Report]) -> tuple[str, str, dict]:
     """(outcome, why, the buy's inputs) for one candidate before sizing; the
     outcome is "" when it may be bought. Mirrors a SWITCH buy leg's checks,
-    plus the deep dive's own data gate and the re-buy rule."""
-    from core.discovery.shelf import close_before_dive, last_dived, sold_since_dive
+    plus the deep dive's own data gate. FIX-029: the re-buy rule and the
+    verdict are the candidate list's (`shelf.resale_wait`,
+    `shelf.verdict_wait`), read again here with this run's own exits."""
+    from core.discovery.shelf import close_before_dive, verdict_wait
     if _find(portfolio, symbol) is not None:
         return "held", "already held", {}
-    sale, dived = sold.get(symbol), last_dived(idea)
-    if sold_since_dive(idea, sale):
-        return "sold", (f"sold on {sale.isoformat()}, after its deep dive of "
-                        f"{dived.isoformat() if dived else 'unknown date'}; waits for a new "
-                        "deep dive"), {}
+    wait = sales.wait(idea)
+    if wait:
+        return "sold", wait, {}
+    not_a_buy = verdict_wait(idea)
+    if not_a_buy:
+        return "verdict", not_a_buy, {}
     withheld = []
     status = getattr(idea, "data_gate", dg.UNKNOWN)
     if not dg.is_actionable(status):
@@ -489,7 +499,7 @@ def _deploy_check(idea, symbol: str, portfolio: Portfolio, sold: dict[str, date]
 def _deploy_idle_cash(portfolio: Portfolio, closes: dict[str, float],
                       existing_ids: set[str], review_date: date, store: PortfolioStore,
                       ideas: list, quotes: dict, surveillance: Callable[[], Report],
-                      sold: dict[str, date]) -> tuple[list[TransactionRecord], dict]:
+                      sales: Sales) -> tuple[list[TransactionRecord], dict]:
     """SA-049: open new positions with idle cash, best conviction first, up
     to the regime's target (core/portfolio/deployment.py). Returns the BUYs
     and the run's record."""
@@ -524,7 +534,7 @@ def _deploy_idle_cash(portfolio: Portfolio, closes: dict[str, float],
         seen.add(symbol)
         row = {"symbol": symbol, "conviction": round(float(idea.conviction or 0.0), 2),
                "source": getattr(idea, "source", "discovery")}
-        outcome, why, ctx = _deploy_check(idea, symbol, portfolio, sold, quotes,
+        outcome, why, ctx = _deploy_check(idea, symbol, portfolio, sales, quotes,
                                           review_date, surveillance)
         if not outcome:
             price = ctx["price"]
@@ -689,16 +699,20 @@ def execute_advice(store: PortfolioStore, portfolio: Portfolio,
         # a forward recovery run for a missed day still proceeds normally.
         if portfolio.last_autopilot_run and day <= portfolio.last_autopilot_run:
             return []
-        existing_ids = {t.txn_id for t in store.load_transactions(limit=2000)}
+        ledger = store.load_transactions(limit=2000)
+        existing_ids = {t.txn_id for t in ledger}
         surveillance = surveillance or _once(lambda: surveillance_report(review_date))
 
         sell_txns, switch_proceeds = _execute_sells(portfolio, advice, closes,
                                                     existing_ids)
         existing_ids |= {t.txn_id for t in sell_txns}
+        # FIX-029: each exit on the day it was decided, this run's own included.
+        from core.discovery.shelf import ledger_sales
+        sales = ledger_sales([*ledger, *sell_txns])
         top_ups_skipped: list[dict] = []
         buy_txns = _execute_buys(portfolio, advice, closes, existing_ids,
                                  switch_proceeds, review_date, store, sector_lookup,
-                                 shelf_index, surveillance, top_ups_skipped)
+                                 shelf_index, surveillance, top_ups_skipped, sales)
         if report is not None and top_ups_skipped:
             report["top_ups_skipped"] = top_ups_skipped
         txns = sell_txns + buy_txns
@@ -711,7 +725,7 @@ def execute_advice(store: PortfolioStore, portfolio: Portfolio,
                 deploy_txns, record = _deploy_idle_cash(
                     trial, trial_closes, set(existing_ids), review_date, store,
                     list((shelf_index or {}).values()), candidate_quotes or {}, surveillance,
-                    _last_sales(store, sell_txns))
+                    sales)
             except Exception as exc:
                 logger.error("[autopilot] idle-cash deployment failed for %s, nothing "
                              "bought: %s", portfolio.user_id, exc)

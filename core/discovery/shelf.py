@@ -19,12 +19,17 @@ PR-004, enough diverse, checked ideas to fill 12 holdings:
   existed or no analysis has named its sector key, and first of all when the
   autopilot sold its stock since its latest dive (FIX-025). A re-dive
   refreshes the idea in place, or drops it with the reason when its analysis
-  is not actionable or its conviction falls below the floor. It names the
+  is not actionable, its conviction falls below the floor or its verdict is
+  no longer a BUY (FIX-029). It names the
   key of an idea that has none (or "generic"), and never changes a named one
   (FIX-026). The rotation clock counts from the latest dive, so an idea that
   keeps passing its monthly re-dive stays; one that fails is dropped, and one
   that cannot be re-dived ages out.
+- Only a dive the analysis rates BUY or STRONG BUY is shelved (FIX-029);
+  the conviction floor reads the model's score, the verdict a separate number.
 - An idea NSE lists as something other than a company is dropped.
+- When a stock may be bought back after its exit is one rule
+  (`resale_wait`), read by the candidate list and every buy door.
 - A dive memo (dives.json) keeps each dive's date and result for
   DISCOVERY_REDIVE_AFTER_DAYS, an abstained one included in either gate
   mode, so a candidate left off the shelf is not dived again every week
@@ -38,7 +43,8 @@ from __future__ import annotations
 import json
 import logging
 from collections import defaultdict
-from datetime import date, datetime, timezone
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -97,14 +103,102 @@ def sale_day(txn) -> date | None:
 
 
 def sold_since_dive(idea, sale: date | None) -> bool:
-    """Whether a sale on `sale` came on or after the idea's latest deep dive.
-    The one rule behind two things: the stock is not bought back
-    (autopilot._deploy_check), and its idea is re-dived first
-    (`ShelfStore.redive_due`). An undatable dive counts as before the sale."""
+    """Whether a sale on `sale` came on or after the idea's latest deep dive
+    (a watchlist idea: its analysis's IST day). The one rule behind two
+    things: the stock is not bought back (`resale_wait`), and its idea is
+    re-dived first (`ShelfStore.redive_due`). An undatable dive counts as
+    before the sale."""
     if sale is None:
         return False
     dived = last_dived(idea)
     return dived is None or sale >= dived
+
+
+def saturday_after(day: date) -> date:
+    """The first Saturday strictly after `day`: the next weekly discovery
+    run. Tue 3 Nov 2026 -> Sat 7 Nov; Sat 7 Nov -> Sat 14 Nov."""
+    return day + timedelta(days=(5 - day.weekday()) % 7 or 7)
+
+
+@dataclass(frozen=True)
+class Sales:
+    """One portfolio's exits, each stock's latest on the day it was decided
+    (`sale_day`): `last` by anyone, `by_autopilot` by the autopilot alone. An
+    exit is a SELL that left no shares; a TRIM that leaves shares is none:
+    the stock is still held, and a held stock is never a new position."""
+    last: dict[str, date] = field(default_factory=dict)
+    by_autopilot: dict[str, date] = field(default_factory=dict)
+
+    def wait(self, idea) -> str:
+        """`resale_wait` for `idea` against these exits."""
+        symbol = str(idea.symbol).strip().upper()
+        return resale_wait(idea, self.last.get(symbol), self.by_autopilot.get(symbol))
+
+
+def ledger_sales(transactions) -> Sales:
+    """The exits in one ledger (`Sales`). Read in ledger order; the latest
+    day wins."""
+    last: dict[str, date] = {}
+    auto: dict[str, date] = {}
+    for txn in transactions:
+        if txn.side != "SELL" or txn.holding_qty_after > 1e-9:
+            continue
+        day = sale_day(txn)
+        if day is None:
+            continue
+        symbol = str(txn.symbol).strip().upper()
+        last[symbol] = max(day, last.get(symbol, day))
+        if txn.source == "autopilot":
+            auto[symbol] = max(day, auto.get(symbol, day))
+    return Sales(last=last, by_autopilot=auto)
+
+
+BUY_VERDICTS = ("BUY", "STRONG BUY")
+
+
+def verdict_wait(idea) -> str:
+    """Why the analysis behind `idea` does not rate it a BUY, or "" when it
+    does (FIX-029; the owner's D1: "the ideas the analysis rates BUY"). The
+    shelf's conviction floor reads the model's `final_score`; the verdict is
+    bound to the composite, a separate number, so both are read. An idea with
+    no stored verdict waits for its re-dive, which `redive_due` puts first."""
+    verdict = str(getattr(idea, "verdict", "") or "").strip().upper()
+    if verdict in BUY_VERDICTS:
+        return ""
+    what = "analysis" if getattr(idea, "source", "") == "watchlist" else "deep dive"
+    if not verdict:
+        return f"its {what} stored no verdict; waits for its re-dive"
+    return f"its {what} rates it {verdict}, not a BUY"
+
+
+def resale_wait(idea, sale: date | None, autopilot_exit: date | None) -> str:
+    """Why `idea`'s stock may not be bought back yet after its exit, or ""
+    when it may (FIX-029). One rule for the candidate list and every buy door
+    (a SWITCH leg, idle-cash deployment):
+
+    - **sold since the idea was decided:** an exit (by anyone, a hand sale
+      included) on or after the idea's deep dive, or a watchlist idea's
+      analysis day, waits for a new one. The sale already overruled it.
+    - **a watchlist stock the autopilot sold** (the owner's Option A, 6 Nov):
+      only an analysis made on or after the Saturday after the exit counts,
+      however new, as a shelf idea waits for Saturday's dive.
+
+    Example: the autopilot sells W on Tue 3 Nov. A daily-review analysis of
+    Wed 4 Nov does not count; one of Mon 9 Nov does. A shelf idea dived Sat
+    31 Oct is offered again after Sat 7 Nov's re-dive."""
+    dived = last_dived(idea)
+    when = dived.isoformat() if dived else "unknown date"
+    watch = getattr(idea, "source", "") == "watchlist"
+    if watch and autopilot_exit is not None:
+        bound = saturday_after(autopilot_exit)
+        if dived is None or dived < bound:
+            return (f"sold by the autopilot on {autopilot_exit.isoformat()}; from the "
+                    f"watchlist only an analysis made on or after Saturday "
+                    f"{bound.isoformat()} counts (this one is of {when})")
+    if sold_since_dive(idea, sale):
+        what = "analysis" if watch else "deep dive"
+        return f"sold on {sale.isoformat()}, after its {what} of {when}; waits for a new {what}"
+    return ""
 
 
 def autopilot_sales() -> dict[str, date]:
@@ -115,11 +209,9 @@ def autopilot_sales() -> dict[str, date]:
     from core.portfolio.store import active_user_ids
     out: dict[str, date] = {}
     for user_id in active_user_ids():
-        for txn in PortfolioStore(user_id=user_id).load_transactions(limit=2000):
-            if txn.side == "SELL" and txn.source == "autopilot" and txn.holding_qty_after <= 1e-9:
-                day = sale_day(txn)
-                if day is not None:
-                    out[txn.symbol] = max(day, out.get(txn.symbol, day))
+        exits = ledger_sales(PortfolioStore(user_id=user_id).load_transactions(limit=2000))
+        for symbol, day in exits.by_autopilot.items():
+            out[symbol] = max(day, out.get(symbol, day))
     return out
 
 
@@ -259,13 +351,16 @@ class ShelfStore:
         the enforced data gate a dive that is not actionable is skipped
         (`gated`, SA-003); in record mode, which withholds nothing, it is
         kept. A dive with no sector key named is shelved too (FIX-026): its
-        paper lane runs and its re-dive asks again, but nothing buys it."""
+        paper lane runs and its re-dive asks again, but nothing buys it. A
+        dive whose analysis does not rate the stock a BUY (`verdict_wait`) is
+        skipped (`not_buy`, FIX-029) in either gate mode."""
         shelf = self.load()
         added: list[str] = []
         displaced: list[str] = []
         skipped: list[str] = []
         capped: list[str] = []
         gated: list[str] = []
+        not_buy: list[str] = []
         cap = settings.DISCOVERY_MAX_IDEAS_PER_SECTOR
         enforced = dg.enforcing()
         keys = configured_sectors()
@@ -279,6 +374,14 @@ class ShelfStore:
                 continue
             if dive.conviction < settings.DISCOVERY_MIN_CONVICTION:
                 skipped.append(dive.symbol)
+                continue
+            not_a_buy = verdict_wait(dive)
+            if not_a_buy:
+                # FIX-029: the shelf holds the ideas the analysis rates BUY;
+                # one it does not would hold a slot nothing may buy from.
+                skipped.append(dive.symbol)
+                not_buy.append(dive.symbol)
+                logger.info("[shelf] %s not added: %s", dive.symbol, not_a_buy)
                 continue
             if any(i.symbol == dive.symbol and i.status == "active"
                    for i in shelf.ideas):
@@ -333,6 +436,8 @@ class ShelfStore:
             summary["capped"] = capped
         if gated:
             summary["gated"] = gated
+        if not_buy:
+            summary["not_buy"] = not_buy
         return summary
 
     def _enforce_sector_cap(self, shelf: Shelf) -> list[str]:
@@ -361,10 +466,12 @@ class ShelfStore:
 
     def apply_redives(self, dives: list[DeepDiveResult], on: date) -> dict:
         """Refresh each re-dived active idea in place, or drop it with the
-        reason: the analysis is not actionable (abstain, or no gate), or its
-        conviction is below the floor. `added` and `close_at_add` stay, so the
-        auditor's shelf grades keep their start; the new `dived` date restarts
-        the rotation clock.
+        reason: the analysis is not actionable (abstain, or no gate), its
+        conviction is below the floor, or (FIX-029) its verdict is no longer a
+        BUY: the owner's D4, "if it is still a BUY, it can be bought again ...
+        if not, the idea leaves the shelf". `added` and `close_at_add` stay, so
+        the auditor's shelf grades keep their start; the new `dived` date
+        restarts the rotation clock.
 
         FIX-026: the re-dive's sector reading replaces the idea's. Its key
         changes only when the idea has no configured key yet (unnamed, or
@@ -388,6 +495,8 @@ class ShelfStore:
             elif dive.conviction < floor:
                 reason = (f"re-dive {dive.dive_date}: conviction {dive.conviction:.2f} "
                           f"below {floor:.2f}")
+            elif verdict_wait(dive):
+                reason = f"re-dive {dive.dive_date}: {verdict_wait(dive)}"
             else:
                 reason = ""
             if reason:
@@ -424,8 +533,9 @@ class ShelfStore:
         first: those whose stock was sold on or after their latest dive
         (`sold` maps a symbol to its latest autopilot sale), since a re-dive is
         all that can bring them back; those not yet verified: shelved before
-        the data gate existed (no gate status), or with no sector key named
-        (FIX-026), which nothing buys until a re-dive names one; then those
+        the data gate existed (no gate status), with no sector key named
+        (FIX-026) or with no verdict stored (FIX-029), which nothing buys until
+        a re-dive supplies it; then those
         whose latest dive is older than DISCOVERY_REDIVE_AFTER_DAYS. An idea
         that rotates out this run (its latest dive more than
         DISCOVERY_STALE_DAYS old) is left to rotate. [] when re-dives are off
@@ -441,7 +551,8 @@ class ShelfStore:
         oldest = lambda i: last_dived(i) or date.min       # noqa: E731
         was_sold = [i for i in active if sold_since_dive(i, sold.get(i.symbol))]
         rest = [i for i in active if not sold_since_dive(i, sold.get(i.symbol))]
-        unverified = {i.symbol for i in rest if not i.data_gate or unnamed_why(i, keys)}
+        unverified = {i.symbol for i in rest if not i.data_gate or unnamed_why(i, keys)
+                      or not str(i.verdict or "").strip()}
         pre_gate = sorted((i for i in rest if i.symbol in unverified), key=oldest)
         stale = sorted((i for i in rest if i.symbol not in unverified
                         and not dive_is_fresh(i, on)), key=oldest)

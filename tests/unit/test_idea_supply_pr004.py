@@ -686,14 +686,14 @@ def test_old_values_offer_every_active_idea_and_no_watchlist(monkeypatch):
     before the analysis named sectors is not offered (the story's tests)."""
     monkeypatch.setattr(settings, "DISCOVERY_REDIVE_AFTER_DAYS", 0)
     monkeypatch.setattr(settings, "DISCOVERY_WATCHLIST_BUYS", False)
-    ideas = [ShelfIdea(symbol=s, sector="generic", added=a, conviction=0.7,
+    ideas = [ShelfIdea(symbol=s, sector="generic", added=a, conviction=0.7, verdict="BUY",
                        sector_reading=reading())
              for s, a in [("OLD", "2025-01-01"), ("NEW", "2026-07-10")]]
     portfolio = SimpleNamespace(holdings=[], watchlist=[WatchlistItem(
         symbol="W", added="2026-07-01")])
     out, excluded = cands_mod.buy_candidates(
         portfolio, date(2026, 7, 13), ideas,
-        latest_analysis=lambda s: pytest.fail("the score history must not be read"))
+        analysis_before=lambda s, before: pytest.fail("the score history must not be read"))
     assert out == ideas and excluded == {}
 
 
@@ -717,12 +717,13 @@ def test_old_values_send_the_cycle_exactly_the_ipo_and_screen_candidates(
 # Re-dives
 # ---------------------------------------------------------------------------
 
-def _idea(symbol, added, *, gate="actionable", dived="", conviction=0.7, sector="", key=None):
+def _idea(symbol, added, *, gate="actionable", dived="", conviction=0.7, sector="", key=None,
+          verdict="BUY"):
     """An idea whose analysis named `key` (default: the fixture's key for the
-    Yahoo `sector`, else an explicit "generic")."""
+    Yahoo `sector`, else an explicit "generic") and rated it `verdict`."""
     key = key_for(sector) if key is None else key
     return ShelfIdea(symbol=symbol, sector=key or "generic", added=added, conviction=conviction,
-                     data_gate=gate, dived=dived, source_screen_date=added,
+                     verdict=verdict, data_gate=gate, dived=dived, source_screen_date=added,
                      entry_low=97.0, entry_high=102.0, invalidation_level=88.0,
                      close_at_add=100.0, market_sector=sector, sector_reading=reading(key))
 
@@ -1077,7 +1078,7 @@ def fresh_rules(monkeypatch):
 def _run_candidates(rec, *, source="user", listing=None, close=500.0, on=D):
     window = _eod_window(["W"], days=60, end=date(2026, 7, 12), close=close)
     return cands_mod.buy_candidates(
-        portfolio(watch=[("W", source)]), on, [], latest_analysis=lambda s: rec,
+        portfolio(watch=[("W", source)]), on, [], analysis_before=lambda s, before: rec,
         window=window, listing=companies("W") if listing is None else listing)
 
 
@@ -1101,7 +1102,7 @@ def test_a_fresh_actionable_watchlist_buy_is_a_candidate(fresh_rules):
     (record(score=0.54), "conviction 0.54 below 0.55"),
     # 12 Jun 11:00 UTC is 12 Jun IST: 31 days before 13 Jul.
     (record(run_at="2026-06-12T11:00:00"), "latest analysis of 2026-06-12 is 31 days old (limit 30)"),
-    (None, "no analysis in the score history"),
+    (None, "no analysis in the score history before the close of 2026-07-13"),
 ])
 def test_a_watchlist_stock_that_is_not_a_fresh_actionable_buy_is_not(fresh_rules, rec, why):
     out, excluded = _run_candidates(rec)
@@ -1126,7 +1127,7 @@ def test_beside_a_users_own_pick_an_autopilot_exit_still_does_not_qualify(fresh_
     pf = SimpleNamespace(holdings=[], watchlist=[
         WatchlistItem(symbol="A", added="2026-07-01", source="autopilot"),
         WatchlistItem(symbol="U", added="2026-07-01", source="user")])
-    out, excluded = cands_mod.buy_candidates(pf, D, [], latest_analysis=lambda s: record(),
+    out, excluded = cands_mod.buy_candidates(pf, D, [], analysis_before=lambda s, before: record(),
                                              window=window, listing=companies("A", "U"))
     assert [i.symbol for i in out] == ["U"]
     assert excluded == {"A": "sold onto the watchlist by the autopilot"}
@@ -1162,7 +1163,7 @@ def test_a_held_or_shelved_watchlist_stock_is_not_offered_twice(fresh_rules):
                          watchlist=[WatchlistItem(symbol=s, added="2026-07-01")
                                     for s in ("H", "S")])
     out, excluded = cands_mod.buy_candidates(
-        pf, D, [shelved], latest_analysis=lambda s: pytest.fail("not read"),
+        pf, D, [shelved], analysis_before=lambda s, before: pytest.fail("not read"),
         window=pd.DataFrame(), listing={})
     assert out == [shelved] and excluded == {}
 
@@ -1210,7 +1211,7 @@ def test_a_watchlist_candidate_carries_the_sector_its_forecasts_use(
         fresh_rules, managed, own, expected, inferred):
     window = _eod_window(["W"], days=60, end=date(2026, 7, 12), close=500.0)
     item = WatchlistItem(symbol="W", sector=own, added="2026-07-01")
-    idea, why = cands_mod.watchlist_idea(item, D, lambda s: record(), window, companies("W"),
+    idea, why = cands_mod.watchlist_idea(item, D, lambda s, before: record(), window, companies("W"),
                                          managed)
     assert (why, idea.sector) == ("", expected)
     assert fresh_rules == inferred
@@ -1223,7 +1224,7 @@ def test_a_watchlist_stock_with_no_key_anywhere_is_not_offered(monkeypatch):
     monkeypatch.setattr(settings, "DISCOVERY_MIN_CONVICTION", 0.55)
     window = _eod_window(["NEWSMALLCO"], days=60, end=date(2026, 7, 12), close=500.0)
     item = WatchlistItem(symbol="NEWSMALLCO", sector="generic", added="2026-07-01")
-    idea, why = cands_mod.watchlist_idea(item, D, lambda s: record(), window,
+    idea, why = cands_mod.watchlist_idea(item, D, lambda s, before: record(), window,
                                          companies("NEWSMALLCO"), {})
     assert idea is None
     assert why == ("sector unnamed: not managed, its watchlist entry names no configured "
@@ -1239,7 +1240,7 @@ def test_the_managed_record_is_read_from_the_managed_file_enabled_or_not(fresh_r
                     {"sym": "V", "enabled": True}])
     window = _eod_window(["W", "V"], days=60, end=date(2026, 7, 12), close=500.0)
     pf = SimpleNamespace(holdings=[], watchlist=[_sectorless("W"), _sectorless("V")])
-    out, excluded = cands_mod.buy_candidates(pf, D, [], latest_analysis=lambda s: record(),
+    out, excluded = cands_mod.buy_candidates(pf, D, [], analysis_before=lambda s, before: record(),
                                              window=window, listing=companies("W", "V"))
     assert excluded == {} and fresh_rules == []
     assert [(i.symbol, i.sector) for i in out] == [("W", "automobile"), ("V", "automobile")]
@@ -1296,7 +1297,7 @@ def test_a_home_page_watchlist_buy_counts_in_its_real_sector_for_the_cap(
     marks = {"MARUTI": 1000.0, "M&M": 1000.0, "ITCO": 1000.0}
     window = _eod_window(["HEROMOTOCO"], days=25, end=date(2026, 7, 10), close=5000.0)
     idea, why = cands_mod.watchlist_idea(_sectorless("HEROMOTOCO"), D,
-                                         lambda s: record(score=0.8), window,
+                                         lambda s, before: record(score=0.8), window,
                                          companies("HEROMOTOCO"))
     assert (why, idea.sector) == ("", "automobile")
     size = sizing.size_buy(pf, marks, symbol="HEROMOTOCO", sector=idea.sector,
@@ -1378,7 +1379,7 @@ def _review_day(tmp_path, monkeypatch, *, ideas=(), watch=(), rec=None, mode="re
                         lambda self: Shelf(ideas=list(ideas)))
 
     class _Scores:
-        def get_latest(self, symbol):
+        def get_latest_before(self, symbol, before):
             return rec if symbol == "W" else None
     window = _eod_window(["W"], days=25, end=date(2026, 7, 10), close=500.0)
 
@@ -1467,6 +1468,7 @@ def test_pipeline_holds_a_watchlist_buy_under_the_key_its_forecasts_use(
 
 def test_pipeline_does_not_buy_a_stale_shelf_idea_until_it_is_redived(tmp_path, monkeypatch):
     stale = ShelfIdea(symbol="CAND", sector="pharma", added="2026-06-01", conviction=0.9,
+                      verdict="BUY",
                       entry_low=485.0, entry_high=510.0, invalidation_level=450.0,
                       data_gate="actionable")
     advice, buys = _review_day(tmp_path, monkeypatch, ideas=[stale])

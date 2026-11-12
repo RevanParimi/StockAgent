@@ -95,7 +95,7 @@ def _offered(on, run_at, holdings=()):
     at 0.80 run at `run_at`."""
     rec = pr004.record(run_at=run_at)
     return cands_mod.buy_candidates(pr004.portfolio(watch=[("W", "user")], holdings=holdings),
-                                    on, [], latest_analysis=lambda s: rec, window=_window(),
+                                    on, [], analysis_before=lambda s, before: rec, window=_window(),
                                     listing=pr004.companies("W"), managed={})
 
 
@@ -147,7 +147,7 @@ def test_a_watchlist_analysis_with_no_close_before_it_is_not_offered(monkeypatch
     window = _window({MON: 505.0})
     window = window[pd.to_datetime(window["date"]).dt.date == MON]
     out, excluded = cands_mod.buy_candidates(
-        pr004.portfolio(watch=[("W", "user")]), MON, [], latest_analysis=lambda s: rec,
+        pr004.portfolio(watch=[("W", "user")]), MON, [], analysis_before=lambda s, before: rec,
         window=window, listing=pr004.companies("W"), managed={})
     assert out == [] and excluded == {"W": "no close before the analysis of 2026-11-02 11:00 IST"}
 
@@ -202,7 +202,7 @@ def _watch_pipeline(tmp_path, monkeypatch, run_at, holdings=(), cash=1_200_000.0
     import services.data.stores.eod_store as eod_store
     import services.data.stores.score_store as score_store
     monkeypatch.setattr(score_store, "ScoreStore",
-                        lambda: SimpleNamespace(get_latest=lambda sym: rec))
+                        lambda: SimpleNamespace(get_latest_before=lambda sym, before: rec))
     monkeypatch.setattr(eod_store, "EodStore",
                         lambda: SimpleNamespace(load_window=lambda end, sessions: _window()))
     monkeypatch.setattr(bhavcopy, "load_listing", lambda: pr004.companies("W"))

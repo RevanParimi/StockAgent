@@ -12,6 +12,7 @@ Public API
 ----------
 ScoreStore().save(report)                          → int (row id)
 ScoreStore().get_latest(ticker)                    → dict | None
+ScoreStore().get_latest_before(ticker, before)     → dict | None
 ScoreStore().get_history(ticker, limit)            → list[dict]
 ScoreStore().get_score_delta(ticker)               → float | None
 ScoreStore().get_verdict_changed(ticker)           → bool
@@ -25,7 +26,7 @@ import json
 import logging
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
@@ -173,6 +174,27 @@ class ScoreStore:
                 LIMIT 1
                 """,
                 (ticker.upper(),),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_latest_before(self, ticker: str, before: datetime) -> dict | None:
+        """The most recent score record for a ticker run strictly before
+        `before` (FIX-029). `run_at` is naive UTC, so an aware `before` is
+        compared in UTC and a naive one is taken as UTC. Example: the newest
+        analysis made before Monday's 15:30 IST close is
+        `get_latest_before(t, datetime(2026, 11, 2, 15, 30, tzinfo=IST))`,
+        i.e. run before 10:00 UTC."""
+        if before.tzinfo is not None:
+            before = before.astimezone(timezone.utc).replace(tzinfo=None)
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM score_history
+                WHERE ticker = ? AND run_at < ?
+                ORDER BY run_at DESC
+                LIMIT 1
+                """,
+                (ticker.upper(), before.isoformat()),
             ).fetchone()
         return dict(row) if row else None
 

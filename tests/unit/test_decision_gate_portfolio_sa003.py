@@ -121,7 +121,7 @@ def test_risk_reduction_is_never_blocked(over, verdict, trigger):
 
 def _idea(symbol, conviction=0.9, sector="realty", data_gate="actionable"):
     return ShelfIdea(symbol=symbol, sector=sector, added="2026-09-01",
-                     conviction=conviction, data_gate=data_gate)
+                     conviction=conviction, verdict="BUY", data_gate=data_gate)
 
 
 def test_a_blocked_switch_destination_falls_back_to_the_next_or_plain_exit():
@@ -221,7 +221,7 @@ def test_switch_buy_leg_needs_the_sessions_close(tmp_path, monkeypatch, gate_mod
 
     txns = ap.execute_advice(s, s.load(), [switch], {"TATAMOTORS": 110.0}, review,
                              sector_lookup={"LODHA": "realty"},
-                             shelf_index={"LODHA": ShelfIdea(symbol="LODHA", sector="realty", added="2026-07-01", conviction=0.8, entry_low=190.0, entry_high=210.0, invalidation_level=170.0)})
+                             shelf_index={"LODHA": ShelfIdea(symbol="LODHA", sector="realty", added="2026-07-01", conviction=0.8, verdict="BUY", entry_low=190.0, entry_high=210.0, invalidation_level=170.0)})
 
     sides = [(t.side, t.symbol) for t in txns]
     assert ("SELL", "TATAMOTORS") in sides                     # the exit always executes

@@ -59,6 +59,9 @@ def world(tmp_path, monkeypatch):
     }.items():
         monkeypatch.setattr(settings, name, value)
     monkeypatch.setattr(ap, "_today_ist", lambda: TODAY)
+    # The run after MON's close, 17:00 IST on Tue 14 Jul: a sale's stamp dates
+    # it (shelf.sale_day), so it must not be the real clock's day (FIX-029).
+    monkeypatch.setattr(ap, "_now_iso", lambda: "2026-07-14T11:30:00+00:00")
     monkeypatch.setattr(promotion, "resolve_company_name", lambda sym: f"{sym} Ltd")
     monkeypatch.setattr(ap, "session_close",
                         lambda sym, d: (SessionClose(100.0, d, "agree"), d))
@@ -122,7 +125,7 @@ def _cohort() -> list[tuple[str, str]]:
 
 def _idea(sym: str, sector: str, dived: str = SAT) -> ShelfIdea:
     return ShelfIdea(symbol=sym, sector=sector, added=dived, dived=dived, conviction=0.8,
-                     data_gate="actionable", entry_low=96.0, entry_high=104.0,
+                     verdict="BUY", data_gate="actionable", entry_low=96.0, entry_high=104.0,
                      invalidation_level=90.0, thesis=f"why {sym}")
 
 

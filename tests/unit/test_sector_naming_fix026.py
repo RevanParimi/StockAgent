@@ -181,7 +181,8 @@ def test_the_shelf_cap_and_the_sizing_cap_count_it_with_the_drug_makers(world, t
 def _named(symbol, key, conviction, *, yahoo="", dived="2026-11-07", source="analysis",
            answer=None):
     return ShelfIdea(symbol=symbol, sector=key, added="2026-11-07", dived=dived,
-                     conviction=conviction, data_gate="actionable", source_screen_date=dived,
+                     conviction=conviction, verdict="BUY", data_gate="actionable",
+                     source_screen_date=dived,
                      entry_low=970.0, entry_high=1020.0, invalidation_level=880.0,
                      close_at_add=1000.0, market_sector=yahoo,
                      sector_reading=SectorReading(answer=answer or key, source=source))
@@ -557,7 +558,8 @@ def test_property_only_a_configured_key_or_a_decided_generic_is_offered():
     for trial in range(2000):
         ideas = [ShelfIdea(symbol=f"S{k}", sector=rng.choice(pool) or "generic",
                            added="2026-11-07", dived="2026-11-07", conviction=0.7,
-                           data_gate="actionable", sector_reading=rng.choice(readings))
+                           verdict="BUY", data_gate="actionable",
+                           sector_reading=rng.choice(readings))
                  for k in range(8)]
         managed = {"S0": "automobile"} if rng.random() < 0.3 else {}
         out, excluded = cands_mod.buy_candidates(SimpleNamespace(holdings=[], watchlist=[]),

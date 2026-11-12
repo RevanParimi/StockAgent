@@ -1097,7 +1097,7 @@ def test_d4_sold_re_analysed_then_bought_by_the_first_run_that_may_use_it(shelf,
     monkeypatch.setattr(ap, "_today_ist", lambda: TUE)
     s = story._store(tmp_path, [], cash=1_200_000.0)
     s.append_transaction(_sale("BACK", "2026-10-27"))
-    sold = ap._last_sales(s, [])
+    sold = shelf_mod.ledger_sales(s.load_transactions()).last
     shelf.save(Shelf(ideas=[pr004._idea("BACK", "2026-10-24")]))
     assert [i.symbol for i in shelf.redive_due(SAT, sold)] == ["BACK"]
     out = shelf.apply_redives([pr004.dive("BACK", 0.70, on=SAT.isoformat(), close=1000.0)], on=SAT)

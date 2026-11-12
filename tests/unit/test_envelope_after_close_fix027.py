@@ -91,8 +91,11 @@ def _signals(vs: VerdictStore, review: date = MON, close: float = 1000.0, **over
                       adj_avg_price=1000.0, adj_qty=100, buy_date="2026-06-01")
     portfolio = Portfolio(user_id="u", holdings=[holding], cash_deployable=900_000.0)
     sig = build_signals(holding, portfolio, review, vs, {}, close=close)
+    # The fixture writes no feedback entry, so the advisor asks the market-wide
+    # record for the day (FIX-029); these tests take the day's regime as established.
     update = {"direction_accuracy_7d": 0.70, "position_weight_pct": 5.0,
-              "price_fresh": True, "forecast_gate": "actionable", **over}
+              "price_fresh": True, "forecast_gate": "actionable", "regime_unavailable": "",
+              **over}
     return holding, sig.model_copy(update=update)
 
 

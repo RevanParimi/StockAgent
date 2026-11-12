@@ -70,7 +70,7 @@ def _store(tmp_path, holdings, cash, name="u"):
 
 def _idea(sym, lo, hi, inval, sector="pharma"):
     return ShelfIdea(symbol=sym, sector=sector, added="2026-07-01", conviction=0.9,
-                     entry_low=lo, entry_high=hi, invalidation_level=inval,
+                     verdict="BUY", entry_low=lo, entry_high=hi, invalidation_level=inval,
                      data_gate="actionable")
 
 
@@ -291,7 +291,10 @@ def test_oct11_weights_are_shares_of_total_equity_and_unlock_add():
     assert round(sig["FEDERALBNK"].position_weight_pct, 1) == 13.4
     assert round(sig["WELCORP"].position_weight_pct, 1) == 5.6
 
-    healthy = dict(envelope_direction="UP", direction_accuracy_7d=0.8, confidence=0.6)
+    # No feedback entry here, so the advisor asks the market-wide record for
+    # the day (FIX-029); this test takes the day's regime as established.
+    healthy = dict(envelope_direction="UP", direction_accuracy_7d=0.8, confidence=0.6,
+                   regime_unavailable="")
     welcorp = decide(sig["WELCORP"].model_copy(update=healthy), portfolio.holdings[1],
                      "balanced")
     federal = decide(sig["FEDERALBNK"].model_copy(update=healthy), portfolio.holdings[0],

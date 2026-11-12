@@ -50,7 +50,7 @@ def test_switch_sells_then_buys_candidate(mock_close, mock_promote, tmp_path):
     txns = execute_advice(s, s.load(), [_switch()], {"TATAMOTORS": 110.0}, D,
                           sector_lookup={"LODHA": "realty"},
                           # SA-050: 200 sits inside the idea's band (190-210)
-                          shelf_index={"LODHA": ShelfIdea(symbol="LODHA", sector="realty", added="2026-07-01", conviction=0.8, entry_low=190.0, entry_high=210.0, invalidation_level=170.0)})
+                          shelf_index={"LODHA": ShelfIdea(symbol="LODHA", sector="realty", added="2026-07-01", conviction=0.8, verdict="BUY", entry_low=190.0, entry_high=210.0, invalidation_level=170.0)})
     assert [(t.side, t.symbol) for t in txns] == [("SELL", "TATAMOTORS"), ("BUY", "LODHA")]
     buy = txns[1]
     # proceeds 1100, cash 20000+1100=21100, floor 10000 -> budget min(1100, 11100)=1100 -> 5 shares

@@ -1,4 +1,51 @@
-# Current handoff - 2026-11-12 (FIX-029 and SA-044 committed; SA-044's fresh review next)
+# Current handoff - 2026-11-12 (SA-044 accepted by its fresh review; FIX-030 next)
+
+## 12 Nov: SA-044 fresh review → ACCEPTED
+
+- **Session `stockagent-main-01`** [c2f96f], a new conversation opened with "continue", about
+  22:10–22:40 IST.
+  - `origin/main` was `3489f50`, the same as HEAD: nothing had arrived from the other device.
+  - Ten peers were idle. The tree held only the uncommitted `3489f50` push record.
+  - Receipt: [evidence/SA-044-review.md](evidence/SA-044-review.md).
+- **Reviewed:** the committed, deployed code `f368f20`.
+  - The implementer's diff `c769970a` was recomputed and matches.
+  - Its code part equals `e511f50..f368f20` byte for byte, and HEAD's blobs equal the manifest's
+    (`analysis_data/sa044_review/rv_digest.py`).
+- **What ran:**
+  - focused tests: 410 passed;
+  - reviewer cases (`analysis_data/sa044_review/test_rv_sa044.py`): 6 passed, 2 strict xfail;
+  - the story's regression and a reviewer baseline case **fail on `e511f50`** with the five car makers,
+    and pass at HEAD;
+  - **the card's hard review, live** (Yahoo's public data, this laptop): 23 stocks, one per registry
+    key plus two outside the registry. Every named peer's industry was re-fetched directly: 0
+    outside the stock's industry;
+  - all 202 registry tickers on real industries, against an oracle written for this review;
+  - a cold cache at the production budget fills in 8 builds, and no build has fewer peers than with
+    a full cache;
+  - `check_broad_except` OK (148); `check_kt_docs` `errors: []`.
+  - The full suite was not re-run: the implementer ran it three times on these bytes.
+- **Findings** (both fail safe: never another industry's peer, no gate change). Both are routed to
+  [FIX-030](stories/FIX-030.md), now 4 points:
+  - **R1, medium.** yfinance hides HTTP errors by default. A transient Yahoo quoteSummary error,
+    while the quote endpoint answers, reaches `peers.lookup_profile` as "no industry". It is cached
+    for 30 days: "peers unavailable: Yahoo gives no industry for …".
+  - **R2, low.** Under `uvicorn --workers 2`, two processes can overwrite each other's cache fill
+    (fixed `.tmp` name, thread-only lock).
+  - Info only: O1 and O2 go to SA-026. O3 (MAZDA filed under defence may be the wrong company) is a
+    note on [FIX-020](stories/FIX-020.md).
+- **STATE:** SA-044 `done`, production `pending_observation`; `active_task` null; `next_task` FIX-030.
+- **For the owner:**
+  - A counts-only production probe is ready, not run (receipt, "Production verification"). It counts
+    the peer cache, R1's sign and the peers notes since the deploy.
+  - **Committed at the owner's word** ("commit and push", about 22:45 IST), as the docs commit after
+    `3489f50`. It holds:
+    - the receipt, the FIX-030 and FIX-020 cards, STATE, this file and the `3489f50` push record;
+    - the 4 commit-time edits: KT section 1, KT section 12 SA-044 `Done`, guide 02-O status, and
+      the PDF (70 pages, source `28fce89c`; `check_kt_docs` `errors: []`).
+  - **Push held to the 00:10 IST window:** the nightly jobs run 23:00–00:00 (KT section 9). A waiter
+    pushes after the full suite passes. Its record follows here, uncommitted.
+- **Next `continue`, in a new conversation: FIX-030's implementation.** Read Saturday 14 Nov's sectors
+  counts first (its card). Then FIX-031 and FIX-032. The switch stays off.
 
 ## 12 Nov: FIX-029 and SA-044 committed at the owner's word
 
@@ -28,8 +75,13 @@
     KT section 1 (production runs `f368f20`), guide 07-G, 07-O and 02-O status (deployed
     12 Nov), a note in SA-044's receipt, PDF. So the KT, the guide and the PDF differ from
     SA-044's manifest by these edits too; its code, test and config files do not;
-  - that commit's push was held out of the 16:25-17:05 daily review window (today's review
-    is the first live run of both): see the push line below once it happens.
+  - that commit, `3489f50`, was held out of the 16:25-17:05 daily review window (today's
+    review is the first live run of both) and pushed at 19:20:39 IST (`6a2b83a..3489f50`,
+    docs only). Railway `62eb85eb` SUCCESS by 19:22:00; `/health` 200 at 19:22:17. This line
+    is uncommitted, for the next docs commit;
+  - full suite on `3489f50`: run 1, 1 failed (`test_m1_every_label_with_or_without_an_entry_of_its_own`,
+    environmental: its log shows the regime state's write refused with `[WinError 5]`, a
+    Windows file lock; the file passed 5 of 5 reruns); run 2, 6,382 passed / 0 failed, rc 0.
 - **STATE:** FIX-029 `done`; SA-044 `review_required` (active and next); both production
   `pending_observation`.
 - **Next `continue`, in a new conversation: SA-044's fresh review of `f368f20`.** Its review input

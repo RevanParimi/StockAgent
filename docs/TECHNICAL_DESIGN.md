@@ -37,8 +37,8 @@ triggered no production job, backfill or notification.
 
 Production runs the inspected code, `f368f20`: FIX-029 (every door to a buy
 reads the same facts; its fresh review accepted it on 12 November) and SA-044
-(a valuation is compared only with same-industry peers; committed at the
-owner's word before its fresh review), on top of FIX-028 (a sold stock leaves
+(a valuation is compared only with same-industry peers; its fresh review
+accepted it on 12 November), on top of FIX-028 (a sold stock leaves
 the daily review). It was pushed at about 14:35 IST on 12 November 2026 (the
 deployment list showed it SUCCESS; `/health` answered 200), with idle-cash
 deployment off. The table gives the configuration that
@@ -3548,7 +3548,7 @@ section 10) are part of the current design.
 | [SA-041](planning/PI-2026-09/stories/SA-041.md) | Provide a read-only production status fetcher | Open | 10 Operations; 13 Validation | SA-036, SA-040 |
 | [SA-042](planning/PI-2026-09/stories/SA-042.md) | Add an outside witness for missed jobs (Healthchecks.io → Telegram) | Open | 9 Jobs; 10 Operations | SA-036 |
 | [SA-043](planning/PI-2026-09/stories/SA-043.md) | Run a shadow learner and record paired decisions in observe mode | Open | 5 Learning | SA-015, SA-039, SA-045 |
-| [SA-044](planning/PI-2026-09/stories/SA-044.md) | Compare valuations only with same-industry peers | Open | 4 Research | None |
+| [SA-044](planning/PI-2026-09/stories/SA-044.md) | Compare valuations only with same-industry peers | Done | 4 Research | None |
 | [SA-045](planning/PI-2026-09/stories/SA-045.md) | Compute the five universal factors deterministically | Open | 4 Research | SA-026 |
 | [SA-046](planning/PI-2026-09/stories/SA-046.md) | Read text into dated events and a Catalyst factor | Open | 4 Research | SA-026 |
 | [SA-047](planning/PI-2026-09/stories/SA-047.md) | Decide with the factor engine; switch when it is not worse | Open | 4 Research; 5 Learning | SA-045, SA-046, SA-014, SA-020 |

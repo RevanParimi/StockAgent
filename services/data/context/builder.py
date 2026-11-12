@@ -339,11 +339,14 @@ class ContextBuilder:
 
     def _build_valuation_catalyst(self, query: StockQuery) -> str:
         from core.intelligence.algorithms.indicators.fetcher import get_valuation_context
+        from services.data.context.peers import choose_peers
         from services.data.fetchers.nse_announcements import format_nse_context
-        from core.config import settings
 
-        peers = getattr(settings, "PEER_TICKERS", ["MARUTI", "TATAMOTORS", "M&M", "HEROMOTOCO", "BAJAJ-AUTO"])[:5]
-        valuation_ctx = get_valuation_context(query.ticker, peer_tickers=peers)
+        # SA-044: the same peer rule as the unified bundle, never a fixed list.
+        choice = choose_peers(query.ticker, sector=self._sector or "automobile")
+        valuation_ctx = (f"{choice.note()}\n\n"
+                         + get_valuation_context(query.ticker, peer_tickers=list(choice.symbols),
+                                                 peer_industry=choice.industry))
         # NseIndiaApi: dividend ex-dates, bonus ratio, stock split details
         nse_ctx = format_nse_context(query.nse_data, agent_type="valuation_catalyst")
         if nse_ctx:

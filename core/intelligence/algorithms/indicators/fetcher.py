@@ -367,7 +367,8 @@ def _measure_correlation(close: pd.DataFrame, stock: str, index: str) -> dict:
 # Valuation context — deep pattern data, no analyst opinion
 # ---------------------------------------------------------------------------
 
-def get_valuation_context(ticker: str, peer_tickers: list[str] | None = None) -> str:
+def get_valuation_context(ticker: str, peer_tickers: list[str] | None = None, *,
+                          peer_industry: str = "") -> str:
     """
     Build a rich pattern + valuation context for the valuation_catalyst agent.
 
@@ -378,7 +379,8 @@ def get_valuation_context(ticker: str, peer_tickers: list[str] | None = None) ->
     Returns a formatted string for prompt injection (the text of
     `get_valuation_result`).
     """
-    return get_valuation_result(ticker, peer_tickers=peer_tickers).text
+    return get_valuation_result(ticker, peer_tickers=peer_tickers,
+                                peer_industry=peer_industry).text
 
 
 def _serper_fallback(queries: list[str], max_queries: int):
@@ -389,7 +391,8 @@ def _serper_fallback(queries: list[str], max_queries: int):
     return res.text, res.status == STATUS_OK
 
 
-def get_valuation_result(ticker: str, peer_tickers: list[str] | None = None):
+def get_valuation_result(ticker: str, peer_tickers: list[str] | None = None, *,
+                         peer_industry: str = ""):
     """
     `get_valuation_context` with its outcome (SA-002). The section's core data
     are the stock's own price history and its own valuation ratios; each is
@@ -403,8 +406,12 @@ def get_valuation_result(ticker: str, peer_tickers: list[str] | None = None):
     - otherwise `fallback`: a core datum was replaced by search snippets, or
       is simply missing beside one that is present. `reason` says which.
 
-    Peer P/E replaced by search snippets is named in `reason`; peers are
-    context for the core ratios, not a core datum themselves.
+    Peers are context for the core ratios, not a core datum, so they never
+    change the status. `reason` names what is missing: "no peers to compare
+    with" when none are given, and peer P/E replaced by search snippets. SA-044:
+    those snippets are searched for the given peers and `peer_industry`, their
+    Yahoo industry, never a fixed sector's names; the caller chooses the peers
+    (services/data/context/peers.py).
     """
     import yfinance as yf
     from datetime import date as _date
@@ -591,10 +598,10 @@ def get_valuation_result(ticker: str, peer_tickers: list[str] | None = None):
             notes.append(f"valuation ratios unavailable; Serper fallback failed ({type(exc).__name__})")
 
     # --- Peer P/E from yfinance (data-driven, no opinion) ---
+    peer_pes: list[float] = []
     if peer_tickers:
         lines.append("")
         lines.append("=== Peer Valuation (yfinance, no analyst input) ===")
-        peer_pes: list[float] = []
         for peer in peer_tickers[:6]:
             try:
                 p_info = yf.Ticker(_nse_ticker(peer)).info or {}
@@ -623,14 +630,17 @@ def get_valuation_result(ticker: str, peer_tickers: list[str] | None = None):
                     f"{eps_ttm_val * median_pe:.2f}"
                 )
         else:
-            lines.append("[yfinance] No peer P/E data — falling back to Serper for sector valuation.")
+            # SA-044: the search follows the chosen peers and their industry,
+            # never a fixed sector's names.
+            lines.append("[yfinance] No peer P/E data — falling back to Serper for the chosen peers.")
+            queries = [f"{' '.join(peer_tickers[:3])} NSE PE ratio valuation {today.year}"]
+            if peer_industry:
+                queries.insert(0, f"India NSE {peer_industry} companies PE ratio peer comparison "
+                                  f"{today.year}")
             try:
-                fallback, found = _serper_fallback([
-                    f"Indian automobile EV sector PE ratio peer comparison NSE {today.year}",
-                    f"MARUTI TATAMOTORS HEROMOTOCO PE ratio valuation {today.year}",
-                ], max_queries=2)
+                fallback, found = _serper_fallback(queries, max_queries=len(queries))
                 lines.append(f"[Serper fallback — peer P/E]\n{fallback}")
-                notes.append("peer P/E unavailable; Serper fallback (automobile query) "
+                notes.append("peer P/E unavailable; Serper fallback (chosen peers) "
                              + ("found results" if found else "found nothing"))
             except Exception as exc:
                 lines.append(f"Serper peer fallback also failed: {exc}")
@@ -652,7 +662,9 @@ def get_valuation_result(ticker: str, peer_tickers: list[str] | None = None):
 
     text = "\n".join(lines)
     as_of = _last_bar_date(df) if price_history_available else None
-    source = "yfinance" if not notes else "yfinance+serper"
+    source = "yfinance" if not notes else "yfinance+serper"   # every note so far is a search
+    if not peer_tickers:
+        notes.append("no peers to compare with")
     if price_history_available and fundamentals_available:
         max_age = price_max_age_days()
         stale = is_stale(as_of, max_age)

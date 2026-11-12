@@ -52,4 +52,5 @@ def test_generic_bundle_cfg_registered():
     cfg = _SECTOR_BUNDLE_CFG["generic"]
     assert cfg["has_commodities"] is False
     assert cfg["macro_cache_key"] == "generic"
-    assert cfg["peer_tickers_module"] is None
+    # SA-044: no sector carries a peer list; one rule chooses peers for all.
+    assert not any(k.startswith("peer") for c in _SECTOR_BUNDLE_CFG.values() for k in c)

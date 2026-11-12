@@ -55,6 +55,7 @@ class FetchResult:
     reason: str | None = None     # why the status is not a plain `ok`, or what is partial
     symbol: str | None = None     # SA-008: the provider symbol the data was fetched for
     benchmark: str | None = None  # SA-010: the index symbol a correlation was measured against
+    peers: str | None = None      # SA-044: how the valuation's peers were chosen, or why none
 
     def provenance(self) -> dict[str, str | None]:
         prov = {"source": self.source, "as_of": self.as_of, "reason": self.reason}
@@ -62,6 +63,8 @@ class FetchResult:
             prov["symbol"] = self.symbol
         if self.benchmark:
             prov["benchmark"] = self.benchmark
+        if self.peers:
+            prov["peers"] = self.peers
         return prov
 
 

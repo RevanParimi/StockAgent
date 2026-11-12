@@ -8,8 +8,8 @@ Covers:
 - commodities == "not_applicable" for the 3 new sectors, raw-materials
   fetcher NOT called; automobile still does a real fetch.
 - per-sector policy_deep_dive query reaches the Tavily wrapper.
-- per-sector peer list used for peers_valuation (queried ticker excluded,
-  capped at 5).
+- peers_valuation peers share the stock's Yahoo industry in every sector
+  (SA-044; queried ticker excluded, at most 5).
 - per-sector company_news / sector_policy_news query strings contain the
   expected sector keywords.
 - macro_context cache key alias per sector (bfsi/it aliases; automobile and
@@ -153,66 +153,73 @@ class TestPolicyDeepDive:
 
 
 # ---------------------------------------------------------------------------
-# peers_valuation: per-sector peer list, queried ticker excluded, capped at 5
+# peers_valuation: one rule for every sector (SA-044), queried ticker excluded,
+# at most 5. The story's own tests are tests/unit/test_peer_choice_sa044.py.
 # ---------------------------------------------------------------------------
 
+# Each native sector's registry members share one Yahoo industry here, and one
+# member of another industry sits in each list's universe to prove it is left out.
+_INDUSTRY = {
+    "MARUTI": "Auto Manufacturers", "M&M": "Auto Manufacturers",
+    "HEROMOTOCO": "Auto Manufacturers", "BAJAJ-AUTO": "Auto Manufacturers",
+    "EICHERMOT": "Auto Manufacturers", "TVSMOTOR": "Auto Manufacturers",
+    "HDFCBANK": "Banks - Regional", "ICICIBANK": "Banks - Regional", "SBIN": "Banks - Regional",
+    "KOTAKBANK": "Banks - Regional", "AXISBANK": "Banks - Regional",
+    "INDUSINDBK": "Banks - Regional", "BANKBARODA": "Banks - Regional",
+    "TCS": "Information Technology Services", "INFY": "Information Technology Services",
+    "WIPRO": "Information Technology Services", "HCLTECH": "Information Technology Services",
+    "TECHM": "Information Technology Services", "LTIM": "Information Technology Services",
+    "COFORGE": "Information Technology Services",
+    "TATAPOWER": "Utilities - Independent Power Producers",
+    "TORNTPOWER": "Utilities - Independent Power Producers",
+    "CESC": "Utilities - Independent Power Producers",
+    "NTPC": "Utilities - Independent Power Producers",
+    "ADANIGREEN": "Utilities - Renewable", "NHPC": "Utilities - Renewable",
+    "SUNPHARMA": "Drug Manufacturers - Specialty & Generic",
+}
+
+
+@pytest.fixture()
+def peer_profiles(monkeypatch):
+    from services.data.context import peers
+
+    def lookup(provider_symbol):
+        sym = provider_symbol[:-3]
+        return {"industry": _INDUSTRY.get(sym, ""), "sector": "",
+                "market_cap": 1e12 + 1e9 * (sorted(_INDUSTRY).index(sym) if sym in _INDUSTRY else 0)}
+    monkeypatch.setattr(peers, "known_symbols", lambda: sorted(_INDUSTRY))
+    monkeypatch.setattr(peers, "lookup_profile", lookup)
+    monkeypatch.setattr(peers, "max_lookups", lambda: 1000)
+
+
 class TestPeersValuation:
-    def test_automobile_peers_used(self):
-        query = _make_query(ticker="MARUTI")
+    @pytest.mark.parametrize("ticker,sector", [
+        ("MARUTI", "automobile"), ("HDFCBANK", "banking_bfsi"),
+        ("INFY", "it_sector"), ("TATAPOWER", "renewable_energy"),
+    ])
+    def test_native_sector_peers_share_the_stock_industry(self, peer_profiles, ticker, sector):
+        query = _make_query(ticker=ticker, company_name=f"{ticker} Ltd")
         with patch("core.intelligence.algorithms.indicators.fetcher.get_valuation_result", return_value=_fr("val ctx")) as mock_val, \
              patch("services.data.fetchers.nse_announcements.format_nse_context", return_value=""):
-            bb._fetch_peers_valuation(query, "automobile")
+            result = bb._fetch_peers_valuation(query, sector)
 
         mock_val.assert_called_once()
-        _, kwargs = mock_val.call_args
-        peers = kwargs.get("peer_tickers") or mock_val.call_args.args[1]
-        assert "MARUTI" not in peers
-        assert len(peers) <= 5
+        peers = mock_val.call_args.kwargs["peer_tickers"]
+        assert ticker not in peers
+        assert 3 <= len(peers) <= 5
+        assert all(_INDUSTRY[p] == _INDUSTRY[ticker] for p in peers), peers
+        assert mock_val.call_args.kwargs["peer_industry"] == _INDUSTRY[ticker]
+        assert result.text.startswith(f'peers: same Yahoo industry "{_INDUSTRY[ticker]}"')
 
-    def test_bfsi_peers_from_sector_tickers_excludes_queried(self):
-        from backend.sectors.banking_bfsi.config.settings import TICKERS as BFSI_TICKERS
-
-        query = _make_query(ticker="HDFCBANK", company_name="HDFC Bank")
+    def test_generic_stock_never_gets_the_automobile_list(self, peer_profiles):
+        query = _make_query(ticker="SUNPHARMA", company_name="Sun Pharma")
         with patch("core.intelligence.algorithms.indicators.fetcher.get_valuation_result", return_value=_fr("val ctx")) as mock_val, \
              patch("services.data.fetchers.nse_announcements.format_nse_context", return_value=""):
-            bb._fetch_peers_valuation(query, "banking_bfsi")
+            result = bb._fetch_peers_valuation(query, "generic")
 
-        mock_val.assert_called_once()
-        args, kwargs = mock_val.call_args
-        peers = kwargs.get("peer_tickers")
-        assert peers is not None
-        assert "HDFCBANK" not in peers
-        assert len(peers) <= 5
-        # Peers come from the BFSI TICKERS universe.
-        assert set(peers).issubset(set(BFSI_TICKERS))
-
-    def test_it_peers_from_sector_tickers_excludes_queried(self):
-        from backend.sectors.it_sector.config.settings import TICKERS as IT_TICKERS
-
-        query = _make_query(ticker="INFY", company_name="Infosys")
-        with patch("core.intelligence.algorithms.indicators.fetcher.get_valuation_result", return_value=_fr("val ctx")) as mock_val, \
-             patch("services.data.fetchers.nse_announcements.format_nse_context", return_value=""):
-            bb._fetch_peers_valuation(query, "it_sector")
-
-        args, kwargs = mock_val.call_args
-        peers = kwargs.get("peer_tickers")
-        assert "INFY" not in peers
-        assert len(peers) <= 5
-        assert set(peers).issubset(set(IT_TICKERS))
-
-    def test_re_peers_from_sector_tickers_excludes_queried(self):
-        from backend.sectors.renewable_energy.config.settings import TICKERS as RE_TICKERS
-
-        query = _make_query(ticker="TATAPOWER", company_name="Tata Power")
-        with patch("core.intelligence.algorithms.indicators.fetcher.get_valuation_result", return_value=_fr("val ctx")) as mock_val, \
-             patch("services.data.fetchers.nse_announcements.format_nse_context", return_value=""):
-            bb._fetch_peers_valuation(query, "renewable_energy")
-
-        args, kwargs = mock_val.call_args
-        peers = kwargs.get("peer_tickers")
-        assert "TATAPOWER" not in peers
-        assert len(peers) <= 5
-        assert set(peers).issubset(set(RE_TICKERS))
+        assert mock_val.call_args.kwargs["peer_tickers"] == []
+        assert result.text.startswith("peers unavailable:")
+        assert result.provenance()["peers"].startswith("peers unavailable:")
 
 
 # ---------------------------------------------------------------------------

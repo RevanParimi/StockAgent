@@ -89,8 +89,9 @@ NOT_APPLICABLE = "not_applicable"
 # ---------------------------------------------------------------------------
 #
 # Drives sector-aware query wording (company_news, sector_policy_news,
-# policy_deep_dive), whether the commodities section is fetched at all, the
-# peer list for peers_valuation, and the macro_context cache-key alias.
+# policy_deep_dive), whether the commodities section is fetched at all, and
+# the macro_context cache-key alias. Peers are not per sector: one rule
+# chooses them for every graph (SA-044, services/data/context/peers.py).
 #
 # - company_news_terms: appended to the company-name/ticker query.
 # - sector_policy_news_query: full Serper query template
@@ -99,9 +100,6 @@ NOT_APPLICABLE = "not_applicable"
 #   (`.format(company_name=..., ticker=..., year=...)`).
 # - has_commodities: automobile only — other sectors' commodity/module-price
 #   signals are covered by the news queries instead.
-# - peer_tickers_module / peer_tickers_attr: lazy import target for the
-#   sector's peer universe (settings.TICKERS for the 3 new sectors;
-#   automobile keeps its existing PEER_TICKERS list).
 # - macro_cache_key: alias passed to get_macro_cache()/get_serper_key()
 #   (bfsi/it aliases match services/data/context/builder.py; automobile and
 #   renewable_energy use their own sector name).
@@ -118,8 +116,6 @@ _SECTOR_BUNDLE_CFG: dict[str, dict] = {
             "India {company_name} sector policy regulation circular FAME PLI {year}"
         ),
         "has_commodities": True,
-        "peer_tickers_module": None,
-        "peer_tickers_attr": "PEER_TICKERS",
         "macro_cache_key": "automobile",
     },
     "banking_bfsi": {
@@ -132,8 +128,6 @@ _SECTOR_BUNDLE_CFG: dict[str, dict] = {
             "{company_name} RBI policy regulation impact banking {year}"
         ),
         "has_commodities": False,
-        "peer_tickers_module": "backend.sectors.banking_bfsi.config.settings",
-        "peer_tickers_attr": "TICKERS",
         "macro_cache_key": "bfsi",
     },
     "it_sector": {
@@ -146,8 +140,6 @@ _SECTOR_BUNDLE_CFG: dict[str, dict] = {
             "{company_name} earnings call transcript guidance commentary {year}"
         ),
         "has_commodities": False,
-        "peer_tickers_module": "backend.sectors.it_sector.config.settings",
-        "peer_tickers_attr": "TICKERS",
         "macro_cache_key": "it",
     },
     "renewable_energy": {
@@ -160,8 +152,6 @@ _SECTOR_BUNDLE_CFG: dict[str, dict] = {
             "India MNRE renewable auction policy {company_name} {year}"
         ),
         "has_commodities": False,
-        "peer_tickers_module": "backend.sectors.renewable_energy.config.settings",
-        "peer_tickers_attr": "TICKERS",
         "macro_cache_key": "renewable_energy",
     },
     "generic": {
@@ -175,8 +165,6 @@ _SECTOR_BUNDLE_CFG: dict[str, dict] = {
             "{company_name} NSE {ticker} results outlook policy regulation {year}"
         ),
         "has_commodities": False,
-        "peer_tickers_module": None,
-        "peer_tickers_attr": "TICKERS",
         "macro_cache_key": "generic",
     },
 }
@@ -463,53 +451,40 @@ def _fetch_flows_sentiment(query: StockQuery, sector: str) -> FetchResult:
     return FetchResult("\n\n".join(parts), STATUS_OK, "nse", reason=join_reasons(missing))
 
 
-_MAX_PEERS = 5
-
-
-def _sector_peer_tickers(sector: str, ticker: str) -> list[str]:
-    """
-    Resolve the peer list for `sector`, excluding `ticker` itself and capped
-    at `_MAX_PEERS`.
-
-    automobile: settings.PEER_TICKERS (existing behaviour, unchanged).
-    banking_bfsi / it_sector / renewable_energy: that sector's
-    config.settings.TICKERS (lazy import).
-    """
-    cfg = _bundle_cfg(sector)
-    module_path = cfg["peer_tickers_module"]
-    attr = cfg["peer_tickers_attr"]
-
-    if module_path is None:
-        universe = getattr(
-            settings, attr, ["MARUTI", "TATAMOTORS", "M&M", "HEROMOTOCO", "BAJAJ-AUTO"]
-        )
-    else:
-        import importlib
-
-        sector_settings = importlib.import_module(module_path)
-        universe = getattr(sector_settings, attr, [])
-
-    ticker_upper = (ticker or "").upper()
-    peers = [t for t in universe if t.upper() != ticker_upper]
-    return peers[:_MAX_PEERS]
-
-
 def _fetch_peers_valuation(query: StockQuery, sector: str) -> FetchResult:
-    """Peer P/E (sector peer list, queried ticker excluded) + NSE dividend/bonus/corporate actions.
+    """Peer P/E + NSE dividend/bonus/corporate actions (prefetch context).
 
-    Status is `get_valuation_result`'s; the NSE corporate actions are prefetch
-    context and do not change it.
+    SA-044: one rule chooses the peers for every graph: the stock's Yahoo
+    industry, nearest market cap first, at most five, and none when fewer
+    than three qualify (services/data/context/peers.py). The section's first
+    line states the choice, and so does its provenance (`peers`), which the
+    data-health row records; with none, `reason` starts "peers unavailable".
+
+    The status is the stock's own data's (`get_valuation_result`): a missing
+    peer comparison does not make the section unusable. It is essential, and
+    an abstaining gate drops a re-dived shelf idea and refuses a watchlist buy
+    even in `record` mode, which would drop every stock whose industry has
+    too few known symbols. The NSE corporate actions do not change it either.
     """
     from core.intelligence.algorithms.indicators.fetcher import get_valuation_result
+    from services.data.context.peers import choose_peers
     from services.data.fetchers.nse_announcements import format_nse_context
 
-    peers = _sector_peer_tickers(sector, query.ticker)
-    valuation = get_valuation_result(query.ticker, peer_tickers=peers)
+    choice = choose_peers(query.ticker, sector=sector)
+    valuation = get_valuation_result(query.ticker, peer_tickers=list(choice.symbols),
+                                     peer_industry=choice.industry)
+    header = choice.note()
+    if not choice.available:
+        header += (". No peer comparison: judge the valuation on the company's own "
+                   "ratios and history only.")
+    parts = [header, valuation.text]
     nse_ctx = format_nse_context(query.nse_data, agent_type="valuation_catalyst")
     if nse_ctx:
-        return FetchResult(f"{valuation.text}\n\n{nse_ctx}", valuation.status, valuation.source,
-                           as_of=valuation.as_of, reason=valuation.reason)
-    return valuation
+        parts.append(nse_ctx)
+    reason = (valuation.reason if choice.available
+              else join_reasons([choice.note(), valuation.reason]))
+    return FetchResult("\n\n".join(parts), valuation.status, valuation.source,
+                       as_of=valuation.as_of, reason=reason, peers=choice.note())
 
 
 def _fetch_dossier(query: StockQuery, sector: str) -> FetchResult:

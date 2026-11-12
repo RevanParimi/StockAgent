@@ -424,6 +424,18 @@ unified_analyst:
   section_max_chars: 2500
   bundle_max_chars: 18000
 
+peers:
+  # SA-044 (services/data/context/peers.py): a valuation is compared only with
+  # known symbols in the stock's own Yahoo industry, nearest market cap first.
+  # Fewer than `minimum` such symbols: "peers unavailable", never another
+  # industry's list. Industry and market cap are cached per listing in
+  # data/peer_profiles.json for `cache_days`; a build looks up at most
+  # `max_lookups` missing or older profiles.
+  count: 5
+  minimum: 3
+  cache_days: 30
+  max_lookups: 25
+
 # =============================================================================
 # Compass Phase A — Portfolio Core + Position Advisor (spec 2026-07-06)
 # =============================================================================

@@ -1,0 +1,164 @@
+{
+  "story": "FIX-029",
+  "phase": "implementation",
+  "head": "581eb90",
+  "date": "2026-11-11",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "core/discovery/candidates.py",
+      "git_blob": "bec9c386c101523845f1996cb0e1123be8e31d66",
+      "sha256": "7b0219d15bd5ee84420f3604c0d18377e270847c9901842bbfdfc3b89ab315d2"
+    },
+    {
+      "path": "core/discovery/shelf.py",
+      "git_blob": "52767af52535d51eb4c51b1ab90e9810a98268b3",
+      "sha256": "7925f61cf13aa09b54010e4caca8f83411dffcb794c6ea9ad329786592e30ec9"
+    },
+    {
+      "path": "core/portfolio/advisor.py",
+      "git_blob": "af40e6a006d5a262cf211e8521dac62229a332cb",
+      "sha256": "7ef96ea5e59d0e7ef8a52c029948d0e8b1c8764b5e2a2f12cd038a2030c63c48"
+    },
+    {
+      "path": "core/portfolio/autopilot.py",
+      "git_blob": "c2d2b1814870565aa20e317b94d3c4b36c1b2bbd",
+      "sha256": "9ba05f0e4e223c021130a9f2ce0b55a70c41cc8ff61bb6ae4bdf00c9321a81a3"
+    },
+    {
+      "path": "core/portfolio/deployment.py",
+      "git_blob": "055a8d0dcda03fcaf4e6a537d26497bb65dadfc5",
+      "sha256": "c98abca76ea720382868bc0f46966c79954bc8679ca435177db18abfacc9a829"
+    },
+    {
+      "path": "core/portfolio/pipeline.py",
+      "git_blob": "e33819c02d30ff43cd43085707a5a1646c191e61",
+      "sha256": "26f5a7de2f0f234702303d09be308bcae0cfcd44246087b401fc551e9946a237"
+    },
+    {
+      "path": "docs/AUTOPILOT_GUIDE.md",
+      "git_blob": "a6c2d98dcec282ea7ebcd535bbe34287ea81c0da",
+      "sha256": "d21b595066a39541053aeaad80fcc53536c22c347fb664b39d773ebbe7bf9c8f"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "a75cb5204e9d6ed06a528d61c51519ba832ef44c",
+      "sha256": "ef4312a8724188f02c10d1487e79dae2407c054813b947f8184e12807ab506c6"
+    },
+    {
+      "path": "docs/RL_DESIGN.md",
+      "git_blob": "c157eb078391195b9ea96fd1a8373146c6ca9ff3",
+      "sha256": "39a3d61d3d7969dae547cf313aeeb9d1bfabb8985d4d4dcceb9e9cd4054a6b5b"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "579dd0874f0acfef433dcc1139dd63cd2732ae32",
+      "sha256": "a14409c2fedb7618285ef8c1f0c772bf93d38a5cc66ad03e2574db23df8851f4"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "ab42c9227c11ed354fa6d4bb3fca1eefce1f8748",
+      "sha256": "a74edb6f2befd30d5b3b01843ccb84120efdaf130248428fd1688abb26a4ccd8"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "7754fb02113abd69d880c1e26910303ad44ee615",
+      "sha256": "21f4fa4ace1ee9b2e8242b748f05257e33262fd044fd07c6e534773bea63c0f3"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/FIX-031.md",
+      "git_blob": "9d94b08abd08641daa899592979f1061b9ae4fbd",
+      "sha256": "cc6494ae1ed590982be40379d82488ab0400cda84f5b2be621da76f512b3d95c"
+    },
+    {
+      "path": "docs/planning/PI-2026-09/stories/PR-013.md",
+      "git_blob": "32d520d4a49add55f297dbad7d53715d2fa64d14",
+      "sha256": "c3313a4ed13c511bcfe32c330e744a1cfb4c45d6c5b7e2999d128cdc952f55a1"
+    },
+    {
+      "path": "services/data/stores/score_store.py",
+      "git_blob": "2d47150599c4c2cb654a5e10639c6cca5d5fd3f4",
+      "sha256": "591b77f888f48e0f44ddc38db242cc8115e0e2c47d1f0c284117fe934d4d7a3f"
+    },
+    {
+      "path": "tests/unit/test_analysis_time_fix024.py",
+      "git_blob": "cacc00c1104e29cc2f724a23afb56e4b208903de",
+      "sha256": "0e84bfc01860d57690f08f688cc2f608a767b5e72d38ee9c78160f54f442f840"
+    },
+    {
+      "path": "tests/unit/test_autopilot_executor_switch.py",
+      "git_blob": "c82cfb6df2da6dea5232f7907a2ec4158f6f224b",
+      "sha256": "9081523311e04ad83edca4c9ac0313a775fcd80c4888111042297a8cf961edf7"
+    },
+    {
+      "path": "tests/unit/test_autopilot_isolation.py",
+      "git_blob": "61f1120f0458d0f55974b51bcdab4ec63526ac2c",
+      "sha256": "7ac957c19ddc99869c1a80ae812ae50a9b9e21cb90539a010e52070a6b528b57"
+    },
+    {
+      "path": "tests/unit/test_decision_gate_portfolio_sa003.py",
+      "git_blob": "36ff1a79ae5e71ca65fe064309cb6d3c936eb29f",
+      "sha256": "76c34a1d8628aea9b8c826e53ba13a1c47997046837d8cd9c7077af81ba6f457"
+    },
+    {
+      "path": "tests/unit/test_deploy_idle_cash_sa049.py",
+      "git_blob": "27a01035016e7ca584197dd0df0ad3b665c6b4c9",
+      "sha256": "b4b484bed4eff83019f11ae1e5651ab0f8aed4c7ea333d8f894713fc3412b90e"
+    },
+    {
+      "path": "tests/unit/test_deployment_follows_money_fix025.py",
+      "git_blob": "a3ff2c4246ae1fd7136a40e0e35896534997fd2c",
+      "sha256": "f342ac7b941949f7165cdb3983873a2282ff00e2165b5f7977a89c01c1be0dff"
+    },
+    {
+      "path": "tests/unit/test_envelope_after_close_fix027.py",
+      "git_blob": "312d299f360020f2dca661b8fcf506e19f839bdd",
+      "sha256": "ef9edecc894485e5ba589340138d4e9854ef673c866724886755ce041e93b0fc"
+    },
+    {
+      "path": "tests/unit/test_every_door_fix029.py",
+      "git_blob": "0ced984a51d3a91f9a08d27ff32058ff09605bf4",
+      "sha256": "9665ed0905eedddf8062d15909cee008016dc7f3aaf57eec8720ef53aeee4f20"
+    },
+    {
+      "path": "tests/unit/test_exit_fix016.py",
+      "git_blob": "7250a779ad7e28a67addfd6da9fd4566a96b77a7",
+      "sha256": "2edd9bcd2d2f31b2aa1dcfb686b0e103da9bfed8e6e8cb996c3f082ca0804776"
+    },
+    {
+      "path": "tests/unit/test_idea_supply_pr004.py",
+      "git_blob": "53e7b9645610b0239a3583c1c6d9a5303a8e6c4e",
+      "sha256": "ce022ba979b72b4b56dfa3e45a0a756650615bd5149def90868ae279910a99e0"
+    },
+    {
+      "path": "tests/unit/test_identity_portfolio_sa008.py",
+      "git_blob": "b55fe75df2893374fb006a1ec648e40b3f27ed57",
+      "sha256": "13415483512a9f6b4841f5fcf077796ae355f3d6a990ca5e4caf466f1744004a"
+    },
+    {
+      "path": "tests/unit/test_regime_inputs_fix023.py",
+      "git_blob": "95bb3fbd89ce8c42b3852d59ba3e6094488f28f0",
+      "sha256": "bdf8dcb177a91c75a854e38469b705b44ccd95812d4f15b1ce2a8dbdd2b9d89c"
+    },
+    {
+      "path": "tests/unit/test_sector_naming_fix026.py",
+      "git_blob": "617e5261878d41184de94a213fa79f16fc0e6fc9",
+      "sha256": "62252b045683c8f5dfc53a70b3128c95c2b6cfc1c22e233c689a5b097257b034"
+    },
+    {
+      "path": "tests/unit/test_sizing_rule_sa050.py",
+      "git_blob": "1d88a97e0b02208067a35d0a61ca093b4bd44612",
+      "sha256": "6af643e0cae2c9279e93e945b10a8568107a8e58e6eb91d21ddc09b8bf5246ac"
+    },
+    {
+      "path": "tests/unit/test_sold_stock_leaves_review_fix028.py",
+      "git_blob": "36f598cff06c3adfd61b6ffda62ffb725f7a0fe5",
+      "sha256": "865cc153f4f4895813a07bca4e9383bf75925c02463ca621c5f5a8bfa7d7f8bd"
+    },
+    {
+      "path": "tests/unit/test_trading_costs_sa048.py",
+      "git_blob": "4d36b0f3693381a16a0d7badd31819baa34f0a46",
+      "sha256": "1d6bad2d30ed40c23079f27cb6a18819796d2c31d0342625d145bcdd4925b58e"
+    }
+  ]
+}

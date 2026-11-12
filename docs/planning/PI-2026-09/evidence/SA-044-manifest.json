@@ -1,0 +1,75 @@
+{
+  "story": "SA-044",
+  "phase": "implementation",
+  "head": "581eb90",
+  "base_tree": "a3ef9c4bb4691e1d2ce643b0d9e0488f4da4c574",
+  "date": "2026-11-12",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "config.yaml",
+      "git_blob": "b4df2309cfbd7b36258f2c71e1427e91190499eb",
+      "sha256": "b678ed17aa1049929bdd991e282ec31433035467eadeb090c0595cb049681477"
+    },
+    {
+      "path": "core/intelligence/algorithms/indicators/fetcher.py",
+      "git_blob": "9b03a59b12c14acdd6acda7cd7af27ec4b564880",
+      "sha256": "e5b622b1e0fe4e9487093820e7bb1c421182419f43a4144dbaff2db7f6c9e7d1"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "0ffa8ef0bbd3854025b943d1dda3462691e4912a",
+      "sha256": "30b5cbbd7e796451f6aa4bdd91edf3a6e6d8556dfb34de61aab87e6c4e0ef9ef"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "8368dc3847b4385225a714036a6a0f5d31562bd3",
+      "sha256": "a017992b0999aeb84e2d0280785466384d35f3ebc4e6d810b811d70e13a7b727"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "12e47a4aeca822f359c4cbb22b950b3c3a2c7cea",
+      "sha256": "114c314be34f3a2b2c6d169a0984e6731a040b6efdc206d3cc5982c33c91d262"
+    },
+    {
+      "path": "services/data/context/builder.py",
+      "git_blob": "e6951e17bd5af440261abd1d2519400f2cbf23d7",
+      "sha256": "c840fe1f97f46c05bed435ddde41d6b2e6d91d8bcb79636159feeeb009e53c50"
+    },
+    {
+      "path": "services/data/context/bundle_builder.py",
+      "git_blob": "16f46c52b38158f98deef9868db4230f3362cb84",
+      "sha256": "450014b5523572574f0a2850db7710655865c5b5e90a41dd815215343b7cfe0d"
+    },
+    {
+      "path": "services/data/context/fetch_result.py",
+      "git_blob": "457a01fba57219e5dc2aa5100d41962a98f0e0d2",
+      "sha256": "410816ccb868875843ceb22218ca8f0655a2cb473afa57d66f90b77967349b3a"
+    },
+    {
+      "path": "services/data/context/peers.py",
+      "git_blob": "5cb7c659aa674cada8da3c3eb6464c8ba5b1c52b",
+      "sha256": "94f4538577b53febce5823de8ca041fff60c2a9c69590792dd35c06e354de01a"
+    },
+    {
+      "path": "tests/unit/test_bundle_builder_sectors.py",
+      "git_blob": "3ba6dd79a06009e8ad087a581578ce28603536f2",
+      "sha256": "50bbd82576211a25b6fed512c63ff83adafffebb0aa5a1dbb943ac9d7f6e4dd8"
+    },
+    {
+      "path": "tests/unit/test_peer_choice_sa044.py",
+      "git_blob": "6cf436f71b20a681965b77287674d80a0f224714",
+      "sha256": "cb4470d78c9793e73ad190f34534577aa0f54b12f469265251e9674a6a82ef0d"
+    },
+    {
+      "path": "tests/unit/test_peer_regression_sa044.py",
+      "git_blob": "cd855f2d829bb2b184de1edd734df611364ae319",
+      "sha256": "2bc1bf42ec0fe9387d1c1f7b61cb67879306f9686d39a6ae920ddc342c775663"
+    },
+    {
+      "path": "tests/unit/test_unified_analyst_generic.py",
+      "git_blob": "d521fbcfbd91108341fa8223782bb7bf6ef976c4",
+      "sha256": "20457166806ab5709a4b91f63891aafbbd3b7987842bf887596871b77a2b5a9d"
+    }
+  ]
+}

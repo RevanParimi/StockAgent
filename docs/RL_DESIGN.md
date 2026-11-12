@@ -1408,7 +1408,10 @@ The daily review uses the sticky label for multipliers, the feedback entry
 and the `regime_flip` trigger; on an unavailable day, the label kept. Its
 feedback entry then says why in `regime_unavailable` ("India VIX did not
 answer"; empty when an earlier review established the day), and the
-portfolio advisor holds an ADD on such an entry. The paper lane reads the
+portfolio advisor holds an ADD on such an entry. A holding whose own review
+wrote no entry for the day reads `label_recorded_for` instead: the label
+another ticker's review recorded replaces its older one, and none recorded
+holds the ADD the same way. The paper lane reads the
 raw label and writes nothing. Forecast generation and re-forecasts use the raw detection for
 their Monte Carlo bands (section 4).
 

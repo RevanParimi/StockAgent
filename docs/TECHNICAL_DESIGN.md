@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-11-11 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-11-12 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `245e29ea5d44ea0f12a3c3ac3d836b66eecdf8af`
+**Code inspected:** `f368f206d0f7f6c665c6994f4b20bee8e47b1aaf`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,10 +35,14 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs the inspected code, `245e29e` (FIX-028, a sold stock leaves
-the daily review, on top of FIX-026 and FIX-027; FIX-028's fresh review
-accepted it on 11 November), pushed at about 07:37 IST on 11 November 2026
-(the deployment list showed it SUCCESS; `/health` was not read), with
+The inspected code, `f368f20`, adds FIX-029 (every door to a buy reads the
+same facts; its fresh review accepted it on 12 November) and SA-044 (a
+valuation is compared only with same-industry peers; committed at the
+owner's word before its fresh review) to what production runs. Neither is
+deployed at this edition. Production runs `245e29e` (FIX-028, a sold stock
+leaves the daily review, on top of FIX-026 and FIX-027; FIX-028's fresh
+review accepted it on 11 November), pushed at about 07:37 IST on 11 November
+2026 (the deployment list showed it SUCCESS; `/health` was not read), with
 idle-cash deployment off. The table gives the configuration that
 differs from the repository and the state of each operational control.
 
@@ -183,6 +187,7 @@ resolved at import, so editing a file does not imply live reconfiguration.
 | `rl.hard_bind_verdict_enabled: true` | Research category follows the composite; model `final_score` remains separate. |
 | `rl.learning_mode: adapt` | Learning switch, env `RL_LEARNING_MODE`. `adapt` lets learned weights and lesson emphasis move decisions; `observe` contains them (section 5). Any other value fails closed to `observe`. Production sets `observe`. |
 | `decision_gate.mode: record` | Essential-data gate switch, env `DECISION_GATE_MODE`. `record` computes and records the gate everywhere and changes nothing; `enforce` withholds verdicts, forecasts, learning and new-risk buys that rest on unverified data or an unresolved identity (sections 4–6). Any other value fails closed to `enforce`. |
+| `peers.count: 5`, `peers.minimum: 3` | Valuation peers: at most 5 same-industry peers, none with fewer than 3 (section 4). `peers.cache_days: 30` and `peers.max_lookups: 25` bound the Yahoo lookups behind them. |
 | [`config/instruments.yaml`](../config/instruments.yaml) | The instrument registry: effective-dated records of which provider symbol each listed ticker is priced from, on which price basis, and whether its identity is resolved (section 4). Evidence is needed to resolve an identity, never to quarantine one. It lists TATAMOTORS and HEXAWARE as unresolved, GATI and INOXLEISUR as delisted, and two plain aliases and five NSE renames as resolved. Quarantine acts through `decision_gate.mode`. |
 | `advisor.exit_rule: shadow` | Which exit rule sells (section 6). `legacy`: the price-path rule acts and nothing is compared. `shadow`: it still acts, and both rules' verdicts are recorded. `evidence`: the evidence rule acts. Any other value reads as `shadow`. The owner switches only on the weekly scorecard's gate; `legacy` is the rollback. |
 | `rl.control_lane_enabled`, `rl.scorecard_enabled`: true | Control/evaluation paths configured; not proof of valid prospective comparison. |
@@ -203,6 +208,7 @@ evidence.
 | `data/predictions/<sector>/<ticker>/` | PredictionStore: envelopes, feedback, controls, weight memory, lessons and dossier, plus `<TICKER>_weight_observations.json` (observe-mode proposals). RL writes; advisor, evaluation and UI read. A ticker's history belongs to `<managed sector>/<TICKER>` (below). |
 | `_shared_ledger.json` per sector; `_market_ledger.json` at prediction root | Shared lessons can affect more than one ticker; bad attribution can propagate. |
 | `data/managed_tickers.json` | The managed list: each scheduled ticker's sector and enabled flag. Disabling a ticker keeps its history; removing it deletes the history. |
+| `data/peer_profiles.json` | Yahoo industry and market cap per listing, with its date, for the valuation peers (section 4). A cache: deleting it costs only lookups. |
 | `data/prediction_quarantine/<migration>/` | Stores moved out of the live tree by the ownership quarantine, with their `lineage.json`. Inside `data/`, so the nightly backup keeps them; outside the tree the evaluators walk. |
 | `data/portfolio/<user>/` | PortfolioStore: holdings/cash, advice and transaction JSONL, value history, dated digests, briefs and weekly reviews, `weekly_scorecard.jsonl` (one results row per ISO week, written once; section 7) and `exit_shadow.jsonl` (both exit rules' verdicts, one row per holding per review day, written once; section 6). The nightly auditor's `advice_outcomes.jsonl` sits beside them. |
 | `data/ipo/` | Historical issue facts and captured demand snapshots; reports derive from these records. |
@@ -483,6 +489,45 @@ unavailable | Beta: unavailable (benchmark ^CNXAUTO returned no price data)",
 and a renewable-energy stock reads the same for Nifty Energy. **Planned:**
 choosing an index with data for those two sectors belongs to the sector
 lenses (SA-026).
+
+### Valuation peers
+
+The peers valuation section compares the stock's P/E with peers chosen by
+one rule for every graph ([peers.py](../services/data/context/peers.py)):
+
+- the stock's industry is Yahoo's classification, the one industry source
+  (section 8);
+- the candidates are the symbols the app knows: the sector registry's ticker
+  map, the native sectors' ticker lists, the managed tickers and the active
+  shelf ideas. A candidate whose identity is not resolved (TATAMOTORS) is
+  left out, and two tickers for one listing count once;
+- the peers are the candidates in exactly the stock's industry, nearest
+  market cap first (by the ratio of the two caps), at most five. With fewer
+  than three there are none: the section says `peers unavailable` and why,
+  and the analyst is told to judge the valuation on the company's own ratios
+  and history. Another industry's list is never borrowed;
+- the section's first line and its provenance (`peers`) state the choice, so
+  the data-health row records it. When no peer P/E comes back, the search
+  that replaces it names the chosen peers and their industry;
+- the status stays the stock's own data's, as for the benchmark: a missing
+  comparison is in `reason`, not in the status. The section is essential, and
+  an abstaining gate drops a re-dived shelf idea and refuses a watchlist buy
+  even in `record` mode;
+- industry and market cap come from one Yahoo `.info` call per listing, kept
+  in `data/peer_profiles.json` for `peers.cache_days` (30). A build looks up
+  at most `peers.max_lookups` (25) missing or older profiles: the stock
+  first, then its registry sector's members. Three failures in a row stop
+  the lookups until a later build. Once the known symbols are profiled,
+  choosing peers makes no network call; the peers' P/E calls are as before.
+
+**Example:** SUNPHARMA's industry is "Drug Manufacturers - Specialty &
+Generic", so its peers are pharma companies, nearest cap first. Before this
+rule, the generic graph compared it with MARUTI, TATAMOTORS, M&M, HEROMOTOCO
+and BAJAJ-AUTO. A local run against Yahoo on 12 Nov gave MARUTI five car
+makers, HDFCBANK five banks, INFY five IT services companies and ADANIGREEN
+three renewable utilities. APOLLOHOSP ("Medical Care Facilities"), LT and
+ITC had fewer than three known peers: 69 of the registry's 202 tickers are
+in such an industry, so they read `peers unavailable`.
 
 ### Decision gate
 
@@ -1137,12 +1182,15 @@ in either gate mode with the note `REGIME_UNAVAILABLE`. The record's
 `regime_unavailable` says "market regime unavailable for 2026-10-30: India
 VIX did not answer", and so does the fallback narrative; the LLM's line gets
 only the code (**Planned:** PR-007). A holding whose own review wrote no entry
-for the day has only an older label, so the market-wide record decides: no
-label recorded for that day holds the ADD the same way. A label recorded for
-that day does not yet replace the older one, so such a holding can still add
-on a recorded RISK_OFF or MACRO_CRISIS day (**Planned:** FIX-029). The crisis
-exit still reads the kept label, since a sale is never blocked by a missing
-input. EXIT may
+for the day (an older one, or none at all) reads the market-wide record for
+that day, the label another ticker's review recorded: it replaces the older
+label for ADD, for the crisis exit and for the narrative. Example: the
+holding's last entry, Tuesday's, says MACRO_CRISIS; Wednesday's review of
+another stock recorded NORMAL, so the holding may add on Wednesday. The other
+way round, Tuesday's NORMAL never lets it add on a Wednesday recorded RISK_OFF.
+No label recorded for that day holds the ADD the same way as a dark day, and
+the older label stays. The crisis exit still reads the kept label, since a
+sale is never blocked by a missing input. EXIT may
 become SWITCH when an eligible replacement exists. A holding-age rule can
 soften certain TRIM actions to HOLD; it does not override EXIT. These are
 product rules, not individualized tax or investment advice.
@@ -1862,8 +1910,9 @@ prices are ₹1,000.
 - **Few ideas: 6 qualify.** All 6 are bought: "6 holdings, below the 10 aimed
   for: only 6 qualifying ideas".
 
-**Which ideas.** The day's buy candidates (section 8: fresh shelf ideas and
-the user's own watchlist BUYs), highest conviction first. A candidate was
+**Which ideas.** The day's buy candidates (section 8: fresh shelf ideas the
+analysis rates BUY and the user's own watchlist BUYs), highest conviction
+first. A candidate was
 decided before the review session's close: the 16:30 run on day T reviews
 the previous session and books its trades at that session's 15:30 IST
 close, and an idea decided after it read news from after its price. A
@@ -1873,23 +1922,41 @@ dives is first offered by Tuesday's run, which reviews Monday (Monday's run
 reviews Friday). A watchlist BUY analysed on Monday at 20:00 IST, after
 results filed that evening, is first offered by Wednesday's run, at
 Tuesday's close; one analysed at 11:00 IST is offered by Tuesday's run, at
-Monday's close. A stock in the daily review usually has a newer analysis by
-then, made after the session the run reviews, so it is usually not offered
-(**Planned:** FIX-029). A dive from the owner's manual discovery run on a
-weekday
-evening waits for the next session the same way. The list reads only the
-latest analysis, so one made after the close that is no longer a BUY takes the
-stock off that close's offer. Each must:
+Monday's close. The watchlist reads the newest analysis run before the
+session's close, not the newest of all. A stock in the daily review is
+re-analysed at about 16:35 IST each day, after the session the run reviews
+has closed, so each run reads the analysis of the day before and the stock is
+offered whenever that one is a BUY. An analysis made after the close, a BUY or
+a SELL, counts from the next session's close: Tuesday's SELL does not take
+the stock off the offer at Tuesday's close, which Monday's BUY makes, since
+reading it would use what was learnt after the price the buy is booked at. So
+the page can show a newer verdict than the one a buy was made on. A dive from
+the owner's manual discovery run on a weekday evening waits for the next
+session the same way. Each must:
 
-- not be held, and not have been sold on or after its latest deep dive
-  (buying a stock back after a sale needs a new dive). A sale counts from the
-  day the run decided it, which can be later than the session it is booked at:
-  Monday's run books at Friday's close, after Saturday's dive, so that dive
-  cannot free the stock. A stock the autopilot sold is first in line for the
-  next Saturday's re-dive (section 8), so through a shelf idea a round trip
-  happens at most once a week, each side paying its costs. A SWITCH leg does
-  not read this rule, and for a stock on the user's own watchlist a newer
-  analysis counts as a new dive (**Planned:** FIX-029);
+- not be held, and not have been sold since it was decided (`resale_wait` in
+  [`shelf.py`](../core/discovery/shelf.py)). The candidate list, a SWITCH's
+  buy leg and deployment read this one rule, against the portfolio's ledger
+  and the run's own exits. An exit by anyone, a hand sale included, on or
+  after the idea's deep dive (a watchlist idea: its analysis's day) waits
+  for a new one. An exit counts from the day the run decided it, which can
+  be later than the session it is booked at: Monday's run books at Friday's
+  close, after Saturday's dive, so that dive cannot free the stock. From the
+  user's own watchlist, a stock the autopilot sold counts only an analysis
+  made on or after the Saturday after the exit, however new (the owner, 6
+  Nov). A stock the autopilot sold is first in line for the next Saturday's
+  re-dive (section 8). So a round trip the autopilot makes happens at most
+  once a week through either list, each side paying its costs: sold on
+  Tuesday 3 Nov, the stock comes back only through Saturday 7 Nov's re-dive
+  or an analysis made from that Saturday on. A hand sale of a watchlist
+  stock waits only for a later analysis. A SWITCH whose best idea was sold
+  takes its next-best idea, and the switch evaluation records no row for the
+  sold one, which was not a candidate. A stock held again is left to each
+  door's own "already held" check;
+- be rated BUY or STRONG BUY by its analysis (`verdict_wait`). The shelf's
+  conviction floor reads the model's score; the verdict is bound to the
+  composite, a separate number (section 3), so both are read. An idea with no
+  verdict stored waits for its re-dive, which comes first (section 8);
 - be priced at a close struck after its latest deep dive or analysis, by
   the same rule, in either gate mode (`close_before_dive` in
   [`shelf.py`](../core/discovery/shelf.py)). When the review session's bar
@@ -2265,16 +2332,20 @@ The shelf exists to supply enough checked, varied ideas to fill and keep about
 4. **Re-dives first.** An active idea whose stock the autopilot sold on or after
    its latest dive comes first, since a new dive is all that can bring it back.
    Then unverified ideas: shelved before the decision gate existed (no
-   `data_gate`), or with no sector key named (below), which nothing buys until
-   a re-dive names one. Then ideas whose latest dive is older than
+   `data_gate`), with no sector key named (below) or with no verdict stored,
+   which nothing buys until a re-dive supplies it. Then ideas whose latest dive is older than
    `discovery.redive_after_days` (30), each group oldest first. A stock analysed on 24 Oct and sold on 27 Oct is
    re-dived on Sat 31 Oct, not Sat 28 Nov. A sale the user made by hand and a
    TRIM that leaves shares do not count. Re-dives take the budget
    first but leave the IPO slots free. A re-dive refreshes the idea in place:
    conviction, verdict, thesis, entry band, invalidation, gate and `dived`
    date. `added` and `close_at_add` stay, so the auditor's shelf grades keep
-   their start. A re-dive whose analysis is not actionable, or whose
-   conviction falls below the floor, drops the idea with the reason.
+   their start. A re-dive whose analysis is not actionable, whose conviction
+   falls below the floor, or whose verdict is no longer a BUY or STRONG BUY,
+   drops the idea with the reason ("re-dive 2026-10-31: its deep dive rates it
+   NEUTRAL, not a BUY"). A new dive that is not a BUY is not shelved either
+   (`not_buy` in the run's summary): the shelf holds the ideas the analysis
+   rates BUY, and the conviction floor reads a separate number.
 5. **Deep dives.** `discovery.deep_dive_count` (20) bounds the analyst calls
    a week: re-dives, IPO slots and screen ranks together, a failed call
    included. A screen or IPO candidate dived in the last 30 days and not on
@@ -2452,9 +2523,9 @@ runs one of the four native graphs when Yahoo's industry is clearly theirs
 ("Auto Parts", "Software - Application", "Utilities - Renewable", or Yahoo's
 "Financial Services" outside insurance), else the generic graph. That guess
 only chooses the graph and is never stored as a key. The answer reads the
-same data bundle as the analysis, and the generic graph's bundle carries
-automobile evidence: its peers are car makers and its fund-flow line reads the
-automobile ETFs (**Planned:** SA-044 and FIX-030). A generic-graph company can
+same data bundle as the analysis. Its peers share the stock's own Yahoo
+industry (section 4), but the generic graph's fund-flow line still reads the
+automobile ETFs (**Planned:** FIX-030). A generic-graph company can
 therefore be answered `automobile`. Yahoo's labels then disagree, so the dive
 counts as disputed and the watchdog names it.
 
@@ -2504,18 +2575,21 @@ review, whether as a SWITCH destination or with idle cash (section 6):
   for a run that reviews a later session ("close of 2026-10-30 is before the
   deep dive of 2026-10-31; waits for a review of a later session"): the run
   books at the review session's close, and a Saturday dive reads news from
-  after Friday's close;
-- the user's own watchlist BUYs (`discovery.watchlist_buys`). The stock's
-  latest analysis in the score history must be a BUY or STRONG BUY, with an
+  after Friday's close. Its verdict must be a BUY or STRONG BUY;
+- the user's own watchlist BUYs (`discovery.watchlist_buys`). The newest
+  analysis in the score history run before the review session's 15:30 close
+  (`ScoreStore.get_latest_before`) must be a BUY or STRONG BUY, with an
   actionable data gate, conviction at the floor or above, at most 30 days old,
-  run before the review session's close, for a stock NSE lists as a company
-  ("analysis of 2026-11-02 20:00 IST is after the close of 2026-11-02; waits
-  for a review of a later session"). Its entry band and invalidation level
+  for a stock NSE lists as a company. A later analysis counts from the next
+  session's close ("analysis of 2026-11-02 20:00 IST is after the close of
+  2026-11-02; waits for a review of a later session"). Its entry band and invalidation level
   come from the last close the analysis could have read (its own day's once
   that session has closed, else the one before), as a deep dive sets them
   from the close it read, so the SA-050 entry rule applies unchanged. A
   stock the autopilot itself sold onto
-  the watchlist does not qualify: buying it back needs a new deep dive. The
+  the watchlist does not qualify: buying it back needs a new deep dive. One
+  the user added that the autopilot sold counts only an analysis made on or
+  after the Saturday after the sale (section 6). The
   record-mode gate keeps an unverified shelf idea as a possible destination
   (section 4). A watchlist stock gets no such allowance: an unqualified one is
   not offered at all.
@@ -3276,9 +3350,8 @@ production observations as well.
 All five graphs already run one bundle and one reasoning-model call; the
 LangGraph pool is only a fallback. They differ mainly in five scoring schemes
 (37 dimension slots under 24 names), and the LLM re-scores numbers the code
-has already computed. Generic-graph stocks are valued against automobile
-peers and read the automobile ETFs' fund flows, and missing data is scored
-0.5. The
+has already computed. Generic-graph stocks read the automobile ETFs' fund
+flows (FIX-030), and missing data is scored 0.5. The
 [one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md),
 adopted on 2026-09-26, replaces the per-sector graphs in four parts:
 
@@ -3293,7 +3366,8 @@ adopted on 2026-09-26, replaces the per-sector graphs in four parts:
   bands. With fewer than 4 of 6 factors it gives no directional verdict. The
   LLM explains the verdict but cannot change it.
 
-SA-044 fixes the peers first. SA-026, SA-045 and SA-046 run in shadow. SA-047
+Peers already follow the stock's industry (section 4). SA-026, SA-045 and
+SA-046 run in shadow. SA-047
 switches only when the engine is right on at least 50% of disagreements with
 today's analyst, and SA-027 then deletes the sector packages. Each lens also
 names its sector's benchmark, which is where automobile and renewable energy
@@ -3488,7 +3562,7 @@ section 10) are part of the current design.
 | [FIX-026](planning/PI-2026-09/stories/FIX-026.md) | The analysis names a new stock's sector from our list; an empty or unknown sector is flagged | Done | 8 Discovery; 4 Research | FIX-024 |
 | [FIX-027](planning/PI-2026-09/stories/FIX-027.md) | A decision booked at a session's close reads nothing from after that close | Done | 6 Portfolio | FIX-024 |
 | [FIX-028](planning/PI-2026-09/stories/FIX-028.md) | A sold stock leaves the daily review | Done | 6 Portfolio; 8 Discovery | FIX-025 |
-| [FIX-029](planning/PI-2026-09/stories/FIX-029.md) | Every door to a buy reads the same facts: the day's regime, the sale and the verdict | Open | 6 Portfolio; 8 Discovery | FIX-025 |
+| [FIX-029](planning/PI-2026-09/stories/FIX-029.md) | Every door to a buy reads the same facts: the day's regime, the sale and the verdict | Done | 6 Portfolio; 8 Discovery | FIX-025 |
 | [FIX-030](planning/PI-2026-09/stories/FIX-030.md) | A generic-graph analysis sees no automobile evidence; a key the old Yahoo table set is re-examined; an unnamed idea stops taking a weekly re-dive | Open | 4 Research; 8 Discovery | FIX-026 |
 | [FIX-031](planning/PI-2026-09/stories/FIX-031.md) | Every input a decision at a session's close reads is from before that close | Open | 6 Portfolio; 5 Learning | FIX-027 |
 | [FIX-032](planning/PI-2026-09/stories/FIX-032.md) | A home-page watchlist save keeps what it does not show, and a removal there leaves the daily review | Open | 6 Portfolio; 10 Interface | FIX-028 |

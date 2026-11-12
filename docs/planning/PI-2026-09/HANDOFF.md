@@ -1,4 +1,142 @@
-# Current handoff - 2026-11-11 (FIX-028 accepted by its fresh review; FIX-029 next)
+# Current handoff - 2026-11-12 (FIX-029 and SA-044 committed; SA-044's fresh review next)
+
+## 12 Nov: FIX-029 and SA-044 committed at the owner's word
+
+- **Same session** (`stockagent-main-90`), about 14:10 IST. Asked SA-044's D1 with the APOLLOHOSP
+  example, the owner answered "ya its good on what you built, go ahead commit and push". D1 stands: a stock with no same-industry peers
+  is judged on its own numbers.
+- **Commits:** `e511f50` FIX-029's code and tests (accepted); `f368f20` SA-044's code, tests and
+  config, before its fresh review, as FIX-028 was; then the docs commit: both stories' docs,
+  receipts and manifests, STATE, this file and the 11 Nov push record.
+  - FIX-029's six commit-time edits and SA-044's: KT header at `f368f20`, edition 2026-11-12; KT
+    section 1 (neither deployed at this edition); section 6 loses the local verdict-log sentence;
+    section 12 FIX-029 Done; guide 07-G, 07-O and 02-O; PDF 70 pages; `check_kt_docs` `errors: []`.
+  - At HEAD every code and test file of both manifests matches (0 mismatches); the KT, the guide
+    and the PDF differ from them by the commit-time edits only.
+- **Push:** recorded below, after it happens (for the next docs commit).
+- **STATE:** FIX-029 `done`; SA-044 `review_required` (active and next); both production
+  `pending_deployment` until the push record says otherwise.
+- **Next `continue`, in a new conversation: SA-044's fresh review of `f368f20`.** Its review input
+  is unchanged. Then FIX-030, FIX-031 and FIX-032. The switch stays off.
+
+## 12 Nov: SA-044 implemented → review_required
+
+- **Session `stockagent-main-90`** [1c8a13], a new conversation opened with "continue", about 12:49–14:20 IST.
+  - `origin/main` was `581eb90`, the same as HEAD: nothing had arrived from the other device. Peers were idle.
+  - Built on FIX-029's accepted, uncommitted work (manifest `55c54758`, 0 mismatches at the start).
+  - Receipt: [evidence/SA-044-implementation.md](evidence/SA-044-implementation.md).
+- **What it does:** one rule chooses every analysis's valuation peers
+  ([peers.py](../../../services/data/context/peers.py)).
+  - The peers share the stock's Yahoo industry exactly, nearest market cap first, at most 5; with
+    fewer than 3 there are none (`peers unavailable` and why). Another industry's list is never used.
+  - Candidates: the registry, the native lists, the managed tickers and the active shelf; never an
+    unresolved identity (TATAMOTORS), one listing once.
+  - The section's first line, its provenance (`peers`) and the data-health row state the choice.
+    When no peer P/E comes back, the search names the chosen peers and their industry.
+  - Industry and cap are cached in `data/peer_profiles.json` (30 days); a build looks up at most 25.
+  - The legacy automobile valuation builder uses the same rule.
+- **Decision D1 (delegated):** `peers unavailable` keeps the section's status the stock's own data's.
+  `fallback` would make the gate abstain, and an abstaining gate drops a re-dived shelf idea and
+  refuses a watchlist buy even in `record` mode; 69 of the registry's 202 tickers have fewer than
+  3 known peers. **Owner question** (receipt): should a stock with no same-industry peers count as
+  missing essential data? Example: APOLLOHOSP.
+- **What ran:**
+  - story file `tests/unit/test_peer_choice_sa044.py`: 73 passed (card fixtures, hand-derived
+    nearest order, 40 random universes against an independent oracle, identity, cache and budget,
+    the section, the health record); regression `test_peer_regression_sa044.py` fails on the
+    baseline tree with MARUTI, TATAMOTORS, M&M, HEROMOTOCO, BAJAJ-AUTO and passes now;
+  - mutants: 24 of 24 caught;
+  - full suite on the final bytes: 6,380 passed / 14 skipped / 1 xfailed / 0 failed (rc 0, 21m06s;
+    the 2 extra skips are browser tests in a worktree, 75 passed in the checkout). Run 1 failed
+    once (the broad-except guard on a silent handler, fixed);
+  - `check_broad_except` OK (148); `check_kt_docs` one expected error (the KT header's revision
+    predates `peers.py`; the commit-time bump clears it); PDF 70 pages.
+- **Local live check** (Yahoo's public data from this laptop, not production): MARUTI, HDFCBANK, INFY,
+  ADANIGREEN, SUNPHARMA and TATASTEEL got same-industry peers; APOLLOHOSP, LT and ITC got none.
+- **Deploying changes production with the switch off:** every analysis's peer evidence changes, no
+  decision rule or gate status does; the first analyses make up to 25 extra Yahoo calls each.
+- **Review input:** manifest `24d605b0` (13 files), diff `c769970a`
+  (81,529 B, 12 paths) against tree `a3ef9c4b` (HEAD `581eb90` plus FIX-029's work), end tree
+  `b9b9ebdb` (`analysis_data/sa044/digest.py`). FIX-029's manifest now mismatches only the
+  three files both stories edit.
+- **STATE:** SA-044 `review_required`; `active_task` and `next_task` SA-044.
+- **Uncommitted, waiting for the owner's word:** FIX-029's work and review, SA-044's work, STATE,
+  this file, the 11 Nov push record.
+- **Next `continue`, in a new conversation: SA-044's fresh review.** Then FIX-030, FIX-031 and
+  FIX-032. The switch stays off. The Saturday 14 Nov watch below still applies.
+
+## 12 Nov: FIX-029 fresh review → ACCEPTED
+
+- **Session `stockagent-main-77` [0cd619]**, a new conversation opened with "continue", from about 08:10 IST.
+  - `origin/main` was `581eb90`, the same as HEAD: nothing had arrived from the other device. Peers were idle.
+  - Receipt: [evidence/FIX-029-review.md](evidence/FIX-029-review.md).
+- **Reviewed** the working tree of manifest `55c54758` (31 files, 0 mismatches at start and end; diff
+  against `581eb90` `3bc38e52…`, 154,159 B, equal to the receipt's). Tests ran in detached worktrees
+  of the same bytes, not in this checkout.
+- **What ran:**
+  - reviewer cases (`analysis_data/fix029_review/test_rv_fix029.py`): RV1, Option A over a fortnight
+    through the real pipeline (an own-watchlist stock sold on Tue 3 Nov is first bought again at Tue
+    10 Nov's close, 66 shares); RV2, a daily-reviewed watchlist BUY becomes a SWITCH destination with
+    Monday's analysis for Tuesday's close (the old reader left a plain EXIT); RV3, a run's own exit at
+    deployment. With the card's acceptance copy: 80 passed, 1 xfailed (RV9, PR-007). RV1 and RV2 fail
+    on `581eb90`;
+  - `check_broad_except` OK (148); `check_kt_docs` `errors: []` (PDF 69 pages, from the KT's bytes);
+  - full suite: full suite in a worktree 6,304 passed, 14 skipped, 1 xfailed, 1 failed (rc 1, 26m03s, 08:18-08:44 IST): the story's M1 shape test lost a regime-state write to [WinError 5] in its tmp folder (environmental Windows file lock; 5/5 alone, file 27/27); the 2 extra skips are the browser tests (no node_modules in the worktree), 53 passed in the main checkout.
+- **Findings: none above low.** **R1, low:** the local verdict log's "1,364 of 1,364 agree" holds
+  because the composite sat at 0.649–0.65 on 1,537 of 1,541 analyses; since FIX-013 nothing was
+  measured, so the verdict rule may leave far fewer ideas at first (it fails safe). KT section 6
+  loses that sentence at commit time.
+- **R1 closed by the production probe, 12 Nov 10:55 IST** (the owner's word; one read-only
+  `railway ssh`, counts only; receipt section "Pre-deploy probe"):
+  - all 19 active shelf ideas are BUYs;
+  - since 23 Oct, 216 of the 218 analyses at the 0.55 floor are BUYs (2 NEUTRAL at the edge);
+  - the composite varies (108 distinct values), so the local log's near-constant composite was
+    the stale file's;
+  - today's list loses nothing (0 ideas sold since their dive); no watchlist stock is in the
+    daily review; no past SWITCH bought a stock sold with no newer dive.
+- **Deploying changes production with the switch off** (implementation receipt, Rollout); notably a
+  SWITCH may then buy the user's own watchlist BUYs (RV2). Today no watchlist stock is in the
+  daily review (probe), so it has none to buy yet.
+- **STATE:** FIX-029 `done`, production `pending_deployment`; `active_task` null; `next_task` SA-044.
+- **Uncommitted, waiting for the owner's word:** FIX-029's work, its review receipt, STATE, this file,
+  the 11 Nov push record. Six commit-time edits are in the review receipt.
+- **Next `continue`, in a new conversation: SA-044's implementation** (right before FIX-030); then
+  FIX-030, FIX-031 and FIX-032. The switch stays off. The Saturday 14 Nov watch below still applies.
+
+## 11 Nov: FIX-029 implemented → review_required
+
+- **Session `stockagent-main-3b`**, a new conversation opened with "continue", about 16:30 to 18:15 IST.
+  - `origin/main` was `581eb90`, the same as HEAD: nothing had arrived from the other device. Peers were idle.
+  - Receipt: [evidence/FIX-029-implementation.md](evidence/FIX-029-implementation.md).
+- **What it does:** every door to a buy reads the same facts.
+  - **The day's regime:** a holding whose own review wrote no entry for the day reads the label another ticker's
+    review recorded; it replaces the older label. With none recorded, the ADD is held as before.
+  - **The analysis before the close:** the watchlist reads the newest analysis run before the session's 15:30 close.
+    A stock in the daily review is now offered whenever the day before's analysis is a BUY. A later analysis, BUY or
+    SELL, counts from the next close.
+  - **The sale:** a stock sold since its idea was decided is not bought back until a new dive or analysis. From the
+    user's own watchlist, after an autopilot sale, only an analysis from the Saturday after it counts (Option A).
+    A SWITCH whose best idea was sold takes the next-best one.
+  - **The verdict:** only an idea the analysis rates BUY or STRONG BUY is bought or shelved. A re-dive that is no
+    longer a BUY drops its idea.
+  - The candidate list, the SWITCH leg and deployment all read these rules.
+- **What ran:**
+  - story file: 27 passed;
+  - the FIX-025 reviewer's RV3 to RV7 and RV12 with their strict xfails removed: 76 passed, 1 xfailed (RV9, PR-007);
+  - mutants: 30 of 30 caught (M03 after a test was added);
+  - full suite: 6,307 passed / 12 skipped / 1 xfailed / 0 failed (rc 0, 21m49s).
+- **Measure first (the card): not run.** A read-only probe that prints counts only is ready; the owner's command is
+  in the receipt.
+- **Deploying changes production with the switch off** (receipt, Rollout). Among other things, a watchlist BUY in
+  the daily review becomes a SWITCH destination.
+- **Review input:** manifest `55c54758` (31 files), diff `3bc38e52`
+  (154,159 B, 30 paths) against HEAD `581eb90`, end tree `acbbd174`
+  (`analysis_data/fix029/digest.py`).
+- **Uncommitted, waiting for the owner's word:** all of FIX-029's work, and the 11 Nov push record below.
+- **Next `continue`, in a new conversation: FIX-029's fresh review.** Then SA-044, FIX-030, FIX-031 and FIX-032.
+  The switch stays off. The Saturday 14 Nov watch below still applies.
+
+# Earlier handoff - 2026-11-11 (FIX-028 accepted by its fresh review; FIX-029 next)
 
 ## 11 Nov: FIX-028 fresh review → ACCEPTED
 
@@ -35,7 +173,9 @@
 - **Committed at the owner's word** ("commit and push", about 14:00 IST): the receipt, the FIX-032
   card, PR-007's note, STATE, this file, the push record below, and the receipt's six commit-time
   edits (KT sections 1, 6 and 12, AUTOPILOT_GUIDE section 12, guide 07-P, the PDF). Docs only.
-  The push is recorded here once it happens, uncommitted until the next docs commit.
+  Committed as `581eb90`; **pushed** `1eb1b29..581eb90` at about 14:26:00 IST; Railway cfdb3183 created 14:26:02 IST, SUCCESS by 14:27:05 IST (read-only deployment list; /health not read).
+  Docs only, so production runs the same code. Full suite on the committed tree before the push:
+  6,280 passed, 12 skipped, 1 xfailed, 0 failed (rc 0, 22m24s, 14:03-14:25 IST; git status clean before and after; analysis_data/fix028_review/full_suite2.txt). This push record is uncommitted.
 - **Next `continue`, in a new conversation: FIX-029's implementation.** Then SA-044, FIX-030, FIX-031 and
   FIX-032. The switch stays off. The Saturday 14 Nov watch below still applies.
 

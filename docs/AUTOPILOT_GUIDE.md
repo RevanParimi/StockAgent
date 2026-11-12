@@ -127,7 +127,7 @@ a missing artifact leaves a conservative default.
 | Envelope direction | The last remaining forecast close against today's close: UP above +1%, DOWN below −1%, else FLAT |
 | Confidence, trend | Mean confidence of the remaining rows; last minus first |
 | Reversion prior | The envelope's conviction streak |
-| Regime, thesis | The latest feedback entry's regime; the latest thesis review |
+| Regime, thesis | The review day's own feedback entry's regime; with no entry of its own for the day, the label another ticker's review recorded for it (with none recorded, the older label, and ADD is held); the latest thesis review |
 | Direction accuracy | Share of the cycle's last 7 feedback entries graded correct |
 | Position weight | The holding's share of **total equity**: every holding at the review's close (at cost when it has none) plus cash ([sizing.py](../core/portfolio/sizing.py)) |
 | Sector weight | The same share for all holdings with the holding's sector label |
@@ -174,16 +174,37 @@ portfolio's candidates
   after that close waits for a later session's review. A deep dive keeps
   only its day and counts as made after that day's close: Saturday's dives
   are first offered by Tuesday's run, which reviews Monday, and a dive from a
-  manual discovery run on Monday evening by Wednesday's.
-- the user's own watchlist stocks whose latest analysis is a BUY or STRONG BUY
-  with an actionable data gate, conviction 0.55 or more, at most 30 days old,
-  run before the review session's close, for a stock NSE lists as a company
-  (`discovery.watchlist_buys`). An analysis on Monday at 20:00 IST is first
-  offered for Tuesday's close; one at 11:00 IST for Monday's. The entry band
-  is 97–102% of the last close the analysis could have read (its own day's
-  once that session has closed, else the one before), as a deep dive sets it
-  from the close it read. A stock the autopilot sold onto the watchlist
-  (`source="autopilot"`) does not qualify.
+  manual discovery run on Monday evening by Wednesday's. The deep dive's
+  verdict must be a BUY or STRONG BUY: the 0.55 floor reads the model's
+  score, the verdict a separate number. An idea with no verdict stored waits
+  for its re-dive, which comes before the stale ones.
+- the user's own watchlist stocks whose newest analysis run before the
+  review session's close is a BUY or STRONG BUY with an actionable data gate,
+  conviction 0.55 or more, at most 30 days old, for a stock NSE lists as a
+  company (`discovery.watchlist_buys`). An analysis on Monday at 20:00 IST is
+  first offered for Tuesday's close; one at 11:00 IST for Monday's. A stock in
+  the daily review is re-analysed at about 16:35 IST each day, so each run
+  reads the analysis of the day before and the stock is offered whenever that
+  one is a BUY; a SELL made after the close counts from the next close. The
+  entry band is 97–102% of the last close the analysis could have read (its
+  own day's once that session has closed, else the one before), as a deep
+  dive sets it from the close it read. A stock the autopilot sold onto the
+  watchlist (`source="autopilot"`) does not qualify.
+
+**After a sale** (`resale_wait` in `core/discovery/shelf.py`; the list, a
+SWITCH's buy leg and deployment read this one rule against the portfolio's
+ledger and the run's own exits):
+
+- a stock sold since its idea was decided is not a candidate: an exit by
+  anyone on or after the deep dive's day, or a watchlist analysis's day,
+  waits for a new one. The exit counts from the day the run decided it;
+- a stock on the user's own watchlist that the autopilot sold counts only an
+  analysis made on or after the Saturday after the sale, however new. Sold on
+  Tuesday 3 Nov: Wednesday's BUY does not count, Monday 9 Nov's does. So a
+  round trip the autopilot makes happens at most once a week through either
+  list. After a hand sale, any later analysis counts;
+- a SWITCH whose best idea was sold takes the next-best one; a stock held
+  again is left to the "already held" check.
 
 Each candidate carries the sector it is bought and held under, which is
 what the sizing rule's sector cap (section 6) and the SWITCH's sector test
@@ -444,8 +465,10 @@ The steps, after the day's sells, switch legs and ADDs:
    when not met, never a reason to buy.
 3. **Candidates**, the day's buy candidates (section 3: each decided
    before the review session's close), highest conviction first: not held;
-   not sold on or after its latest deep dive (`shelf.sold_since_dive`; the
-   sale counts from the day the run decided it, `shelf.sale_day`); a close struck after its
+   not sold since it was decided, by the list's rule read again with the
+   run's own exits (`shelf.resale_wait`, section 3; the sale counts from the
+   day the run decided it, `shelf.sale_day`); rated BUY by its analysis
+   (`shelf.verdict_wait`); a close struck after its
    latest deep dive or watchlist analysis, in either gate mode
    (`shelf.close_before_dive`: "close of 2026-10-30 is before the deep dive
    of 2026-10-31", "analysis of 2026-11-02 20:00 IST is after the close of
@@ -464,8 +487,8 @@ The steps, after the day's sells, switch legs and ADDs:
 5. **The record.** `execute_advice(..., report=)` receives it, and the
    pipeline puts it in the day's digest as `deployment`: regime, target (share,
    rupees and % of equity), invested before and after, holdings before and
-   after, what was bought, each other idea's `outcome` (`held`, `sold`, `gate`,
-   `price`, `before_dive`, `surveillance`, `band`, `invalidated`, `size`,
+   after, what was bought, each other idea's `outcome` (`held`, `sold`, `verdict`,
+   `gate`, `price`, `before_dive`, `surveillance`, `band`, `invalidated`, `size`,
    `ledger`, `waiting`) and `why`, and `reasons`: why buying stopped, the soft
    minimum when it is not met ("6 holdings, below the 10 aimed for: only 6
    qualifying ideas"), and the counts ("3 ideas above entry band"). The digest's text adds
@@ -794,6 +817,7 @@ run is hermetic (KT section 13). A quick loop:
 | `test_regime_inputs_fix023.py` | The regime deployment trusts: inputs read as of the review session, a missing input with no value, a day whose label the live inputs do not establish opening nothing (the reason names the inputs), the hysteresis on dark days, a detector exception; and no position opened at a close from before its idea's latest dive, in either gate mode |
 | `test_autopilot_pipeline.py`, `test_portfolio_pipeline.py`, `test_scheduler_portfolio_hook.py` | The pipeline steps, digest trades and the `switch_buy_skipped` alert |
 | `test_autopilot_isolation.py` | Executor writes stay inside `data/portfolio/<user>/` |
+| `test_every_door_fix029.py` | Every door reads the same facts: the day's regime over every label with or without an entry of its own, the newest analysis before the close from the real score store, one sale rule against an oracle over three weeks (the Saturday after an autopilot sale for the watchlist), a SWITCH that takes its next-best idea through the real pipeline, no buy of an idea not rated BUY |
 | `test_sold_stock_leaves_review_fix028.py` | The managed list follows the holdings, through the real executor and a real managed file: a full exit and a last-share TRIM release, while a partial TRIM, another portfolio's holding, a user's own watchlist and an original entry do not; a stock sold earlier leaves on the next run; a re-buy re-enables the old sector; a sale's room before the same run's buy; a capped buy named in the digest, its text and the brief on every run until it gets an entry; an unreadable portfolio, no managed file, the lock and a failed save |
 | `test_autopilot_wave1.py`, `test_portfolio_locking.py`, `test_portfolio_reconcile.py` | Locking with a fresh reload, future-date refusal, reconciliation |
 | `test_portfolio_advisor.py`, `test_portfolio_advisor_switch.py`, `test_portfolio_store_switch_evals.py` | The cascade, SWITCH and candidate evaluation rows |

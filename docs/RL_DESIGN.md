@@ -918,11 +918,11 @@ IT and renewable energy each have about 10 factors), then the cross-sector
 map, then one bulk-tier LLM call. The queries are saved as the cycle's
 `prompt_enhancements.json`.
 
-Two consumers read them: the feedback agent's context, as "recurring blind
-spots", and the legacy per-dimension agents, which add up to 2 queries to
-their searches. The unified analyst, the preferred research path, does not
-read them. The loop is self-regulating: a factor that stops being missed
-falls out of the top three.
+One consumer reads them: the feedback agent's context, as "recurring blind
+spots". No research path does: neither the unified analyst nor the legacy
+per-dimension agents add them to their searches. The loop is
+self-regulating: a factor that stops being missed falls out of the top
+three.
 
 ## 16. Thesis review
 
@@ -1136,7 +1136,7 @@ bulk `deepseek/deepseek-v4-flash`. Production's values are not recorded here.
   old session is graded with today's context.
 - **Coverage.** The pre-open check scans the four native sectors' built-in
   ticker lists, not the managed list (section 27.3). The calendar ignores
-  seed validation (section 14). The unified analyst does not read prompt
+  seed validation (section 14). No research path reads prompt
   enhancements, and no writer records the miss events that the
   recency-weighted ranking reads (section 15).
 - **Control lane.** It is scored on the same error-direction label, so its

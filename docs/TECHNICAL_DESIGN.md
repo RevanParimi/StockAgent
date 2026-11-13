@@ -301,7 +301,7 @@ time, so an unchanged tree always gives the same digest.
 | Class | Store it picks | Code |
 |---|---|---|
 | `managed` | `<managed sector>/<TICKER>` | The monthly forecast and daily review ([scheduler](../services/scheduler/python/scheduler.py)), startup self-heal, event ingest, weekly ledger cleanup, RL monitor and scheduler API. |
-| `analysis_graph` | `<graph sector>/<TICKER>` | An analysis's learned-weight read ([base_orchestrator](../src/backend/shared/pipeline/base_orchestrator.py)) and its agents' prompt-enhancement and dossier reads. For a pharma ticker that is `generic/<TICKER>`, while its RL store is `pharma/<TICKER>`. |
+| `analysis_graph` | `<graph sector>/<TICKER>` | An analysis's learned-weight read ([base_orchestrator](../src/backend/shared/pipeline/base_orchestrator.py)) and its agents' dossier reads. For a pharma ticker that is `generic/<TICKER>`, while its RL store is `pharma/<TICKER>`. |
 | `automobile_default` | `automobile/<TICKER>` when no sector is passed | Manual CLIs (`run_schedule forecast` and `daily-review`, `generate_forecast`'s own main), the bundle builder's and base agent's fallbacks, the UI's last fallback. |
 | `discovery` | every `<dir>/<dir>` pair | Scorecard, eval harness, learning evidence, analytics and universe walk the whole tree; the UI scans it for an unmanaged ticker. |
 | `flat_cli` | `<TICKER>/` | `run_schedule feedback-status`. Discovery misreads such a directory as a sector. |

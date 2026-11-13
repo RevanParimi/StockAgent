@@ -346,9 +346,8 @@ The pre-unified path remains as the fallback for a total analyst failure.
   returns a neutral 0.5 with an `error`.
 - **Context.** Each agent fetches its own context through
   [ContextBuilder](../services/data/context/builder.py): a sector-specific
-  builder method when one exists, else a generic one. Its static search
-  queries can be extended by the cycle's prompt enhancements (RL_DESIGN §15),
-  and the dossier digest is appended to its system prompt.
+  builder method when one exists, else a generic one, with static search
+  queries. The dossier digest is appended to its system prompt.
 - **Graph.** A LangGraph fan-out runs the agents in parallel, with three
   non-blocking rails: an input check, a clamp on each output, and a conflict
   flag at aggregation.

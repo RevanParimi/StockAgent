@@ -74,9 +74,6 @@ class BaseAgent(ABC):
         self._async_client = None
         # Populated by LLM call methods; read by run()/run_async() for logging.
         self._last_usage: dict[str, int] = {"prompt_tokens": 0, "completion_tokens": 0}
-        # P4: extra search queries from PromptEnhancer (loaded lazily per cycle).
-        # {agent_name: [query_1, query_2, ...]}
-        self._extra_queries: dict[str, list[str]] = {}
         # RL knowledge layer: per-ticker dossier digest cache (lazy).
         # Scoped to this instance/run — agents are constructed fresh per
         # analysis run, so this never needs explicit invalidation.
@@ -444,30 +441,6 @@ class BaseAgent(ABC):
         if ticker not in self._dossier_digest_cache:
             self._dossier_digest_cache[ticker] = self._fetch_dossier_digest(ticker)
         return self._dossier_digest_cache[ticker]
-
-    # ------------------------------------------------------------------
-    # P4: Prompt Enhancements
-    # ------------------------------------------------------------------
-
-    def load_prompt_enhancements(
-        self,
-        store: "Any",       # PredictionStore — avoid circular import
-        cycle_id: str,
-    ) -> None:
-        """
-        Pre-load per-cycle prompt enhancements from PredictionStore.
-        Stores all agent queries in self._extra_queries.
-        Meant to be called externally (e.g. by an orchestrator) before run().
-        """
-        try:
-            enhancements = store.load_enhancements(cycle_id)
-            self._extra_queries = enhancements
-            logger.debug(
-                "[%s] Loaded prompt enhancements for cycle %s (%d agents)",
-                self.agent_name, cycle_id, len(enhancements),
-            )
-        except Exception as exc:
-            logger.debug("[%s] Could not load prompt enhancements: %s", self.agent_name, exc)
 
     @staticmethod
     def _clamp(value: float, lo: float = 0.0, hi: float = 1.0) -> float:

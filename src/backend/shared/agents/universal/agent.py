@@ -44,8 +44,6 @@ class UniversalAgent(BaseAgent):
         self._name          = name
         self._P             = prompts_module
         self._sector_key    = sector
-        # Expose CONTEXT_SEARCH_QUERIES to BaseAgent's RAG gather step if present
-        self._extra_queries = list(getattr(prompts_module, "CONTEXT_SEARCH_QUERIES", []))
 
     # ------------------------------------------------------------------
     # BaseAgent abstract interface

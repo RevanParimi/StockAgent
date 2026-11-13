@@ -352,8 +352,6 @@ The pre-unified path remains as the fallback for a total analyst failure.
 - **Graph.** A LangGraph fan-out runs the agents in parallel, with three
   non-blocking rails: an input check, a clamp on each output, and a conflict
   flag at aggregation.
-- **Retrieval.** A vector-store retrieval path exists behind `RAG_ENABLED`,
-  off by default, with no ingested corpus.
 
 A fallback run makes one search per agent query instead of at most three per
 run (the code estimates 6 to 8 times the news-search credits), and builds no

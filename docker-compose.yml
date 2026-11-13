@@ -11,7 +11,7 @@
 #   docker compose --env-file .env.production up -d --build
 #
 # Volumes (all survive restarts / rebuilds):
-#   stockagent_data  → /app/data   (predictions, chroma_db, scores.db, KB docs)
+#   stockagent_data  → /app/data   (predictions, scores.db, portfolios, caches)
 #   stockagent_logs  → /app/logs
 #   stockagent_out   → /app/outputs
 #
@@ -46,8 +46,6 @@ services:
       SCORE_DB_PATH: /app/data/scores.db
       LOG_FILE: /app/logs/stockagent.log
       OUTPUT_DIR: /app/outputs
-      RAG_DOCUMENTS_BASE_DIR: /app/data
-      CHROMA_PERSIST_DIR: /app/data/chroma_db
     volumes:
       - stockagent_data:/app/data
       - stockagent_logs:/app/logs

@@ -250,11 +250,6 @@ PEER_TICKERS: list[str] = [
 ]
 
 # ---------------------------------------------------------------------------
-# Phase 3 – RAG data directories
-# ---------------------------------------------------------------------------
-RAG_DOCUMENTS_BASE_DIR: str = os.getenv("RAG_DOCUMENTS_BASE_DIR", "data")
-
-# ---------------------------------------------------------------------------
 # Macro Cache — API efficiency
 # ---------------------------------------------------------------------------
 # Populates services/data/cache/macro_cache.py; consumed by:

@@ -7,13 +7,11 @@ What is tested:
   - Agent weights sum to 1.0
   - Score thresholds are contiguous and cover [0, 1]
   - All required settings exist and have sensible types
-  - RAG config defaults to disabled
   - .env.example has all keys defined in settings.py
 """
 
 import pytest
 from backend.shared.config import settings
-from backend.shared.config import rag_config
 
 
 class TestAgentWeights:
@@ -80,18 +78,3 @@ class TestLLMSettings:
             f"Expected an approved OpenRouter model family (qwen/deepseek), "
             f"got: {settings.LLM_MODEL_BULK}"
         )
-
-
-class TestRAGConfig:
-    def test_rag_disabled_by_default(self):
-        # In CI / test environment RAG should be off
-        # (can be overridden by setting RAG_ENABLED=true in .env)
-        import os
-        if os.getenv("RAG_ENABLED", "false").lower() != "true":
-            assert rag_config.RAG_ENABLED is False
-
-    def test_top_k_positive(self):
-        assert rag_config.TOP_K_RESULTS > 0
-
-    def test_chunk_size_greater_than_overlap(self):
-        assert rag_config.CHUNK_SIZE > rag_config.CHUNK_OVERLAP

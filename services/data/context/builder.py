@@ -4,7 +4,7 @@ tools/context_builder.py
 Assembles the per-agent context string from live data fetchers.
 Each agent gets only the data relevant to its dimensions.
 
-Called by BaseAgent._gather_context() when RAG is disabled.
+Called by BaseAgent._gather_context().
 
 Public API
 ----------

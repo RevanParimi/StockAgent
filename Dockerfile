@@ -33,11 +33,6 @@ COPY src/frontend/prototypes/ ./frontend/prototypes/
 # Create data directories — volumes mount here at runtime
 RUN mkdir -p \
     data/predictions \
-    data/chroma_db \
-    data/earnings_transcripts \
-    data/annual_reports \
-    data/sector_reports \
-    data/news_archive \
     data/logs \
     logs \
     outputs

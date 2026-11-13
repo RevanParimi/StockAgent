@@ -8,7 +8,7 @@ Responsibilities:
   - Retry logic with exponential back-off
   - JSON response parsing and validation
   - Structured logging
-  - Context assembly from search results (stub for RAG)
+  - Context assembly from live data (ContextBuilder)
 """
 
 from __future__ import annotations
@@ -367,7 +367,7 @@ class BaseAgent(ABC):
         )
 
     # ------------------------------------------------------------------
-    # Context gathering — Phase 2 live data + Phase 3 RAG
+    # Context gathering — live data
     # ------------------------------------------------------------------
 
     def _gather_context(self, query: StockQuery) -> tuple[str, bool]:
@@ -379,21 +379,9 @@ class BaseAgent(ABC):
         invoke the LLM to prevent training-knowledge hallucinations.
 
         Priority order:
-          1. RAG (if RAG_ENABLED=true) — retrieves from vector store
-          2. Live data — yfinance + news APIs via ContextBuilder
-          3. Stub — no real data; signals caller to skip LLM
+          1. Live data — yfinance + news APIs via ContextBuilder
+          2. Stub — no real data; signals caller to skip LLM
         """
-        from core.intelligence.rag import config as rag_config
-
-        if rag_config.RAG_ENABLED:
-            try:
-                return self._rag_retrieve(query), True
-            except Exception as exc:
-                logger.warning(
-                    "[%s] RAG retrieval failed, falling back to live data: %s",
-                    self.agent_name, exc,
-                )
-
         # Live data via ContextBuilder
         try:
             from services.data.context.builder import ContextBuilder
@@ -411,59 +399,6 @@ class BaseAgent(ABC):
             f"Exchange: {query.exchange} | Analysis date: {query.analysis_date}"
         )
         return stub, False
-
-    def _rag_retrieve(self, query: StockQuery) -> str:
-        """
-        Retrieve relevant document chunks from ChromaDB for this agent + query.
-        Active only when RAG_ENABLED=true in config/rag_config.py.
-        """
-        from core.intelligence.rag.core.retriever import RAGRetriever
-        from backend.sectors.automobile.prompts import sales_demand, fundamentals, pattern_analysis, sentiment, risk_macro, orchestrator
-
-        # Map agent name → its search queries template list
-        prompt_modules = {
-            "sales_demand":     sales_demand,
-            "fundamentals":     fundamentals,
-            "pattern_analysis": pattern_analysis,
-            "sentiment":        sentiment,
-            "risk_macro":       risk_macro,
-        }
-        mod = prompt_modules.get(self.agent_name)
-        if mod and hasattr(mod, "CONTEXT_SEARCH_QUERIES"):
-            from datetime import date as _date
-            today = _date.today()
-            raw_queries = [
-                q.format(
-                    ticker=query.ticker,
-                    company_name=query.company_name,
-                    month=today.strftime("%B"),
-                    year=today.year,
-                    quarter=f"Q{((today.month - 1) // 3) + 1} FY{today.year % 100}",
-                    date=today.isoformat(),
-                )
-                for q in mod.CONTEXT_SEARCH_QUERIES[:3]
-            ]
-            # P4: Lazy-load prompt enhancements from PredictionStore if not yet loaded.
-            # Only attempted when self.sector is set (so we can build the correct path).
-            if not self._extra_queries and self.sector:
-                try:
-                    from core.intelligence.rl.stores.prediction_store import PredictionStore
-                    _store = PredictionStore(query.ticker, sector=self.sector)
-                    self.load_prompt_enhancements(_store, _store.current_cycle_id())
-                except Exception as _exc:
-                    logger.debug("[%s] Enhancement lazy-load skipped: %s", self.agent_name, _exc)
-            # Append up to 2 extra queries for this agent (avoid overwhelming RAG)
-            extra = self._extra_queries.get(self.agent_name, [])
-            raw_queries = raw_queries + extra[:2]
-            search_query = " ".join(raw_queries[:2])
-        else:
-            search_query = f"{query.ticker} {query.company_name} automobile India"
-
-        retriever = RAGRetriever()
-        chunks = retriever.retrieve(search_query)
-        if not chunks:
-            return f"No RAG documents found for {query.ticker}."
-        return "\n\n---\n".join(chunks)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -522,8 +457,7 @@ class BaseAgent(ABC):
         """
         Pre-load per-cycle prompt enhancements from PredictionStore.
         Stores all agent queries in self._extra_queries.
-        Called externally (e.g. orchestrator) before run(), or lazily inside
-        _rag_retrieve() when sector is known.
+        Meant to be called externally (e.g. by an orchestrator) before run().
         """
         try:
             enhancements = store.load_enhancements(cycle_id)

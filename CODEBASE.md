@@ -91,8 +91,7 @@ StockAgent-main/
 │   │       ├── agents/            # Base agent classes
 │   │       ├── clients/           # Shared API clients
 │   │       ├── config/
-│   │       │   ├── settings/base.py   # Master settings file (all env vars)
-│   │       │   └── rag_config.py      # RAG-specific settings
+│   │       │   └── settings/base.py   # Master settings file (all env vars)
 │   │       ├── data/              # Data helpers
 │   │       │   ├── instruments.py         # Instrument registry: dated identity + price basis
 │   │       ├── pipeline/          # THE analysis engine:
@@ -143,7 +142,6 @@ StockAgent-main/
 │   │   │   └── calendar_updater.py
 │   │   ├── regime/                # Market regime detection
 │   │   │   └── detector.py
-│   │   ├── rag/                   # RAG pipeline (core path)
 │   │   ├── seasonal/              # Seasonal pattern calendar + validator
 │   │   ├── fno/                   # F&O data helpers
 │   │   └── prompt_enhancer/
@@ -901,29 +899,6 @@ A results or concall filing found by the company-event feed also runs this inges
 | `GITHUB_REPO` | `""` | Repo in `owner/repo` format |
 | `GITHUB_BRANCH` | `main` | Branch to push prompt changes to |
 
-### RAG (`core/intelligence/rag/config.py`)
-
-| Name | Default | Description |
-|------|---------|-------------|
-| `RAG_ENABLED` | `false` | Enable RAG retrieval |
-| `EMBEDDING_PROVIDER` | `groq` | Embedding provider |
-| `EMBEDDING_MODEL` | `nomic-embed-text-v1.5` | Embedding model name |
-| `EMBEDDING_DIMENSION` | `768` | Embedding vector size |
-| `VECTOR_STORE_PROVIDER` | `chromadb` | Vector store: `chromadb`, `pinecone`, or `qdrant` |
-| `CHROMA_PERSIST_DIR` | `data/chroma_db` | ChromaDB persistence directory |
-| `CHROMA_COLLECTION_NAME` | `automobile_agent_kb` | ChromaDB collection name |
-| `PINECONE_API_KEY` | `""` | Pinecone API key (if using Pinecone) |
-| `PINECONE_ENVIRONMENT` | `""` | Pinecone environment |
-| `PINECONE_INDEX_NAME` | `automobile-agent` | Pinecone index name |
-| `QDRANT_URL` | `http://localhost:6333` | Qdrant URL |
-| `QDRANT_COLLECTION` | `automobile_agent` | Qdrant collection name |
-| `RAG_TOP_K` | `5` | Top-K results to retrieve |
-| `RAG_SIMILARITY_THRESHOLD` | `0.75` | Minimum similarity score |
-| `RAG_CHUNK_SIZE` | `512` | Tokens per chunk |
-| `RAG_CHUNK_OVERLAP` | `64` | Token overlap between chunks |
-| `RERANKER_ENABLED` | `false` | Enable cross-encoder reranker |
-| `RERANKER_MODEL` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Reranker model |
-
 ---
 
 ## 5. Key File Locations
@@ -997,7 +972,6 @@ All paths verified to exist. Paths are relative to project root.
 | `services/clients/llm_client.py` | Async OpenRouter LLM client |
 | `src/backend/sectors/registry.py` | `TICKER_SECTOR` dict + `SectorRegistry` singleton (resolve, get_graph_sector, get_handler, is_enabled) — the single resolution point for both the API and RL paths |
 | `src/backend/shared/config/settings/base.py` | All environment variable definitions with defaults |
-| `src/backend/shared/config/rag_config.py` | RAG-specific env vars (mirrors `core/intelligence/rag/config.py`) |
 | `src/backend/shared/pipeline/base_orchestrator.py` | `BaseSectorOrchestrator` — ticker resolution (managed-ticker short-circuit, no LLM for exact `TICKERS` matches), RL weights, NSE prefetch, `_run_agents`/`_run_unified`/`_unified_enabled` dispatch, SignalAggregator; `analyse(..., sector_question=)` (the deep dive's) rides in the unified call and comes back as `report.sector_answer`; at both exits (`analyse`, `analyse_async`), after the decision gate, logs `run_summaries` and writes the score-history row (a failed write is a warning) |
 | `services/data/context/bundle_builder.py` | `build_sector_bundle()` — one-pass `SectorDataBundle` (10 labeled, char-capped sections), sector-aware via `_SECTOR_BUNDLE_CFG` (per-sector queries, deep-dive Tavily target, commodities applicability, peer lists); `section_status` holds one outcome per section, taken from each producer's `FetchResult`, and `section_provenance` (source, as-of, reason) |
 | `services/data/context/fetch_result.py` | `FetchResult` (text, status, source, as_of, reason), the section status vocabulary, and the price/fundamentals freshness bounds |

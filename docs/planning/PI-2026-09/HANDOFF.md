@@ -1,4 +1,25 @@
-# Current handoff - 2026-11-13 (FIX-030 accepted and committed, not pushed; FIX-030-M1 after Saturday's run; FIX-031 next)
+# Current handoff - 2026-11-13 (CLEAN-001 done on a local branch; FIX-030 committed, not pushed; FIX-030-M1 after Saturday's run; FIX-031 next)
+
+## 13 Nov: CLEAN-001 housekeeping (owner scope change) → done on a local branch
+
+- **Session `stockagent-main-50`** [fcd907], Friday evening. Owner's explicit resequencing; fresh
+  review waived by the owner (deletions only); the full suite is the acceptance.
+- **Branch `chore/remove-dead-code`** from `e2b6f34`, one commit per item: 643d605 (item 1), 8cccc41 (2), 25d6b65 (3), 7ed7251 (4), 7b6a64d (5), then
+  this docs commit. 43 files, −2,183 lines. **Not merged, not pushed. The checkout is left on
+  this branch.** Merge it into `main` at your word, or switch back to `main`, before FIX-031.
+- **Removed:** the `new-product.py` scaffolder; `services/csharp/` and its compose service; the RAG
+  pipeline (chromadb, sentence-transformers, pypdf, tiktoken, CI's CPU-torch step); `main.py`.
+  The test tools moved to `requirements-test.txt`; openai and yfinance keep one exact pin each.
+- **Proof of non-use** is in [evidence/CLEAN-001.md](evidence/CLEAN-001.md). Production variable
+  names (none RAG or C#) and the start command (none; Dockerfile CMD) were read read-only.
+- **Skipped:** 6a, because its gate failed (141 shim import sites; a test patches through the shim).
+  6b, because `config/milestones.yaml`, which the production watchdog reads, names a plan in the
+  move set.
+- **Full suite:** 6,409 passed / 12 skipped / 1 xfailed / 0 failed, pytest rc 0, 19m34s (17:42-18:02 IST); the 11 fewer than FIX-030's 6,420 are exactly the 8 deleted test_rag.py tests and the 3 TestRAGConfig tests. Guards are clean.
+- **Deploying it** re-resolves every unpinned package, because `requirements.txt` changed. From
+  this base it also deploys FIX-030, which waits for `FIX-030-M1`. Dependency set for Linux
+  py3.11: 150 → 78 distributions, at least 659 MB of compressed wheels dropped.
+- `next_task` is still FIX-031.
 
 ## 13 Nov: FIX-030 fresh review → ACCEPTED (M1 waits for Saturday's counts)
 

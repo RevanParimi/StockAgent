@@ -247,8 +247,6 @@ StockAgent-main/
 │                                  #  redeploy. Nothing should default here.
 ├── outputs/                       # Report output files
 ├── docs/                          # Design documentation (index: docs/README.md)
-├── services/csharp/               # ⚠ DEAD — .NET scheduler, NOT in the Docker image (superseded
-│   └── StockAgent.Scheduler/      #  by the Python APScheduler); still tracked, deletion candidate
 ├── Dockerfile                     # THE deploy artifact: core/ services/ src/backend→backend/
 │                                  #  scripts/ main.py config.yaml prototypes → anything outside
 │                                  #  its COPY set is dead in prod by construction
@@ -893,7 +891,7 @@ A results or concall filing found by the company-event feed also runs this inges
 | Name | Default | Description |
 |------|---------|-------------|
 | `CSHARP_SCHEDULER_ENABLED` | `false` | Route score saves through C# API |
-| `CSHARP_API_URL` | `http://localhost:5000` | Legacy C# scheduler base URL (the C# service is dead — setting only read by `score_store.py`'s unused mirror path) |
+| `CSHARP_API_URL` | `http://localhost:5000` | Base URL of a C# scheduler that is no longer in the repository; read only by `score_store.py`'s proxy branch, which runs only when the flag above is true |
 
 ### Prompt Deploy (GitHub)
 
@@ -1052,4 +1050,3 @@ All paths verified to exist. Paths are relative to project root.
 | `data/watchlist.json` | User watchlist (created at runtime) |
 | `data/nse_holidays.json` | NSE holiday calendar (fetched on first deploy) |
 | `src/frontend/web/` | TypeScript/React dashboard (Vite; `npm run dev` for local) |
-| `services/csharp/StockAgent.Scheduler/` | ⚠ DEAD C# .NET scheduler (not in the Docker image; deletion candidate) |

@@ -62,32 +62,6 @@ services:
       retries: 3
       start_period: 30s
 
-  # ──────────────────────────────────────────────────────────
-  # C# Quartz.NET Scheduler — dormant.
-  # Superseded by the in-process Python scheduler; the source is still in
-  # the tree, so this is kept behind an opt-in profile rather than deleted.
-  #   docker compose --profile csharp up -d
-  # ──────────────────────────────────────────────────────────
-  csharp-scheduler:
-    profiles: ["csharp"]
-    build:
-      context: services/csharp/StockAgent.Scheduler
-      dockerfile: Dockerfile
-    container_name: stockagent-scheduler
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      TZ: Asia/Kolkata
-      ASPNETCORE_URLS: http://+:5000
-      ASPNETCORE_ENVIRONMENT: Production
-      PYTHON_API_URL: http://python-api:8000
-      CSHARP_SCHEDULER_ENABLED: "true"
-    expose:
-      - "5000"
-    depends_on:
-      python-api:
-        condition: service_healthy
-
 # ============================================================
 # Named volumes — persisted across all restarts
 # ============================================================

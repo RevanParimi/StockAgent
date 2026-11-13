@@ -164,7 +164,6 @@ two import paths need not mean two implementations.
 to `/app/backend/`; local tests add `src` to the import path. The served
 frontend is the prototype JSX application. [package.json](../package.json)
 provides development tooling; there is no compiled app frontend build step.
-The checked-in C# scheduler is not launched by this Dockerfile.
 
 Both workers run startup. One binds a localhost TCP port, default 59321, and
 becomes the background owner. It starts RL self-heal, APScheduler, cleanup and

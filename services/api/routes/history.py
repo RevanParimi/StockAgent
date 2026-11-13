@@ -4,7 +4,7 @@ api/routes/history.py
 GET /history/{ticker}  — returns persisted score history from SQLite.
 GET /history/{ticker}/latest  — returns the single most-recent record.
 
-These endpoints are consumed by the TypeScript dashboard and C# scheduler.
+These endpoints are consumed by the TypeScript dashboard.
 """
 
 from __future__ import annotations

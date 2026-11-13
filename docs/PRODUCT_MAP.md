@@ -707,7 +707,7 @@ is the current baseline; [audit/LEDGER.md](audit/LEDGER.md) records every
 
 | Item | Status |
 |---|---|
-| `services/csharp/StockAgent.Scheduler/` | Dormant: 9 `.cs` files, superseded by the Python scheduler. `CSHARP_SCHEDULER_ENABLED` defaults to false, a contract test still covers the settings, and `docker-compose.yml` keeps the service behind an opt-in `csharp` profile. The production image never references it |
+| `CSHARP_SCHEDULER_ENABLED`, `CSHARP_API_URL` and the proxy branch in `score_store.py` | Leftover of a C# scheduler that is no longer in the repository: the flag defaults to false, so scores save to SQLite; a contract test still covers the settings |
 | `main.py` | Old standalone entry point |
 | `core/intelligence/rag/` | Retrieval stub, off, no corpus |
 | 19 shim files | The half-finished restructure ([§0](#0-orientation)) |

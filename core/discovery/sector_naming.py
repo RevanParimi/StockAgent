@@ -20,6 +20,16 @@ earlier analysis named for the idea. Only a stock with none of these takes
 the answer. Example: TATAMOTORS is in the ticker map as "automobile"; a dive
 answering "logistics" stores "automobile" and records the disagreement.
 
+**Only those decide (FIX-030).** An idea's configured key counts as decided
+when an analysis named it (`analysis_named`: the reading's `named_on`,
+carried while later dives keep the key), a managed record held it at the
+dive, or the ticker map has it. A key set another way, FIX-011's Yahoo-label
+table from 2 to 10 Nov, is not: the idea counts as unnamed, so it is not
+offered, the watchdog names it, it is first among Saturday's re-dives, and
+that analysis names its key like a legacy "generic" idea's. Example: ODDCO, a
+hospital chain the table filed as "pharma" on 7 Nov, is re-dived with the
+reasoned answer "generic" and becomes "generic".
+
 **Nothing is silently generic.** An empty, malformed or unknown answer
 leaves the idea filed under the "generic" graph with source "unnamed" and
 the problem recorded. Such an idea is shelved (its paper lane runs, and the
@@ -183,35 +193,99 @@ def key_named(obj, keys: dict[str, str]) -> bool:
     return (str(getattr(obj, "sector", "") or "").strip().lower() in keys)
 
 
+def _dive_day(obj) -> str:
+    """The ISO date of `obj`'s latest dive: a dive's `dive_date`; for an idea,
+    as `shelf.last_dived` reads it, `dived`, else the dive that shelved it
+    (`source_screen_date`), else `added`."""
+    for name in ("dive_date", "dived", "source_screen_date", "added"):
+        value = str(getattr(obj, name, "") or "").strip()[:10]
+        if value:
+            return value
+    return ""
+
+
+def analysis_named(obj, keys: dict[str, str]) -> bool:
+    """True when an analysis named `obj`'s configured key (FIX-030): its
+    reading carries `named_on`, or that reading's own analysis answered this
+    very key (a reading written before FIX-030 has no `named_on`). False for
+    a key the ticker map, a managed record or FIX-011's Yahoo-label table set.
+    Example: an idea answered "pharma" on 14 Nov, then kept "pharma" on a
+    12 Dec re-dive that answered "chemicals", is named (`named_on`
+    "2026-11-14"); ODDCO, filed as "pharma" by the table, is not, even after a
+    re-dive kept it."""
+    if obj is None or not key_named(obj, keys):
+        return False
+    r = getattr(obj, "sector_reading", None)
+    if r is None:
+        return False
+    if r.named_on:
+        return True
+    return not r.problem and r.answer.strip().lower() == str(obj.sector).strip().lower()
+
+
+def analysis_named_on(obj, keys: dict[str, str]) -> str:
+    """The ISO date of the dive whose analysis named `obj`'s configured key
+    (`analysis_named`), "" when none did: the reading's `named_on`, else the
+    date of `obj`'s latest dive, whose analysis answered it. A dive keeping
+    the key as "earlier" stores it, so the fact survives a later answer that
+    disagrees."""
+    if not analysis_named(obj, keys):
+        return ""
+    return obj.sector_reading.named_on or _dive_day(obj)
+
+
+def key_decided(obj, keys: dict[str, str]) -> bool:
+    """True when `obj`'s configured key was decided by an analysis
+    (`analysis_named`), a managed record (the reading's source "managed") or
+    the ticker map, which has that key for it now (FIX-030). False for
+    "generic", no key, and a key set any other way."""
+    if not key_named(obj, keys):
+        return False
+    if analysis_named(obj, keys):
+        return True
+    r = getattr(obj, "sector_reading", None)
+    if r is not None and r.source == "managed":
+        return True
+    key = str(obj.sector).strip().lower()
+    return ticker_map_sector(str(getattr(obj, "symbol", "") or "")) == key
+
+
 def known_key(symbol: str, *, managed: dict[str, str], idea, keys: dict[str, str],
               ) -> tuple[str, str]:
     """(key, source) a stock already has, decided before this analysis:
     the managed record's ("managed"), the ticker map's ("ticker_map"), or a
-    key an earlier analysis named for its shelf idea ("earlier"); ("", "")
-    when none. An idea filed as "generic" may still be named. The managed
-    record's key is returned exactly as stored, as `candidates.holding_sector`
-    does: it names the directory its forecasts are written under."""
+    key an earlier analysis named for its shelf idea ("earlier",
+    `analysis_named`); ("", "") when none. An idea filed as "generic", or
+    under a key no analysis named (FIX-011's table), may still be named. The
+    managed record's key is returned exactly as stored, as
+    `candidates.holding_sector` does: it names the directory its forecasts are
+    written under."""
     sym = symbol.strip().upper()
     if managed.get(sym):
         return managed[sym], "managed"
     mapped = ticker_map_sector(sym)
     if mapped:
         return mapped, "ticker_map"
-    if idea is not None and key_named(idea, keys):
+    if analysis_named(idea, keys):
         return str(idea.sector).strip().lower(), "earlier"
     return "", ""
 
 
-def decide_key(reading: SectorReading, known: tuple[str, str]) -> tuple[str, SectorReading]:
+def decide_key(reading: SectorReading, known: tuple[str, str], *, on: str = "",
+               named_on: str = "") -> tuple[str, SectorReading]:
     """(the key to store, the reading with its source). A known key stays;
     else a named answer is the key; else "generic" with source "unnamed",
-    which nothing buys."""
+    which nothing buys. `named_on` records which analysis named the key: `on`
+    (the dive's ISO date) for an answer that names it, the given `named_on`
+    (the idea's `analysis_named_on`) for a key kept as "earlier", else ""."""
     key, source = known
     if key:
-        return key, reading.model_copy(update={"source": source})
+        return key, reading.model_copy(update={
+            "source": source, "named_on": named_on if source == "earlier" else ""})
     if not reading.problem:
-        return reading.answer.strip().lower(), reading.model_copy(update={"source": "analysis"})
-    return GENERIC, reading.model_copy(update={"source": "unnamed"})
+        return reading.answer.strip().lower(), reading.model_copy(
+            update={"source": "analysis", "named_on": on})
+    return GENERIC, reading.model_copy(update={"source": "unnamed", "named_on": ""})
 
 
 _DECIDED_BEFORE = ("managed", "ticker_map", "earlier")
@@ -219,11 +293,19 @@ _DECIDED_BEFORE = ("managed", "ticker_map", "earlier")
 
 def unnamed_why(obj, keys: dict[str, str]) -> str:
     """Why a shelf idea (or a dive) has no sector key, "" when it has one: a
-    configured key, "generic" an analysis chose with its reason, or a
+    configured key an analysis, a managed record or the ticker map decided
+    (`key_decided`), "generic" an analysis chose with its reason, or a
     "generic" decided before the analysis (a managed record's). An idea
-    shelved before FIX-026 under "generic" counts as unnamed."""
+    shelved before FIX-026 under "generic" counts as unnamed, and so does one
+    filed under a key FIX-011's Yahoo-label table set (FIX-030)."""
     if key_named(obj, keys):
-        return ""
+        if key_decided(obj, keys):
+            return ""
+        key = str(obj.sector).strip().lower()
+        r = getattr(obj, "sector_reading", None)
+        if r is not None and r.source == "ticker_map":
+            return f'filed as "{key}" from the ticker map, which no longer has it'
+        return f'filed as "{key}" from Yahoo\'s labels before an analysis named sectors'
     sector = str(getattr(obj, "sector", "") or "").strip()
     generic = sector.lower() == GENERIC
     r = getattr(obj, "sector_reading", None)

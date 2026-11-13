@@ -29,9 +29,13 @@ Industry and market cap come from one yfinance `.info` call per listing and
 are kept in data/peer_profiles.json for `peers.cache_days` days. A build looks
 up at most `peers.max_lookups` listings that are missing or older than that:
 the stock itself first, then missing before old, and its registry sector's
-members first within each. It stops after three failed lookups in a row. An
-old profile is used until it is refreshed. Once the known symbols are
-profiled, choosing peers makes no network call.
+members first within each. It stops after three failed lookups in a row. A
+failed lookup is never stored, including the one yfinance hides: a market cap
+with no profile (`lookup_profile`); one stored before FIX-030 is due again
+(`hidden_failure`) and never read as an industry. An old profile is used until it is
+refreshed. Once the known symbols are profiled, choosing peers makes no
+network call. A save merges with the file under a file lock, so the two
+uvicorn workers keep each other's lookups (FIX-030).
 """
 from __future__ import annotations
 
@@ -51,13 +55,16 @@ RULE = "same_industry_nearest_market_cap"
 # Relative, like data/yf_symbol_cache.json: the Railway volume layout under /app.
 PROFILE_PATH = Path("data/peer_profiles.json")
 FAILURES_BEFORE_STOP = 3
+# The other worker's save holds the file lock for one read and one write.
+LOCK_TIMEOUT_S = 10.0
 _NATIVE_SETTINGS = (
     "backend.sectors.automobile.config.settings",
     "backend.sectors.banking_bfsi.config.settings",
     "backend.sectors.it_sector.config.settings",
     "backend.sectors.renewable_energy.config.settings",
 )
-# One build fills the file at a time; parallel analyses wait, then read it.
+# One build per process fills the file at a time; parallel analyses wait, then
+# read it. Across processes the save's file lock and merge keep both fills.
 _LOCK = threading.Lock()
 
 
@@ -154,18 +161,33 @@ def _registry_key(ticker: str) -> str:
 # Profiles: industry and market cap per listing, cached on disk
 # ---------------------------------------------------------------------------
 
+class ProfileCallFailed(RuntimeError):
+    """Yahoo answered a quote but not the company profile (FIX-030)."""
+
+
 def lookup_profile(provider_symbol: str) -> dict:
     """One yfinance `.info` call for a provider symbol (e.g. "SUNPHARMA.NS"):
     {"industry", "sector", "market_cap"}, "" or None when Yahoo gives none.
-    Raises when the call fails, so a failure is never cached as an answer."""
+    Raises when the call fails, so a failure is never cached as an answer.
+
+    yfinance hides an HTTP error of Yahoo's profile endpoint (quoteSummary)
+    and returns what the quote endpoint gave: a market cap with neither an
+    industry nor a sector. That answer is a failure, not "no industry", so it
+    raises `ProfileCallFailed` and the next build asks again (FIX-030). A
+    symbol Yahoo does not list answers neither a profile nor a cap, and that
+    answer is kept. Example: SUNPHARMA.NS answering a cap of ₹4 L Cr and no
+    industry raises; ACCCEMENT.NS answering nothing is stored as no industry."""
     import yfinance as yf
 
     info = yf.Ticker(provider_symbol).info or {}
-    return {
+    profile = {
         "industry": str(info.get("industry") or "").strip(),
         "sector": str(info.get("sector") or "").strip(),
         "market_cap": _cap(info.get("marketCap")),
     }
+    if profile["market_cap"] is not None and not (profile["industry"] or profile["sector"]):
+        raise ProfileCallFailed(f"Yahoo gave {provider_symbol}'s market cap but no profile")
+    return profile
 
 
 def _cap(value) -> float | None:
@@ -190,15 +212,50 @@ def _load_profiles() -> dict[str, dict]:
     return {str(k): v for k, v in profiles.items() if isinstance(v, dict)}
 
 
-def _save_profiles(profiles: dict[str, dict]) -> None:
+def _newer(a: dict, b: dict) -> bool:
+    """True when profile `a` was looked up after `b`; an undatable one is
+    older than any dated one."""
+    def day(p: dict) -> str:
+        return str(p.get("as_of") or "")[:10]
+    return day(a) > day(b)
+
+
+def merge_profiles(mine: dict[str, dict], on_file: dict[str, dict]) -> dict[str, dict]:
+    """The file's profiles with this build's laid over them: for a symbol in
+    both, the later lookup (`as_of`) wins, this build's on a tie. Example: the
+    file holds X looked up today by the other worker and Y from 1 Nov; this
+    build read the file before that and looked up Z. Saved: X (today, the
+    other worker's), Y and Z."""
+    merged = dict(on_file)
+    for symbol, profile in mine.items():
+        if symbol not in merged or not _newer(merged[symbol], profile):
+            merged[symbol] = profile
+    return merged
+
+
+def _save_profiles(profiles: dict[str, dict]) -> dict[str, dict]:
+    """Merge `profiles` into the file and write it; returns what was saved.
+
+    Production runs two uvicorn workers, and `_LOCK` holds only within one.
+    So the save takes a file lock, reads the file again, merges
+    (`merge_profiles`) and replaces it atomically through a unique temporary
+    file (FIX-030): two workers filling at once keep both fills, and a reader
+    never sees half a file. When the lock or the write fails, nothing is
+    written and the profiles are looked up again by a later build."""
+    from filelock import FileLock, Timeout
+
+    from core.utils.atomic_io import atomic_write_json
+
     try:
         PROFILE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp = PROFILE_PATH.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"version": 1, "profiles": profiles}, sort_keys=True),
-                       encoding="utf-8")
-        tmp.replace(PROFILE_PATH)
-    except OSError as exc:
+        with FileLock(str(PROFILE_PATH) + ".lock", timeout=LOCK_TIMEOUT_S):
+            merged = merge_profiles(profiles, _load_profiles())
+            atomic_write_json(PROFILE_PATH, {"version": 1, "profiles": merged},
+                              indent=None, sort_keys=True)
+        return merged
+    except (OSError, Timeout) as exc:
         logger.warning("[peers] %s not written: %s", PROFILE_PATH, exc)
+        return profiles
 
 
 def _age_days(profile: dict, today: date) -> int | None:
@@ -208,9 +265,19 @@ def _age_days(profile: dict, today: date) -> int | None:
         return None
 
 
+def hidden_failure(profile: dict | None) -> bool:
+    """True for a stored answer with a market cap and neither an industry nor
+    a sector: a profile call yfinance hid (`lookup_profile`), stored before
+    FIX-030. It is looked up again and never read as an industry."""
+    p = profile or {}
+    return (_cap(p.get("market_cap")) is not None
+            and not str(p.get("industry") or "").strip()
+            and not str(p.get("sector") or "").strip())
+
+
 def _due(profiles: dict[str, dict], symbol: str, today: date, days: int) -> bool:
     profile = profiles.get(symbol)
-    if profile is None:
+    if profile is None or hidden_failure(profile):
         return True
     age = _age_days(profile, today)
     return age is None or age > days
@@ -314,10 +381,10 @@ def _choose(t: str, sector: str, today: date, universe: Iterable[str] | None,
     with _LOCK:
         profiles = _load_profiles()
         if _refresh(profiles, me.symbol, my_key, candidates, today, lookup):
-            _save_profiles(profiles)
+            profiles = _save_profiles(profiles)
 
     mine = profiles.get(me.symbol)
-    if mine is None:
+    if mine is None or hidden_failure(mine):
         return PeerChoice(t, (), "", f"the industry of {t} could not be looked up")
     industry = str(mine.get("industry") or "").strip()
     if not industry:

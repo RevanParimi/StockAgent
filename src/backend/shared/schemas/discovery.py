@@ -47,8 +47,12 @@ class SectorReading(BaseModel):
     yahoo_gap: bool = False                # Yahoo gave neither a sector nor an industry
     # Where `sector` came from: "analysis" (this answer), "managed" (the
     # managed record), "ticker_map" (the registry's map), "earlier" (the
-    # idea's key, named before), "unnamed" (nothing named one).
+    # idea's key, named before by an analysis), "unnamed" (nothing named one).
     source: str = "analysis"
+    # FIX-030: the ISO date of the dive whose analysis named the stored key,
+    # carried while later dives keep it ("earlier"); "" = no analysis named
+    # it (a managed or ticker-map key, none, or a reading from before FIX-030).
+    named_on: str = ""
 
 
 class DeepDiveResult(BaseModel):
@@ -85,6 +89,9 @@ class ShelfIdea(BaseModel):
     industry: str = ""
     # FIX-026: how `sector` was named; None = shelved before FIX-026.
     sector_reading: SectorReading | None = None
+    # FIX-030: re-dives in a row that left the idea with no sector key;
+    # `discovery.max_unnamed_redives` of them drop it. 0 once one names it.
+    unnamed_redives: int = 0
     added: str                             # ISO date
     conviction: float
     verdict: str = ""

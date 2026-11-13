@@ -981,6 +981,9 @@ DISCOVERY_DEEP_DIVE_COUNT: int = int(cfg("discovery.deep_dive_count", fallback=1
 DISCOVERY_SHELF_SIZE: int = int(cfg("discovery.shelf_size", fallback=10))
 DISCOVERY_MAX_IDEAS_PER_SECTOR: int = int(cfg("discovery.max_ideas_per_sector", fallback=0))
 DISCOVERY_REDIVE_AFTER_DAYS: int = int(cfg("discovery.redive_after_days", fallback=0))
+# FIX-030: re-dives in a row that leave an idea with no sector key before it
+# is dropped with the reason; 0 = no limit (re-dived every week while unnamed).
+DISCOVERY_MAX_UNNAMED_REDIVES: int = int(cfg("discovery.max_unnamed_redives", fallback=2))
 DISCOVERY_WATCHLIST_BUYS: bool = bool(cfg("discovery.watchlist_buys", fallback=False))
 DISCOVERY_STALE_DAYS: int = int(cfg("discovery.stale_days", fallback=60))
 DISCOVERY_MIN_CONVICTION: float = float(cfg("discovery.min_conviction", fallback=0.55))

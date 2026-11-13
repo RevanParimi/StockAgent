@@ -128,7 +128,7 @@ def test_a_drug_maker_is_named_pharma_by_its_analysis(world):
     assert world["analyst"].graphs == ["generic"]       # no native graph for Healthcare
     assert r.sector_reading == SectorReading(answer="pharma", reason="Makes generic formulations.",
                                              yahoo_fits=True, problem="", yahoo_gap=False,
-                                             source="analysis")
+                                             source="analysis", named_on="2026-11-14")
     assert (r.market_sector, r.industry) == ("Healthcare", "Drug Manufacturers - Specialty & Generic")
     # The one call carried the question: every configured key with its name,
     # and Yahoo's labels as evidence.
@@ -545,16 +545,21 @@ def test_property_only_a_configured_key_or_a_decided_generic_is_offered():
     """2,000 random shelves of 8 fresh ideas with random keys and readings.
     The rule, stated apart from the code: an idea is offered under its
     managed record's key when managed; otherwise exactly when its key is a
-    configured one (any case), or it is "generic" with a reading that has no
-    problem (an analysis's choice, or a key decided before the analysis);
-    every other idea is excluded as unnamed."""
+    configured one (any case) that was decided (FIX-030: its reading records
+    the day an analysis named it, or is an answer of that very key without a
+    problem, or came from a managed record; none of S0-S7 is in the ticker
+    map), or it is "generic" with a reading that has no problem (an
+    analysis's choice, or a key decided before the analysis); every other
+    idea is excluded as unnamed."""
     rng = random.Random(2026)
     pool = ["pharma", "metals", "generic", "biotech", "", "Pharma", "sector00"]
     readings = [None, SectorReading(answer="generic", reason="none fits"),
                 SectorReading(answer="pharma"),
                 SectorReading(answer="Pharmaceuticals", problem="not_a_key", source="unnamed"),
                 SectorReading(problem="no_answer", source="unnamed"),
-                SectorReading(answer="infra", source="managed")]
+                SectorReading(answer="infra", source="managed"),
+                SectorReading(answer="power", source="earlier", named_on="2026-10-03"),
+                SectorReading(answer="metals", source="earlier")]
     for trial in range(2000):
         ideas = [ShelfIdea(symbol=f"S{k}", sector=rng.choice(pool) or "generic",
                            added="2026-11-07", dived="2026-11-07", conviction=0.7,
@@ -568,9 +573,13 @@ def test_property_only_a_configured_key_or_a_decided_generic_is_offered():
         for idea in ideas:
             key = idea.sector.strip().lower()
             r = idea.sector_reading
+            decided = r is not None and (
+                bool(r.named_on) or r.source == "managed"
+                or (not r.problem and r.answer.strip().lower() == key))
             if idea.symbol in managed:
                 want = managed[idea.symbol]
-            elif key in KEYS or (key == "generic" and r is not None and not r.problem):
+            elif (key in KEYS and decided) or (key == "generic" and r is not None
+                                               and not r.problem):
                 want = idea.sector
             else:
                 want = None

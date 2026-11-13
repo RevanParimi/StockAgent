@@ -214,10 +214,11 @@ count:
   review and the monthly forecast write its predictions there;
 - otherwise a shelf idea's own key, the one its deep dive's analysis named
   from the configured list (`core/discovery/sector_naming.py`). An idea with
-  no key named yet (an empty, malformed or unknown answer, or one shelved as
-  `generic` before the analysis named sectors) is not a candidate: it waits
-  for the re-dive that names one, since neither sector cap can be checked
-  for it. A `generic` the analysis chose, with its reason, is a candidate;
+  no key named yet (an empty, malformed or unknown answer, one shelved as
+  `generic` before the analysis named sectors, or a key the old Yahoo-label
+  table set from 2 to 10 Nov) is not a candidate: it waits for the re-dive
+  that names one, since neither sector cap can be checked for it. The second
+  re-dive in a row that names none drops the idea. A `generic` the analysis chose, with its reason, is a candidate;
 - a watchlist stock that is not managed: its item sector when that is a
   configured key, else the registry's ticker map's; with neither it is not a
   candidate. No Yahoo table and never a fixed `generic`.

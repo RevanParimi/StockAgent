@@ -139,7 +139,7 @@ its own data, and the typed result says how (KT section 4).*
 | IPO feeds | `services/data/fetchers/ipo.py`, `ipo_offer.py`, `ipo_bids.py`, `ipo_gmp.py` | Calendar, offer documents, bids; grey-market price behind its own switch |
 | Fundamentals | `services/data/fetchers/fundamentals.py` | yfinance statements, bank-format aware |
 | Macro | `services/data/fetchers/macro.py` | Currency, crude, commodities; the brief's "Before the open" figures |
-| MF herding | `services/data/fetchers/mf_herding.py` | AMFI sector-ETF momentum |
+| MF herding | `services/data/fetchers/mf_herding.py` | AMFI sector-ETF momentum for the four native sectors; any other sector reads none ("no sector ETFs") |
 | News | `services/data/fetchers/news.py` | Serper news with recency bounds; NewsAPI |
 | Symbol resolver | `src/backend/shared/data/fetchers/symbol_resolver.py` | `resolve_identity`: the registry's symbol, else the NSE listing; a registered ticker is never self-healed |
 | Instrument registry parser | `src/backend/shared/data/instruments.py` | Effective-dated identity records |

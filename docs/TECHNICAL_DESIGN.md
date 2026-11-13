@@ -186,6 +186,7 @@ resolved at import, so editing a file does not imply live reconfiguration.
 | `rl.learning_mode: adapt` | Learning switch, env `RL_LEARNING_MODE`. `adapt` lets learned weights and lesson emphasis move decisions; `observe` contains them (section 5). Any other value fails closed to `observe`. Production sets `observe`. |
 | `decision_gate.mode: record` | Essential-data gate switch, env `DECISION_GATE_MODE`. `record` computes and records the gate everywhere and changes nothing; `enforce` withholds verdicts, forecasts, learning and new-risk buys that rest on unverified data or an unresolved identity (sections 4–6). Any other value fails closed to `enforce`. |
 | `peers.count: 5`, `peers.minimum: 3` | Valuation peers: at most 5 same-industry peers, none with fewer than 3 (section 4). `peers.cache_days: 30` and `peers.max_lookups: 25` bound the Yahoo lookups behind them. |
+| `discovery.max_unnamed_redives: 2` | A shelf idea still without a sector key after this many re-dives in a row is dropped with the reason (section 8); 0 = no limit. |
 | [`config/instruments.yaml`](../config/instruments.yaml) | The instrument registry: effective-dated records of which provider symbol each listed ticker is priced from, on which price basis, and whether its identity is resolved (section 4). Evidence is needed to resolve an identity, never to quarantine one. It lists TATAMOTORS and HEXAWARE as unresolved, GATI and INOXLEISUR as delisted, and two plain aliases and five NSE renames as resolved. Quarantine acts through `decision_gate.mode`. |
 | `advisor.exit_rule: shadow` | Which exit rule sells (section 6). `legacy`: the price-path rule acts and nothing is compared. `shadow`: it still acts, and both rules' verdicts are recorded. `evidence`: the evidence rule acts. Any other value reads as `shadow`. The owner switches only on the weekly scorecard's gate; `legacy` is the rollback. |
 | `rl.control_lane_enabled`, `rl.scorecard_enabled`: true | Control/evaluation paths configured; not proof of valid prospective comparison. |
@@ -206,7 +207,7 @@ evidence.
 | `data/predictions/<sector>/<ticker>/` | PredictionStore: envelopes, feedback, controls, weight memory, lessons and dossier, plus `<TICKER>_weight_observations.json` (observe-mode proposals). RL writes; advisor, evaluation and UI read. A ticker's history belongs to `<managed sector>/<TICKER>` (below). |
 | `_shared_ledger.json` per sector; `_market_ledger.json` at prediction root | Shared lessons can affect more than one ticker; bad attribution can propagate. |
 | `data/managed_tickers.json` | The managed list: each scheduled ticker's sector and enabled flag. Disabling a ticker keeps its history; removing it deletes the history. |
-| `data/peer_profiles.json` | Yahoo industry and market cap per listing, with its date, for the valuation peers (section 4). A cache: deleting it costs only lookups. |
+| `data/peer_profiles.json` | Yahoo industry and market cap per listing, with its date, for the valuation peers (section 4). Both workers write it: each save takes `peer_profiles.json.lock`, merges with the file and replaces it atomically. A cache: deleting it costs only lookups. |
 | `data/prediction_quarantine/<migration>/` | Stores moved out of the live tree by the ownership quarantine, with their `lineage.json`. Inside `data/`, so the nightly backup keeps them; outside the tree the evaluators walk. |
 | `data/portfolio/<user>/` | PortfolioStore: holdings/cash, advice and transaction JSONL, value history, dated digests, briefs and weekly reviews, `weekly_scorecard.jsonl` (one results row per ISO week, written once; section 7) and `exit_shadow.jsonl` (both exit rules' verdicts, one row per holding per review day, written once; section 6). The nightly auditor's `advice_outcomes.jsonl` sits beside them. |
 | `data/ipo/` | Historical issue facts and captured demand snapshots; reports derive from these records. |
@@ -516,7 +517,18 @@ one rule for every graph ([peers.py](../services/data/context/peers.py)):
   at most `peers.max_lookups` (25) missing or older profiles: the stock
   first, then its registry sector's members. Three failures in a row stop
   the lookups until a later build. Once the known symbols are profiled,
-  choosing peers makes no network call; the peers' P/E calls are as before.
+  choosing peers makes no network call; the peers' P/E calls are as before;
+- a failed lookup is never stored. yfinance hides an error of Yahoo's
+  profile endpoint and returns the quote endpoint's answer: a market cap
+  with neither an industry nor a sector. That answer counts as a failure,
+  so the next build asks again; such an answer already in the file is looked
+  up again and never read as "no industry". A code Yahoo does not list
+  answers neither a profile nor a cap, and that answer is kept. In a live read of the 200
+  registry listings on 12 Nov, no healthy answer had a cap without an
+  industry; the seven without an industry had no cap either;
+- the two Uvicorn workers can fill the file at once. Each save takes a file
+  lock, merges with the file (for a listing in both, the later lookup wins)
+  and replaces it atomically, so neither worker's lookups are lost.
 
 **Example:** SUNPHARMA's industry is "Drug Manufacturers - Specialty &
 Generic", so its peers are pharma companies, nearest cap first. Before this
@@ -2330,8 +2342,9 @@ The shelf exists to supply enough checked, varied ideas to fill and keep about
 4. **Re-dives first.** An active idea whose stock the autopilot sold on or after
    its latest dive comes first, since a new dive is all that can bring it back.
    Then unverified ideas: shelved before the decision gate existed (no
-   `data_gate`), with no sector key named (below) or with no verdict stored,
-   which nothing buys until a re-dive supplies it. Then ideas whose latest dive is older than
+   `data_gate`), with no sector key named (below; a key the old Yahoo-label
+   table set counts as not named) or with no verdict stored, which nothing
+   buys until a re-dive supplies it. Then ideas whose latest dive is older than
    `discovery.redive_after_days` (30), each group oldest first. A stock analysed on 24 Oct and sold on 27 Oct is
    re-dived on Sat 31 Oct, not Sat 28 Nov. A sale the user made by hand and a
    TRIM that leaves shares do not count. Re-dives take the budget
@@ -2341,7 +2354,13 @@ The shelf exists to supply enough checked, varied ideas to fill and keep about
    their start. A re-dive whose analysis is not actionable, whose conviction
    falls below the floor, or whose verdict is no longer a BUY or STRONG BUY,
    drops the idea with the reason ("re-dive 2026-10-31: its deep dive rates it
-   NEUTRAL, not a BUY"). A new dive that is not a BUY is not shelved either
+   NEUTRAL, not a BUY"). So does the second re-dive in a row
+   (`discovery.max_unnamed_redives`, 2) that leaves an idea without a sector
+   key: "re-dive 2026-11-28: no sector key after 2 re-dives in a row (the
+   analysis gave no sector answer)". An idea no analysis names therefore
+   costs three analyses (the dive that shelved it and two re-dives), not one
+   every Saturday, and the dive memo keeps it from a new dive for 30 days. A
+   re-dive that names its key resets the count. A new dive that is not a BUY is not shelved either
    (`not_buy` in the run's summary): the shelf holds the ideas the analysis
    rates BUY, and the conviction floor reads a separate number.
 5. **Deep dives.** `discovery.deep_dive_count` (20) bounds the analyst calls
@@ -2515,22 +2534,36 @@ there and promotion keeps that record; else the registry's ticker map's (our
 configuration); else the key an earlier analysis named for its shelf idea.
 Only a stock with none of these takes the answer. A re-dive therefore names
 an idea that has no key yet, or `generic`, and never changes a named one; the
-paper lane of an idea it names then writes under the new key. The call needs
+paper lane of an idea it names then writes under the new key. Each reading
+records the day an analysis named the key (`named_on`), and a re-dive that
+keeps the key carries that day, so a later answer that disagrees, or none,
+does not unsettle it. An idea's key counts as decided only when an
+analysis named it, a managed record held it at the dive, or the ticker map
+has it. The ideas shelved from 2 to 10 Nov outside the ticker map carry a
+key FIX-011's Yahoo-label table chose ("Healthcare" filed a hospital chain
+as `pharma`). Such an idea counts as unnamed: it is not offered, not
+counted in a sector cap, and the watchdog names it. It is first among
+Saturday's re-dives, and that analysis names its key as for a legacy
+`generic` idea. A table key that a later analysis answered itself is
+decided. The call needs
 a graph before it answers: a stock with a key runs that key's graph; another
 runs one of the four native graphs when Yahoo's industry is clearly theirs
 ("Auto Parts", "Software - Application", "Utilities - Renewable", or Yahoo's
 "Financial Services" outside insurance), else the generic graph. That guess
 only chooses the graph and is never stored as a key. The answer reads the
-same data bundle as the analysis. Its peers share the stock's own Yahoo
-industry (section 4), but the generic graph's fund-flow line still reads the
-automobile ETFs (**Planned:** FIX-030). A generic-graph company can
-therefore be answered `automobile`. Yahoo's labels then disagree, so the dive
-counts as disputed and the watchdog names it.
+same data bundle as the analysis, which names no other sector's companies or
+funds. Its peers share the stock's own Yahoo industry (section 4). Its
+mutual-fund flow line reads the sector's own ETFs; the four native sectors
+have lists, and every other sector reads none, so the generic graph's
+flows section says "MF herding: no sector ETFs for generic". A dive whose
+analysis says Yahoo's labels do not fit counts as disputed, and the
+watchdog names it.
 
 Nothing is silently `generic`. An empty, malformed or unknown answer ("not
 one of our keys") leaves the idea under the generic graph with the problem
 recorded. It is shelved, so its paper lane runs and Saturday's run re-dives it
-first, but nothing buys it until an analysis names its key: neither cap can
+first (the second unnamed re-dive in a row drops it; step 4), but nothing
+buys it until an analysis names its key: neither cap can
 be checked for a stock whose sector is not known. A manual promote of such an
 idea is refused (409). An idea shelved as `generic` before the analysis named
 sectors counts as unnamed too. The weekly run's summary (`sectors`) names
@@ -3348,8 +3381,7 @@ production observations as well.
 All five graphs already run one bundle and one reasoning-model call; the
 LangGraph pool is only a fallback. They differ mainly in five scoring schemes
 (37 dimension slots under 24 names), and the LLM re-scores numbers the code
-has already computed. Generic-graph stocks read the automobile ETFs' fund
-flows (FIX-030), and missing data is scored 0.5. The
+has already computed. Missing data is scored 0.5. The
 [one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md),
 adopted on 2026-09-26, replaces the per-sector graphs in four parts:
 

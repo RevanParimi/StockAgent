@@ -432,12 +432,15 @@ def test_a_close_that_is_not_a_number_is_skipped(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def _idea(sym, price, conviction, sector, dived, source="discovery"):
+    """Its analysis named `sector` (FIX-030: a key no analysis named is not offered)."""
+    from backend.shared.schemas.discovery import SectorReading
     return ShelfIdea(symbol=sym, sector=sector, added=dived.isoformat(),
                      dived=dived.isoformat(), source_screen_date=dived.isoformat(),
                      conviction=conviction, data_gate="actionable", close_at_add=price,
                      entry_low=round(price * 0.96, 2), entry_high=round(price * 1.04, 2),
                      invalidation_level=round(price * 0.90, 2), thesis=f"why {sym}",
-                     source=source, verdict="BUY")
+                     source=source, verdict="BUY",
+                     sector_reading=SectorReading(answer=sector, reason="stub analysis"))
 
 
 @pytest.mark.parametrize("mode", ["record", "enforce"])

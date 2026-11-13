@@ -27,6 +27,11 @@ and logs a warning — all agents fall back to Serper-only context.
 
 Sector ETF scheme codes are hard-coded from known AMFI scheme registrations.
 Run `list_sector_etfs(sector)` to search for alternatives if codes change.
+
+A sector without a list (the generic graph, and every key without a native
+graph) has no sector ETFs: its result says so ("no_sector_etfs") and no
+other sector's funds are read (FIX-030). Before, it read automobile's, so a
+hospital chain's bundle carried auto-ETF flows.
 """
 
 from __future__ import annotations
@@ -65,6 +70,8 @@ _SECTOR_ETF_CODES: dict[str, list[tuple[int, str]]] = {
 }
 
 _MFAPI_BASE = "https://api.mfapi.in/mf"
+# The `error` of a sector with no ETF list: nothing to read, not a failure.
+NO_SECTOR_ETFS = "no_sector_etfs"
 _TIMEOUT    = 10
 
 # ---------------------------------------------------------------------------
@@ -127,8 +134,10 @@ def get_sector_mf_herding(sector: str, force_refresh: bool = False) -> dict:
 
     Parameters
     ----------
-    sector : str — one of: automobile | banking_bfsi | it_sector | renewable_energy
-                   Falls back to automobile for unknown sectors.
+    sector : str — automobile | banking_bfsi | it_sector | renewable_energy have
+                   ETF lists. Any other sector has none: `error` is
+                   "no_sector_etfs", with no network call and no other
+                   sector's funds (FIX-030).
 
     Returns dict with keys:
         sector             : str
@@ -139,6 +148,18 @@ def get_sector_mf_herding(sector: str, force_refresh: bool = False) -> dict:
         fetched_at         : str (ISO week key)
         error              : str | None
     """
+    etf_codes = _SECTOR_ETF_CODES.get(sector, [])
+    if not etf_codes:
+        return {
+            "sector":             sector,
+            "avg_momentum_pct":   None,
+            "institutional_flow": "UNKNOWN",
+            "fund_count":         0,
+            "individual":         [],
+            "fetched_at":         _week_key(),
+            "error":              NO_SECTOR_ETFS,
+        }
+
     key = f"{_week_key()}:{sector}"
     if not force_refresh and key in _CACHE:
         return _CACHE[key]
@@ -152,11 +173,6 @@ def get_sector_mf_herding(sector: str, force_refresh: bool = False) -> dict:
         "fetched_at":         _week_key(),
         "error":              None,
     }
-
-    etf_codes = _SECTOR_ETF_CODES.get(sector, _SECTOR_ETF_CODES.get("automobile", []))
-    if not etf_codes:
-        result["error"] = "no_etf_codes_for_sector"
-        return result
 
     momenta: list[float] = []
     individual: list[dict] = []

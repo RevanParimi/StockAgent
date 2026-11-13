@@ -21,10 +21,13 @@ PR-004, enough diverse, checked ideas to fill 12 holdings:
   refreshes the idea in place, or drops it with the reason when its analysis
   is not actionable, its conviction falls below the floor or its verdict is
   no longer a BUY (FIX-029). It names the
-  key of an idea that has none (or "generic"), and never changes a named one
-  (FIX-026). The rotation clock counts from the latest dive, so an idea that
-  keeps passing its monthly re-dive stays; one that fails is dropped, and one
-  that cannot be re-dived ages out.
+  key of an idea that has none (or "generic", or one FIX-011's Yahoo-label
+  table set), and never changes a decided one (FIX-026, FIX-030). The
+  rotation clock counts from the latest dive, so an idea that keeps passing
+  its monthly re-dive stays; one that fails is dropped, and one that cannot
+  be re-dived ages out. An idea still unnamed after
+  DISCOVERY_MAX_UNNAMED_REDIVES re-dives in a row is dropped with the reason
+  (FIX-030), so it does not take a weekly re-dive for good.
 - Only a dive the analysis rates BUY or STRONG BUY is shelved (FIX-029);
   the conviction floor reads the model's score, the verdict a separate number.
 - An idea NSE lists as something other than a company is dropped.
@@ -53,7 +56,7 @@ from core.intelligence.rl.nse_calendar import IST, session_close_at
 from backend.shared.pipeline import decision_gate as dg
 from backend.shared.schemas.discovery import DeepDiveResult, Shelf, ShelfIdea
 from backend.shared.schemas.portfolio import WatchlistItem
-from core.discovery.sector_naming import configured_sectors, key_named, unnamed_why
+from core.discovery.sector_naming import configured_sectors, key_decided, unnamed_why
 from core.portfolio.promotion import promote_symbol
 from core.portfolio.store import PortfolioStore
 
@@ -63,10 +66,11 @@ logger = logging.getLogger(__name__)
 def cap_key(idea, keys: dict[str, str] | None = None) -> str:
     """The sector max_ideas_per_sector counts: the idea's sector key, the one
     SA-050's sector cap counts (FIX-026). "" = never capped: no key named
-    yet, or "generic". Example: two drug makers shelved as "pharma" share a
-    cap whatever Yahoo calls them."""
+    yet (a key FIX-011's Yahoo-label table set included, FIX-030), or
+    "generic". Example: two drug makers shelved as "pharma" share a cap
+    whatever Yahoo calls them."""
     keys = configured_sectors() if keys is None else keys
-    return str(idea.sector).strip().lower() if key_named(idea, keys) else ""
+    return str(idea.sector).strip().lower() if key_decided(idea, keys) else ""
 
 
 def last_dived(idea) -> date | None:
@@ -474,12 +478,22 @@ class ShelfStore:
         restarts the rotation clock.
 
         FIX-026: the re-dive's sector reading replaces the idea's. Its key
-        changes only when the idea has no configured key yet (unnamed, or
-        "generic"): a named key is decided once, so a different answer is
-        recorded, never applied. The paper lane then writes under the new key.
-        Example: an idea filed as "generic" in October, re-dived with the
-        answer "pharma", becomes a "pharma" idea; one named "pharma" stays
-        "pharma" whatever a later answer says."""
+        changes only when the idea has no decided key yet (unnamed, "generic",
+        or, FIX-030, a key FIX-011's Yahoo-label table set: `key_decided`): a
+        decided key is decided once, so a different answer is recorded, never
+        applied. The paper lane then writes under the new key. Example: an
+        idea filed as "generic" in October, re-dived with the answer
+        "pharma", becomes a "pharma" idea; one named "pharma" stays "pharma"
+        whatever a later answer says.
+
+        FIX-030: a re-dive that leaves the idea with no key counts one more
+        in a row (`unnamed_redives`; one that names it resets the count to
+        0). The `discovery.max_unnamed_redives`-th (2) drops it with the
+        reason, so an idea no analysis names costs three analyses, not one a
+        week. Example: shelved 14 Nov with no answer, no answer on 21 Nov
+        (1) and 28 Nov (2): dropped on 28 Nov with "re-dive 2026-11-28: no
+        sector key after 2 re-dives in a row (the analysis gave no sector
+        answer)". The dive memo keeps it from a new dive for 30 days."""
         shelf = self.load()
         by_symbol = {d.symbol: d for d in dives}
         refreshed: list[str] = []
@@ -514,10 +528,20 @@ class ShelfStore:
                 idea.market_sector, idea.industry = dive.market_sector, dive.industry
             named = ""
             if dive.sector_reading is not None:
-                if dive.sector != idea.sector and not key_named(idea, keys):
+                if dive.sector != idea.sector and not key_decided(idea, keys):
                     named = f", sector {idea.sector} -> {dive.sector}"
                     idea.sector, idea.graph = dive.sector, dive.graph
                 idea.sector_reading = dive.sector_reading
+            unnamed = unnamed_why(idea, keys)
+            idea.unnamed_redives = idea.unnamed_redives + 1 if unnamed else 0
+            limit = settings.DISCOVERY_MAX_UNNAMED_REDIVES
+            if unnamed and 0 < limit <= idea.unnamed_redives:
+                reason = (f"re-dive {dive.dive_date}: no sector key after "
+                          f"{idea.unnamed_redives} re-dives in a row ({unnamed})")
+                idea.status = "dropped"
+                dropped[idea.symbol] = reason
+                self._event("dropped", idea.symbol, reason)
+                continue
             refreshed.append(idea.symbol)
             self._event("redived", idea.symbol,
                         f"conviction {before:.2f} -> {dive.conviction:.2f}, "

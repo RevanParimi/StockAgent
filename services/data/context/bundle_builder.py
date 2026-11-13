@@ -406,7 +406,10 @@ def _fetch_flows_sentiment(query: StockQuery, sector: str) -> FetchResult:
     """NSE bulk deals + FII/DII + MF herding — NO Serper here.
 
     `empty` when none of the three came back (the "" case B2 was built to
-    catch); `ok` otherwise, naming any part that did not come back.
+    catch); `ok` otherwise, naming any part that did not come back. The MF
+    herding part reads `sector`'s own ETFs; a sector without a list (the
+    generic graph) reads none, and `reason` says "MF herding: no sector ETFs
+    for generic" (FIX-030), never another sector's funds.
     """
     parts: list[str] = []
     missing: list[str] = []
@@ -436,10 +439,15 @@ def _fetch_flows_sentiment(query: StockQuery, sector: str) -> FetchResult:
         missing.append(f"FII/DII: {type(exc).__name__}")
 
     try:
-        from services.data.fetchers.mf_herding import get_sector_mf_herding, format_mf_herding_context
-        mf_ctx = format_mf_herding_context(get_sector_mf_herding(sector or "automobile"))
+        from services.data.fetchers.mf_herding import (
+            NO_SECTOR_ETFS, format_mf_herding_context, get_sector_mf_herding)
+        herding = get_sector_mf_herding(sector)
+        mf_ctx = format_mf_herding_context(herding)
         if mf_ctx:
             parts.append(mf_ctx)
+        elif (herding or {}).get("error") == NO_SECTOR_ETFS:
+            # FIX-030: no other sector's funds stand in for this one's.
+            missing.append(f"MF herding: no sector ETFs for {sector or 'this sector'}")
         else:
             missing.append("MF herding: no data")
     except Exception as exc:

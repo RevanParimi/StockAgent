@@ -30,8 +30,8 @@ from core.config import settings
 from backend.shared.pipeline import decision_gate as dg
 from backend.shared.schemas.discovery import DeepDiveResult, DiscoveryCandidate
 from core.discovery.sector_naming import (
-    configured_sectors, decide_key, graph_guess, known_key, read_answer, sector_question,
-    unnamed_why)
+    analysis_named_on, configured_sectors, decide_key, graph_guess, known_key, read_answer,
+    sector_question, unnamed_why)
 from core.discovery.shelf import ShelfStore
 from core.discovery.universe import COMPANY, instrument_kind
 from core.intelligence.rl.workflows.sector_router import NATIVE_SECTORS, get_orchestrator
@@ -98,10 +98,11 @@ def run_deep_dives(
     takes its latest close in the EOD window.
 
     Each call also names the stock's sector key (FIX-026): a stock that has
-    one keeps it (its managed record's, the ticker map's, or its idea's
-    named key) and runs that key's graph; another runs `graph_guess`'s graph
-    and takes the answer, checked against the configured keys. The dive
-    records how (`sector_reading`)."""
+    one keeps it (its managed record's, the ticker map's, or the key an
+    earlier analysis named for its idea) and runs that key's graph; another
+    runs `graph_guess`'s graph and takes the answer, checked against the
+    configured keys. The dive records how (`sector_reading`), and which
+    dive's analysis named the key (`named_on`, FIX-030)."""
     limit = max_n or settings.DISCOVERY_DEEP_DIVE_COUNT
     try:
         tickers = [t for t in load_managed_tickers() if isinstance(t, dict)]
@@ -154,13 +155,14 @@ def run_deep_dives(
         attempted.add(cand.symbol)
         try:
             classified = market_classification(cand.symbol)
-            known = known_key(cand.symbol, managed=managed_keys,
-                              idea=ideas.get(cand.symbol), keys=keys)
+            idea = ideas.get(cand.symbol)
+            known = known_key(cand.symbol, managed=managed_keys, idea=idea, keys=keys)
             route = known[0] or graph_guess(classified)
             report = get_orchestrator(route).analyse(
                 cand.symbol, sector_question=sector_question(classified, keys))
             reading = read_answer(getattr(report, "sector_answer", None), keys, classified)
-            sector, reading = decide_key(reading, known)
+            sector, reading = decide_key(reading, known, on=on.isoformat(),
+                                         named_on=analysis_named_on(idea, keys))
             # SA-003: a shelf idea is a future SWITCH destination (a buy), so
             # it must not be minted from an abstained analysis. The shelf
             # applies that; the result is still returned so the memo keeps it.

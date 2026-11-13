@@ -52,7 +52,9 @@ TABLE: dict[str, tuple[str, float | None]] = {
     "DRREDDY.NS": (PHARMA, 105_000 * CR), "LUPIN.NS": (PHARMA, 95_000 * CR),
     "ZYDUSLIFE.NS": (PHARMA, 100_000 * CR),
     "TATASTEEL.NS": (STEEL, 200_000 * CR), "JSWSTEEL.NS": (STEEL, 240_000 * CR),
-    "NOCLASS.NS": ("", 5_000 * CR),          # Yahoo gives no industry
+    # Yahoo lists no profile and no market cap (as ACCCEMENT); a cap with no
+    # profile is a failed profile call, never stored (FIX-030).
+    "NOCLASS.NS": ("", None),
 }
 UNIVERSE = sorted({k[:-3] for k in TABLE} | {"TATAMOTORS", "TVSMOTORS"})
 

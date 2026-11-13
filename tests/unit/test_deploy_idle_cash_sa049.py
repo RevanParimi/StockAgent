@@ -141,8 +141,13 @@ def _store(tmp_path, holdings, cash, name="u", capital_in=1_000_000.0):
 def _idea(sym, price, conviction=0.8, sector="pharma", gate="actionable", dived="2026-07-08",
           lo=None, hi=None, inval=None, **kw):
     """An idea whose band holds `price`: 96-104% of it, invalidation at 90%.
-    Its dive rated it a BUY unless `verdict` says otherwise (FIX-029)."""
+    Its dive rated it a BUY unless `verdict` says otherwise (FIX-029), and
+    its analysis named `sector` (FIX-030: a key no analysis named is not
+    offered); a "generic" one carries no reading unless given."""
     kw.setdefault("verdict", "BUY")
+    if sector != "generic":
+        from backend.shared.schemas.discovery import SectorReading
+        kw.setdefault("sector_reading", SectorReading(answer=sector, reason="stub analysis"))
     return ShelfIdea(symbol=sym, sector=sector, added="2026-07-01", dived=dived,
                      conviction=conviction, data_gate=gate,
                      entry_low=round(price * 0.96, 2) if lo is None else lo,

@@ -1467,10 +1467,11 @@ def test_pipeline_holds_a_watchlist_buy_under_the_key_its_forecasts_use(
 
 
 def test_pipeline_does_not_buy_a_stale_shelf_idea_until_it_is_redived(tmp_path, monkeypatch):
+    # Its analysis named "pharma" (FIX-030: a key no analysis named is not offered).
     stale = ShelfIdea(symbol="CAND", sector="pharma", added="2026-06-01", conviction=0.9,
                       verdict="BUY",
                       entry_low=485.0, entry_high=510.0, invalidation_level=450.0,
-                      data_gate="actionable")
+                      data_gate="actionable", sector_reading=reading("pharma"))
     advice, buys = _review_day(tmp_path, monkeypatch, ideas=[stale])
     assert advice.verdict == "EXIT" and buys == []
 

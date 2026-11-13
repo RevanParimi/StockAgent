@@ -208,7 +208,6 @@ def market(tmp_path):
         patch.object(macro_mod, "_fetch_rubber_price_via_news", return_value={}),
         patch.dict(macro_mod._COMMODITY_CACHE, {}, clear=True),
         patch.dict(macro_mod._RBI_CACHE, {}, clear=True),
-        patch("services.data.cache.macro_cache.get_macro_cache", return_value=None),
         patch("services.data.fetchers.nse_market.get_nse_market_data", return_value={
             "fetched_at": TODAY.isoformat(), "fii_net_cr": 1200.0, "dii_net_cr": -300.0,
             "bulk_deal_net_buyers": ["ABC"], "bulk_deal_net_sellers": [],

@@ -207,23 +207,12 @@ class ContextBuilder:
     def _build_risk_macro(self, query: StockQuery) -> str:
         from services.data.fetchers.macro import get_macro_context
         from services.data.fetchers.news import fetch_news_context
-        from services.data.cache.macro_cache import get_macro_cache
         from backend.sectors.automobile.prompts.risk_macro import CONTEXT_SEARCH_QUERIES
 
         # yfinance macro data — always free, fetch fresh every time
         macro = get_macro_context()
 
-        # Check cache first (nothing populates it at present, so this misses).
-        # risk_macro queries (INR/USD, commodities, RBI repo) are sector-level:
-        # same answer for MARUTI as for TATAMOTORS on the same day.
-        cached_news = get_macro_cache("automobile")
-        if cached_news:
-            logger.debug(
-                "[ContextBuilder] risk_macro: cache HIT — skipping 3 Serper calls"
-            )
-            return f"{macro}\n\n[Macro news — from micro search cache]\n{cached_news}"
-
-        # Cache miss: fetch fresh (up to SERPER_MAX_QUERIES calls)
+        # Fetch the news fresh (up to SERPER_MAX_QUERIES calls)
         today = date.today()
         queries = [
             q.format(
@@ -484,12 +473,8 @@ class ContextBuilder:
     def _build_macro_policy(self, query: StockQuery) -> str:
         from services.data.fetchers.macro import get_macro_context
         from services.data.fetchers.news import fetch_news_context
-        from services.data.cache.macro_cache import get_macro_cache
 
         macro = get_macro_context()
-        cached = get_macro_cache("bfsi")
-        if cached:
-            return f"{macro}\n\n[BFSI macro news — cached]\n{cached}"
 
         today = date.today()
         queries = [
@@ -594,12 +579,8 @@ class ContextBuilder:
     def _build_it_risk_macro(self, query: StockQuery) -> str:
         from services.data.fetchers.macro import get_macro_context
         from services.data.fetchers.news import fetch_news_context
-        from services.data.cache.macro_cache import get_macro_cache
 
         macro = get_macro_context()
-        cached = get_macro_cache("it")
-        if cached:
-            return f"{macro}\n\n[IT macro news — cached]\n{cached}"
 
         today = date.today()
         queries = [

@@ -48,15 +48,15 @@ Section 1 of the KT records how production sets them.
 ### The one structural trap
 
 The April 2026 restructure stalled in two directions, so one module can be
-reached by two import paths. There are **19 shim files in two families that
+reached by two import paths. There are **17 shim files in two families that
 point opposite ways**:
 
-- **`MIGRATION SHIM`, 9 files: `core/*` → `src/backend/*`.** The real code
+- **`MIGRATION SHIM`, 8 files: `core/*` → `src/backend/*`.** The real code
   moved out of `core/`; the old import path stays alive. Examples:
   `core/schemas/feedback.py` → `src/backend/shared/schemas/feedback.py`,
   `core/config/settings/base.py` → `src/backend/shared/config/settings/base.py`,
   `core/pipeline/orchestrator.py` → the automobile orchestrator.
-- **`FORWARD SHIM`, 10 files: `src/backend/shared/*` → `services/*`.** The
+- **`FORWARD SHIM`, 9 files: `src/backend/shared/*` → `services/*`.** The
   real code lives in `services/`, and the `backend.shared.*` path stays alive.
   Examples: `src/backend/shared/clients/llm_client.py` →
   `services/clients/llm_client.py`, and the shared fetchers and stores.
@@ -706,10 +706,9 @@ is the current baseline; [audit/LEDGER.md](audit/LEDGER.md) records every
 
 | Item | Status |
 |---|---|
-| 19 shim files | The half-finished restructure ([§0](#0-orientation)) |
+| 17 shim files | The half-finished restructure ([§0](#0-orientation)) |
 | `src/backend/shared/prompts/feedback_agent.py` | An old copy; the live prompt is `core/config/prompts/shared/feedback_agent.py` |
 | Legacy LangGraph worker pool | Fallback only; engagements counted |
-| `services/data/cache/macro_cache.py` | Read by the bundle and legacy builders, but nothing writes it, so it never hits |
 
 ---
 

@@ -308,47 +308,6 @@ class TestSectorPolicyNewsQuery:
 
 
 # ---------------------------------------------------------------------------
-# macro_context: cache key alias per sector
-# ---------------------------------------------------------------------------
-
-class TestMacroContextCacheKey:
-    @pytest.mark.parametrize(
-        "sector,expected_alias",
-        [
-            ("automobile", "automobile"),
-            ("banking_bfsi", "bfsi"),
-            ("it_sector", "it"),
-            ("renewable_energy", "renewable_energy"),
-        ],
-    )
-    def test_macro_cache_alias_per_sector(self, sector, expected_alias):
-        with patch("services.data.fetchers.macro.get_macro_result", return_value=_fr("macro yf data")), \
-             patch("services.data.cache.macro_cache.get_macro_cache", return_value=None) as mock_cache, \
-             patch("services.data.fetchers.news.fetch_news_result", return_value=_fr("news")):
-            bb._fetch_macro_context(sector, "fake-key")
-
-        mock_cache.assert_called_once_with(expected_alias)
-
-    @pytest.mark.parametrize(
-        "sector,expected_alias",
-        [
-            ("banking_bfsi", "bfsi"),
-            ("it_sector", "it"),
-        ],
-    )
-    def test_macro_cache_hit_skips_serper(self, sector, expected_alias):
-        with patch("services.data.fetchers.macro.get_macro_result", return_value=_fr("macro yf data")), \
-             patch("services.data.cache.macro_cache.get_macro_cache", return_value="cached news") as mock_cache, \
-             patch("services.data.fetchers.news.fetch_news_result", return_value=_fr("news")) as mock_news:
-            result = bb._fetch_macro_context(sector, "fake-key")
-
-        mock_cache.assert_called_once_with(expected_alias)
-        mock_news.assert_not_called()
-        assert "cached news" in result.text
-        assert result.status == bb.STATUS_CACHE_HIT
-
-
-# ---------------------------------------------------------------------------
 # Full build_sector_bundle smoke test per new sector — api_calls_made bounds
 # ---------------------------------------------------------------------------
 

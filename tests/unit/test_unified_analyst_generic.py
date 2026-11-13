@@ -51,6 +51,5 @@ def test_generic_bundle_cfg_registered():
     from services.data.context.bundle_builder import _SECTOR_BUNDLE_CFG
     cfg = _SECTOR_BUNDLE_CFG["generic"]
     assert cfg["has_commodities"] is False
-    assert cfg["macro_cache_key"] == "generic"
     # SA-044: no sector carries a peer list; one rule chooses peers for all.
     assert not any(k.startswith("peer") for c in _SECTOR_BUNDLE_CFG.values() for k in c)

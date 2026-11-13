@@ -250,19 +250,6 @@ PEER_TICKERS: list[str] = [
 ]
 
 # ---------------------------------------------------------------------------
-# Macro Cache — API efficiency
-# ---------------------------------------------------------------------------
-# Populates services/data/cache/macro_cache.py; consumed by:
-#   ContextBuilder._build_risk_macro()    → cache key "automobile"
-#   ContextBuilder._build_macro_policy()  → cache key "bfsi"
-#   ContextBuilder._build_it_risk_macro() → cache key "it"
-#
-# Populated on-miss by bundle_builder._fetch_macro_context() (and the legacy
-# context builders, which also fetch-on-miss). Cache HIT saves Serper calls
-# for every subsequent stock analysis in the same sector within the TTL.
-MACRO_CACHE_TTL_HOURS: float = cfg("data_fetch.macro_cache_ttl_hours", env="MACRO_CACHE_TTL_HOURS", fallback=4.0)
-
-# ---------------------------------------------------------------------------
 # Phase 4 – Scheduler
 # ---------------------------------------------------------------------------
 

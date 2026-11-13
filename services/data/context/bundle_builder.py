@@ -100,9 +100,6 @@ NOT_APPLICABLE = "not_applicable"
 #   (`.format(company_name=..., ticker=..., year=...)`).
 # - has_commodities: automobile only — other sectors' commodity/module-price
 #   signals are covered by the news queries instead.
-# - macro_cache_key: alias passed to get_macro_cache()/get_serper_key()
-#   (bfsi/it aliases match services/data/context/builder.py; automobile and
-#   renewable_energy use their own sector name).
 # ---------------------------------------------------------------------------
 
 _SECTOR_BUNDLE_CFG: dict[str, dict] = {
@@ -116,7 +113,6 @@ _SECTOR_BUNDLE_CFG: dict[str, dict] = {
             "India {company_name} sector policy regulation circular FAME PLI {year}"
         ),
         "has_commodities": True,
-        "macro_cache_key": "automobile",
     },
     "banking_bfsi": {
         "company_news_terms": "quarterly results NPA NIM deposits",
@@ -128,7 +124,6 @@ _SECTOR_BUNDLE_CFG: dict[str, dict] = {
             "{company_name} RBI policy regulation impact banking {year}"
         ),
         "has_commodities": False,
-        "macro_cache_key": "bfsi",
     },
     "it_sector": {
         "company_news_terms": "results deal wins attrition guidance",
@@ -140,7 +135,6 @@ _SECTOR_BUNDLE_CFG: dict[str, dict] = {
             "{company_name} earnings call transcript guidance commentary {year}"
         ),
         "has_commodities": False,
-        "macro_cache_key": "it",
     },
     "renewable_energy": {
         "company_news_terms": "results PPA commissioning capacity",
@@ -152,7 +146,6 @@ _SECTOR_BUNDLE_CFG: dict[str, dict] = {
             "India MNRE renewable auction policy {company_name} {year}"
         ),
         "has_commodities": False,
-        "macro_cache_key": "renewable_energy",
     },
     "generic": {
         # Compass Phase B: sector-agnostic wording — the ticker's industry is
@@ -165,7 +158,6 @@ _SECTOR_BUNDLE_CFG: dict[str, dict] = {
             "{company_name} NSE {ticker} results outlook policy regulation {year}"
         ),
         "has_commodities": False,
-        "macro_cache_key": "generic",
     },
 }
 
@@ -305,31 +297,18 @@ def _fetch_sector_policy_news(query: StockQuery, sector: str, serper_key: str) -
 
 def _fetch_macro_context(sector: str, serper_key: str) -> FetchResult:
     """
-    yfinance INR/USD + crude + factor regime, plus Serper search #3
-    (skipped on macro_cache hit — same cached news the legacy risk_macro
-    builder uses).
+    yfinance INR/USD + crude + factor regime, plus Serper search #3.
 
     Status: the macro indicators decide it. With a core indicator missing the
     section is `unavailable` and no news is fetched, exactly as when
-    `get_macro_context` raised here before SA-002. A macro_cache hit is
-    `cache_hit` — the one outcome the text cannot show, recorded by the branch
-    that knows (B2). News that found nothing is named in `reason`.
+    `get_macro_context` raised here before SA-002. News that found nothing is
+    named in `reason`.
     """
     from services.data.fetchers.macro import get_macro_result
-    from services.data.cache.macro_cache import get_macro_cache
 
     macro = get_macro_result()
     if macro.status not in LIVE_STATUSES:
         return FetchResult(UNAVAILABLE, macro.status, macro.source, reason=macro.reason)
-
-    cache_key = _bundle_cfg(sector)["macro_cache_key"]
-    cached_news = get_macro_cache(cache_key)
-    if cached_news:
-        logger.debug("[bundle_builder] macro_context: cache HIT — skipping Serper call")
-        return FetchResult(
-            f"{macro.text}\n\n[Macro news — from micro search cache]\n{cached_news}",
-            STATUS_CACHE_HIT, "yfinance+macro_cache", reason=macro.reason,
-        )
 
     from services.data.fetchers.news import fetch_news_result
 

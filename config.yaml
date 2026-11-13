@@ -119,9 +119,6 @@ data_fetch:
   tavily_max_content_chars: 600
   price_history_years: 10        # OHLCV history for pattern analysis
   technical_refresh_interval_min: 15
-  # Macro cache: HIT saves Serper calls for every stock in the same sector
-  # within the TTL (keys: automobile / bfsi / it).
-  macro_cache_ttl_hours: 4.0
 
 scheduler:
   enabled: false                 # master switch (true in Railway prod via env)

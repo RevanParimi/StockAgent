@@ -162,7 +162,7 @@ reason. A failing producer degrades its own section and never raises.
 |---|---|---|
 | `company_news` | One news search (Serper) | Query terms per sector: results and guidance; NPA, NIM and deposits for banks; deal wins and attrition for IT; PPAs and commissioning for renewables |
 | `sector_policy_news` | One news search | A sector query for demand, policy and competition |
-| `macro_context` | yfinance INR/USD and crude, the factor regime, plus one news search | A missing core indicator makes the section unavailable. A hit on the in-process macro cache would skip the search and read `cache_hit`, but nothing writes that cache, so every run searches |
+| `macro_context` | yfinance INR/USD and crude, the factor regime, plus one news search | A missing core indicator makes the section unavailable, and then no news is fetched |
 | `policy_deep_dive` | One Tavily page, cached by month | Policy circulars for automobile and renewables; RBI impact for banks; earnings-call commentary for IT |
 | `fundamentals` | yfinance quarterly statements, plus NSE dates as context | Bank-format statements (below) |
 | `technicals` | yfinance price history and indicators | Correlation and beta against the sector's benchmark (below) |

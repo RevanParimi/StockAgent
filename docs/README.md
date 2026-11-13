@@ -55,7 +55,7 @@ revision.
 | 16 | [Identity, Multi-Tenancy & Data Governance](PRODUCT_MAP.md#16-identity-multi-tenancy--data-governance) | Auth/sessions/invites, Atlas `atlas.db`, the two-plane boundary, DPDP delete |
 | 17 | [Ops, Cost & Reliability](PRODUCT_MAP.md#17-ops-cost--reliability) | Watchdog, backup and restore drill, cost telemetry, two-tier self-monitoring |
 | 18 | [Quality](PRODUCT_MAP.md#18-quality) | 333 test files behind a hermetic boundary, CI, the audit records |
-| 19 | [Legacy & dead](PRODUCT_MAP.md#19-legacy--dead--know-it-so-you-skip-it) | Migration shims, the unwritten macro cache — what to skip |
+| 19 | [Legacy & dead](PRODUCT_MAP.md#19-legacy--dead--know-it-so-you-skip-it) | Migration shims, the legacy agent pool — what to skip |
 
 Also in PRODUCT_MAP.md: [§0 Orientation](PRODUCT_MAP.md#0-orientation) (scale,
 and the migration-shim trap), [§20 Suggested study

@@ -630,7 +630,6 @@ tier, and `config.yaml` is the only place models are chosen.
 | `NEWS_ARTICLES_PER_QUERY` | `5` | Number of news articles per Serper/NewsAPI query |
 | `SERPER_MAX_QUERIES` | `3` | Max Serper queries per agent run |
 | `FINANCIALS_LOOKBACK_QUARTERS` | `4` | Historical quarters to fetch |
-| `MACRO_CACHE_TTL_HOURS` | `4` | Macro cache TTL (hours); cache populated on-miss by bundle_builder/ContextBuilder |
 
 ### Unified Sector Analyst (2026-06-12 redesign)
 

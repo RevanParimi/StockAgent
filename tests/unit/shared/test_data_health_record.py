@@ -151,21 +151,9 @@ class TestSectionStatus:
         assert bundle.section_status["technicals"] == bb.STATUS_EMPTY
         assert bundle.section_status["flows_sentiment"] == bb.STATUS_EMPTY
 
-    def test_macro_cache_hit_is_recorded_by_the_branch_that_knows(self):
-        """A cache hit looks like any other populated section from the outside,
-        so `_fetch_macro_context` records it where the branch is taken."""
+    def test_macro_with_news_is_ok(self):
         with patch("services.data.fetchers.macro.get_macro_result",
                    return_value=FetchResult("macro", bb.STATUS_OK, "yfinance")), \
-             patch("services.data.cache.macro_cache.get_macro_cache", return_value="cached news"):
-            result = bb._fetch_macro_context("renewable_energy", "fake-key")
-
-        assert result.status == bb.STATUS_CACHE_HIT
-        assert "cached news" in result.text
-
-    def test_macro_miss_with_news_is_ok(self):
-        with patch("services.data.fetchers.macro.get_macro_result",
-                   return_value=FetchResult("macro", bb.STATUS_OK, "yfinance")), \
-             patch("services.data.cache.macro_cache.get_macro_cache", return_value=""), \
              patch("services.data.fetchers.news.fetch_news_result",
                    return_value=FetchResult("fresh news", bb.STATUS_OK, "serper")):
             result = bb._fetch_macro_context("renewable_energy", "fake-key")

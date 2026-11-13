@@ -1,10 +1,10 @@
 # Core
 langgraph>=1.1.9          # Multi-sector LangGraph flows (graphs/ directory)
-openai>=1.30.0            # OpenAI-compatible SDK — used for OpenRouter (Qwen via OpenRouter)
+openai==2.32.0            # OpenAI-compatible SDK — used for OpenRouter
 pydantic>=2.5.0           # Data models and validation
 python-dotenv>=1.0.0      # .env file loading
 
-# Phase 2 – FastAPI bridge (Python API server consumed by TypeScript + C#)
+# FastAPI server (API, PWA and the in-process scheduler)
 fastapi>=0.111.0          # REST API + WebSocket server
 uvicorn[standard]>=0.30.0 # ASGI server for FastAPI
 httpx>=0.27.0             # Async HTTP client + TestClient for FastAPI tests
@@ -12,7 +12,7 @@ httpx>=0.27.0             # Async HTTP client + TestClient for FastAPI tests
 # Data fetching
 beautifulsoup4>=4.12.0    # HTML parsing for web scraping
 pandas>=2.2.0             # Tabular data handling
-yfinance>=0.2.40          # Yahoo Finance OHLCV data (pattern analysis)
+yfinance==1.3.0           # Yahoo Finance OHLCV data (pattern analysis)
 requests>=2.31.0          # Serper + NewsAPI HTTP calls
 nse>=2.0.0,<4.0           # NseIndiaApi (BennyThadikaran) — announcements / board meetings / actions
                           # <4.0: 4.0 removed NSE._req, which ipo_bids.fetch_bid_ladder calls. The
@@ -23,7 +23,7 @@ pyarrow>=16.0.0           # Parquet EOD market cache (Compass Phase B discovery)
 pywebpush>=2.0.0          # M4 web-push delivery (Compass Phase C)
 cryptography>=41.0.0      # SA-007 off-site backup encryption (AES-256-GCM); already pulled in by pywebpush
 
-# Phase 4 – Python scheduler (kept as fallback; C# Quartz.NET is primary)
+# Scheduler (runs in-process with the API)
 apscheduler>=3.10.0       # Cron-based periodic trigger
 
 # Technical indicators (numpy; C++ extension is an optional drop-in)
@@ -31,12 +31,7 @@ numpy>=1.26.0             # RSI / MACD / BB computation
 
 # Storage
 aiosqlite>=0.20.0         # Async SQLite — needed if /history endpoint uses async DB
-
-#LLMs 
-openai==2.32.0
-
-#Web
-yfinance==1.3.0
+filelock>=3.13            # Cross-process locks (portfolio, event and managed-ticker stores)
 
 # Seasonal calendar seed parsing
 pyyaml>=6.0.0
@@ -44,8 +39,4 @@ pyyaml>=6.0.0
 # FastAPI static file serving (prototype UI)
 aiofiles>=23.0.0
 
-# Testing
-pytest>=8.0.0
-pytest-asyncio>=0.23.0
-pytest-cov>=5.0.0
-filelock>=3.13
+# Test tools live in requirements-test.txt.

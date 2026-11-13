@@ -20,7 +20,6 @@ COPY core/       ./core/
 COPY services/   ./services/
 COPY src/backend/ ./backend/
 COPY scripts/    ./scripts/
-COPY main.py     ./
 COPY config.yaml ./config.yaml
 # Sector toggles (AUD-040): SectorRegistry reads config/sector_toggles.json
 # CWD-relative; without this COPY the prod image silently used defaults.

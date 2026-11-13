@@ -192,7 +192,6 @@ def test_every_environment_variable_the_app_reads_is_removed():
     for d in ("core", "services", "src"):
         for p in (REPO / d).rglob("*.py"):
             read |= set(hermetic.ENV_READ.findall(p.read_text(encoding="utf-8-sig", errors="replace")))
-    read |= set(hermetic.ENV_READ.findall((REPO / "main.py").read_text(encoding="utf-8-sig")))
     missing = read - hermetic.app_env_names()
     assert not missing, f"add to tests/hermetic.py EXTRA_APP_ENV: {sorted(missing)}"
     assert not (hermetic.app_env_names() & set(os.environ))

@@ -5,7 +5,8 @@ In-memory macro news cache with TTL.
 
 Pattern mirrors StockAI graph.py _macro_cache.
 
-Populated by:  micro_search_loop() in main.py  (runs on a schedule)
+Populated by:  nothing at present (no caller of set_macro_cache), so a read
+               always misses
 Consumed by:   ContextBuilder._build_risk_macro()
 
 When the cache is fresh (< MACRO_CACHE_TTL_HOURS old), risk_macro skips

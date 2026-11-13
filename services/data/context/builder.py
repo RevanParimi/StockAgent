@@ -213,7 +213,7 @@ class ContextBuilder:
         # yfinance macro data — always free, fetch fresh every time
         macro = get_macro_context()
 
-        # Check cache first — populated by micro_search_loop() in main.py.
+        # Check cache first (nothing populates it at present, so this misses).
         # risk_macro queries (INR/USD, commodities, RBI repo) are sector-level:
         # same answer for MARUTI as for TATAMOTORS on the same day.
         cached_news = get_macro_cache("automobile")

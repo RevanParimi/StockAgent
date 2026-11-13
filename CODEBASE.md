@@ -12,7 +12,6 @@ For the system-level map (the three loops, the 24 scheduled job IDs, data layout
 
 ```
 StockAgent-main/
-├── main.py                        # CLI entry point (wraps services/api/server.py)
 ├── services/                      # Runtime services layer
 │   ├── api/                       # FastAPI application
 │   │   ├── server.py              # App factory, lifespan, route mounting, RL self-heal
@@ -246,7 +245,7 @@ StockAgent-main/
 ├── outputs/                       # Report output files
 ├── docs/                          # Design documentation (index: docs/README.md)
 ├── Dockerfile                     # THE deploy artifact: core/ services/ src/backend→backend/
-│                                  #  scripts/ main.py config.yaml prototypes → anything outside
+│                                  #  scripts/ config.yaml config/ prototypes → anything outside
 │                                  #  its COPY set is dead in prod by construction
 ├── docker-compose.yml
 ├── pyproject.toml

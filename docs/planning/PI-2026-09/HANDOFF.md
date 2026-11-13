@@ -4,21 +4,21 @@
 
 - **Session `stockagent-main-50`** [fcd907], Friday evening. Owner's explicit resequencing; fresh
   review waived by the owner (deletions only); the full suite is the acceptance.
-- **Branch `chore/remove-dead-code`** from `e2b6f34`, one commit per item: 643d605 (item 1), 8cccc41 (2), 25d6b65 (3), 7ed7251 (4), 7b6a64d (5), then
-  this docs commit. 43 files, −2,183 lines. **Not merged, not pushed. The checkout is left on
-  this branch.** Merge it into `main` at your word, or switch back to `main`, before FIX-031.
-- **Removed:** the `new-product.py` scaffolder; `services/csharp/` and its compose service; the RAG
-  pipeline (chromadb, sentence-transformers, pypdf, tiktoken, CI's CPU-torch step); `main.py`.
-  The test tools moved to `requirements-test.txt`; openai and yfinance keep one exact pin each.
-- **Proof of non-use** is in [evidence/CLEAN-001.md](evidence/CLEAN-001.md). Production variable
-  names (none RAG or C#) and the start command (none; Dockerfile CMD) were read read-only.
-- **Skipped:** 6a, because its gate failed (141 shim import sites; a test patches through the shim).
-  6b, because `config/milestones.yaml`, which the production watchdog reads, names a plan in the
-  move set.
-- **Full suite:** 6,409 passed / 12 skipped / 1 xfailed / 0 failed, pytest rc 0, 19m34s (17:42-18:02 IST); the 11 fewer than FIX-030's 6,420 are exactly the 8 deleted test_rag.py tests and the 3 TestRAGConfig tests. Guards are clean.
-- **Deploying it** re-resolves every unpinned package, because `requirements.txt` changed. From
-  this base it also deploys FIX-030, which waits for `FIX-030-M1`. Dependency set for Linux
-  py3.11: 150 → 78 distributions, at least 659 MB of compressed wheels dropped.
+- **Branch `chore/remove-dead-code`** from `e2b6f34`, one commit per item: 643d605, 8cccc41, 25d6b65,
+  7ed7251, 7b6a64d (items 1–5), docs 933b6d6, then at your word ("if its dead code now, remove
+  them") b1aa410 (7), 3558c88 (8), e114b99 (9), 8f7c7e5 (10) and this docs commit. 57 files, −2,805 lines. **Not merged, not pushed; the
+  checkout is left on this branch.** Merge it into `main`, or switch back, before FIX-031.
+- **Removed:** the `new-product.py` scaffolder; `services/csharp/`, its compose service and the C#
+  score proxy; the RAG pipeline (chromadb, sentence-transformers, pypdf, tiktoken, CI's torch step);
+  `main.py`; the macro cache nothing writes; BaseAgent's unread enhancement consumer; 9 stale allow
+  rules. The test tools moved to `requirements-test.txt`; openai and yfinance keep one exact pin each.
+- **Proof of non-use** per item: [evidence/CLEAN-001.md](evidence/CLEAN-001.md). Production
+  variable names and the start command were read read-only.
+- **Skipped:** 6a (gate failed: 141 shim import sites, a test patches through the shim) and 6b
+  (`config/milestones.yaml`, read by the production watchdog, names a plan in the move set).
+- **Full suite** after items 7–10: 6,378 passed / 12 skipped / 1 xfailed / 0 failed, pytest rc 0, 29m47s (19:13-19:43 IST); 31 fewer than 6,409 = the 24 deleted C# contract tests and the 7 macro-cache-hit tests.
+- **Deploying it** re-resolves every unpinned package (`requirements.txt` changed) and, from this
+  base, also deploys FIX-030, which waits for `FIX-030-M1`. Linux py3.11 dependency set 150 → 78.
 - `next_task` is still FIX-031.
 
 ## 13 Nov: FIX-030 fresh review → ACCEPTED (M1 waits for Saturday's counts)

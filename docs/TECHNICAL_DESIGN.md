@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-11-12 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-11-13 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `f368f206d0f7f6c665c6994f4b20bee8e47b1aaf`
+**Code inspected:** `cddc3be02c4d06a4f8c02c9495fae1280bf78f7a`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,13 +35,16 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs the inspected code, `f368f20`: FIX-029 (every door to a buy
+Production runs `f368f20`: FIX-029 (every door to a buy
 reads the same facts; its fresh review accepted it on 12 November) and SA-044
 (a valuation is compared only with same-industry peers; its fresh review
 accepted it on 12 November), on top of FIX-028 (a sold stock leaves
 the daily review). It was pushed at about 14:35 IST on 12 November 2026 (the
 deployment list showed it SUCCESS; `/health` answered 200), with idle-cash
-deployment off. The table gives the configuration that
+deployment off. The inspected code adds FIX-030 (a generic-graph analysis reads no
+other sector's funds; a key no analysis named is re-examined; an unnamed idea
+stops taking a weekly re-dive; the peer cache keeps only answers), committed as
+`cddc3be` on 13 November 2026 and not yet deployed. The table gives the configuration that
 differs from the repository and the state of each operational control.
 
 | Area | State in production | Evidence |
@@ -3593,7 +3596,7 @@ section 10) are part of the current design.
 | [FIX-027](planning/PI-2026-09/stories/FIX-027.md) | A decision booked at a session's close reads nothing from after that close | Done | 6 Portfolio | FIX-024 |
 | [FIX-028](planning/PI-2026-09/stories/FIX-028.md) | A sold stock leaves the daily review | Done | 6 Portfolio; 8 Discovery | FIX-025 |
 | [FIX-029](planning/PI-2026-09/stories/FIX-029.md) | Every door to a buy reads the same facts: the day's regime, the sale and the verdict | Done | 6 Portfolio; 8 Discovery | FIX-025 |
-| [FIX-030](planning/PI-2026-09/stories/FIX-030.md) | A generic-graph analysis sees no automobile evidence; a key the old Yahoo table set is re-examined; an unnamed idea stops taking a weekly re-dive | Open | 4 Research; 8 Discovery | FIX-026 |
+| [FIX-030](planning/PI-2026-09/stories/FIX-030.md) | A generic-graph analysis sees no automobile evidence; a key the old Yahoo table set is re-examined; an unnamed idea stops taking a weekly re-dive | Done | 4 Research; 8 Discovery | FIX-026 |
 | [FIX-031](planning/PI-2026-09/stories/FIX-031.md) | Every input a decision at a session's close reads is from before that close | Open | 6 Portfolio; 5 Learning | FIX-027 |
 | [FIX-032](planning/PI-2026-09/stories/FIX-032.md) | A home-page watchlist save keeps what it does not show, and a removal there leaves the daily review | Open | 6 Portfolio; 10 Interface | FIX-028 |
 | [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Done | 6 Portfolio | None |

@@ -167,8 +167,8 @@ reason. A failing producer degrades its own section and never raises.
 | `fundamentals` | yfinance quarterly statements, plus NSE dates as context | Bank-format statements (below) |
 | `technicals` | yfinance price history and indicators | Correlation and beta against the sector's benchmark (below) |
 | `commodities` | yfinance commodity prices | Automobile only; `n/a` elsewhere |
-| `flows_sentiment` | NSE bulk deals and FII/DII flows; AMFI sector-ETF momentum | `empty` when none of the three answers |
-| `peers_valuation` | yfinance valuation for up to 5 peers | Peers from the sector's `TICKERS`; the automobile and generic graphs use the automobile peer list |
+| `flows_sentiment` | NSE bulk deals and FII/DII flows; AMFI sector-ETF momentum for the four native sectors (any other sector reads none: "no sector ETFs") | `empty` when none of the three answers |
+| `peers_valuation` | yfinance valuation for up to 5 peers | One rule for every graph (`services/data/context/peers.py`): the stock's Yahoo industry, nearest market cap first, at most 5, none with fewer than 3 ("peers unavailable") |
 | `dossier` | The ticker's dossier digest (1,500 characters) | `n/a` until a dossier exists (RL_DESIGN §23.4) |
 
 Each section is capped at 2,500 characters and the rendered bundle at

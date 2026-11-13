@@ -1,4 +1,121 @@
-# Current handoff - 2026-11-12 (SA-044 accepted by its fresh review; FIX-030 next)
+# Current handoff - 2026-11-13 (FIX-030 accepted and committed, not pushed; FIX-030-M1 after Saturday's run; FIX-031 next)
+
+## 13 Nov: FIX-030 fresh review → ACCEPTED (M1 waits for Saturday's counts)
+
+- **Session `stockagent-main-1c`** [1c91a3], a new conversation opened with "continue", Friday about
+  12:51–13:35 IST.
+  - `origin/main` was `5ae2749`, the same as HEAD: nothing had arrived from the other device.
+  - Twelve peers were idle, the implementer among them.
+  - Receipt: [evidence/FIX-030-review.md](evidence/FIX-030-review.md).
+- **Reviewed before Saturday's counts** (a delegated process call). Only M1 depends on them, and the
+  card builds M1 only if Saturday shows it. No prompt is in the diff. The deploy already waits for
+  Saturday. M1 became the pending check **`FIX-030-M1`** in STATE.
+- **Input verified** at the start and the end: manifest `0fdb3de2` (23 files, 0 mismatches) and
+  diff `f2199616` against `5ae2749`, nothing else changed but bookkeeping
+  (`analysis_data/fix030_review/rv_digest.py`).
+- **What ran:**
+  - reviewer cases (`analysis_data/fix030_review/test_rv_fix030.py`): 15 passed. They include:
+    - L1 and L2 as a state machine through the real deep dive and shelf, against an oracle written
+      from the card;
+    - the probe's 19-idea shelf;
+    - R1 with both Yahoo endpoints down, through yfinance's real `.info`;
+    - R2 over 150 random interleavings;
+    - M2 over all 22 keys, and its data gate.
+  - On `5ae2749`, 11 of the 15 fail; the 4 that pass are unchanged guards. One first-run failure of
+    RV1 was not reproduced (receipt).
+  - full suite 6,420 passed / 12 skipped / 1 xfailed / 0 failed, rc 0 (23m26s);
+  - `check_broad_except` OK (148); `check_kt_docs` `errors: []` (PDF 71 pages = the KT).
+- **Findings:** low only.
+  - **R1 (docs):** `docs/AGENTIC_DESIGN.md`'s bundle table still says the generic graph uses the
+    automobile peer list (stale since SA-044). Commit-time edit 4.
+  - **R2:** an undecided idea whose stock is managed and not sold is first among Saturday's re-dives
+    every week but never analysed, so nothing names it and the watchdog repeats it until it rotates
+    out at 60 days. It is fail-safe, and how often it happens is not measured. Routed to
+    [SA-026](stories/SA-026.md).
+  - I1–I3 are info only.
+- **The card's hard review:** no generic bundle names another sector's peers or ETFs; the native
+  graphs keep theirs; no prompt changed; no held or managed stock is re-keyed and no forecast history
+  moves; an idea whose analysis never names a key is dropped at its second unnamed re-dive in a row.
+- **STATE:** FIX-030 `done`, production `pending_deployment`; `active_task` null; `next_task`
+  FIX-031.
+- **Committed at the owner's word** ("ya commit", about 17:00 IST); **not pushed**:
+  - `cddc3be`, the code: exactly the 23 reviewed files (`kt_manifest.py verify --rev cddc3be`: 0
+    mismatches).
+  - The docs commit after it holds:
+    - both receipts and the manifest, and the SA-026 note;
+    - STATE and this file, with the `5ae2749` push record;
+    - the commit-time edits:
+      - KT header (`cddc3be`, edition 2026-11-13);
+      - KT section 1: production still runs `f368f20`, and FIX-030 is committed, not
+        deployed;
+      - KT section 12 `Done`, guide 06-O, `AGENTIC_DESIGN.md` (R1);
+      - the PDF: 71 pages, source `2ed30fa9`, `check_kt_docs` `errors: []`.
+  - `main` is 2 ahead of `origin`. **The push deploys FIX-030.** It waits for the
+    `FIX-030-M1` check, a full-suite run and your word, in a job-free window.
+- **For the owner:**
+  - **`FIX-030-M1`, after Saturday 14 Nov's 12:30 run:** read the Discovery line's
+    `sectors=[…]` and its "Discovery sectors" lines (Railway's log view filtered on "Discovery";
+    counts and symbols only), and re-run `analysis_data/fix030/prod_probe.py`. If most dives are
+    unnamed with "the analysis gave no sector answer", M1 gets a small card (P1, 1 point) before
+    FIX-031. Otherwise M1 closes.
+  - **Deploy after that check,** in a job-free window. Sunday 15 Nov holds the 7 table-keyed ideas
+    back Monday to Friday. Early Saturday 21 Nov (00:10–06:20 IST) holds them back on no trading
+    day.
+- **Next `continue`, in a new conversation: FIX-031's implementation.** If it starts after
+  Saturday 14 Nov at about 14:00 IST, it runs `FIX-030-M1` first. Then FIX-032. The switch stays
+  off.
+
+## 13 Nov: FIX-030 implemented → review_required
+
+- **Session `stockagent-main-99`** [d33680], a new conversation opened with "continue", Friday about
+  08:40–10:35 IST.
+  - `origin/main` was `5ae2749`, the same as HEAD: nothing had arrived from the other device.
+  - Eleven peers were idle. The tree held only the uncommitted `5ae2749` push record.
+  - Receipt: [evidence/FIX-030-implementation.md](evidence/FIX-030-implementation.md).
+- **Started before Saturday's counts.** The card says to read Saturday 14 Nov's counts first; the
+  run had not happened. Only M1 depends on them, and the card makes M1 conditional, so M1 is not
+  built. The rest is.
+- **What it does:**
+  - **M2:** a sector without its own ETF list reads no funds. The generic graph's flows section says
+    "MF herding: no sector ETFs for generic"; MARUTI's keeps the three auto ETFs.
+  - **R1:** a Yahoo answer with a market cap and no profile is a failed lookup, never stored. Such
+    entries already cached are looked up again.
+  - **R2:** a peer-cache save takes a file lock, merges with the file and writes atomically, so the
+    two workers keep both fills.
+  - **L1:** an idea's key counts as decided only when an analysis named it (`named_on`), a managed
+    record held it, or the ticker map has it. A key the old Yahoo table set (2–10 Nov) is unnamed:
+    not offered, named by the watchdog, first among Saturday's re-dives.
+  - **L2:** the second re-dive in a row that leaves an idea unnamed drops it with the reason (three
+    analyses, not one every week).
+- **Decisions D1–D5** are delegated technical calls, each with an example in the receipt.
+- **What ran:**
+  - story file `tests/unit/test_generic_evidence_fix030.py`: 38 pass; 27 of them fail on `5ae2749`;
+  - the reviewers' own cases: FIX-026's RV1/RV2 and SA-044's RV4 characterisations now fail, and
+    SA-044's strict xfails (RV4 contract, RV5) pass;
+  - mutants: 18 of 18 caught by the story file;
+  - full suite on the final bytes: 6,420 passed / 12 skipped / 1 xfailed / 0 failed, rc 0 (run 1
+    had 1 failure, an old fixture without a reading; fixed);
+  - `check_broad_except` OK; `check_kt_docs` `errors: []`; PDF 71 pages; manifest `0fdb3de2`, 23
+    files, 0 mismatches; diff `f2199616` against HEAD.
+- **Production probe, run by the owner about 12:20 IST** (read-only, counts only, on `f368f20`,
+  before Saturday's run; receipt "Production probe"):
+  - Shelf: 19 active ideas, none with a sector reading yet (all last analysed before FIX-026 went
+    live on 10 Nov).
+    - 4 are decided by the ticker map.
+    - **7 carry a key from the old Yahoo table** (L1, all analysed 7 Nov). D4 costs 7 analyses,
+      once.
+    - 8 have no configured key (L2's cohort). They are re-dived first on today's code, so Saturday
+      14 Nov tests M1 on them.
+  - Peer cache: 218 profiles; 0 show R1's sign; the 7 without an industry all have no cap, so D1
+    keeps them.
+  - A re-run after Saturday is optional.
+- **For the owner:** deploy only after Saturday 14 Nov's discovery run, so its counts measure M1 and
+  M2 on today's code. A deploy in the early hours of a Saturday (00:10–06:20 IST, before the 12:30
+  run) holds the 7 back on no trading day. A Sunday 15 Nov deploy holds them back Monday to Friday.
+- **STATE:** FIX-030 `review_required` (active and next).
+- **Next `continue`, in a new conversation: FIX-030's fresh review** (REVIEW.md). Read Saturday
+  14 Nov's Discovery counts first (guide 06-M; M1 and M2 in production). Then FIX-031 and FIX-032.
+  The switch stays off.
 
 ## 12 Nov: SA-044 fresh review → ACCEPTED
 
@@ -42,8 +159,15 @@
     - the receipt, the FIX-030 and FIX-020 cards, STATE, this file and the `3489f50` push record;
     - the 4 commit-time edits: KT section 1, KT section 12 SA-044 `Done`, guide 02-O status, and
       the PDF (70 pages, source `28fce89c`; `check_kt_docs` `errors: []`).
-  - **Push held to the 00:10 IST window:** the nightly jobs run 23:00–00:00 (KT section 9). A waiter
-    pushes after the full suite passes. Its record follows here, uncommitted.
+  - **Pushed and deployed** (this record is uncommitted, for the next docs commit):
+    - The push was first held to the 00:10 IST window. Then the owner said "ones finished, push it,
+      dont wait" (told of the 23:30 backup and the 23:45 audit).
+    - Full suite on `5ae2749`: 6,382 passed / 12 skipped / 1 xfailed / 0 failed, rc 0, 19m15s
+      (22:48–23:08 IST). Status was clean before and after (`analysis_data/sa044_review/push_suite*.txt`).
+    - Pushed `3489f50..5ae2749` at 23:08:40 IST, docs only; code unchanged at `f368f20`.
+    - Railway `09698fde` was created 23:08:43 and showed SUCCESS by 23:10:16 (read-only deployment
+      list). The public `/health` answered 200 at 23:10:17. The deploy finished before the 23:15 and
+      23:30 jobs.
 - **Next `continue`, in a new conversation: FIX-030's implementation.** Read Saturday 14 Nov's sectors
   counts first (its card). Then FIX-031 and FIX-032. The switch stays off.
 

@@ -1,0 +1,125 @@
+{
+  "story": "FIX-030",
+  "phase": "implementation",
+  "head": "5ae2749",
+  "base": "5ae2749",
+  "date": "2026-11-13",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "40c88389806e008c55ffc3afed4149ab7ee2e0d0",
+      "sha256": "f1e167acfc52da0b6ca562651cb4f305a7ead198b0ea62eb072224f0083c78f1"
+    },
+    {
+      "path": "config.yaml",
+      "git_blob": "60b374d742a4522db82c29af04d753320059de48",
+      "sha256": "768f74830d9793fe8911a19c53ba6172e412d131c12b34ac9d32d234b52e740f"
+    },
+    {
+      "path": "core/discovery/deep_dive.py",
+      "git_blob": "9c5a7d2a4ba0d39e6aa2124d5d06c9ed71e7e746",
+      "sha256": "33aa639cc74c106332700d45857cd6cd6ef8b9b8a9bc95f70003fb7ddd02704b"
+    },
+    {
+      "path": "core/discovery/sector_naming.py",
+      "git_blob": "f237b3e4c649ecfb846b7c28859437d48f23c64d",
+      "sha256": "c60be272746cf3c6ff6bc24892199daf7df58714f14a19704d4d25fbcd93ce89"
+    },
+    {
+      "path": "core/discovery/shelf.py",
+      "git_blob": "cb406fdd78dba175633cbb22b727a16be12766f3",
+      "sha256": "198fa4ea495e6fc836a3913dc80dcc81ed60339618020077ef55b776bbee36c0"
+    },
+    {
+      "path": "docs/AUTOPILOT_GUIDE.md",
+      "git_blob": "babe88fe051a2de222fb0b1c6a67ae2ec55de3ff",
+      "sha256": "33e58291ddbc0a96be0757f353ce011cd5ffd13e91c13fdf3816f564c535d216"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "63db43b92e2946d0ae0a47fd6742ebac4c77ce05",
+      "sha256": "ea01e5f4a6984d6a52335b2c4764c8e8587254381bd88c13ce0cdfbd2701662f"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "14ab5884369b6efa75db845cd4bc299d8b6da994",
+      "sha256": "fc14b5bc4af3650c128042deed669b286c36091a54ffd99f2bef2d4b50008da0"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "2b8b951a69bca556cb3bde325a128a332f387cb6",
+      "sha256": "f5f9c645f6cbf7202fce286a864d470ebde7f908a7c2b99abac6e76f03610c91"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "d44a129d9ca7e43aed2ba5c1802ee8a6a10db11e",
+      "sha256": "c80021fb270f378c9bcd51708a2b0a741d2946325fe8abf93036be175f328a4c"
+    },
+    {
+      "path": "services/data/context/bundle_builder.py",
+      "git_blob": "9a5e746685f0d79262f10114f70a9a04504f7d7e",
+      "sha256": "8541f96b6ae3cc2a4d15438e848a5ba675443a1171822b451e1f7451884b7c43"
+    },
+    {
+      "path": "services/data/context/peers.py",
+      "git_blob": "ac396b259ca2828c5ae8e418289162473aa5a9d0",
+      "sha256": "cb56eea7b7d1cf4fc69fca238ce80d59f9fd8414700eb899015e2bb02292f4ac"
+    },
+    {
+      "path": "services/data/fetchers/mf_herding.py",
+      "git_blob": "fef47b413b2c0535ef97dada9e0d80ad9bec98a8",
+      "sha256": "ce776e910ee8a133b59d11b529236de54b874f780b3c96ddd072c244d7948aac"
+    },
+    {
+      "path": "src/backend/shared/config/settings/base.py",
+      "git_blob": "03562b088a90217af63ba7aed56157517bc118af",
+      "sha256": "803da0052f622532511f4c728d9be2c199741c411822e73dd4a0f8631b426c42"
+    },
+    {
+      "path": "src/backend/shared/schemas/discovery.py",
+      "git_blob": "62bf4eeb27897b31c605186f6b6717260fccfffc",
+      "sha256": "f11198fa6e5aabca69aedf339d6370847cbcdb6ec74aba64e1164b2847d16220"
+    },
+    {
+      "path": "tests/unit/test_deploy_idle_cash_sa049.py",
+      "git_blob": "96f705e1e1dc3a9779d7e814dc0e3023949fdc3d",
+      "sha256": "2809d082c7c7f1321acd5cba45edb6f6bbb07dd84d209a76fef8890207cab68e"
+    },
+    {
+      "path": "tests/unit/test_discovery_shelf.py",
+      "git_blob": "aea36a34f65350c7a2e6c3ef472c6be0cf7510f5",
+      "sha256": "a7250f382543ffc3c403b02e983bc1722f17e062735ec8789be021bcf7da88da"
+    },
+    {
+      "path": "tests/unit/test_generic_evidence_fix030.py",
+      "git_blob": "045cc01d6e5a822d037100b8315eb62eb3b62640",
+      "sha256": "0f5ca283d0847b63afb7caad717fc9f9326a7829411a0b8e9a8f2cc6b718280c"
+    },
+    {
+      "path": "tests/unit/test_idea_supply_pr004.py",
+      "git_blob": "b021c1466b3b4c6b386438081bbffa1c1180666c",
+      "sha256": "3bf908cad0faf36218388d8cf25356ff1b6e7852c80e536844749d5eff4ddd12"
+    },
+    {
+      "path": "tests/unit/test_peer_choice_sa044.py",
+      "git_blob": "f2dcde13dbbcd6d50159092bdb54fe8244d21177",
+      "sha256": "2388a6fb10196b8c4b3d66cf12c834fdc843adef59d6824ec7ba87051108754f"
+    },
+    {
+      "path": "tests/unit/test_regime_inputs_fix023.py",
+      "git_blob": "39b735426cad72d3fda0b2184c9731c74332ac1e",
+      "sha256": "947a2f94abab90ea3860212284c0f22e6173285aabd2bf3c3bea733698ac1833"
+    },
+    {
+      "path": "tests/unit/test_sector_naming_fix026.py",
+      "git_blob": "8fec86b295ebf2791e88e87ccb5ef648932bb789",
+      "sha256": "a29763d7129162ec685eccaef16aab895e4aa996d10b4bdb94ac63bb6ba37f78"
+    },
+    {
+      "path": "tests/unit/test_sizing_rule_sa050.py",
+      "git_blob": "cb919231311a78961e3220313aa48c3a30eedf53",
+      "sha256": "8fea3f42f8ae4abfb491c0afe1441d30c640262125c5e75bc977d01c3301e87e"
+    }
+  ]
+}

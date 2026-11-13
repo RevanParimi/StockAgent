@@ -301,16 +301,6 @@ ALERT_LOG_FILE: str = os.getenv("ALERT_LOG_FILE", "outputs/alerts.log")
 SCORE_HISTORY_MAX_ROWS: int = cfg("scheduler.score_history_max_rows", env="SCORE_HISTORY_MAX_ROWS", fallback=90)  # ~3 months daily
 
 # ---------------------------------------------------------------------------
-# C# Scheduler integration (Phase 4 — opt-in)
-# ---------------------------------------------------------------------------
-
-# Set to true in .env to route score_store.save() through the C# API
-CSHARP_SCHEDULER_ENABLED: bool = os.getenv("CSHARP_SCHEDULER_ENABLED", "false").lower() == "true"
-
-# Base URL of the C# scheduler service (port 5000)
-CSHARP_API_URL: str = os.getenv("CSHARP_API_URL", "http://localhost:5000")
-
-# ---------------------------------------------------------------------------
 # Phase 5 – RL Feedback / Adaptive Prediction Loop
 # ---------------------------------------------------------------------------
 

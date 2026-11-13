@@ -883,13 +883,6 @@ A results or concall filing found by the company-event feed also runs this inges
 | `MACRO_NEWS_CONTEXT_MAX_ITEMS` | `3` | Max HIGH-severity items injected into chat context |
 | `MACRO_NEWS_REVIEWER_MAX_ITEMS` | `5` | Max HIGH-severity items passed to reviewer |
 
-### C# Scheduler Integration
-
-| Name | Default | Description |
-|------|---------|-------------|
-| `CSHARP_SCHEDULER_ENABLED` | `false` | Route score saves through C# API |
-| `CSHARP_API_URL` | `http://localhost:5000` | Base URL of a C# scheduler that is no longer in the repository; read only by `score_store.py`'s proxy branch, which runs only when the flag above is true |
-
 ### Prompt Deploy (GitHub)
 
 | Name | Default | Description |

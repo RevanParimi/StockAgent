@@ -706,7 +706,6 @@ is the current baseline; [audit/LEDGER.md](audit/LEDGER.md) records every
 
 | Item | Status |
 |---|---|
-| `CSHARP_SCHEDULER_ENABLED`, `CSHARP_API_URL` and the proxy branch in `score_store.py` | Leftover of a C# scheduler that is no longer in the repository: the flag defaults to false, so scores save to SQLite; a contract test still covers the settings |
 | 19 shim files | The half-finished restructure ([§0](#0-orientation)) |
 | `src/backend/shared/prompts/feedback_agent.py` | An old copy; the live prompt is `core/config/prompts/shared/feedback_agent.py` |
 | Legacy LangGraph worker pool | Fallback only; engagements counted |

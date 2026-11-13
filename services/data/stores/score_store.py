@@ -29,8 +29,6 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-import requests
-
 from core.config import settings
 from core.schemas.pipeline import FinalReport
 
@@ -99,28 +97,10 @@ class ScoreStore:
 
     def save(self, report: FinalReport) -> int:
         """
-        Persist a FinalReport.
+        Persist a FinalReport to SQLite.
 
-        When CSHARP_SCHEDULER_ENABLED=True the report is proxied to the C#
-        persistence layer (POST {CSHARP_API_URL}/scores).  SQLite is used
-        as the default/fallback (CSHARP_SCHEDULER_ENABLED=False).
-
-        Returns the new row id (or -1 when proxied to C#).
+        Returns the new row id.
         """
-        if settings.CSHARP_SCHEDULER_ENABLED:
-            try:
-                url = f"{settings.CSHARP_API_URL}/scores"
-                requests.post(url, json=report.model_dump(), timeout=10)
-                logger.info(
-                    "[ScoreStore] Proxied %s to C# scheduler at %s", report.ticker, url
-                )
-            except Exception as exc:
-                logger.warning(
-                    "[ScoreStore] C# proxy failed for %s (%s) — continuing without persistence",
-                    report.ticker, exc,
-                )
-            return -1
-
         agent_scores = {
             name: {"raw": ws.raw, "weight": ws.weight, "weighted": ws.weighted}
             for name, ws in report.weighted_agent_scores.items()

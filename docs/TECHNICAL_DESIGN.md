@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-11-13 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-11-14 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `cddc3be02c4d06a4f8c02c9495fae1280bf78f7a`
+**Code inspected:** `899526a5116b3024c7b3c2db056868045eedb7bf`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -41,11 +41,15 @@ reads the same facts; its fresh review accepted it on 12 November) and SA-044
 accepted it on 12 November), on top of FIX-028 (a sold stock leaves
 the daily review). It was pushed at about 14:35 IST on 12 November 2026 (the
 deployment list showed it SUCCESS; `/health` answered 200), with idle-cash
-deployment off. The inspected code adds FIX-030 (a generic-graph analysis reads no
-other sector's funds; a key no analysis named is re-examined; an unnamed idea
-stops taking a weekly re-dive; the peer cache keeps only answers), committed as
-`cddc3be` on 13 November 2026 and not yet deployed. The table gives the configuration that
-differs from the repository and the state of each operational control.
+deployment off. The inspected code is not yet deployed. It adds FIX-030 (a
+generic-graph analysis reads no other sector's funds; a key no analysis named
+is re-examined; an unnamed idea stops taking a weekly re-dive; the peer cache
+keeps only answers) and FIX-031 (a decision at a session's close reads the
+thesis, the confidence, the events and the research verdicts as they stood at
+that close). It also drops code that nothing ran: the RAG pipeline, the C#
+scheduler and score proxy, and the early single-sector CLI. The table gives
+the configuration that differs from the repository and the state of each
+operational control.
 
 | Area | State in production | Evidence |
 |---|---|---|
@@ -1264,7 +1268,9 @@ the decision reads:
 
 What is computed after the close from the close itself still counts: the
 review's grade of that session and the day's regime label, which reads no bar
-after it.
+after it. Not covered: the earnings-gap note (`EARNINGS_GAP_PROTECTION`, an
+annotation, not a verdict) reads the board-meeting calendar the run
+refreshes, which keeps no announcement time. **Planned:** PR-007.
 
 ### Two exit rules
 
@@ -3415,10 +3421,16 @@ alerts, a read-only status fetcher and an outside witness (section 11).
 
 Nothing in this section is implemented. Story cards define scope and
 acceptance, and [STATE.json](planning/PI-2026-09/STATE.json) holds status.
-Accepting code needs tests and a fresh review. Claiming a benefit needs matured
+Accepting code needs tests and a review; a change to what is bought, sold,
+sized or graded needs a fresh-session review
+([REVIEW.md](planning/PI-2026-09/REVIEW.md)). Claiming a benefit needs matured
 production observations as well.
 
 ### One engine with sector lenses
+
+**Paused.** None of this is built unless the owner promotes it. The owner
+decides from the results read after idle-cash deployment is switched on
+(section 12).
 
 All five graphs already run one bundle and one reasoning-model call; the
 LangGraph pool is only a fallback. They differ mainly in five scoring schemes
@@ -3446,6 +3458,9 @@ names its sector's benchmark, which is where automobile and renewable energy
 get an index with data.
 
 ### Learning on a corrected target
+
+**Off the plan.** None of this is built unless the owner promotes it, and
+learning stays in `observe` (section 5). It remains the design to return to.
 
 SA-012 specifies and tests the learning target before anything changes it
 (the grading defect in section 5). SA-013 persists immutable, prospective
@@ -3477,12 +3492,14 @@ learning to `observe`. SA-023 puts learned lessons on measurable probation.
 ### Portfolio economics
 
 - Idle-cash deployment (section 6, Cash deployment) ships off. **Planned:**
-  after FIX-023 (a regime label built on a fallback input opens no position),
-  FIX-024 (an idea analysed after a session's close is not bought at that
-  close) and FIX-025 (deployment follows the money and the ideas), the owner
-  reads the paper lane's record of shelf ideas against the Nifty and switches
-  it on; a month later the Nifty comparison
-  (section 7) judges the deployed cash (SA-049's rollout).
+  PR-014 switches it on for the primary portfolio once the inspected code is
+  deployed. The paper lane's record of shelf ideas against the Nifty is read
+  and recorded first. It is not a gate: the book is paper money, and buying
+  is the test. After ten review sessions the refusal reasons are read; if
+  more than a third of the BUY ideas offered were refused "above entry band",
+  the band gets its own fix. At four and eight weeks the owner reads the
+  results: the share invested, the holdings, the book against the Nifty
+  (section 7), closed trades by exit reason and the refusal counts.
 
 ### Product results
 
@@ -3503,9 +3520,12 @@ The planned changes connect the research to the money:
   triggers, and the next check. Every number in it is checked against its
   inputs (PR-005).
 - **Sell on evidence.** Both exit rules run, the price-path rule acting and
-  the evidence rule recorded beside it (section 6). The switch to
-  `case_broken` is the owner's, on the predeclared gate the weekly scorecard
-  reports (PR-009).
+  the evidence rule recorded beside it (section 6). **Planned:** the evidence
+  rule acts (PR-015) once the shock exit reads the re-forecast's trigger
+  (FIX-015) and deployment is on. The price-path rule's verdict is still
+  recorded each day, so the same comparison runs with the roles swapped. The
+  owner keeps the rule or rolls it back at the eight-week results, without
+  waiting for the switch gate to fill.
 - **Explain like an investor.** Explanations follow the pattern "what we did,
   why, what would change our mind, what next", grounded and free of internal
   words (PR-007). The brief opens with your stocks (PR-008).
@@ -3533,10 +3553,12 @@ makes failures visible without reading raw logs:
 
 ### Interface and data policy
 
-SA-024 shows verifiable learning evidence and honest unavailable states. The
-stretch stories SA-028 (packaging and a compiled browser client), SA-030
-(stale Atlas projections) and SA-032 (the public-read and demo-data policy)
-need explicit promotion. SA-031 is the final cross-document consistency check.
+SA-024 (verifiable learning evidence and honest unavailable states) is off
+the plan with the learning rebuild. The stretch stories SA-028 (packaging and
+a compiled browser client), SA-030 (stale Atlas projections) and SA-032 (the
+public-read and demo-data policy) need explicit promotion. SA-031 is the final
+cross-document consistency check; it depends on SA-024 and SA-027, so it
+waits for the owner's decision on them.
 
 ### Owner decisions and setup
 
@@ -3547,6 +3569,8 @@ These need the owner, not code:
 - an off-site backup bucket and key, then a recorded `fetch` drill
   (section 10);
 - a verified-domain sender, if per-account email goes over Resend;
+- whether the factor engine is promoted and whether the learning rebuild
+  returns, decided from the results at four and eight weeks;
 - whether learning returns to `adapt`, under the conditions above.
 
 Historical [specifications](superpowers/specs/) retain what was intended at
@@ -3563,6 +3587,19 @@ tests, the reviewed revision and the production checks. The table maps each
 story to the sections of this document it changes. An implemented story's
 behaviour is described in those sections as current design. Its production
 verification is tracked separately (section 1).
+
+Since 14 November 2026 the order follows the product's profit path: invest,
+hold, sell and measure
+([profit-path review](audit/2026-11-14-profit-path-architecture-review.md)).
+Switching idle-cash deployment on (PR-014) comes first, then the fixes that
+protect a deployed book and the evidence exit rule (PR-015). Two groups are
+not built unless the owner promotes them. The learning rebuild (SA-012 to
+SA-024 and SA-043) is off the plan ("Off plan" in the table), and learning
+stays in `observe`. The factor engine (SA-026 and SA-045 to SA-047, with
+SA-027, which depends on it) is paused ("On hold"). The owner reads the
+results four and eight weeks after the switch-on and decides from them
+whether either returns. SA-031 depends on a story in each group and waits
+for that decision.
 
 Nine fixes outside the SA numbering are also part of the current design:
 listing-day closes (FIX-001, sections 5 and 7), ticker resolution (FIX-002,
@@ -3590,22 +3627,22 @@ section 10) are part of the current design.
 | [SA-009](planning/PI-2026-09/stories/SA-009.md) | Inventory and reconcile prediction-store ownership | Done | 3 Storage | None |
 | [SA-010](planning/PI-2026-09/stories/SA-010.md) | Pass sector benchmarks through technical-data calls | Done | 4 Research | None |
 | [SA-011](planning/PI-2026-09/stories/SA-011.md) | Turn durable errors into a deterministic operations backlog | Done | 9 Jobs; 10 Operations | SA-002, SA-004 |
-| [SA-012](planning/PI-2026-09/stories/SA-012.md) | Specify and test the learning target before changing it | Open | 5 Learning; 7 Marksheets | SA-005 |
-| [SA-013](planning/PI-2026-09/stories/SA-013.md) | Persist immutable, genuinely prospective forecast identities | Open | 3 Storage; 5 Learning | SA-012 |
-| [SA-014](planning/PI-2026-09/stories/SA-014.md) | Grade frozen decisions and issue controls before their outcomes | Open | 5 Learning; 7 Marksheets | SA-003, SA-013 |
-| [SA-015](planning/PI-2026-09/stories/SA-015.md) | Make adaptive updates idempotent and preserve final weight bounds | Open | 5 Learning | SA-014 |
-| [SA-016](planning/PI-2026-09/stories/SA-016.md) | Replace blame-based shared credit with identifiable outcomes | Open | 5 Learning | SA-015 |
-| [SA-017](planning/PI-2026-09/stories/SA-017.md) | Attach historical lineage and quarantine incomparable feedback | Open | 3 Storage; 5 Learning | SA-009, SA-013 |
-| [SA-018](planning/PI-2026-09/stories/SA-018.md) | Build complete, matched monthly evaluation cohorts | Open | 7 Marksheets | SA-014, SA-017 |
-| [SA-019](planning/PI-2026-09/stories/SA-019.md) | Evaluate suggestions across weekly and fortnightly cohorts | Open | 7 Marksheets | SA-018 |
-| [SA-020](planning/PI-2026-09/stories/SA-020.md) | Compute effective samples from trading-session overlap | Open | 5 Learning; 7 Marksheets | SA-013 |
-| [SA-021](planning/PI-2026-09/stories/SA-021.md) | Validate calibration and weight recovery with minimum evidence | Open | 5 Learning; 7 Marksheets | SA-016, SA-018, SA-020 |
-| [SA-022](planning/PI-2026-09/stories/SA-022.md) | Run prospective adapted and frozen-policy experiments | Open | 5 Learning; 7 Marksheets | SA-016, SA-018, SA-020, SA-043, SA-047 |
-| [SA-023](planning/PI-2026-09/stories/SA-023.md) | Put learned lessons on measurable probation | Open | 5 Learning | SA-022 |
-| [SA-024](planning/PI-2026-09/stories/SA-024.md) | Show verifiable learning evidence and honest unavailable states | Open | 7 Marksheets; 10 Interface | SA-019, SA-020, SA-022 |
+| [SA-012](planning/PI-2026-09/stories/SA-012.md) | Specify and test the learning target before changing it | Off plan | 5 Learning; 7 Marksheets | SA-005 |
+| [SA-013](planning/PI-2026-09/stories/SA-013.md) | Persist immutable, genuinely prospective forecast identities | Off plan | 3 Storage; 5 Learning | SA-012 |
+| [SA-014](planning/PI-2026-09/stories/SA-014.md) | Grade frozen decisions and issue controls before their outcomes | Off plan | 5 Learning; 7 Marksheets | SA-003, SA-013 |
+| [SA-015](planning/PI-2026-09/stories/SA-015.md) | Make adaptive updates idempotent and preserve final weight bounds | Off plan | 5 Learning | SA-014 |
+| [SA-016](planning/PI-2026-09/stories/SA-016.md) | Replace blame-based shared credit with identifiable outcomes | Off plan | 5 Learning | SA-015 |
+| [SA-017](planning/PI-2026-09/stories/SA-017.md) | Attach historical lineage and quarantine incomparable feedback | Off plan | 3 Storage; 5 Learning | SA-009, SA-013 |
+| [SA-018](planning/PI-2026-09/stories/SA-018.md) | Build complete, matched monthly evaluation cohorts | Off plan | 7 Marksheets | SA-014, SA-017 |
+| [SA-019](planning/PI-2026-09/stories/SA-019.md) | Evaluate suggestions across weekly and fortnightly cohorts | Off plan | 7 Marksheets | SA-018 |
+| [SA-020](planning/PI-2026-09/stories/SA-020.md) | Compute effective samples from trading-session overlap | Off plan | 5 Learning; 7 Marksheets | SA-013 |
+| [SA-021](planning/PI-2026-09/stories/SA-021.md) | Validate calibration and weight recovery with minimum evidence | Off plan | 5 Learning; 7 Marksheets | SA-016, SA-018, SA-020 |
+| [SA-022](planning/PI-2026-09/stories/SA-022.md) | Run prospective adapted and frozen-policy experiments | Off plan | 5 Learning; 7 Marksheets | SA-016, SA-018, SA-020, SA-043, SA-047 |
+| [SA-023](planning/PI-2026-09/stories/SA-023.md) | Put learned lessons on measurable probation | Off plan | 5 Learning | SA-022 |
+| [SA-024](planning/PI-2026-09/stories/SA-024.md) | Show verifiable learning evidence and honest unavailable states | Off plan | 7 Marksheets; 10 Interface | SA-019, SA-020, SA-022 |
 | [SA-025](planning/PI-2026-09/stories/SA-025.md) | Count actual provider calls and fallback cost | Open | 4 Research; 10 Cost | SA-011 |
-| [SA-026](planning/PI-2026-09/stories/SA-026.md) | Consolidate sector definitions into sector lenses | Open | 2 Repository; 4 Research | SA-003, SA-009, SA-010 |
-| [SA-027](planning/PI-2026-09/stories/SA-027.md) | Retire redundant fallback only when measured replacements work | Open | 4 Research; 11 Planned redesign | SA-025, SA-026, SA-047 |
+| [SA-026](planning/PI-2026-09/stories/SA-026.md) | Consolidate sector definitions into sector lenses | On hold | 2 Repository; 4 Research | SA-003, SA-009, SA-010 |
+| [SA-027](planning/PI-2026-09/stories/SA-027.md) | Retire redundant fallback only when measured replacements work | On hold | 4 Research; 11 Planned redesign | SA-025, SA-026, SA-047 |
 | [SA-028 (stretch)](planning/PI-2026-09/stories/SA-028.md) | Repair packaging and compile the browser client | Open | 3 Runtime; 10 Interface | SA-001, SA-005 |
 | [SA-029](planning/PI-2026-09/stories/SA-029.md) | Verify readiness and recover background ownership | Open | 3 Runtime; 9 Jobs | SA-004, SA-007 |
 | [SA-030 (stretch)](planning/PI-2026-09/stories/SA-030.md) | Reconcile or retire stale Atlas projections | Open | 3 Storage | SA-009, SA-013 |
@@ -3621,11 +3658,11 @@ section 10) are part of the current design.
 | [SA-040](planning/PI-2026-09/stories/SA-040.md) | Record per-source fetch health and detect new error types | Open | 9 Jobs; 10 Operations | None |
 | [SA-041](planning/PI-2026-09/stories/SA-041.md) | Provide a read-only production status fetcher | Open | 10 Operations; 13 Validation | SA-036, SA-040 |
 | [SA-042](planning/PI-2026-09/stories/SA-042.md) | Add an outside witness for missed jobs (Healthchecks.io → Telegram) | Open | 9 Jobs; 10 Operations | SA-036 |
-| [SA-043](planning/PI-2026-09/stories/SA-043.md) | Run a shadow learner and record paired decisions in observe mode | Open | 5 Learning | SA-015, SA-039, SA-045 |
+| [SA-043](planning/PI-2026-09/stories/SA-043.md) | Run a shadow learner and record paired decisions in observe mode | Off plan | 5 Learning | SA-015, SA-039, SA-045 |
 | [SA-044](planning/PI-2026-09/stories/SA-044.md) | Compare valuations only with same-industry peers | Done | 4 Research | None |
-| [SA-045](planning/PI-2026-09/stories/SA-045.md) | Compute the five universal factors deterministically | Open | 4 Research | SA-026 |
-| [SA-046](planning/PI-2026-09/stories/SA-046.md) | Read text into dated events and a Catalyst factor | Open | 4 Research | SA-026 |
-| [SA-047](planning/PI-2026-09/stories/SA-047.md) | Decide with the factor engine; switch when it is not worse | Open | 4 Research; 5 Learning | SA-045, SA-046, SA-014, SA-020 |
+| [SA-045](planning/PI-2026-09/stories/SA-045.md) | Compute the five universal factors deterministically | On hold | 4 Research | SA-026 |
+| [SA-046](planning/PI-2026-09/stories/SA-046.md) | Read text into dated events and a Catalyst factor | On hold | 4 Research | SA-026 |
+| [SA-047](planning/PI-2026-09/stories/SA-047.md) | Decide with the factor engine; switch when it is not worse | On hold | 4 Research; 5 Learning | SA-045, SA-046, SA-014, SA-020 |
 | [SA-048](planning/PI-2026-09/stories/SA-048.md) | Charge realistic trading costs and tax in paper P&L | Done | 6 Portfolio; 7 Marksheets | None |
 | [SA-049](planning/PI-2026-09/stories/SA-049.md) | Put idle cash to work in normal markets | Done | 6 Portfolio; 8 Discovery | SA-050, SA-051 |
 | [FIX-023](planning/PI-2026-09/stories/FIX-023.md) | Deployment buys only on a regime read from live inputs, as of the review session | Done | 6 Portfolio; 5 Learning | SA-049 |
@@ -3636,7 +3673,7 @@ section 10) are part of the current design.
 | [FIX-028](planning/PI-2026-09/stories/FIX-028.md) | A sold stock leaves the daily review | Done | 6 Portfolio; 8 Discovery | FIX-025 |
 | [FIX-029](planning/PI-2026-09/stories/FIX-029.md) | Every door to a buy reads the same facts: the day's regime, the sale and the verdict | Done | 6 Portfolio; 8 Discovery | FIX-025 |
 | [FIX-030](planning/PI-2026-09/stories/FIX-030.md) | A generic-graph analysis sees no automobile evidence; a key the old Yahoo table set is re-examined; an unnamed idea stops taking a weekly re-dive | Done | 4 Research; 8 Discovery | FIX-026 |
-| [FIX-031](planning/PI-2026-09/stories/FIX-031.md) | Every input a decision at a session's close reads is from before that close | Open | 6 Portfolio; 5 Learning | FIX-027 |
+| [FIX-031](planning/PI-2026-09/stories/FIX-031.md) | Every input a decision at a session's close reads is from before that close | Done | 6 Portfolio; 5 Learning | FIX-027 |
 | [FIX-032](planning/PI-2026-09/stories/FIX-032.md) | A home-page watchlist save keeps what it does not show, and a removal there leaves the daily review | Open | 6 Portfolio; 10 Interface | FIX-028 |
 | [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Done | 6 Portfolio | None |
 | [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Done | 7 Marksheets; 10 Interface | None |
@@ -3664,6 +3701,8 @@ section 10) are part of the current design.
 | [FIX-015](planning/PI-2026-09/stories/FIX-015.md) | The shock exit reads the re-forecast's trigger, not its sentence | Open | 6 Portfolio | PR-009 |
 | [FIX-016](planning/PI-2026-09/stories/FIX-016.md) | Fix the evidence exit's inputs and its switch gate before the shadow starts | Done | 6 Portfolio; 7 Marksheets | PR-009 |
 | [PR-013](planning/PI-2026-09/stories/PR-013.md) | Show where losses come from and what waiting costs | Open | 7 Marksheets | PR-002, PR-009 |
+| [PR-014](planning/PI-2026-09/stories/PR-014.md) | Switch idle-cash deployment on, then read what it does | Open | 1 Production state; 6 Portfolio | FIX-030, FIX-031 |
+| [PR-015](planning/PI-2026-09/stories/PR-015.md) | The evidence exit rule acts | Open | 1 Production state; 6 Portfolio | FIX-015, PR-014 |
 | [FIX-017](planning/PI-2026-09/stories/FIX-017.md) | The holding sync reads every NSE corporate-action row it is given, under NSE's code | Open | 6 Portfolio | None |
 | [FIX-018](planning/PI-2026-09/stories/FIX-018.md) | The switch gate sets aside a decision whose result can never be known: named, and within a cap | Done | 6 Portfolio; 7 Marksheets | FIX-016 |
 | [FIX-019](planning/PI-2026-09/stories/FIX-019.md) | Find out why NSE lists no corporate action for 14 configured codes, and map the stale ones | Done | 4 Research; 6 Portfolio | None |

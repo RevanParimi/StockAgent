@@ -855,11 +855,14 @@ encode the two constraints most likely to fail silently.
 
 ## 16. Planned work
 
-- Switching idle-cash deployment on: FIX-023 (a regime label built on a
-  fallback input opens no position), FIX-024 (an idea analysed after a
-  session's close is not bought at that close) and FIX-025 (deployment follows
-  the money and the ideas) first, then a read of the paper lane's record, then
-  `portfolio.overrides.primary.deploy_idle_cash` (SA-049's rollout).
+- Switching idle-cash deployment on (PR-014): once FIX-030 and FIX-031 are
+  deployed, the paper lane's record is read and recorded (it is not a gate),
+  then `portfolio.overrides.primary.deploy_idle_cash` is set to `true`. The
+  first run's `deployment` record is read, then the refusal reasons after ten
+  review sessions, then the results at four and eight weeks.
+- The evidence exit rule acts (PR-015): `advisor.exit_rule: evidence`, once
+  the shock exit reads the re-forecast's trigger (FIX-015) and deployment is
+  on. The price-path rule's verdict is still recorded each day.
 - The tax estimate at each lot's own cost (FIX-022).
 - A safe `identity_reconcile apply` (SA-008 change 1).
 - Learning from executed advice remains future work: every autopilot row

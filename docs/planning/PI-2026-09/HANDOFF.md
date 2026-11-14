@@ -1,4 +1,176 @@
-# Current handoff - 2026-11-13 (CLEAN-001 done on a local branch; FIX-030 committed, not pushed; FIX-030-M1 after Saturday's run; FIX-031 next)
+# Current handoff - 2026-11-14 (PR-014 in progress: FIX-031 committed, nothing pushed; FIX-030-M1 and the push time are the owner's; the switch is off)
+
+## 14 Nov, late: PR-014 started → FIX-031 committed; step 1 and the push wait for you
+
+- **Session `stockagent-main-2a`** [8c7645], a new conversation opened with "continue", Saturday
+  from about 23:45 IST. `origin/main` was `5ae2749` after a fetch; five peers were idle. Receipt:
+  [evidence/PR-014-rollout.md](evidence/PR-014-rollout.md). Lane: light (rollout). No production
+  state was read, nothing was pushed and no setting changed.
+- **Step 2, done: FIX-031 is committed.**
+  - `899526a`, the code: exactly the 16 reviewed files (`kt_manifest.py verify --rev 899526a`: 0
+    mismatches).
+  - The docs commit after it holds:
+    - FIX-031's receipts and manifest, with the PR-007 and SA-021 notes;
+    - the review's five commit-time edits: KT header (`899526a`, edition 2026-11-14), section 12
+      `Done`, section 6's "Not covered" sentence, guide 07-Q, the PDF (72 pages);
+    - KT section 1: the inspected code is not yet deployed, and what it holds beyond production;
+    - the 14 Nov decisions in KT sections 11 and 12 and AUTOPILOT_GUIDE section 16;
+    - the 14 Nov planning files, STATE, this file and the receipt.
+  - `check_kt_docs` gives `errors: []`.
+- **Step 3, the full suite,** runs on the docs commit. Its result is in the receipt's "Full
+  suite" section and in STATE's history.
+- **Step 1, `FIX-030-M1`, is yours.** The receipt has both commands: Saturday's
+  `[Scheduler] Discovery` line in Railway's log view, and the counts probe through `railway ssh`.
+  - It decides whether a one-point card comes before the deploy.
+  - The probe's `decided_configured_key` is also the number of ideas deployment can buy from in
+    its first week. On 13 Nov it was 4 of 19; 7 more wait for the Saturday after the deploy.
+- **Step 4, the push, waits for step 1 and a time you agree.** It deploys FIX-030, FIX-031 and
+  CLEAN-001 together and reinstalls every unpinned package. The build's result, `/health` and the
+  first scheduled job are read before step 6.
+- **STATE:** PR-014 `in_progress` (active and next); FIX-031 carries its commit.
+- **Small finding, in the backlog (B-4):** four living documents still call off-plan or paused
+  stories "Planned".
+- **Next `continue`: PR-014 again,** from step 1's result. The switch stays off until step 6.
+
+## 14 Nov: owner's backlog and architecture review → four decisions made, PR-014 next
+
+- **Session `stockagent-main-c5`** [7eec65], Saturday about 08:00–13:30 IST. Not a story phase: the
+  owner asked for the board's status, then for a review of the tasks against the goal ("I don't see
+  any profit, neither investments"). No code or test changed. Production was not read. Four peers
+  were idle.
+- **Order approved by the owner ("ya"), recorded in STATE** (the todo tasks reordered in place; done
+  tasks keep their positions; no task's fields changed). It supersedes the cards' "Queued after"
+  sentences:
+  1. PR-014 (new: switch deployment on), FIX-032, FIX-015, PR-015 (new: the evidence rule acts),
+     FIX-017, CLEAN-002 (new: archive this file and STATE's history);
+  2. PR-013, PR-005, PR-007, PR-008;
+  3. SA-036, SA-042, SA-035, then PR-010;
+  4. the rest (PR-012, FIX-014, FIX-020, FIX-022, FIX-006, the other reliability cards, SA-025), then
+     SA-031 (blocked, see R4 below), stretch last.
+- **Why these moved up:** FIX-015 (the shock exit has never fired) and FIX-017 (a misread
+  bonus-and-split can fire a stop) protect a deployed book. PR-013 shows which exit loses money.
+  SA-036, SA-042 and SA-035 catch a missed run once money is in stocks.
+- **PR-013 now comes before PR-005.** PR-005 adds its own exit reason to PR-013's by-reason line
+  when it is built.
+- **The review:**
+  [2026-11-14-profit-path-architecture-review.md](../../audit/2026-11-14-profit-path-architecture-review.md)
+  (findings F1–F6, recommendations R1–R6). In short: nothing can invest while deployment's switch is
+  off; the book is paper money; what the switch would buy has never been measured; the entry band
+  (at most 2% above the dive's close, for up to 30 days) refuses the ideas that rise; the exit
+  rule's gate cannot fill with 2 holdings; 76 of the 157 open points rebuild a learner that is
+  frozen.
+- **The owner said yes to all four decisions** (about 13:20 IST):
+  - **R1, switch deployment on → [PR-014](stories/PR-014.md)** (P0, first in the queue, a rollout
+    card): `FIX-030-M1`, commit FIX-031, full suite, push, read the paper lane, switch on, the first
+    run's record, then three dated checks (`PR-014-D1` the door read after 10 sessions,
+    `PR-014-R1` and `PR-014-R2` results at 4 and 8 weeks). The owner's word for the switch is
+    given; each push still waits for a time the owner agrees.
+  - **R3, the evidence exit rule acts → [PR-015](stories/PR-015.md)**, after FIX-015 and PR-014,
+    without waiting for PR-009's gate. The old rule's verdict keeps being recorded; the owner
+    judges at `PR-014-R2`. PR-009's card records the decision.
+  - **R4, the learning rebuild is off the plan.** STATE scope `removed`: SA-012 to SA-024 and
+    SA-043 (58 points). Scope `paused`: the factor engine SA-026, SA-045 to SA-047, and SA-027,
+    which depends on SA-047 (21 points). Neither is selected without the owner's promotion.
+    Learning stays observe-only. **Unresolved:** SA-031 depends on SA-024 and SA-027 (its
+    `blocked_reason`); stretch SA-030 and SA-032 depend on removed cards.
+  - **R6, a lighter process.** [AGENTS.md](../../../AGENTS.md) now states the goal, two review
+    lanes (decision path: fresh-session review; everything else: accepted in its own conversation
+    on the full suite) and sends small findings to [BACKLOG.md](BACKLOG.md). REVIEW.md says the
+    same. [CLEAN-002](stories/CLEAN-002.md) archives this file and STATE's history; until then the
+    "START HERE" checklist below may still describe the old single lane.
+- **The planned queue is now 27 cards, 72 points** (it was 46 cards, 157 points).
+- **The cleanup brief the owner pasted is CLEAN-001**, done on 13 Nov (section below). Nothing was
+  redone. Its two skipped items are BACKLOG B-1 (shims) and B-2 (docs move).
+- **Not edited, on purpose:** KT section 12 and AUTOPILOT_GUIDE section 16 still describe the old
+  plan. Both files are in FIX-031's uncommitted 16-file manifest, so they change in the docs commit
+  after it (PR-014's step 2).
+- **For the docs commit:** it now also carries this section, STATE's changes, the review file,
+  BACKLOG.md, the PR-014, PR-015 and CLEAN-002 cards, AGENTS.md, REVIEW.md, the PI README's note,
+  and sentences in the FIX-015, FIX-017, PR-009 and PR-013 cards. None is in FIX-031's manifest.
+- **Next `continue`, in a new conversation: PR-014.** Its step 1 is `FIX-030-M1`, due from about
+  14:00 IST today. The switch stays off until PR-014's step 6.
+
+## 14 Nov: FIX-031 fresh review → ACCEPTED
+
+- **Session `stockagent-main-f2`** [050ab6], a new conversation opened with "continue", Saturday
+  about 07:56–08:25 IST. `origin/main` was `5ae2749` after a fetch: nothing had arrived from the
+  other device. Three peers were idle, the implementer `-fd` among them. Receipt:
+  [evidence/FIX-031-review.md](evidence/FIX-031-review.md). It started before 14:00, so
+  `FIX-030-M1` was not run.
+- **Input verified** at the start and the end: manifest `d1fbec94` (16 files, 0 mismatches) and
+  diff `d04ec340` against `cbbee3c`; nothing else changed but bookkeeping.
+- **Traced, independently** (reviewer cases `analysis_data/fix031_review/test_rv_fix031.py`, 73
+  passed + 2 strict xfails; 58 of them fail on `cbbee3c`):
+  - the card's thesis example through the real daily review and advisor: HOLD at Monday's and
+    Tuesday's closes, EXIT at Wednesday's; the confidence read 0.50 at both early closes and 0.375 at
+    Wednesday's, worked by hand;
+  - a real thesis-break re-forecast at Tuesday 16:45: Tuesday's row stays as issued, and the real
+    review of Tuesday grades that row (99.5);
+  - every publication-stamp format, and a 60-seed evidence invariant over sources, stamps and gates.
+- **Findings, low only, both pre-existing and outside the card's named inputs:**
+  - **R1:** the earnings note (`EARNINGS_GAP_PROTECTION`) reads NSE's board-meeting calendar, which
+    the run refreshes after the close and which keeps no announcement time. Only the note and the
+    record's hash change. Routed to PR-007.
+  - **R2:** the calibration report grades each session against a confidence revised after that
+    session's close. Routed to SA-021; FIX-031's revision log makes it fixable.
+- **Evidence:** focused tests once (182 passed; FIX-027 reviewer's three F1/F2 xfails now pass);
+  full suite 6,456 passed / 12 skipped / 1 xfailed / 0 failed (rc 0, 15m26s); `check_kt_docs` `errors: []`; `check_broad_except` OK.
+- **STATE:** FIX-031 `done`, production `pending_deployment`; `active_task` null; `next_task`
+  FIX-032.
+- **For you:** commit at your word: the 16 reviewed files, then the docs with the five commit-time
+  edits in the review receipt. Deploying is separate, and FIX-030 still waits for `FIX-030-M1`.
+- **Next `continue`, in a new conversation: FIX-032's implementation.** If it starts after
+  Saturday 14 Nov at about 14:00 IST, run `FIX-030-M1` first. The switch stays off.
+
+## 13 Nov: FIX-031 implemented → review_required
+
+- **Session `stockagent-main-fd`** [d5183a], a new conversation opened with "continue", Friday 13 Nov about 21:15 IST to Saturday 14 Nov about 07:45 IST (the laptop slept overnight). `origin/main` was `5ae2749`: nothing had arrived from the other device. Peers
+  `-50` and `-55` were idle. Receipt: [evidence/FIX-031-implementation.md](evidence/FIX-031-implementation.md).
+- **Base:** the checkout was on `chore/remove-dead-code`. At your choice ("Fast-forward main"),
+  `main` now points at its tip `cbbee3c` (local only). `main` is 13 ahead of `origin/main`.
+  `git push origin e2b6f34:main` still deploys FIX-030 alone.
+- **Step 1, measured first.** One read-only counts probe in production, at your word ("Run it now"),
+  22:20 IST, on `f368f20`. My first run's shadow-event count was wrong (a row stores only event
+  ids); corrected and run again at 22:21:
+  - F1: 365 "not intact" thesis reviews since August. 8 sales were dated the same session, 5 of
+    them carrying `thesis_break`. Small, so your FIX-027 "Wait" stands for the thesis too.
+  - F2: 17 of the 20 shadow rows read a research verdict run after their close (the review's own
+    evening analysis), none a SELL; 2 read a filing published after it.
+  - FIX-027's step 1: 110 re-forecasts since August, 1 with a same-day ADD/EXIT/SWITCH (Aug).
+    All 4 stamped ones (Nov) rewrote an already-closed row (I-2).
+- **What it does:**
+  - **The thesis** (option b): each feedback entry records `written_at`; the advisor reads only a
+    thesis written before the session's close. Monday's review, written Tuesday 16:30, first
+    sells at Wednesday's close.
+  - **The confidence:** each daily-review revision records its time and the value before; the
+    advisor reads every row as it stood at the close (TRIM's trend included).
+  - **The evidence rule:** events count for 5 closes from the first close after publication; a
+    research verdict and a deep dive count only when made before the close.
+  - **The watchlist:** FIX-029's newest-before-the-close read, checked by an invariant.
+  - **A re-forecast** keeps the row of any session already closed when it ran.
+  - **L2/L3:** FIX-027's end-to-end fixture runs a profile that is accepted; its two defensive
+    branches are tested.
+- **Decisions F31-D1 to D9** are delegated technical calls, each with an example in the receipt.
+  The one to look at: D9. FIX-027's record still names a later re-forecast it did not act on, so
+  the invariant compares everything but that disclosure.
+- **Evidence:**
+  - story file `tests/unit/test_issue_time_fix031.py`: 78 pass, including a 40-seed
+    invariant (nothing made after Monday's close moves Monday's advice or shadow row) and a
+    20-seed watchlist invariant;
+  - mutants: 23 of 23 caught by the story file; 9 of them by the invariants alone;
+  - FIX-027 reviewer's three F1/F2 strict xfails now pass;
+  - full suite run 3: 6,456 passed / 12 skipped / 1 xfailed / 0 failed, rc 0 (run 1 hung
+    after the laptop slept; run 2 had the known FIX-029 regime-state file lock, 5/5 alone);
+  - `check_broad_except` OK; `check_kt_docs` `errors: []`; PDF 71 pages;
+  - manifest `d1fbec94` (16 files, 0 mismatches), diff `d04ec340` against `cbbee3c`.
+- **For you:** nothing to decide now. Deploying changes production with the switch off: a thesis
+  sale waits two sessions, TRIM reads the close's confidence, the shadow's evidence follows the
+  clock, and a review's re-forecast keeps the next session's row (receipt, Rollout).
+- **STATE:** FIX-031 `review_required` (active and next). `FIX-030-M1` is still pending (after
+  Saturday 14 Nov's 12:30 run).
+- **Next `continue`, in a new conversation: FIX-031's fresh review** (REVIEW.md). If it starts
+  after Saturday 14 Nov at about 14:00 IST, run `FIX-030-M1` first. Then FIX-032. The switch
+  stays off.
 
 ## 13 Nov: CLEAN-001 housekeeping (owner scope change) → done on a local branch
 

@@ -1,17 +1,17 @@
 {
   "schema_version": 1,
   "pi": "PI-2026-09",
-  "updated_at": "2026-11-13",
+  "updated_at": "2026-11-14",
   "baseline_commit": "9a805878ed19c0cda7833d5b897ac05ee407436d",
   "audit": {
     "status": "complete",
     "report": "docs/audit/2026-09-10-repository-production-review.md",
     "production_modified": false
   },
-  "active_task": null,
-  "next_task": "FIX-031",
-  "next_phase": "CLEAN-001 (owner scope change, 13 Nov evening, session stockagent-main-50) DONE on the local branch chore/remove-dead-code (10 item commits + 2 docs commits on e2b6f34; not merged into main, not pushed; the checkout is left on that branch): merge it at the owner's word, or switch back to main, before the next phase. FIX-030 ACCEPTED by its fresh review (13 Nov about 12:51-13:35 IST, session stockagent-main-1c; receipt evidence/FIX-030-review.md; findings low only: R1 docs fixed at commit, R2 -> SA-026) and COMMITTED at the owner's word about 17:00 IST: code cddc3be + the docs commit after it. NOT pushed (main 2 ahead of origin 5ae2749): pushing deploys FIX-030; it waits for the pending check FIX-030-M1 (Saturday 14 Nov's Discovery counts, after the 12:30 run), the full suite and the owner's word, in a job-free window. Next continue, in a new conversation: FIX-031's implementation; one starting after Sat 14 Nov about 14:00 IST runs FIX-030-M1 first. Then FIX-032. The switch stays off.",
-  "scope": "One implementation or fresh-session review phase per conversation. Default queue is planned stories; stretch requires explicit promotion.",
+  "active_task": "PR-014",
+  "next_task": "PR-014",
+  "next_phase": "PR-014 IN PROGRESS (rollout lane; session stockagent-main-2a [8c7645], Sat 14 Nov from about 23:45 IST; receipt evidence/PR-014-rollout.md). Step 2 DONE: FIX-031 committed, code 899526a (the 16 reviewed files, 0 mismatches) and the docs commit after it (FIX-031's receipts, the five commit-time edits, KT s1, the 14 Nov decisions in KT s11/s12 and AUTOPILOT_GUIDE s16, the 14 Nov planning files). Step 3, the full suite, runs on the docs commit: its result is in the receipt and this file's history. Step 1, FIX-030-M1, is the OWNER'S read (Railway's log view filtered on 'Discovery' for Sat 14 Nov, and the counts probe through railway ssh; both commands in the receipt). Step 4, the push (deploys FIX-030, FIX-031 and CLEAN-001 together, every unpinned package reinstalled), waits for step 1 and a time the owner agrees. Nothing pushed; the switch is OFF until step 6. Next continue: PR-014 again, from step 1's result. Then FIX-032, FIX-015, PR-015, FIX-017, CLEAN-002, PR-013, PR-005.",
+  "scope": "One phase per conversation. Decision-path cards (what is bought, sold, sized or graded) keep the fresh-session review; other cards are accepted in their own conversation on the full suite and their checks (owner, 14 Nov 2026; AGENTS.md). The queue is the planned-scope todo cards in this file's order; stretch, paused and removed cards need the owner's explicit promotion.",
   "pending_production_checks": [
     {"id": "FIX-030-M1", "story": "FIX-030", "due_ist": "after Saturday 14 Nov's 12:30 discovery run (from about 14:00 IST), before FIX-030 is deployed", "status": "pending", "check": "Read-only, counts and symbols only. The owner reads the 14 Nov '[Scheduler] Discovery' line's sectors=[named, generic, unnamed, invalid, disputed, no Yahoo, kept] and its 'Discovery sectors' lines in Railway's log view filtered on 'Discovery' (no raw log into a tool or file), and re-runs analysis_data/fix030/prod_probe.py (command in evidence/FIX-030-implementation.md; L2_unnamed_by_problem). Rule: if most of the week's dives are unnamed with 'the analysis gave no sector answer', M1 occurs -> a new small card (P1, 1 point, before FIX-031): the system prompt's 'no keys beyond the schema' rule allows the one extra block when the question is asked, analyses without it keep a byte-identical prompt; else M1 closes as not occurring. Either way record the disputed dives filed automobile with non-automotive Yahoo labels (M2's size on the code before FIX-030).", "trigger": "The first 'continue' conversation that starts after Sat 14 Nov about 14:00 IST runs it before its own phase.", "record_in": "docs/planning/PI-2026-09/evidence/FIX-030-review.md (M1) and STATE/HANDOFF"},
     {"id": "PR-011-P1", "story": "PR-011", "due_ist": "before PR-011 is pushed", "status": "passed", "check": "The owner runs, from Git Bash in the repository: railway ssh \"cd /app && echo $(gzip -9c analysis_data/pr011/prod_probe.py | base64 -w0) | base64 -d | python -c 'import sys,zlib;exec(zlib.decompress(sys.stdin.buffer.read(),31))'\" and pastes the output. Pass: every source http 200 with fields_present true, both documents has_marker true. A failing source is switched off before the push (events.disclosures.<source> false or discovery.pledge_guard false); if the insider list or its XBRL fails, delete insider_buying from discovery.signal_weights, the fallback and the signal slots too (receipt D13).", "record_in": "docs/planning/PI-2026-09/evidence/PR-011-implementation.md (Production probe)", "checked_ist": "2026-10-23 15:42", "result": "Owner ran analysis_data/pr011/prod_probe.py in the production container via railway ssh, 23 Oct 15:42:30 IST (raw copy analysis_data/pr011/prod_probe_2026-10-23_1542IST.txt, ignored): 8 of 8 checks passed. Insider list corporates-pit-gg 7 days 200/19 rows, 28 days 200/351; SAST Reg 29 7 days 200/35; Reg 31 7 days 200/12; MARUTI pledge snapshot 200/1; MARUTI shareholding list 200/22 quarters; fields present in all six; insider XBRL 10,821 B and shareholding XBRL 605,702 B, fact names present. No source switched off; receipt D13 stands (everything ships enabled). Public NSE data only; no application data, logs or env."},
@@ -29,7 +29,7 @@
     "blocked": "A concrete external/input blocker is recorded; continue other ready authorized work."
   },
   "tasks": [
-    {"id": "CLEAN-001", "title": "Remove provably unused code (scaffolder, C# scheduler and score proxy, RAG, main.py, the unwritten macro cache, the unread prompt-enhancement consumer) and tidy requirements", "story": null, "sprint": "housekeeping", "points": 1, "priority": "P3", "scope": "owner_resequenced", "status": "done", "origin": "Owner scope change 2026-11-13 (session stockagent-main-50 [fcd907]): housekeeping ahead of the queue; fresh-session review waived by the owner (deletions only); full suite passing is the acceptance", "depends_on": [], "branch": "chore/remove-dead-code (local, not merged, not pushed)", "commits": "643d605 (item 1), 8cccc41 (2), 25d6b65 (3), 7ed7251 (4), 7b6a64d (5), docs 933b6d6; then, at the owner's word in the same conversation ('if its dead code now, remove them'), b1aa410 (7), 3558c88 (8), e114b99 (9), 8f7c7e5 (10) and a second docs commit", "acceptance": "Full suite on 7b6a64d: 6,409 passed / 12 skipped / 1 xfailed / 0 failed, pytest rc 0, 19m34s (17:42-18:02 IST); the 11 fewer than FIX-030's 6,420 are exactly the 8 deleted test_rag.py tests and the 3 TestRAGConfig tests; check_broad_except OK (148); check_kt_docs errors []. After items 7-10, full suite on 8f7c7e5: 6,378 passed / 12 skipped / 1 xfailed / 0 failed, pytest rc 0, 29m47s (19:13-19:43 IST); 31 fewer than 6,409 = the 24 deleted C# contract tests and the 7 macro-cache-hit tests", "skipped": "6a shims (132+9 import sites, a test patches through core.pipeline.orchestrator); 6b docs move (config/milestones.yaml, read by the production watchdog, names a plan in the move set)", "implementation_receipt": "docs/planning/PI-2026-09/evidence/CLEAN-001.md", "review_receipt": null, "reviewed_revision": null, "production_verification": {"status": "not_deployed", "evidence": "Deploying edits requirements.txt (every unpinned package re-resolves) and, from this base, also deploys FIX-030 (waits for FIX-030-M1)"}, "blocked_reason": null},
+    {"id": "CLEAN-001", "title": "Remove provably unused code (scaffolder, C# scheduler and score proxy, RAG, main.py, the unwritten macro cache, the unread prompt-enhancement consumer) and tidy requirements", "story": null, "sprint": "housekeeping", "points": 1, "priority": "P3", "scope": "owner_resequenced", "status": "done", "origin": "Owner scope change 2026-11-13 (session stockagent-main-50 [fcd907]): housekeeping ahead of the queue; fresh-session review waived by the owner (deletions only); full suite passing is the acceptance", "depends_on": [], "branch": "chore/remove-dead-code; main fast-forwarded to it (cbbee3c) at the owner's choice on 13 Nov about 21:15 IST (session stockagent-main-fd), not pushed", "commits": "643d605 (item 1), 8cccc41 (2), 25d6b65 (3), 7ed7251 (4), 7b6a64d (5), docs 933b6d6; then, at the owner's word in the same conversation ('if its dead code now, remove them'), b1aa410 (7), 3558c88 (8), e114b99 (9), 8f7c7e5 (10) and a second docs commit", "acceptance": "Full suite on 7b6a64d: 6,409 passed / 12 skipped / 1 xfailed / 0 failed, pytest rc 0, 19m34s (17:42-18:02 IST); the 11 fewer than FIX-030's 6,420 are exactly the 8 deleted test_rag.py tests and the 3 TestRAGConfig tests; check_broad_except OK (148); check_kt_docs errors []. After items 7-10, full suite on 8f7c7e5: 6,378 passed / 12 skipped / 1 xfailed / 0 failed, pytest rc 0, 29m47s (19:13-19:43 IST); 31 fewer than 6,409 = the 24 deleted C# contract tests and the 7 macro-cache-hit tests", "skipped": "6a shims (132+9 import sites, a test patches through core.pipeline.orchestrator); 6b docs move (config/milestones.yaml, read by the production watchdog, names a plan in the move set)", "implementation_receipt": "docs/planning/PI-2026-09/evidence/CLEAN-001.md", "review_receipt": null, "reviewed_revision": null, "production_verification": {"status": "not_deployed", "evidence": "Deploying edits requirements.txt (every unpinned package re-resolves) and, from this base, also deploys FIX-030 (waits for FIX-030-M1)"}, "blocked_reason": null},
     {
       "id": "SA-039",
       "title": "Contain adaptive learning: observe-only, live weights back to defaults",
@@ -1862,19 +1862,46 @@
       "points": 5,
       "priority": "P1",
       "scope": "planned",
-      "status": "todo",
+      "status": "done",
       "origin": "FIX-027's fresh review 2026-11-10 (session stockagent-main-77 [fd76db]; evidence/FIX-027-review.md findings F1, F2 medium pre-existing, I-1, I-2, L2, L3; code inspection and local reproduction, frequency not measured)",
       "depends_on": ["FIX-027"],
       "sequencing_note": "Routing delegated (owner, 2026-10-13). Placed after FIX-030, before PR-005. Do it before anyone reads the exit-rule switch gate as a verdict (PR-009): F1 favours the legacy rule's record, F2 the shadow's. The thesis sale follows the owner's FIX-027 'Wait' unless step 1's count is large; then re-ask. I-1 decided under the delegation: the watchlist reads the latest analysis made before the close.",
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
+      "implementation": {
+        "date": "2026-11-13",
+        "context": "a new conversation opened with 'continue', Friday 13 Nov about 21:15 to Saturday 14 Nov about 07:45 IST, the laptop asleep overnight (session stockagent-main-fd [d5183a]), including a same-conversation self-review (not the fresh review); peers -50 and -55 idle; origin/main 5ae2749; production read once, read-only, at the owner's word (the step 1 probe); no LLM call, no network from tests",
+        "baseline": "HEAD cbbee3c (main fast-forwarded to chore/remove-dead-code at the owner's choice; clean tree)",
+        "probe": "analysis_data/fix031/prod_probe.py, counts only, run 13 Nov 22:20 and (corrected shadow-event lookup) 22:21 IST on f368f20: since 1 Aug 110 re-forecasts (1 with a same-day ADD/EXIT/SWITCH, Aug SWITCH; 4 stamped, all after their close and each rewrote a closed row); 988 thesis reviews, 365 not intact, 8 with an EXIT/SWITCH the same date, 5 carrying thesis_break; 20 shadow rows, 17 with a research verdict run after their close (0 SELL), 2 with a case event published after it",
+        "change": "Schema: FeedbackEntry.written_at, DailyForecast.confidence_revisions (ConfidenceRevision at/before). daily_review: Step 7b records each confidence change, Step 8 stamps written_at. advisor: written_before, confidence_at; build_signals reads the thesis only from an entry written before the close and each row's confidence as at the close. exit_shadow: published_time; recent_negative_events counts 5 closes from the first close after publication (date-only = that day's close); latest_actionable_verdict a run before the close; invalidation_for by shelf.decision_time. generate_forecast: regenerate_envelope keeps rows of sessions closed when it ran; nothing open -> None before the archive. Tests: story file; PR-009 two boundaries moved to the clock; test_reforecast pins now_ist; FIX-027 end-to-end profile +20% (L2). Docs: KT s5 step 7, s6 (Not covered -> current design; exit rules), RL_DESIGN, AUTOPILOT_GUIDE, CODEBASE, PRODUCT_MAP, guide 07-Q, PDF 71 pp.",
+        "decisions": "F31-D1 thesis option (b) (written_at), not (a): Serper has dates only, the reviewer reads the feedback agent's output, cutting the review's news would cut the learning loop's; the news-cut reviewer xfail stays. D2 unstamped entries: dated >= the session = after, older = before. D3 Step 7b revision log read at the close (not archives, not issued-only). D4 events 5 closes from the first close after publication; date-only = that day's close. D5 research verdict: upper bound only. D6 deep dive by decision_time (beyond the card's list). D7 I-2: path drawn through, closed row kept, closed read after the analysis; nothing open -> None before the archive. D8 I-1 FIX-029's, checked by an invariant. D9 invariant excludes FIX-027's disclosure (envelope_after_close, its note, rationale_hash, envelope_late_direction), checked separately; grade and regime label are the close's own. All delegated technical calls (owner, 13 Oct).",
+        "tests": "story file tests/unit/test_issue_time_fix031.py 78 (card examples through the real advisor, Step 7b, the real daily review, the evidence rule's clock, I-2 through the real regenerate_envelope, L3, a 40-seed decision invariant with a non-vacuous control, a 20-seed watchlist invariant over the real score store); FIX-027 reviewer's 3 strict xfails XPASS (news-cut one stays xfail by F31-D1); mutants 23/23 by the story file, 9/23 by the invariants alone; changed tests: PR-009 two boundaries, test_reforecast clock pin, FIX-027 L2 profile",
+        "checks": "check_broad_except OK (148); check_kt_docs errors []; PDF 71 pp, source 8d988056; manifest verify 0 mismatches",
+        "rollout": "switch off: a thesis_break sale waits two sessions (5 since Aug); TRIM reads the close's confidence; the shadow's evidence follows the clock (17/20 rows read a same-evening research run); a review's re-forecast keeps the next session's row; new fields default, old files load; rollback = revert (unknown fields ignored)",
+        "found_on_the_way": "FIX-027's disclosure names a later re-forecast in the record's text and rationale_hash (D9); verdict_store's dormant Atlas projection lists thesis_intact (wire via written_before if used); the research window's lower bound stays by IST day",
+        "review_input": {
+          "manifest": "docs/planning/PI-2026-09/evidence/FIX-031-manifest.json",
+          "manifest_sha256": "d1fbec94260e987e74308dcd1f0e63fe70cae7ffd81204a1a6ba7f11b11c0499",
+          "files": 16,
+          "diff_sha256": "d04ec340639e190a6532d19dc8b83389b513d7515f9de334daab44f90a25cf4f",
+          "diff_bytes": 104934,
+          "diff_paths": 15,
+          "against": "HEAD cbbee3c",
+          "end_tree": "c802681c4375b54b9468147887e2e0fce573336e",
+          "script": "analysis_data/fix031/digest.py"
+        }
+      },
+      "implementation_receipt": "docs/planning/PI-2026-09/evidence/FIX-031-implementation.md",
+      "committed": "code 899526a on Sat 14 Nov about 23:52 IST, as PR-014's step 2 (the owner approved the card's steps on 14 Nov), after its fresh review: exactly the 16 reviewed files (kt_manifest verify --rev 899526a: 0 mismatches). The docs commit after it holds both receipts, the manifest, the PR-007 and SA-021 routed notes and the commit-time edits: KT header (899526a, edition 2026-11-14), KT s12 Done, KT s6 'Not covered' sentence (R1), guide 07-Q, PDF (72 pp, source 40db4f24; check_kt_docs errors []); beyond the list, KT s1 (the inspected code is not yet deployed; it holds FIX-030, FIX-031 and CLEAN-001's removals beyond production). NOT pushed: the push is PR-014's step 4",
+      "review_started": "2026-11-14 about 07:56 IST, fresh-session review (session stockagent-main-f2 [050ab6], a new conversation opened with 'continue') of the uncommitted tree over cbbee3c; ended about 08:25 IST: accepted",
+      "review": {"date": "2026-11-14", "verdict": "accepted", "context": "fresh-session review, session stockagent-main-f2 [050ab6], a new conversation opened with 'continue' (Sat about 07:56-08:25 IST); origin/main 5ae2749 after a fetch (nothing from the other device); three peers idle, the implementer -fd among them; no production read, no LLM call, no network; nothing committed; started before FIX-030-M1's 14:00, so it was not run", "input": "uncommitted tree over HEAD cbbee3c: manifest d1fbec94 (16 files, kt_manifest verify 0 mismatches) and diff d04ec340 (104,934 B, the PDF excluded) recomputed equal at start and end, nothing changed outside the manifest but bookkeeping (analysis_data/fix031_review/rv_digest.py, a temporary index)", "evidence": "focused once: story file + test_reforecast + FIX-027 end-to-end + PR-009 evidence + FIX-027 reviewer file = 182 passed, 1 xfailed, 3 XPASS(strict) (FIX-027's F1/F2 contracts now hold; the news-cut xfail stays by F31-D1); reviewer cases analysis_data/fix031_review/test_rv_fix031.py 73 passed + 2 strict xfail: RV1 F1 + Step 7b through the real daily review and advisor (0.375 by hand; HOLD/HOLD/EXIT), RV2 I-2 through the real review + real regenerate_envelope + the next review's grade (Tue row kept, graded at 99.5), RV3 R1, RV4 R2, RV5 stamp formats, RV6 F31-D2 leniency = one decision, RV7 60-seed evidence invariant over sources/stamps/gates; on cbbee3c 58 failed / 15 passed / 2 xfailed; full suite 6,456 passed / 12 skipped / 1 xfailed / 0 failed, rc 0, 15m26s (08:08-08:24 IST); check_kt_docs errors [] (PDF 71 pp = KT 8d988056); check_broad_except OK (148); mutants not re-run (implementer's 23/23)", "findings": "R1 low (annotation, pre-existing): build_signals' earnings_in_days reads the board-meeting calendar refreshed by T's run, which keeps no announcement time, so a results date announced after D's close adds EARNINGS_GAP_PROTECTION and changes rationale_hash in D's record (RV3); no verdict, trigger or shadow field moves -> PR-007 (card section) + KT s6 'Not covered' commit-time edit 3. R2 low (learning evidence, pre-existing): Step 7b of the review of the session before T revises T's row at T 16:30, after T's close, and EvalHarness._match_records (Brier, reliability, brier_decomposition) pairs T's outcome with it; the same headline enters T's key_assumptions (RV4) -> SA-021 (card section). Info: the advisor's OHLCV frame ends at D (yfinance end exclusive); F31-D9's disclosure carve-out is right as designed.", "commit_time_edits": "1 KT header declared revision -> FIX-031's code commit, edition date (run check_kt_docs after: CLEAN-001 removed linked files); 2 KT s12 FIX-031 Open -> Done; 3 KT s6 'Not covered' sentence for R1 (Planned: PR-007); 4 guide 07-Q status 'FIX-031: accepted 2026-11-14 (fresh review); not deployed.'; 5 PDF; exact text in the review receipt"},
+      "review_receipt": "docs/planning/PI-2026-09/evidence/FIX-031-review.md",
+      "reviewed_revision": "the uncommitted tree over cbbee3c (manifest d1fbec94, diff d04ec340)",
       "production_verification": {
-        "status": "not_started",
-        "evidence": null
+        "status": "pending_deployment",
+        "evidence": "Accepted 14 Nov; committed 899526a about 23:52 IST 14 Nov, not pushed or deployed. Deploying is the owner's call; it changes production with the switch off (implementation receipt, Rollout). PR-014's step 4 pushes main, which deploys FIX-030, FIX-031 and CLEAN-001 together, after FIX-030-M1 and at a time the owner agrees. After the deploy, read-only: guide 07-Q's production lines (new entries carry written_at, revised rows confidence_revisions) and the counts-only probe analysis_data/fix031/prod_probe.py after a week (research_verdict_run_after_close and case_event_published_after_close stop growing for rows dated after the deploy). Shows no benefit by itself."
       },
       "blocked_reason": null
     },
+    {"id": "PR-014", "title": "Switch idle-cash deployment on, then read what it does", "story": "docs/planning/PI-2026-09/stories/PR-014.md", "sprint": "product_track", "points": 2, "priority": "P0", "scope": "planned", "status": "in_progress", "implementation_started": "2026-11-14 about 23:45 IST (Saturday; session stockagent-main-2a [8c7645], a new conversation opened with 'continue'); origin/main 5ae2749 after a fetch (nothing from the other device), main 13 ahead; five peers idle. Rollout lane: steps 2 and 3 (commit FIX-031, full suite) in this conversation; step 1 (FIX-030-M1) is the owner's read and step 4 (the push) waits for it and for a time the owner agrees", "origin": "owner decision 2026-11-14 (session stockagent-main-c5 [7eec65]; 'yes' to R1 of docs/audit/2026-11-14-profit-path-architecture-review.md)", "depends_on": ["FIX-030", "FIX-031"], "review_lane": "rollout: no code, one setting; no fresh-session review (AGENTS.md, owner's rule of 14 Nov 2026)", "sequencing_note": "First in the queue. Its step 1 is the pending check FIX-030-M1. The owner's word for the switch was given on 14 Nov; each push still waits for a time the owner agrees.", "progress": "Conversation 1 (Sat 14 Nov from about 23:45 IST, session stockagent-main-2a [8c7645]): step 2 done (FIX-031 code 899526a + the docs commit after it); step 3 full suite on the docs commit (result in the receipt and history); step 1 FIX-030-M1 waits for the owner's read; step 4 (push) waits for step 1 and an agreed time; steps 5-9 not started", "implementation_receipt": "docs/planning/PI-2026-09/evidence/PR-014-rollout.md", "review_receipt": null, "reviewed_revision": null, "production_verification": {"status": "not_started", "evidence": null}, "blocked_reason": null},
     {
       "id": "FIX-032",
       "title": "A home-page watchlist save keeps what it does not show, and a removal there leaves the daily review",
@@ -1887,6 +1914,71 @@
       "origin": "FIX-028's fresh review 2026-11-11 (session stockagent-main-38 [906bed]; evidence/FIX-028-review.md findings RV5 medium pre-existing, RV4b low, RV6 low, I-3; code inspection and local reproduction, frequency not measured)",
       "depends_on": ["FIX-028"],
       "sequencing_note": "Routing delegated (owner, 2026-10-13). Placed after FIX-031, before PR-005. Not a precondition for switch-on. The reviewer cases test_rv5, test_rv4b, test_rv6 in analysis_data/fix028_review/test_rv_fix028.py are its acceptance fixtures (write them from the card on another device).",
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "FIX-015",
+      "title": "The shock exit reads the re-forecast's trigger, not its sentence",
+      "story": "docs/planning/PI-2026-09/stories/FIX-015.md",
+      "sprint": "routed",
+      "points": 1,
+      "priority": "P2",
+      "scope": "planned",
+      "status": "todo",
+      "routed_from": "PR-009 implementation 2026-10-23 (session stockagent-main-af), found on the way by code inspection: advisor.build_signals reads ReforecastEvent.reason, which every writer (daily review, pre-open check, manual command) fills with a sentence, while decide compares it with the keys external_shock/thesis_break/preopen_shock; the key is in ReforecastEvent.trigger, so shock_reforecast has never fired under either exit rule",
+      "depends_on": [
+        "PR-009"
+      ],
+      "sequencing_note": "Routing delegated (owner, 2026-10-13). Placed after FIX-014 at the end of the product track, so the owner's product order is unchanged. Revisit trigger: move it ahead before the owner switches advisor.exit_rule to evidence, or if a shock re-forecast is seen on a held stock. The fix must not count a thesis_break re-forecast, or the price-path exit returns inside the evidence rule.",
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {"id": "PR-015", "title": "The evidence exit rule acts", "story": "docs/planning/PI-2026-09/stories/PR-015.md", "sprint": "product_track", "points": 1, "priority": "P1", "scope": "planned", "status": "todo", "origin": "owner decision 2026-11-14 (session stockagent-main-c5 [7eec65]; 'yes' to R3 of docs/audit/2026-11-14-profit-path-architecture-review.md)", "depends_on": ["FIX-015", "PR-014"], "review_lane": "rollout: no code, one setting; no fresh-session review (AGENTS.md, owner's rule of 14 Nov 2026)", "sequencing_note": "Directly after FIX-015. The owner decided on 14 Nov not to wait for PR-009's gate; the old rule's verdict keeps being recorded and the owner judges at PR-014-R2.", "implementation_receipt": null, "review_receipt": null, "reviewed_revision": null, "production_verification": {"status": "not_started", "evidence": null}, "blocked_reason": null},
+    {
+      "id": "FIX-017",
+      "title": "The holding sync reads every NSE corporate-action row it is given, under NSE's code",
+      "story": "docs/planning/PI-2026-09/stories/FIX-017.md",
+      "sprint": "routed",
+      "points": 2,
+      "priority": "P2",
+      "scope": "planned",
+      "status": "todo",
+      "routed_from": "FIX-016 rework 2 (2026-10-25, session stockagent-main-1f, found on the way: a bonus-and-split row read as its bonus alone) and FIX-016's fresh re-review of rework 2 (2026-10-29, session stockagent-main-f0): the live holding sync (sync_corp_actions -> parse_action -> apply_actions_to_holding) reads a bonus of preference shares/debentures/NCRPS as an equity bonus (ZEEL x22, TVSMOTOR 2025 x5, DRREDDY x7), misses NSE's short split wording (JSWSTEEL, KNRCON 'Fv Splt Frm'), and fetches under the app's code, so the registry aliases TVSMOTORS and CANARABANK get no row (Canara Bank's 1:5 split of May 2024 never applied); measured on NSE's public lists, no production state read",
+      "depends_on": [],
+      "sequencing_note": "Routing delegated (owner, 2026-10-13). Placed after FIX-015 at the end of the product track, so the owner's product order is unchanged. Revisit trigger: move it ahead if a held stock lists one of these rows with an ex-date after its buy, or if a production holding is TVSMOTORS or CANARABANK. FIX-016 fixes the same rows for grading only.",
+      "production_probe": "29 Oct 2026 about 10:42 IST, at the owner's go-ahead in the re-review's conversation (session stockagent-main-f0), after the verdict: one read-only probe (analysis_data/fix016_rereview2/holdings_probe.py via railway ssh; symbols, buy dates and applied share-count actions only, no network) found 1 account with 2 holdings, REDINGTON (bought 2026-10-09) and WELCORP (bought 2026-09-01), no registry alias, no bonus or split applied; NSE's public lists (held_rows_probe.py) hold no row for either after its buy (REDINGTON's latest: a Rs 6 dividend ex 2026-07-03). The revisit trigger is not met.",
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {"id": "CLEAN-002", "title": "Shorten what every conversation reads", "story": "docs/planning/PI-2026-09/stories/CLEAN-002.md", "sprint": "housekeeping", "points": 2, "priority": "P2", "scope": "planned", "status": "todo", "origin": "owner decision 2026-11-14 (session stockagent-main-c5 [7eec65]; 'yes' to R6 of docs/audit/2026-11-14-profit-path-architecture-review.md)", "depends_on": [], "review_lane": "light: documents only; accepted in its own conversation on its checks (AGENTS.md, owner's rule of 14 Nov 2026)", "sequencing_note": "After FIX-017. Moves HANDOFF and STATE history older than 14 days to archive files, word for word.", "implementation_receipt": null, "review_receipt": null, "reviewed_revision": null, "production_verification": {"status": "not_started", "evidence": null}, "blocked_reason": null},
+    {
+      "id": "PR-013",
+      "title": "Show where losses come from and what waiting costs",
+      "story": "docs/planning/PI-2026-09/stories/PR-013.md",
+      "sprint": "product_track",
+      "points": 2,
+      "priority": "P2",
+      "scope": "planned",
+      "status": "todo",
+      "origin": "owner decision 2026-10-24 (session stockagent-main-cb, a walkthrough of PR-009)",
+      "depends_on": [
+        "PR-002",
+        "PR-009"
+      ],
+      "sequencing_note": "Owner decision 2026-11-14: moved ahead of PR-005, so the losses are visible by exit reason first; PR-005 adds its own exit reason to the counts when it is built. Earlier, owner decision 2026-10-24: placed after PR-005 so its case-based exits are in the counts (an order, not a dependency). Report only, it changes no decision. Covers exit follow-ups 1 and 2 (average loss by exit reason; the fall the evidence rule sits through when it keeps a stock) and 8's re-estimate (decision pace and the earliest gate week, as arithmetic).",
       "implementation_receipt": null,
       "review_receipt": null,
       "reviewed_revision": null,
@@ -1920,30 +2012,6 @@
       "blocked_reason": null
     },
     {
-      "id": "PR-013",
-      "title": "Show where losses come from and what waiting costs",
-      "story": "docs/planning/PI-2026-09/stories/PR-013.md",
-      "sprint": "product_track",
-      "points": 2,
-      "priority": "P2",
-      "scope": "planned",
-      "status": "todo",
-      "origin": "owner decision 2026-10-24 (session stockagent-main-cb, a walkthrough of PR-009)",
-      "depends_on": [
-        "PR-002",
-        "PR-009"
-      ],
-      "sequencing_note": "Owner decision 2026-10-24: placed after PR-005 so its case-based exits are in the counts (an order, not a dependency). Report only, it changes no decision. Covers exit follow-ups 1 and 2 (average loss by exit reason; the fall the evidence rule sits through when it keeps a stock) and 8's re-estimate (decision pace and the earliest gate week, as arithmetic).",
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
       "id": "PR-007",
       "title": "Plain, fact-grounded buy and sell explanations",
       "story": "docs/planning/PI-2026-09/stories/PR-007.md",
@@ -1953,6 +2021,7 @@
       "scope": "planned",
       "status": "todo",
       "origin": "docs/audit/2026-10-11-product-results-review.md",
+      "routed_fix031_review": "2026-11-14 FIX-031 fresh review R1 (low, annotation): the earnings-gap note (EARNINGS_GAP_PROTECTION, and so rationale_hash) reads NSE's board-meeting calendar refreshed by the 16:30 run on T, which keeps no announcement time, so a results date announced after D's close is in D's record (reviewer case RV3). Card section 'Routed input - 2026-11-14 FIX-031 review (R1)'",
       "depends_on": [
         "PR-005",
         "PR-006"
@@ -1982,6 +2051,65 @@
         "PR-006"
       ],
       "sequencing_note": "Product results track, owner request 2026-10-11 (review docs/audit/2026-10-11-product-results-review.md): placed right after SA-011 in STATE order so 'continue' selects it ahead of the remaining SA reliability/learning stories. Order: FIX-007, PR-001, PR-002, PR-003, SA-050, SA-051, PR-004, PR-006, PR-011, PR-009, SA-048, SA-049, PR-005, PR-007, PR-008, PR-010, PR-012 (PR-011 moved up to follow PR-006 and made P1 on 2026-10-12, owner: 'I need more data'; order confirmed by the owner 2026-10-12: 'ya continue on the new order').",
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-036",
+      "title": "Record durable outcomes for every critical job",
+      "story": "docs/planning/PI-2026-09/stories/SA-036.md",
+      "sprint": 1,
+      "points": 4,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-042",
+      "title": "Add an outside witness for missed jobs (Healthchecks.io → Telegram)",
+      "story": "docs/planning/PI-2026-09/stories/SA-042.md",
+      "sprint": 1,
+      "points": 2,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-036"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-035",
+      "title": "Surface LLM and search provider credit exhaustion",
+      "story": "docs/planning/PI-2026-09/stories/SA-035.md",
+      "sprint": 1,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
       "implementation_receipt": null,
       "review_receipt": null,
       "reviewed_revision": null,
@@ -2058,45 +2186,6 @@
       "blocked_reason": null
     },
     {
-      "id": "FIX-015",
-      "title": "The shock exit reads the re-forecast's trigger, not its sentence",
-      "story": "docs/planning/PI-2026-09/stories/FIX-015.md",
-      "sprint": "routed",
-      "points": 1,
-      "priority": "P2",
-      "scope": "planned",
-      "status": "todo",
-      "routed_from": "PR-009 implementation 2026-10-23 (session stockagent-main-af), found on the way by code inspection: advisor.build_signals reads ReforecastEvent.reason, which every writer (daily review, pre-open check, manual command) fills with a sentence, while decide compares it with the keys external_shock/thesis_break/preopen_shock; the key is in ReforecastEvent.trigger, so shock_reforecast has never fired under either exit rule",
-      "depends_on": [
-        "PR-009"
-      ],
-      "sequencing_note": "Routing delegated (owner, 2026-10-13). Placed after FIX-014 at the end of the product track, so the owner's product order is unchanged. Revisit trigger: move it ahead before the owner switches advisor.exit_rule to evidence, or if a shock re-forecast is seen on a held stock. The fix must not count a thesis_break re-forecast, or the price-path exit returns inside the evidence rule.",
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "FIX-017",
-      "title": "The holding sync reads every NSE corporate-action row it is given, under NSE's code",
-      "story": "docs/planning/PI-2026-09/stories/FIX-017.md",
-      "sprint": "routed",
-      "points": 2,
-      "priority": "P2",
-      "scope": "planned",
-      "status": "todo",
-      "routed_from": "FIX-016 rework 2 (2026-10-25, session stockagent-main-1f, found on the way: a bonus-and-split row read as its bonus alone) and FIX-016's fresh re-review of rework 2 (2026-10-29, session stockagent-main-f0): the live holding sync (sync_corp_actions -> parse_action -> apply_actions_to_holding) reads a bonus of preference shares/debentures/NCRPS as an equity bonus (ZEEL x22, TVSMOTOR 2025 x5, DRREDDY x7), misses NSE's short split wording (JSWSTEEL, KNRCON 'Fv Splt Frm'), and fetches under the app's code, so the registry aliases TVSMOTORS and CANARABANK get no row (Canara Bank's 1:5 split of May 2024 never applied); measured on NSE's public lists, no production state read",
-      "depends_on": [],
-      "sequencing_note": "Routing delegated (owner, 2026-10-13). Placed after FIX-015 at the end of the product track, so the owner's product order is unchanged. Revisit trigger: move it ahead if a held stock lists one of these rows with an ex-date after its buy, or if a production holding is TVSMOTORS or CANARABANK. FIX-016 fixes the same rows for grading only.",
-      "production_probe": "29 Oct 2026 about 10:42 IST, at the owner's go-ahead in the re-review's conversation (session stockagent-main-f0), after the verdict: one read-only probe (analysis_data/fix016_rereview2/holdings_probe.py via railway ssh; symbols, buy dates and applied share-count actions only, no network) found 1 account with 2 holdings, REDINGTON (bought 2026-10-09) and WELCORP (bought 2026-09-01), no registry alias, no bonus or split applied; NSE's public lists (held_rows_probe.py) hold no row for either after its buy (REDINGTON's latest: a Rs 6 dividend ex 2026-07-03). The revisit trigger is not met.",
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
       "id": "FIX-020",
       "title": "Correct the configured codes NSE does not list, and AAVAS's sector",
       "story": "docs/planning/PI-2026-09/stories/FIX-020.md",
@@ -2140,462 +2229,17 @@
       "blocked_reason": null
     },
     {
-      "id": "SA-012",
-      "title": "Specify and test the learning target before changing it",
-      "story": "docs/planning/PI-2026-09/stories/SA-012.md",
-      "sprint": 3,
-      "points": 3,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-005"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-013",
-      "title": "Persist immutable, genuinely prospective forecast identities",
-      "story": "docs/planning/PI-2026-09/stories/SA-013.md",
-      "sprint": 3,
-      "points": 5,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-012"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-014",
-      "title": "Grade frozen decisions and issue controls before their outcomes",
-      "story": "docs/planning/PI-2026-09/stories/SA-014.md",
-      "sprint": 3,
-      "points": 5,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-003",
-        "SA-013"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-015",
-      "title": "Make adaptive updates idempotent and preserve final weight bounds",
-      "story": "docs/planning/PI-2026-09/stories/SA-015.md",
-      "sprint": 3,
-      "points": 5,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-014"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-016",
-      "title": "Replace blame-based shared credit with identifiable outcomes",
-      "story": "docs/planning/PI-2026-09/stories/SA-016.md",
-      "sprint": 4,
-      "points": 5,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-015"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-017",
-      "title": "Attach historical lineage and quarantine incomparable feedback",
-      "story": "docs/planning/PI-2026-09/stories/SA-017.md",
-      "sprint": 4,
-      "points": 3,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-009",
-        "SA-013"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-018",
-      "title": "Build complete, matched monthly evaluation cohorts",
-      "story": "docs/planning/PI-2026-09/stories/SA-018.md",
-      "sprint": 4,
-      "points": 5,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-014",
-        "SA-017"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-019",
-      "title": "Evaluate suggestions across weekly and fortnightly cohorts",
-      "story": "docs/planning/PI-2026-09/stories/SA-019.md",
-      "sprint": 4,
-      "points": 5,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-018"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-020",
-      "title": "Compute effective samples from trading-session overlap",
-      "story": "docs/planning/PI-2026-09/stories/SA-020.md",
-      "sprint": 5,
-      "points": 3,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-013"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-021",
-      "title": "Validate calibration and weight recovery with minimum evidence",
-      "story": "docs/planning/PI-2026-09/stories/SA-021.md",
-      "sprint": 5,
-      "points": 5,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-016",
-        "SA-018",
-        "SA-020"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-022",
-      "title": "Run prospective adapted and frozen-policy experiments",
-      "story": "docs/planning/PI-2026-09/stories/SA-022.md",
-      "sprint": 5,
-      "points": 5,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-016",
-        "SA-018",
-        "SA-020",
-        "SA-043",
-        "SA-047"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-023",
-      "title": "Put learned lessons on measurable probation",
-      "story": "docs/planning/PI-2026-09/stories/SA-023.md",
-      "sprint": 5,
-      "points": 3,
+      "id": "FIX-006",
+      "title": "An anonymous watchlist read never falls back to the owner",
+      "story": "docs/planning/PI-2026-09/stories/FIX-006.md",
+      "sprint": "routed",
+      "points": 1,
       "priority": "P2",
       "scope": "planned",
       "status": "todo",
-      "depends_on": [
-        "SA-022"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-024",
-      "title": "Show verifiable learning evidence and honest unavailable states",
-      "story": "docs/planning/PI-2026-09/stories/SA-024.md",
-      "sprint": 5,
-      "points": 3,
-      "priority": "P2",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-019",
-        "SA-020",
-        "SA-022"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-025",
-      "title": "Count actual provider calls and fallback cost",
-      "story": "docs/planning/PI-2026-09/stories/SA-025.md",
-      "sprint": 6,
-      "points": 3,
-      "priority": "P2",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-011"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-026",
-      "title": "Consolidate sector definitions into sector lenses",
-      "story": "docs/planning/PI-2026-09/stories/SA-026.md",
-      "sprint": 3,
-      "points": 5,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "routed_fix030_review": "2026-11-13 FIX-030 fresh review R2 (low): 'decided' is two rules - known_key/buy_candidates read the managed record first, unnamed_why (redive_due, watchdog sector_keys, manual promote) reads only the idea; a managed, unsold stock's undecided idea is first in redive_due every Saturday but run_deep_dives skips it, so nothing names it and the watchdog repeats it until the 60-day rotation (reviewer case RV3). Card section 'Routed input - 2026-11-13 FIX-030 review'",
-      "depends_on": [
-        "SA-003",
-        "SA-009",
-        "SA-010"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-027",
-      "title": "Retire redundant fallback only when measured replacements work",
-      "story": "docs/planning/PI-2026-09/stories/SA-027.md",
-      "sprint": 6,
-      "points": 3,
-      "priority": "P2",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-025",
-        "SA-026",
-        "SA-047"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-028",
-      "title": "Repair packaging and compile the browser client",
-      "story": "docs/planning/PI-2026-09/stories/SA-028.md",
-      "sprint": "stretch",
-      "points": 5,
-      "priority": "P2",
-      "scope": "stretch",
-      "status": "todo",
-      "depends_on": [
-        "SA-001",
-        "SA-005"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-029",
-      "title": "Verify readiness and recover background ownership",
-      "story": "docs/planning/PI-2026-09/stories/SA-029.md",
-      "sprint": 6,
-      "points": 3,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-004",
-        "SA-007"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-030",
-      "title": "Reconcile or retire stale Atlas projections",
-      "story": "docs/planning/PI-2026-09/stories/SA-030.md",
-      "sprint": "stretch",
-      "points": 3,
-      "priority": "P2",
-      "scope": "stretch",
-      "status": "todo",
-      "depends_on": [
-        "SA-009",
-        "SA-013"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-031",
-      "title": "Verify final architecture and operator-documentation consistency",
-      "story": "docs/planning/PI-2026-09/stories/SA-031.md",
-      "sprint": 6,
-      "points": 2,
-      "priority": "P2",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-024",
-        "SA-027",
-        "SA-029"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-032",
-      "title": "Define and enforce the public-read and demo-data policy",
-      "story": "docs/planning/PI-2026-09/stories/SA-032.md",
-      "sprint": "stretch",
-      "points": 3,
-      "priority": "P2",
-      "scope": "stretch",
-      "status": "todo",
-      "depends_on": [
-        "SA-001",
-        "SA-024"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
+      "routed_from": "FIX-005 fresh review 2026-10-11, finding L2 (first noted as the FIX-005 implementation's self-review L1): services/api/routes/ui_data.py:1043, get_watchlist (the only get_current_user_optional route) falls back to PORTFOLIO_DEFAULT_USER_ID when there is no user, so with Atlas on (config.yaml) and AUTH_REQUIRED on an anonymous GET /ui/watchlist returns the owner's watchlist symbols",
+      "depends_on": [],
+      "sequencing_note": "Owner decision 2026-10-11, about 11:00 IST: 'put that L2 for last'. Do this story LAST: select it only when every other planned story is done (it is placed last in the task list for that reason; its empty depends_on does not make it next). Not started.",
       "production_verification": {
         "status": "not_started",
         "evidence": null
@@ -2606,6 +2250,25 @@
       "id": "SA-033",
       "title": "Lock reproducible runtime dependencies",
       "story": "docs/planning/PI-2026-09/stories/SA-033.md",
+      "sprint": 1,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-040",
+      "title": "Record per-source fetch health and detect new error types",
+      "story": "docs/planning/PI-2026-09/stories/SA-040.md",
       "sprint": 1,
       "points": 3,
       "priority": "P1",
@@ -2644,34 +2307,18 @@
       "blocked_reason": null
     },
     {
-      "id": "SA-035",
-      "title": "Surface LLM and search provider credit exhaustion",
-      "story": "docs/planning/PI-2026-09/stories/SA-035.md",
-      "sprint": 1,
+      "id": "SA-041",
+      "title": "Provide a read-only production status fetcher",
+      "story": "docs/planning/PI-2026-09/stories/SA-041.md",
+      "sprint": 2,
       "points": 3,
       "priority": "P1",
       "scope": "planned",
       "status": "todo",
-      "depends_on": [],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-036",
-      "title": "Record durable outcomes for every critical job",
-      "story": "docs/planning/PI-2026-09/stories/SA-036.md",
-      "sprint": 1,
-      "points": 4,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [],
+      "depends_on": [
+        "SA-036",
+        "SA-040"
+      ],
       "implementation_receipt": null,
       "review_receipt": null,
       "reviewed_revision": null,
@@ -2692,6 +2339,381 @@
       "status": "todo",
       "depends_on": [
         "SA-036"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-029",
+      "title": "Verify readiness and recover background ownership",
+      "story": "docs/planning/PI-2026-09/stories/SA-029.md",
+      "sprint": 6,
+      "points": 3,
+      "priority": "P1",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-004",
+        "SA-007"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-025",
+      "title": "Count actual provider calls and fallback cost",
+      "story": "docs/planning/PI-2026-09/stories/SA-025.md",
+      "sprint": 6,
+      "points": 3,
+      "priority": "P2",
+      "scope": "planned",
+      "status": "todo",
+      "depends_on": [
+        "SA-011"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-012",
+      "title": "Specify and test the learning target before changing it",
+      "story": "docs/planning/PI-2026-09/stories/SA-012.md",
+      "sprint": 3,
+      "points": 3,
+      "priority": "P1",
+      "scope": "removed", "scope_note": "Off the plan at the owner's word, 14 Nov 2026 (profit-path review R4). Adaptive learning stays observe-only (SA-039). It returns only if the owner promotes it, after the results reviews PR-014-R1 and PR-014-R2.",
+      "status": "todo",
+      "depends_on": [
+        "SA-005"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-013",
+      "title": "Persist immutable, genuinely prospective forecast identities",
+      "story": "docs/planning/PI-2026-09/stories/SA-013.md",
+      "sprint": 3,
+      "points": 5,
+      "priority": "P1",
+      "scope": "removed", "scope_note": "Off the plan at the owner's word, 14 Nov 2026 (profit-path review R4). Adaptive learning stays observe-only (SA-039). It returns only if the owner promotes it, after the results reviews PR-014-R1 and PR-014-R2.",
+      "status": "todo",
+      "depends_on": [
+        "SA-012"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-014",
+      "title": "Grade frozen decisions and issue controls before their outcomes",
+      "story": "docs/planning/PI-2026-09/stories/SA-014.md",
+      "sprint": 3,
+      "points": 5,
+      "priority": "P1",
+      "scope": "removed", "scope_note": "Off the plan at the owner's word, 14 Nov 2026 (profit-path review R4). Adaptive learning stays observe-only (SA-039). It returns only if the owner promotes it, after the results reviews PR-014-R1 and PR-014-R2.",
+      "status": "todo",
+      "depends_on": [
+        "SA-003",
+        "SA-013"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-015",
+      "title": "Make adaptive updates idempotent and preserve final weight bounds",
+      "story": "docs/planning/PI-2026-09/stories/SA-015.md",
+      "sprint": 3,
+      "points": 5,
+      "priority": "P1",
+      "scope": "removed", "scope_note": "Off the plan at the owner's word, 14 Nov 2026 (profit-path review R4). Adaptive learning stays observe-only (SA-039). It returns only if the owner promotes it, after the results reviews PR-014-R1 and PR-014-R2.",
+      "status": "todo",
+      "depends_on": [
+        "SA-014"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-016",
+      "title": "Replace blame-based shared credit with identifiable outcomes",
+      "story": "docs/planning/PI-2026-09/stories/SA-016.md",
+      "sprint": 4,
+      "points": 5,
+      "priority": "P1",
+      "scope": "removed", "scope_note": "Off the plan at the owner's word, 14 Nov 2026 (profit-path review R4). Adaptive learning stays observe-only (SA-039). It returns only if the owner promotes it, after the results reviews PR-014-R1 and PR-014-R2.",
+      "status": "todo",
+      "depends_on": [
+        "SA-015"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-017",
+      "title": "Attach historical lineage and quarantine incomparable feedback",
+      "story": "docs/planning/PI-2026-09/stories/SA-017.md",
+      "sprint": 4,
+      "points": 3,
+      "priority": "P1",
+      "scope": "removed", "scope_note": "Off the plan at the owner's word, 14 Nov 2026 (profit-path review R4). Adaptive learning stays observe-only (SA-039). It returns only if the owner promotes it, after the results reviews PR-014-R1 and PR-014-R2.",
+      "status": "todo",
+      "depends_on": [
+        "SA-009",
+        "SA-013"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-018",
+      "title": "Build complete, matched monthly evaluation cohorts",
+      "story": "docs/planning/PI-2026-09/stories/SA-018.md",
+      "sprint": 4,
+      "points": 5,
+      "priority": "P1",
+      "scope": "removed", "scope_note": "Off the plan at the owner's word, 14 Nov 2026 (profit-path review R4). Adaptive learning stays observe-only (SA-039). It returns only if the owner promotes it, after the results reviews PR-014-R1 and PR-014-R2.",
+      "status": "todo",
+      "depends_on": [
+        "SA-014",
+        "SA-017"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-019",
+      "title": "Evaluate suggestions across weekly and fortnightly cohorts",
+      "story": "docs/planning/PI-2026-09/stories/SA-019.md",
+      "sprint": 4,
+      "points": 5,
+      "priority": "P1",
+      "scope": "removed", "scope_note": "Off the plan at the owner's word, 14 Nov 2026 (profit-path review R4). Adaptive learning stays observe-only (SA-039). It returns only if the owner promotes it, after the results reviews PR-014-R1 and PR-014-R2.",
+      "status": "todo",
+      "depends_on": [
+        "SA-018"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-020",
+      "title": "Compute effective samples from trading-session overlap",
+      "story": "docs/planning/PI-2026-09/stories/SA-020.md",
+      "sprint": 5,
+      "points": 3,
+      "priority": "P1",
+      "scope": "removed", "scope_note": "Off the plan at the owner's word, 14 Nov 2026 (profit-path review R4). Adaptive learning stays observe-only (SA-039). It returns only if the owner promotes it, after the results reviews PR-014-R1 and PR-014-R2.",
+      "status": "todo",
+      "depends_on": [
+        "SA-013"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-021",
+      "title": "Validate calibration and weight recovery with minimum evidence",
+      "story": "docs/planning/PI-2026-09/stories/SA-021.md",
+      "sprint": 5,
+      "points": 5,
+      "priority": "P1",
+      "scope": "removed", "scope_note": "Off the plan at the owner's word, 14 Nov 2026 (profit-path review R4). Adaptive learning stays observe-only (SA-039). It returns only if the owner promotes it, after the results reviews PR-014-R1 and PR-014-R2.",
+      "status": "todo",
+      "routed_fix031_review": "2026-11-14 FIX-031 fresh review R2 (low, learning evidence): Step 7b of the review of the session before T revises T's row at T 16:30, after T's close; EvalHarness._match_records pairs T's outcome with that stored confidence (Brier, reliability, brier_decomposition), and T's key_assumptions carry that run's headline (reviewer case RV4). Fix: confidence_at(row, session_close_at(row.date)) for rows revised after FIX-031's deploy. Card section 'Routed input - 2026-11-14 FIX-031 review (R2)'",
+      "depends_on": [
+        "SA-016",
+        "SA-018",
+        "SA-020"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-022",
+      "title": "Run prospective adapted and frozen-policy experiments",
+      "story": "docs/planning/PI-2026-09/stories/SA-022.md",
+      "sprint": 5,
+      "points": 5,
+      "priority": "P1",
+      "scope": "removed", "scope_note": "Off the plan at the owner's word, 14 Nov 2026 (profit-path review R4). Adaptive learning stays observe-only (SA-039). It returns only if the owner promotes it, after the results reviews PR-014-R1 and PR-014-R2.",
+      "status": "todo",
+      "depends_on": [
+        "SA-016",
+        "SA-018",
+        "SA-020",
+        "SA-043",
+        "SA-047"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-023",
+      "title": "Put learned lessons on measurable probation",
+      "story": "docs/planning/PI-2026-09/stories/SA-023.md",
+      "sprint": 5,
+      "points": 3,
+      "priority": "P2",
+      "scope": "removed", "scope_note": "Off the plan at the owner's word, 14 Nov 2026 (profit-path review R4). Adaptive learning stays observe-only (SA-039). It returns only if the owner promotes it, after the results reviews PR-014-R1 and PR-014-R2.",
+      "status": "todo",
+      "depends_on": [
+        "SA-022"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-024",
+      "title": "Show verifiable learning evidence and honest unavailable states",
+      "story": "docs/planning/PI-2026-09/stories/SA-024.md",
+      "sprint": 5,
+      "points": 3,
+      "priority": "P2",
+      "scope": "removed", "scope_note": "Off the plan at the owner's word, 14 Nov 2026 (profit-path review R4). Adaptive learning stays observe-only (SA-039). It returns only if the owner promotes it, after the results reviews PR-014-R1 and PR-014-R2.",
+      "status": "todo",
+      "depends_on": [
+        "SA-019",
+        "SA-020",
+        "SA-022"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-026",
+      "title": "Consolidate sector definitions into sector lenses",
+      "story": "docs/planning/PI-2026-09/stories/SA-026.md",
+      "sprint": 3,
+      "points": 5,
+      "priority": "P1",
+      "scope": "paused", "scope_note": "Paused at the owner's word, 14 Nov 2026 (profit-path review R4). Promoted only by the owner, after the results reviews PR-014-R1 and PR-014-R2.",
+      "status": "todo",
+      "routed_fix030_review": "2026-11-13 FIX-030 fresh review R2 (low): 'decided' is two rules - known_key/buy_candidates read the managed record first, unnamed_why (redive_due, watchdog sector_keys, manual promote) reads only the idea; a managed, unsold stock's undecided idea is first in redive_due every Saturday but run_deep_dives skips it, so nothing names it and the watchdog repeats it until the 60-day rotation (reviewer case RV3). Card section 'Routed input - 2026-11-13 FIX-030 review'",
+      "depends_on": [
+        "SA-003",
+        "SA-009",
+        "SA-010"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-043",
+      "title": "Run a shadow learner and record paired decisions in observe mode",
+      "story": "docs/planning/PI-2026-09/stories/SA-043.md",
+      "sprint": 4,
+      "points": 3,
+      "priority": "P1",
+      "scope": "removed", "scope_note": "Off the plan at the owner's word, 14 Nov 2026 (profit-path review R4). Adaptive learning stays observe-only (SA-039). It returns only if the owner promotes it, after the results reviews PR-014-R1 and PR-014-R2.",
+      "status": "todo",
+      "depends_on": [
+        "SA-015",
+        "SA-039",
+        "SA-045"
       ],
       "implementation_receipt": null,
       "review_receipt": null,
@@ -2735,36 +2757,16 @@
       "blocked_reason": null
     },
     {
-      "id": "SA-040",
-      "title": "Record per-source fetch health and detect new error types",
-      "story": "docs/planning/PI-2026-09/stories/SA-040.md",
-      "sprint": 1,
-      "points": 3,
+      "id": "SA-045",
+      "title": "Compute the five universal factors deterministically",
+      "story": "docs/planning/PI-2026-09/stories/SA-045.md",
+      "sprint": 4,
+      "points": 5,
       "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-041",
-      "title": "Provide a read-only production status fetcher",
-      "story": "docs/planning/PI-2026-09/stories/SA-041.md",
-      "sprint": 2,
-      "points": 3,
-      "priority": "P1",
-      "scope": "planned",
+      "scope": "paused", "scope_note": "Paused at the owner's word, 14 Nov 2026 (profit-path review R4). Promoted only by the owner, after the results reviews PR-014-R1 and PR-014-R2.",
       "status": "todo",
       "depends_on": [
-        "SA-036",
-        "SA-040"
+        "SA-026"
       ],
       "implementation_receipt": null,
       "review_receipt": null,
@@ -2776,39 +2778,63 @@
       "blocked_reason": null
     },
     {
-      "id": "SA-042",
-      "title": "Add an outside witness for missed jobs (Healthchecks.io → Telegram)",
-      "story": "docs/planning/PI-2026-09/stories/SA-042.md",
-      "sprint": 1,
-      "points": 2,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-036"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-043",
-      "title": "Run a shadow learner and record paired decisions in observe mode",
-      "story": "docs/planning/PI-2026-09/stories/SA-043.md",
+      "id": "SA-046",
+      "title": "Read text into dated events and a Catalyst factor",
+      "story": "docs/planning/PI-2026-09/stories/SA-046.md",
       "sprint": 4,
       "points": 3,
       "priority": "P1",
-      "scope": "planned",
+      "scope": "paused", "scope_note": "Paused at the owner's word, 14 Nov 2026 (profit-path review R4). Promoted only by the owner, after the results reviews PR-014-R1 and PR-014-R2.",
       "status": "todo",
       "depends_on": [
-        "SA-015",
-        "SA-039",
-        "SA-045"
+        "SA-026"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-047",
+      "title": "Decide with the factor engine; switch when it is not worse",
+      "story": "docs/planning/PI-2026-09/stories/SA-047.md",
+      "sprint": 5,
+      "points": 5,
+      "priority": "P1",
+      "scope": "paused", "scope_note": "Paused at the owner's word, 14 Nov 2026 (profit-path review R4). Promoted only by the owner, after the results reviews PR-014-R1 and PR-014-R2.",
+      "status": "todo",
+      "depends_on": [
+        "SA-045",
+        "SA-046",
+        "SA-014",
+        "SA-020"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": null
+    },
+    {
+      "id": "SA-027",
+      "title": "Retire redundant fallback only when measured replacements work",
+      "story": "docs/planning/PI-2026-09/stories/SA-027.md",
+      "sprint": 6,
+      "points": 3,
+      "priority": "P2",
+      "scope": "paused", "scope_note": "Paused 14 Nov 2026 with the factor engine: it depends on SA-047. Promoted only by the owner.",
+      "status": "todo",
+      "depends_on": [
+        "SA-025",
+        "SA-026",
+        "SA-047"
       ],
       "implementation_receipt": null,
       "review_receipt": null,
@@ -2866,16 +2892,40 @@
       "blocked_reason": null
     },
     {
-      "id": "SA-045",
-      "title": "Compute the five universal factors deterministically",
-      "story": "docs/planning/PI-2026-09/stories/SA-045.md",
-      "sprint": 4,
-      "points": 5,
-      "priority": "P1",
+      "id": "SA-031",
+      "title": "Verify final architecture and operator-documentation consistency",
+      "story": "docs/planning/PI-2026-09/stories/SA-031.md",
+      "sprint": 6,
+      "points": 2,
+      "priority": "P2",
       "scope": "planned",
       "status": "todo",
       "depends_on": [
-        "SA-026"
+        "SA-024",
+        "SA-027",
+        "SA-029"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
+      "production_verification": {
+        "status": "not_started",
+        "evidence": null
+      },
+      "blocked_reason": "Depends on SA-024 (removed 14 Nov 2026) and SA-027 (paused 14 Nov 2026). Re-cut its dependencies to the cards still planned when the queue reaches it."
+    },
+    {
+      "id": "SA-028",
+      "title": "Repair packaging and compile the browser client",
+      "story": "docs/planning/PI-2026-09/stories/SA-028.md",
+      "sprint": "stretch",
+      "points": 5,
+      "priority": "P2",
+      "scope": "stretch",
+      "status": "todo",
+      "depends_on": [
+        "SA-001",
+        "SA-005"
       ],
       "implementation_receipt": null,
       "review_receipt": null,
@@ -2887,40 +2937,17 @@
       "blocked_reason": null
     },
     {
-      "id": "SA-046",
-      "title": "Read text into dated events and a Catalyst factor",
-      "story": "docs/planning/PI-2026-09/stories/SA-046.md",
-      "sprint": 4,
+      "id": "SA-030",
+      "title": "Reconcile or retire stale Atlas projections",
+      "story": "docs/planning/PI-2026-09/stories/SA-030.md",
+      "sprint": "stretch",
       "points": 3,
-      "priority": "P1",
-      "scope": "planned",
+      "priority": "P2",
+      "scope": "stretch",
       "status": "todo",
       "depends_on": [
-        "SA-026"
-      ],
-      "implementation_receipt": null,
-      "review_receipt": null,
-      "reviewed_revision": null,
-      "production_verification": {
-        "status": "not_started",
-        "evidence": null
-      },
-      "blocked_reason": null
-    },
-    {
-      "id": "SA-047",
-      "title": "Decide with the factor engine; switch when it is not worse",
-      "story": "docs/planning/PI-2026-09/stories/SA-047.md",
-      "sprint": 5,
-      "points": 5,
-      "priority": "P1",
-      "scope": "planned",
-      "status": "todo",
-      "depends_on": [
-        "SA-045",
-        "SA-046",
-        "SA-014",
-        "SA-020"
+        "SA-009",
+        "SA-013"
       ],
       "implementation_receipt": null,
       "review_receipt": null,
@@ -3144,17 +3171,21 @@
       "blocked_reason": null
     },
     {
-      "id": "FIX-006",
-      "title": "An anonymous watchlist read never falls back to the owner",
-      "story": "docs/planning/PI-2026-09/stories/FIX-006.md",
-      "sprint": "routed",
-      "points": 1,
+      "id": "SA-032",
+      "title": "Define and enforce the public-read and demo-data policy",
+      "story": "docs/planning/PI-2026-09/stories/SA-032.md",
+      "sprint": "stretch",
+      "points": 3,
       "priority": "P2",
-      "scope": "planned",
+      "scope": "stretch",
       "status": "todo",
-      "routed_from": "FIX-005 fresh review 2026-10-11, finding L2 (first noted as the FIX-005 implementation's self-review L1): services/api/routes/ui_data.py:1043, get_watchlist (the only get_current_user_optional route) falls back to PORTFOLIO_DEFAULT_USER_ID when there is no user, so with Atlas on (config.yaml) and AUTH_REQUIRED on an anonymous GET /ui/watchlist returns the owner's watchlist symbols",
-      "depends_on": [],
-      "sequencing_note": "Owner decision 2026-10-11, about 11:00 IST: 'put that L2 for last'. Do this story LAST: select it only when every other planned story is done (it is placed last in the task list for that reason; its empty depends_on does not make it next). Not started.",
+      "depends_on": [
+        "SA-001",
+        "SA-024"
+      ],
+      "implementation_receipt": null,
+      "review_receipt": null,
+      "reviewed_revision": null,
       "production_verification": {
         "status": "not_started",
         "evidence": null
@@ -3163,6 +3194,13 @@
     }
   ],
   "history": [
+    {"date": "2026-11-14", "event": "PR-014 step 2: FIX-031 committed (Sat about 23:52 IST, session stockagent-main-2a): code 899526a = the 16 reviewed files (kt_manifest verify --rev: 0 mismatches), then the docs commit (FIX-031's receipts and manifest, the PR-007 and SA-021 notes, the five commit-time edits, KT s1, the 14 Nov decisions in KT s11/s12 and AUTOPILOT_GUIDE s16, the 14 Nov planning files, STATE/HANDOFF, the PR-014 receipt; check_kt_docs errors [], PDF 72 pp source 40db4f24). Not pushed. Step 1 (FIX-030-M1) is the owner's read and was not run; no production state was read. New backlog entry B-4 (four living documents still call off-plan or paused stories 'Planned')."},
+    {"date": "2026-11-14", "event": "PR-014 rollout started (session stockagent-main-2a [8c7645], a new conversation opened with 'continue', Saturday about 23:45 IST): origin/main 5ae2749 after a fetch, main 13 ahead, five peers idle; FIX-031's manifest verified against the working tree (16 files, 0 mismatches) before anything was edited. active_task PR-014."},
+    {"date": "2026-11-14", "event": "Owner decisions on the profit-path review, Sat 14 Nov about 13:20-14:00 IST (session stockagent-main-c5 [7eec65]; planning only, no code or test changed, production not read): 'yes' to R1, R3, R4 and R6 of docs/audit/2026-11-14-profit-path-architecture-review.md. New cards: PR-014 (switch idle-cash deployment on, then read what it does; P0, first in the queue), PR-015 (the evidence exit rule acts; after FIX-015 and PR-014; the owner does not wait for PR-009's gate), CLEAN-002 (archive HANDOFF and STATE history; after FIX-017). Scope 'removed': SA-012 to SA-024 and SA-043 (the learning rebuild, 58 points). Scope 'paused': SA-026, SA-045, SA-046, SA-047 (the factor engine, 18 points) and SA-027, which depends on SA-047. Neither scope is selected without the owner's promotion. Unresolved dependencies: SA-031 depends on SA-024 (removed) and SA-027 (paused), recorded as its blocked_reason; stretch SA-030 depends on SA-013 and stretch SA-032 on SA-024 (both removed). PR-013's sequencing_note now records its move ahead of PR-005. AGENTS.md: the goal, two review lanes (decision path: fresh-session review; everything else: accepted in its own conversation), small findings to BACKLOG.md. The cleanup brief the owner pasted is CLEAN-001, already done on 13 Nov: nothing redone; its skipped items 6a and 6b are BACKLOG B-1 and B-2. Not edited, because FIX-031's uncommitted manifest holds them: KT section 12 and AUTOPILOT_GUIDE section 16 (PR-014's step 2 does it). next_task PR-014; the switch stays off until PR-014's step 6."},
+    {"date": "2026-11-14", "event": "Owner resequencing, Sat 14 Nov about 08:00-13:00 IST (session stockagent-main-c5 [7eec65]; a backlog and architecture review the owner asked for, not a story phase; no code, test or production change, production not read). The owner approved this order ('ya'): FIX-032, FIX-015, FIX-017, PR-013, PR-005, PR-007, PR-008, SA-036, SA-042, SA-035, PR-010; then PR-012, FIX-014, FIX-020, FIX-022, FIX-006, SA-033, SA-040, SA-034, SA-041, SA-037, SA-029, SA-025; then the learning and factor block (SA-012 to SA-024, SA-026, SA-043, SA-045 to SA-047), SA-027, SA-031; stretch last. The todo tasks were reordered in place in this file: done tasks keep their positions and no task's fields changed. This order supersedes the cards' 'Queued after' sentences. Why: the owner judges by profit. FIX-015 (the shock exit has never fired) and FIX-017 (a misread bonus-and-split can fire a stop) protect a deployed book; PR-013 shows which exit loses money; SA-036, SA-042 and SA-035 catch a missed run once money is in stocks. Unresolved dependencies, unchanged: PR-007 needs PR-005, PR-012 needs PR-007, SA-042 and SA-037 need SA-036, SA-034 and SA-041 need SA-036 and SA-040. Also written: docs/audit/2026-11-14-profit-path-architecture-review.md (findings F1-F6, recommendations R1-R6). The owner's decisions on R1 (switch deployment on), R3 (the evidence rule acts), R4 (the learning rebuild off the plan) and R6 (a lighter process) are PENDING, so nothing else changed. next_task stays FIX-032."},
+    {"date": "2026-11-14", "event": "FIX-031 fresh review -> ACCEPTED (session stockagent-main-f2 [050ab6], a new conversation opened with 'continue', Sat about 07:56-08:25 IST; receipt evidence/FIX-031-review.md). Input verified (manifest d1fbec94, diff d04ec340, start and end). Reviewer cases 73 passed + 2 strict xfail (58 fail on cbbee3c); full suite 6,456 passed / 12 skipped / 1 xfailed / 0 failed, rc 0, 15m26s (08:08-08:24 IST); checks clean. Findings low only, pre-existing: R1 earnings-gap note from a calendar refreshed after the close -> PR-007; R2 calibration reads a confidence revised after its session's close -> SA-021. FIX-031 done, production pending_deployment; active null, next FIX-032. Uncommitted, waiting for the owner's word."},
+    {"date": "2026-11-13", "event": "FIX-031 implemented -> review_required (session stockagent-main-fd [d5183a], 13 Nov about 21:15 to 14 Nov about 07:45 IST; receipt evidence/FIX-031-implementation.md; manifest d1fbec94, diff d04ec340 against HEAD cbbee3c). Step 1 probe run at the owner's word (counts in the receipt). Decisions F31-D1..D9 (delegated). Story file 78, mutants 23/23 (the invariants alone 9/23), full suite 6,456 passed / 12 skipped / 1 xfailed / 0 failed, rc 0, 14m41s (run 3; run 1 hung after the laptop slept and was stopped; run 2 had 1 environmental failure, the FIX-029 regime-state file lock, 5/5 alone). Nothing committed; active and next FIX-031 (fresh review in a new conversation)."},
+    {"date": "2026-11-13", "event": "FIX-031 IMPLEMENTATION STARTED (13 Nov about 21:15 IST, session stockagent-main-fd [d5183a], a new conversation opened with 'continue'; origin/main 5ae2749, nothing from the other device; peers -50 and -55 idle). The checkout was on chore/remove-dead-code; the owner chose to fast-forward main to it (cbbee3c; local, not pushed) as FIX-031's base. active_task FIX-031, status in_progress. Nothing committed, pushed, deployed or configured; no production state read."},
     {"date": "2026-11-13", "event": "CLEAN-001 extended at the owner's word in the same conversation ('if its dead code now, remove them', about the first pass's leftover list), session stockagent-main-50: b1aa410 (7), 3558c88 (8), e114b99 (9), 8f7c7e5 (10). Removed the C# score proxy (CSHARP_* settings, ScoreStore.save branch, test_phase4_csharp.py), the macro cache nothing writes (module, shim, empty packages, macro_cache_key entries, MACRO_CACHE_TTL_HOURS and data_fetch.macro_cache_ttl_hours; fresh-fetch paths unchanged), BaseAgent's unread prompt-enhancement consumer (enhancer and feedback-agent read unchanged; RL_DESIGN 15, AGENTIC_DESIGN, KT section 3 corrected, PDF rebuilt), and 9 allow rules naming deleted files. Full suite 6,378 passed / 12 skipped / 1 xfailed / 0 failed, pytest rc 0, 29m47s (19:13-19:43 IST); 31 fewer than 6,409 = the 24 deleted C# contract tests and the 7 macro-cache-hit tests. A pre-existing order-dependent test (test_phase0_llm_migration test_orchestrator_instantiates_openai fails when run alone, also on e2b6f34) is recorded in the receipt. Not merged, not pushed."},
     {"date": "2026-11-13", "event": "CLEAN-001 done at the owner's explicit scope change (housekeeping ahead of the queue; fresh review waived by the owner; full suite = acceptance). Session stockagent-main-50 [fcd907]. Local branch chore/remove-dead-code: 643d605 (item 1), 8cccc41 (2), 25d6b65 (3), 7ed7251 (4), 7b6a64d (5) and a docs commit; 43 files, -2,183 lines. Removed the new-product scaffolder, services/csharp/ and its compose service, the RAG pipeline (chromadb, sentence-transformers, pypdf, tiktoken, CI CPU-torch step), main.py; test tools moved to requirements-test.txt; single exact pins for openai and yfinance. Production variable NAMES read (none RAG/C#) and the Railway start command (none; Dockerfile CMD) read-only. Skipped 6a (gate) and 6b (risk: milestones.yaml). Full suite 6,409 passed / 12 skipped / 1 xfailed / 0 failed, pytest rc 0, 19m34s (17:42-18:02 IST); the 11 fewer than FIX-030's 6,420 are exactly the 8 deleted test_rag.py tests and the 3 TestRAGConfig tests. Linux py3.11 dependency resolution 150 -> 78 distributions, >= 659 MB compressed wheels dropped (CUDA wheels not counted). Receipt evidence/CLEAN-001.md. Not merged, not pushed."},
     {"date": "2026-11-13", "event": "FIX-030 committed at the owner's word ('ya commit', about 17:00 IST): code cddc3be (the 23 reviewed files, 0 mismatches) and the docs commit after it (review docs, SA-026 note, STATE/HANDOFF with the 5ae2749 push record, commit-time edits incl. KT s1 and the PDF; check_kt_docs errors []). Not pushed: main 2 ahead of origin; the push deploys FIX-030 and waits for FIX-030-M1, the full suite and the owner's word."},

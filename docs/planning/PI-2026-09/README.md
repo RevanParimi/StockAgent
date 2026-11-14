@@ -16,6 +16,14 @@ The [September 10 audit](../../audit/2026-09-10-repository-production-review.md)
 
 ## Sprint sequence
 
+**Since 14 Nov 2026** the queue is the planned-scope `todo` cards of [STATE.json](STATE.json), in
+its order, after the owner's decisions on the
+[profit-path review](../../audit/2026-11-14-profit-path-architecture-review.md): PR-014 (switch
+deployment on) first, then FIX-032, FIX-015, PR-015, FIX-017, CLEAN-002, PR-013, PR-005. The
+learning rebuild (SA-012 to SA-024, SA-043) is removed from the plan and the factor engine (SA-026,
+SA-045 to SA-047, with SA-027) is paused. Small findings go to [BACKLOG.md](BACKLOG.md). The tables
+below show the plan as it was first drawn.
+
 Planning assumption: six two-week sprints, one story implementation and a separate review conversation at a time. Start dates and team capacity are not known; these are relative sprints, not promised calendar deadlines. Estimates are relative, provisional points; re-estimate after Sprint 1. Do not expand a story just to meet a point budget.
 
 | Sprint | Objective | Planned points | Exit evidence |

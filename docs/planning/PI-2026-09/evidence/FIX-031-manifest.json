@@ -1,0 +1,90 @@
+{
+  "story": "FIX-031",
+  "phase": "implementation",
+  "head": "cbbee3c",
+  "base": "cbbee3c",
+  "date": "2026-11-13",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "14d12768ae869395761a0c15ca6aa1804b9832ab",
+      "sha256": "b52fb117d3c59c32a800255b23b36ea075192941bc07314947e030ee560a6229"
+    },
+    {
+      "path": "core/intelligence/rl/workflows/daily_review.py",
+      "git_blob": "69fc3a8981eed0081706cdb4eba6894cf0dfc7ef",
+      "sha256": "ea1285f4a337bfb594e9a73af300ac282d710b9ad4cddc3a699e5a1e39dd37cd"
+    },
+    {
+      "path": "core/intelligence/rl/workflows/generate_forecast.py",
+      "git_blob": "f49d8e40536b5a00a845d0095655e656a003d23c",
+      "sha256": "62f6e48ff412b2541d528c6f6a12ecf6ed617cdd2ea6687cfd5044eb430dde35"
+    },
+    {
+      "path": "core/portfolio/advisor.py",
+      "git_blob": "44f90813caa842094d54090d8f2f71c6e40a4d68",
+      "sha256": "9abd4be825f5e9effc06ea1726f495469fa5db2daddda76b6b1cccaee67eef51"
+    },
+    {
+      "path": "core/portfolio/exit_shadow.py",
+      "git_blob": "0708d736f433281ba05fbab93c8467c93d5b2587",
+      "sha256": "5c20e9cb06bc8d109c022b4f6a14db09774843e91d1cd4066537b5079999cb96"
+    },
+    {
+      "path": "docs/AUTOPILOT_GUIDE.md",
+      "git_blob": "1820c40421bc973eec2678689f91da23df67b35d",
+      "sha256": "e620cfbe43f8a6da49c84567debba71688032dbef6fad03c226959276e3fe22f"
+    },
+    {
+      "path": "docs/PRODUCT_MAP.md",
+      "git_blob": "8cf887272972abf4f82fe02e57ffab9346edd0a8",
+      "sha256": "64ba955c487d10ecef35eaf23f07250f4ff7700f33fcee1a957f6f3497757083"
+    },
+    {
+      "path": "docs/RL_DESIGN.md",
+      "git_blob": "ae56ee1a43dbc77a657564120b237265569a809b",
+      "sha256": "c20873fe96d10c899abf07326be96f0e05da626e1094c3c0c159512eb63245bd"
+    },
+    {
+      "path": "docs/StockAgent-Three-Loops.pdf",
+      "git_blob": "c0e2f29510c03dbf8fdd319c775a5382eff923ef",
+      "sha256": "f4bc6e08370e1f2c748e9a42ad3702f9d3c0f2b1e7b470113eba0a02d28c2b9e"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "502f437f85965128f2c970b33d1a4f5c2cb85f76",
+      "sha256": "34955f926dceb48e18962e2d95cd5bbc841d740f1fa947c1deecf8105f89d14e"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "c3961119641c1548a96d27315c42494565e6d2c2",
+      "sha256": "8d988056c258ae13880243b4a5ae3c18c222b4e900bf086425639797cd4351b1"
+    },
+    {
+      "path": "src/backend/shared/schemas/feedback.py",
+      "git_blob": "02c5968aaaf750ec974cccf020a4990a416d6061",
+      "sha256": "5edb30025bd3a06a0feb00ccbd983a10008fc4afb8251f209d6ab70c4e673d16"
+    },
+    {
+      "path": "tests/unit/intelligence/rl/test_reforecast.py",
+      "git_blob": "66e2876d28b22845123f53c9d0961524f8c3aa16",
+      "sha256": "62f71b797e9ab918574aaf2ecf8c352fd0489cff33bbb83a8fb171ac51d7ddf5"
+    },
+    {
+      "path": "tests/unit/test_envelope_after_close_fix027.py",
+      "git_blob": "a089d752cb6debfa4dff2a1410899122711f82bb",
+      "sha256": "61ef9a7d9eba4e22650ab04a700997f1b930ae2dacd3f4266a92c6d438e15a32"
+    },
+    {
+      "path": "tests/unit/test_exit_evidence_pr009.py",
+      "git_blob": "0b4fd2334773566c4344db64a392fdf80765dd1d",
+      "sha256": "a48b2018c7a79e929ae5603a821b639c14083ae7555d514ca2e4199142218aa6"
+    },
+    {
+      "path": "tests/unit/test_issue_time_fix031.py",
+      "git_blob": "13388a0a7cc8c1e696e0f41fcd393612179b8529",
+      "sha256": "758f623c1c2bed93a15f9f4ed49b2ebf590c0a4a6faa9c0ca1ecc12d04acc3dd"
+    }
+  ]
+}

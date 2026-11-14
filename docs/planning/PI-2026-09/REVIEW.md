@@ -18,6 +18,10 @@ receipt. If a story has no reader-visible documentation impact, record that
 reason explicitly. SA-031 checks final consistency; it does not postpone
 normal documentation until the end of the PI.
 
+## Which stories get a fresh-session review
+
+Since 14 Nov 2026 (the owner's rule, AGENTS.md step 4): stories on the **decision path** (what is bought, sold or sized, how a forecast or an exit is graded, the ledger's money arithmetic) and stories that change who can read or change an account's data. **Light** stories (reports, screens, briefs, documents, operations, housekeeping, and rollout stories that change one authorized setting) are accepted in their implementing conversation when the full suite and the project guards pass; their receipt names the lane and the reason. In doubt, the story is on the decision path.
+
 ## Fresh-session review
 
 1. Read the selected story, implementation receipt and actual current diff. Verify revision/digest; investigate drift before signing off. Avoid reading a whole unrelated chat or every historical report.
@@ -27,7 +31,7 @@ normal documentation until the end of the PI.
    Verify that the affected living documentation and human test cases describe
    the reviewed behavior and that the PDF matches its source when changed.
 5. Record findings with severity, exact file/line, trigger, observed/expected result, impact and a reproducible fixture. Distinguish confirmed bugs, inference and product decisions. Do not manufacture findings to appear rigorous.
-6. Verdict: `changes_requested` for any unresolved critical/high or unmet acceptance criterion; `accepted` only for the reviewed revision with the relevant tests passing. Document medium/low items as explicit follow-ups with owners/story links, not hidden waivers.
+6. Verdict: `changes_requested` for any unresolved critical/high or unmet acceptance criterion; `accepted` only for the reviewed revision with the relevant tests passing. Document medium/low items as explicit follow-ups, not hidden waivers: a story link for a medium or higher finding on the decision path, otherwise one entry in [BACKLOG.md](BACKLOG.md) with the trigger that would promote it.
 
 If the reviewer changes behavior, record the findings, return to implementation and retest. A later fresh review signs off the new revision. Same-conversation self-review is useful but does not satisfy this gate. This process provides separate-context agent review; it does not claim independent human or professional financial certification.
 

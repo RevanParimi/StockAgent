@@ -160,8 +160,13 @@ def test_a_high_negative_event_in_the_window_fires_and_its_neighbours_do_not():
     assert (rec.verdict, rec.triggers) == ("EXIT", ["case_broken"])
     assert case_broken_reasons(fires, 500.0) == [
         "negative results event of 2026-10-16: Quarterly profit fell 40% on a large write-off."]
+    # FIX-031: an event counts for 5 closes from the first close after it. Filed
+    # at 15:30 on 15 Oct (at the close) it first counts on the 16th, so the
+    # 23rd is its fifth close; at 15:29 it counted from the 15th and ended on
+    # the 22nd.
+    assert _evidence(events=[_event(published="2026-10-15T15:30:00+05:30")]).negative_events
     # One unit short on each axis: a session too old, medium, neutral, positive.
-    for short in (_event(published="2026-10-15T18:00:00+05:30"),
+    for short in (_event(published="2026-10-15T15:29:00+05:30"),
                   _event(materiality="medium"),
                   _event(direction="neutral"),
                   _event(direction="positive")):
@@ -197,6 +202,8 @@ def test_a_verdict_that_is_not_an_actionable_sell_on_the_day_does_not_fire():
         [_record(verdict="INSUFFICIENT DATA", gate="abstain")],
         # 24 Oct 00:01 IST: after the review day
         [_record(run_at="2026-10-23T18:31:00")],
+        # FIX-031: 23 Oct 15:30 IST (10:00 UTC), at the review session's close
+        [_record(run_at="2026-10-23T10:00:00")],
         # superseded by a later actionable BUY
         [_record(run_at="2026-10-20T10:00:00"), _record(verdict="BUY")],
         # another company's
@@ -205,9 +212,9 @@ def test_a_verdict_that_is_not_an_actionable_sell_on_the_day_does_not_fire():
         ev = _evidence(records=records)
         assert ev.research_verdict != "SELL", records
         assert _evidence_decision(ev).verdict == "HOLD"
-    # 23 Oct 23:59 IST is still the review day; an abstained later run does not
-    # hide the latest actionable one.
-    assert _evidence(records=[_record(run_at="2026-10-23T18:29:00")]).research_verdict == "SELL"
+    # 23 Oct 15:29 IST is before the review session's close (FIX-031); an
+    # abstained later run does not hide the latest actionable one.
+    assert _evidence(records=[_record(run_at="2026-10-23T09:59:00")]).research_verdict == "SELL"
     assert _evidence(records=[_record(), _record(verdict="BUY", run_at="2026-10-23T05:00:00",
                                                  gate="abstain")]).research_verdict == "SELL"
 

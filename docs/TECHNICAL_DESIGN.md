@@ -1005,7 +1005,10 @@ decision's evidence (SA-013).
    mode weights change; in `observe` mode the change is recorded as a
    proposal. Lessons and other learning state are updated.
 7. Conditional thesis review, reforecasting, dossier curation and shared
-   knowledge updates can run under their feature gates.
+   knowledge updates can run under their feature gates. The feedback entry
+   records when it was written, and each change to a forecast row's
+   confidence its time and the value before it, so a decision booked at an
+   earlier close reads them as they stood then (section 6).
 8. After harvesting reviews, the scheduler records one outcome per ticker
    (section 9) and invokes the portfolio pipeline.
 
@@ -1228,10 +1231,40 @@ run that reviews Wednesday does, at Wednesday's close. The cost is a sale two
 sessions after the news; the alternative, booking at the later close the run
 read, would put two sessions' closes in one run and was not chosen. A
 re-forecast made before the close still counts: an envelope re-forecast last
-week ADDs as today. Not covered: the thesis review the legacy rule sells on
-reads company news up to the run, so it can rest on news after the reviewed
-close; the evidence rule counts filings and analyses by the calendar day, so
-one published that evening counts for that close. **Planned:** FIX-031.
+week ADDs as today.
+
+**Every other input at the session's close.** The same clock holds for all
+the decision reads:
+
+- **The thesis review** the price-path rule sells on is read only when it was
+  written before the close. Each feedback entry records when the review wrote
+  it (`written_at`). The review of a session runs after its close, on company
+  news fetched up to its run. An entry stored without a time counts as written
+  after the close when it is dated on or after that session, and before it
+  when it is older (`advisor.written_before`). Example: Monday's review,
+  written Tuesday 16:30, says "not intact". Monday's and Tuesday's decisions
+  do not read it; Wednesday's sells on it if the path still points down.
+  The review's own news context is not cut: the learning loop still reads the
+  articles that explain the session's move (section 5).
+- **The confidence** (`confidence`, and `confidence_trend`, which can TRIM) is
+  each forecast row's as it stood at the close. Every daily-review revision
+  records its time and the value before it (`confidence_revisions`), and the
+  advisor undoes those made at or after the close (`advisor.confidence_at`).
+  Example: a row issued at 0.70 and revised to 0.64 by Monday 16:30's review,
+  then to 0.299 by Tuesday 16:30's: Monday's close reads 0.70 and Tuesday's
+  0.64. A row revised before the field existed reads as stored.
+- **The evidence rule's** events, research verdicts and deep dives, by the
+  same clock (below), and **a watchlist analysis**: the newest run before the
+  close.
+- **A re-forecast keeps the row of every session that had closed** when it
+  ran: the next review grades that row on a close already known. The review
+  of Monday, run Tuesday 16:45, leaves Tuesday's row as issued; the first new
+  row is Wednesday's. With no session after the review date still open, it
+  does nothing.
+
+What is computed after the close from the close itself still counts: the
+review's grade of that session and the day's regime label, which reads no bar
+after it.
 
 ### Two exit rules
 
@@ -1241,29 +1274,36 @@ included, is the same code under both
 ([advisor](../core/portfolio/advisor.py), [exit_shadow](../core/portfolio/exit_shadow.py)).
 
 - **The price-path rule (`thesis_break`)** needs two things: the month's latest
-  thesis review said "not intact", and the remaining forecast path ends more
+  thesis review written before the review session's close said "not intact"
+  (above), and the remaining forecast path ends more
   than 1% below the close. That review runs in the daily review (section 5,
   step 7) only after a price-path miss larger than `max(1.5%, 1.5 × ATR%)`
   ([thesis_reviewer](../core/intelligence/rl/agents/thesis_reviewer.py)), and
   it fetches no new data. A company event therefore never triggers it, while
   one sharp down day can.
-- **The evidence rule (`case_broken`)** needs one of three things, as of the
-  review day:
+- **The evidence rule (`case_broken`)** needs one of three things, as known at
+  the review session's 15:30 close:
   1. a high-materiality negative company event about the stock (section 4),
-     published in the last 5 sessions, from an NSE filing (an announcement or
-     a board-meeting intimation) or from a disclosure typed by fixed rules (an
-     insider trade, a pledge, a substantial acquisition, an ownership change);
+     from an NSE filing (an announcement or a board-meeting intimation) or from
+     a disclosure typed by fixed rules (an insider trade, a pledge, a
+     substantial acquisition, an ownership change). It counts for 5 closes,
+     from the first close after it was published; a date without a time counts
+     as published at that day's close. Results filed at 18:10 on Monday count
+     from Tuesday's close to the next Monday's; filed at 14:10, from Monday's
+     to Friday's;
   2. the latest analysis in the score history with an actionable or degraded
-     gate says SELL or STRONG SELL, run on a later IST day than the buy and at
-     most 22 sessions before the review day;
+     gate says SELL or STRONG SELL, run before the close, on a later IST day
+     than the buy and at most 22 sessions before the review day. The daily
+     review's own analysis, run that evening, counts from the next close;
   3. the close is at or below the invalidation level of the stock's latest
-     shelf idea, where the entry rule refuses to buy, compared in the close's
-     own price basis (below).
+     shelf idea decided before the close (a deep dive keeps only its day and
+     counts as made at that day's close), where the entry rule refuses to
+     buy, compared in the close's own price basis (below).
 
   It fires only once the holding has been held `advisor.min_hold_sessions`
-  (10) exchange sessions; the stops never wait. An event published after the
-  review day, another company's event, an event with no publication time, an
-  analysis run after the review day, an abstained analysis, and an analysis
+  (10) exchange sessions; the stops never wait. An event published at or after
+  the close, another company's event, an event with no publication time, an
+  analysis run at or after the close, an abstained analysis, and an analysis
   run on or before the buy day never count. A news article never sells on its
   own: it is a secondary report, and one mislabelled headline would sell a
   holding. A high-negative news event is recorded in the row as a watch item

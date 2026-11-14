@@ -376,9 +376,12 @@ def test_one_clock_for_reforecasts_and_new_positions():
 
 def _real_round_trip(tmp_path, monkeypatch, at_day: date, at_hour: int):
     """Monday's envelope ends at 1,000 (FLAT). The real re-forecast of Monday
-    runs at `at_day` `at_hour`:45 with a +40% monthly profile, anchored on
-    Monday's 1,000: its path ends at about 1,040 over the four remaining
-    rows (+4%, UP). Returns the new envelope, the holding and Monday's
+    runs at `at_day` `at_hour`:45 with a +20% monthly profile (ForecastProfile's
+    limit; a larger one is refused and the static path runs instead), anchored
+    on Monday's 1,000 and spread over the four rows after Monday: 5% a day,
+    1% daily band, so the median path ends near 1,000 x e^(4 x (0.05 - 0.00005))
+    = about 1,221 (+22%, UP). Run after Tuesday's close, Tuesday's row stays
+    as issued (FIX-031). Returns the new envelope, the holding and Monday's
     signals set where ADD would fire."""
     from core.intelligence.rl.algorithms.price_interpolator import ForecastProfile
     import core.intelligence.rl.nse_calendar as cal
@@ -388,7 +391,7 @@ def _real_round_trip(tmp_path, monkeypatch, at_day: date, at_hour: int):
     _store(tmp_path).save_envelope(_envelope(1000.0))
     rf._patch_pipeline(monkeypatch, tmp_path, base_close=1000.0)
     monkeypatch.setattr(gf.PriceInterpolator, "get_profile", lambda self, **kw: ForecastProfile(
-        monthly_return_pct=40.0, path_shape="linear", confidence_band_daily_pct=1.0,
+        monthly_return_pct=20.0, path_shape="linear", confidence_band_daily_pct=1.0,
         reasoning="test", source="llm"))
     monkeypatch.setattr(gf, "_review_session_close", _real_review_session_close)
     monkeypatch.setattr(dr, "_fetch_session_close",
@@ -407,7 +410,9 @@ def test_end_to_end_a_reforecast_after_the_close_is_not_read(tmp_path, monkeypat
     out, holding, sig = _real_round_trip(tmp_path, monkeypatch, TUE, 16)
     assert out.reforecast_history[-1].at == _at(TUE, 16, 45)
     assert out.reforecast_history[-1].archived_file
-    assert out.daily_forecasts[-1].predicted_close > 1010.0       # the new path is UP
+    assert out.forecast_profile_source == "llm"                    # the +20% profile ran
+    assert 1150.0 < out.daily_forecasts[-1].predicted_close < 1300.0   # about 1,221, UP
+    assert out.daily_forecasts[1].predicted_close == 1000.0        # Tuesday's row kept
     assert sig.envelope_direction == "FLAT"                        # Monday's archived path
     assert sig.envelope_late_direction == "UP"
     assert "after the close of 2026-06-08" in sig.envelope_after_close

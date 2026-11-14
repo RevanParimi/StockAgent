@@ -66,10 +66,14 @@ the gate, named and within a cap; any other never helps the evidence rule
 switch; the owner makes it (`advisor.exit_rule: evidence`). Rollback: legacy.
 A pass means "not worse" in count and money, not "better" (`gate_look`).
 
-Information is the review day's: an event published after it, or another
-symbol's, never counts, and neither does a research run after it, on or
-before the buy day (the buyer could have seen it), or more than 22 sessions
-before it. The invalidation level is set in the rupees of its deep dive; it
+Information is what was known at the review session's 15:30 close (FIX-031,
+the clock of `shelf.close_before_decision`): an event published at or after
+that close, or another symbol's, never counts, and neither does a research
+run at or after it (the daily review's own evening run counts from the next
+close), on or before the buy day (the buyer could have seen it), or more than
+22 sessions before it, nor a deep dive dated that day. Example: results filed
+at 18:10 on Monday are case evidence from Tuesday's close; filed at 14:10,
+from Monday's. The invalidation level is set in the rupees of its deep dive; it
 is compared in the review day's price basis, after every bonus and split
 since the dive, or not at all (`level_in_basis`).
 """
@@ -77,7 +81,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Callable, Iterable
 
 from backend.shared.data.fetchers.symbol_resolver import identity_break
@@ -85,7 +89,8 @@ from backend.shared.pipeline import decision_gate as dg
 from backend.shared.schemas.portfolio import ExitShadowRow
 from core.audit.rules import excess, is_correct, pct_change
 from core.discovery.shelf import close_before_dive
-from core.intelligence.rl.nse_calendar import trading_days_after, trading_days_ago
+from core.intelligence.rl.nse_calendar import (IST, session_close_at, trading_days_after,
+                                               trading_days_ago)
 from core.portfolio.advisor import CASE_EVENT_SOURCES, ExitEvidence, case_broken_reasons
 from core.portfolio.results import sessions_held
 from core.portfolio.sizing import entry_check
@@ -146,18 +151,39 @@ def sells(verdict: str) -> bool:
 
 # -- Evidence, pure given its inputs ------------------------------------------------
 
+def published_time(event) -> datetime | None:
+    """When `event` was published, by the decision clock (FIX-031): its IST
+    time; a date-only `published_at` counts as made at that day's 15:30
+    close, as a deep dive's day does (`shelf.decision_time`). None when it has
+    none or it cannot be read."""
+    stamp = str(getattr(event, "published_at", "") or "")
+    if not stamp:
+        return None
+    try:
+        if len(stamp) == 10:
+            return session_close_at(date.fromisoformat(stamp))
+        at = datetime.fromisoformat(stamp)
+    except ValueError:
+        return None
+    return at.replace(tzinfo=IST) if at.tzinfo is None else at.astimezone(IST)
+
+
 def recent_negative_events(events: Iterable, symbol: str, on: date,
                            sessions: int = CASE_EVENT_SESSIONS) -> list:
-    """High-materiality negative events about `symbol` published in the last
-    `sessions` sessions up to `on`: after the IST day of the session before
-    them, and on or before `on`. An event with no publication time, one
-    published after `on`, or another symbol's never counts. Oldest first."""
-    after = trading_days_ago(on, sessions).isoformat()
-    last = on.isoformat()
+    """High-materiality negative events about `symbol` that count for the
+    decision at `on`'s 15:30 close: published before that close, and at or
+    after the close `sessions` sessions earlier, so each counts for
+    `sessions` closes, from the first close after it (FIX-031). An event
+    with no publication time, one published at or after the close, or
+    another symbol's never counts. Oldest first. Example: results filed at
+    18:10 on Monday first count at Tuesday's close; filed at 14:10, at
+    Monday's."""
+    since = session_close_at(trading_days_ago(on, sessions))
+    closed = session_close_at(on)
     out = []
     for e in events:
-        day = e.published_day()
-        if e.symbol != symbol or day is None or not (after < day <= last):
+        at = published_time(e)
+        if e.symbol != symbol or at is None or not (since <= at < closed):
             continue
         if e.direction == "negative" and e.materiality == "high":
             out.append(e)
@@ -169,24 +195,29 @@ def latest_actionable_verdict(records: Iterable[dict], symbol: str, on: date, bo
     """The newest score-history record for `symbol` whose decision gate is
     actionable or degraded, run (IST) on a later day than the buy `bought`
     and at most `sessions` sessions before `on`: on or after the session
-    `sessions` back, and on or before `on`. None when there is none.
+    `sessions` back, and before `on`'s 15:30 close (FIX-031). None when
+    there is none.
 
     Never counted: an abstained run (in enforce, INSUFFICIENT DATA); a run
     on or before the buy day, which the buyer could have seen before buying;
-    a run older than the window. Every held stock is managed, and the
+    a run older than the window; a run at or after the close, such as the
+    one the daily review writes that evening (it counts from the next
+    session's close). Every held stock is managed, and the
     1st-of-month forecast re-analyses every managed stock, so a holding has a
     fresh verdict each month. Example: bought on 5 Oct over a 2 Oct SELL; that
     SELL never sells it. A SELL of 8 Oct sells it (after the minimum holding
     period) until it is 22 sessions old, unless a newer actionable run says
     otherwise."""
-    from core.discovery.candidates import _gate_status, _ist_day
+    from core.discovery.candidates import _gate_status, _ist_time
     since = trading_days_ago(on, sessions)
+    closed = session_close_at(on)
     best = None
     for r in records:
         if str(r.get("ticker") or "").strip().upper() != symbol:
             continue
-        day = _ist_day(r.get("run_at"))
-        if (day is None or day <= bought or day < since or day > on
+        at = _ist_time(r.get("run_at"))
+        day = at.date() if at is not None else None
+        if (day is None or day <= bought or day < since or at >= closed
                 or not dg.is_actionable(_gate_status(r))):
             continue
         if best is None or str(r.get("run_at")) > str(best.get("run_at")):
@@ -196,16 +227,20 @@ def latest_actionable_verdict(records: Iterable[dict], symbol: str, on: date, bo
 
 def invalidation_for(ideas: Iterable, symbol: str, on: date) -> tuple[float, str, date | None]:
     """(level, source, dive day) from `symbol`'s shelf idea whose latest deep
-    dive is the newest on or before `on`, whatever its status (an idea the
-    autopilot bought is promoted). The level is in the rupees of that dive's
-    close. (0.0, "", None) when there is none or it set no level."""
-    from core.discovery.shelf import last_dived
+    dive is the newest decided before `on`'s 15:30 close
+    (`shelf.decision_time`: a dive keeps only its day and counts as made at
+    that day's close, FIX-031), whatever its status (an idea the autopilot
+    bought is promoted). The level is in the rupees of that dive's close.
+    (0.0, "", None) when there is none or it set no level."""
+    from core.discovery.shelf import decision_time, last_dived
+    closed = session_close_at(on)
     best, best_day = None, None
     for idea in ideas:
         if str(getattr(idea, "symbol", "")).strip().upper() != symbol:
             continue
         dived = last_dived(idea)
-        if dived is None or dived > on:
+        decided = decision_time(idea)
+        if dived is None or decided is None or decided[0] >= closed:
             continue
         if best_day is None or dived > best_day:
             best, best_day = idea, dived

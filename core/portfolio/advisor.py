@@ -55,7 +55,7 @@ class AdvisorSignals(BaseModel):
     # deployment record says it ("market regime unavailable for 2026-10-30:
     # India VIX did not answer"); "" when it is. Holds ADD in either gate mode.
     regime_unavailable: str = ""
-    thesis_intact: bool | None = None      # latest ThesisReview outcome, None = never reviewed
+    thesis_intact: bool | None = None      # latest ThesisReview written before the close (FIX-031), None = none
     reforecast_reason: str = ""            # latest reforecast event reason this cycle
     envelope_direction: str = "FLAT"       # UP | DOWN | FLAT remaining-forecast drift
     # FIX-027: set when a re-forecast was made after the review session's close.
@@ -234,6 +234,50 @@ def envelope_at_close(env, review_date: date, store: VerdictStore):
     return archived, LateReforecast(why=why, current=env)
 
 
+def _ist_at(stamp) -> datetime | None:
+    """An ISO time in IST (a naive one is IST); None when it cannot be read."""
+    from core.intelligence.rl.nse_calendar import IST
+    try:
+        at = datetime.fromisoformat(str(stamp))
+    except ValueError:
+        return None
+    return at.replace(tzinfo=IST) if at.tzinfo is None else at
+
+
+def written_before(entry, closed: datetime) -> bool:
+    """FIX-031: whether feedback `entry` was written before `closed`, a
+    session's 15:30 IST close. The review of a session runs after its close
+    (it grades it), so an entry dated on or after the close's own day counts
+    as after it, stamped or not. An entry dated earlier with no `written_at`
+    (written before the field existed) counts as before, as a re-forecast
+    without a time does; a time that cannot be read counts as after.
+    Example: the entry for Monday, written Tuesday 16:30, is read by the
+    decision at Wednesday's close, not Monday's or Tuesday's."""
+    if str(entry.date)[:10] >= closed.date().isoformat():
+        return False
+    stamp = getattr(entry, "written_at", "") or ""
+    if not stamp:
+        return True
+    at = _ist_at(stamp)
+    return at is not None and at < closed
+
+
+def confidence_at(row, closed: datetime) -> float:
+    """FIX-031: forecast `row`'s confidence as it stood at `closed`: every
+    daily-review revision made at or after it is undone, newest first (one
+    whose time cannot be read counts as after). A row with no recorded
+    revision reads as stored. Example: 0.70 issued, 0.66 from Monday 16:30's
+    review, 0.50 from Tuesday 16:30's: 0.66 at Tuesday's close, 0.70 at
+    Monday's."""
+    value = row.confidence
+    for rev in reversed(getattr(row, "confidence_revisions", None) or []):
+        at = _ist_at(rev.at)
+        if at is not None and at < closed:
+            break
+        value = rev.before
+    return value
+
+
 def _drift_direction(env, review_date: date, close: float) -> str:
     """UP | DOWN | FLAT drift of `env`'s remaining rows from `close`; "" when
     none. Called inside build_signals' envelope read, whose handler covers it."""
@@ -283,6 +327,10 @@ def build_signals(
         sig.sector_weight_pct = w.sector_pct.get(holding.sector, 0.0)
     except Exception:
         pass
+    # Everything below is read as it stood at the review session's close
+    # (FIX-027 the path, FIX-031 the confidences and the thesis).
+    from core.intelligence.rl.nse_calendar import session_close_at
+    closed = session_close_at(review_date)
     # Envelope state
     try:
         env = store.load_envelope(store.cycle_id_for(review_date))
@@ -300,10 +348,9 @@ def build_signals(
                 sig.envelope_direction = (
                     "UP" if drift_pct > band else "DOWN" if drift_pct < -band else "FLAT"
                 )
-                sig.confidence_trend = round(remaining[-1].confidence - remaining[0].confidence, 4)
-                sig.confidence = round(
-                    sum(f.confidence for f in remaining) / len(remaining), 4
-                )
+                confs = [confidence_at(f, closed) for f in remaining]
+                sig.confidence_trend = round(confs[-1] - confs[0], 4)
+                sig.confidence = round(sum(confs) / len(confs), 4)
                 sig.forecast_gate = forecast_rows_gate([f.data_gate for f in remaining])
                 sig.forecast_run_ids = sorted({f.source_run_id for f in remaining
                                                if f.source_run_id})
@@ -326,8 +373,10 @@ def build_signals(
             sig.direction_accuracy_7d = round(
                 sum(1 for e in last7 if e.direction_correct) / len(last7), 4
             )
+            # FIX-031: the latest thesis review written before the close; the
+            # review of this session ran after it, on news up to its run.
             for e in reversed(entries):
-                if e.thesis_review is not None:
+                if e.thesis_review is not None and written_before(e, closed):
                     sig.thesis_intact = e.thesis_review.thesis_intact
                     break
         # FIX-025, FIX-029: with no entry of its own for the day (none at all,

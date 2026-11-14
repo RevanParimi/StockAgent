@@ -46,6 +46,7 @@ from core.intelligence.rl.learning_mode import (
     weight_observation,
 )
 from core.schemas.feedback import (
+    ConfidenceRevision,
     ConvictionStreak,
     DailyFeedbackLog,
     FeedbackAgentInput,
@@ -55,6 +56,7 @@ from core.schemas.feedback import (
     RevisedContext,
     TimingAccuracy,
 )
+from core.intelligence.rl.nse_calendar import now_ist
 from core.intelligence.rl.stores.prediction_store import PredictionStore
 from core.intelligence.rl.stores.ledger_propagator import (
     build_tiered_lessons_summary,
@@ -432,6 +434,10 @@ def _revise_remaining_forecasts(
       - Step 7: Apply thesis_review.horizon_confidence_multiplier when thesis broken
       - Step 7 (knowledge layer): Apply executable-claim emphasis to
         predicted_agent_scores for tagged lessons firing on today's tags
+      - FIX-031: each confidence change is recorded on its row
+        (`confidence_revisions`: when, and the value before), since the
+        review runs after the session's close and reads news up to the run.
+        A decision booked at an earlier close reads the row as it stood then.
     """
     envelope = store.load_envelope(cycle_id)
     if envelope is None:
@@ -449,6 +455,7 @@ def _revise_remaining_forecasts(
 
     confidence_adj = revised_context.horizon_confidence_adjustment
     headline       = revised_context.headline
+    revised_at     = now_ist().isoformat()
 
     for forecast in remaining:
         forecast.revised        = True
@@ -493,7 +500,11 @@ def _revise_remaining_forecasts(
             if thesis_review is not None and thesis_review.horizon_confidence_multiplier < 1.0:
                 adjusted = round(adjusted * thesis_review.horizon_confidence_multiplier, 4)
 
-            forecast.confidence = max(0.05, min(0.99, adjusted))
+            revised_conf = max(0.05, min(0.99, adjusted))
+            if revised_conf != forecast.confidence:
+                forecast.confidence_revisions.append(
+                    ConfidenceRevision(at=revised_at, before=forecast.confidence))
+            forecast.confidence = revised_conf
 
     # P3: Persist the updated conviction streak into the envelope before saving.
     if updated_streak is not None:
@@ -1626,6 +1637,7 @@ def run_daily_review(
         timing=timing,
         revised_context=fb_output.revised_context,
         thesis_review=thesis_review,
+        written_at=now_ist().isoformat(),
         lessons_generated=lesson_ids,
         weight_adjustment_applied=new_weight_version,
         predicted_catalysts_snapshot=_predicted_catalysts,

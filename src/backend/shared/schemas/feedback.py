@@ -48,6 +48,15 @@ class ConvictionStreak(BaseModel):
     reversion_prior:   float = 0.0   # 0.0–0.30; updated daily by tracker.py
 
 
+class ConfidenceRevision(BaseModel):
+    """FIX-031: one daily review's change to a forecast row's confidence: when
+    it was made (ISO, IST) and the confidence before it. A decision booked at
+    a session's close reads the row as it stood at that close
+    (core/portfolio/advisor.confidence_at)."""
+    at: str
+    before: float
+
+
 class DailyForecast(BaseModel):
     """One row in the 30-day prediction sheet."""
     day: int                                     # 1-indexed from cycle start
@@ -69,6 +78,10 @@ class DailyForecast(BaseModel):
     key_assumptions: list[str] = Field(default_factory=list)
     revised: bool = False                        # True after a daily review revises this row
     revision_count: int = 0
+    # FIX-031: each daily review's change to `confidence`, oldest first. [] =
+    # never changed since issue, or changed before the field existed (then
+    # `confidence` is read as stored).
+    confidence_revisions: list[ConfidenceRevision] = Field(default_factory=list)
     predicted_agent_catalysts: dict[str, dict[str, str | float]] = Field(
         default_factory=dict,
         description="Agent catalyst predictions for this forecast day: {agent: {bull_case_if, bear_case_if, data_confidence}}"
@@ -326,6 +339,11 @@ class FeedbackEntry(BaseModel):
     timing: TimingAccuracy | None = None                              # pickup/fall timing
     revised_context: RevisedContext | None = None                     # structured forward outlook
     thesis_review: ThesisReview | None = None                        # set only on significant misses
+    # FIX-031: when the review wrote this entry (ISO, IST). The review of a
+    # session runs after its close and reads news up to that run, so a decision
+    # booked at a close reads only a thesis review written before it. "" =
+    # written before the field existed (see core/portfolio/advisor.written_before).
+    written_at: str = ""
     lessons_generated: list[str] = Field(default_factory=list)       # lesson IDs added to ledger
     weight_adjustment_applied: str = ""    # e.g. "v4" — human audit reference
     # remaining_forecasts_revised removed — always True when entry is finalized.

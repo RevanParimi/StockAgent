@@ -217,6 +217,7 @@ Three behaviours of `PredictionStore` matter to every reader:
     "key_assumptions": ["…"],
     "revised": false,
     "revision_count": 0,
+    "confidence_revisions": [],
     "data_gate": "actionable",
     "source_run_id": "…",
     "instrument": {"ticker": "MARUTI", "symbol": "MARUTI.NS", "basis": "…", "status": "active"}
@@ -251,6 +252,7 @@ forecast used the sector defaults.
              "assessment": "no_move"},
   "revised_context": {"headline": "…", "watch_signals": ["…"], "horizon_confidence_adjustment": -0.02},
   "thesis_review": null,
+  "written_at": "2026-10-06T16:31:04+05:30",
   "lessons_generated": ["L014"],
   "weight_adjustment_applied": "v41",
   "predicted_catalysts_snapshot": {"sales_demand": {"bull_case_if": "…"}},
@@ -515,11 +517,22 @@ confidence = confidence × thesis multiplier      (only when below 1.0)
 confidence = clamp(confidence, 0.05, 0.99)
 ```
 
-The feedback agent's headline becomes each row's leading assumption.
+The feedback agent's headline becomes each row's leading assumption. A row
+whose confidence changes records the change in `confidence_revisions`: when
+(`at`, IST) and the value before. The review runs after the reviewed
+session's close and reads news up to its run, so the portfolio advisor reads
+each row's confidence as it stood at the close a decision is booked at
+(core/portfolio/advisor.py `confidence_at`; TECHNICAL_DESIGN section 6).
+Example: issued at 0.70, revised to 0.64 at Monday 16:30 and to 0.299 at
+Tuesday 16:30: Monday's close reads 0.70, Tuesday's 0.64.
 
 **Step 8 — feedback entry.** One entry per date, replacing any earlier
 entry for that date. `claims_fired` lists the tagged lessons that matched
-today; it stays empty in `observe` mode, where no lesson acts.
+today; it stays empty in `observe` mode, where no lesson acts. `written_at`
+records when the review wrote the entry (IST): the advisor reads a thesis
+review only when it was written before the close of the session it decides
+on (`written_before`), so the review of Monday, written Tuesday 16:30, first
+counts at Wednesday's close.
 
 **Step 8.5 — dossier curator** (section 23.2), on hit days as well as misses.
 After it, today's block deals, bulk deals and pre-open price are saved for
@@ -1422,7 +1435,8 @@ their Monte Carlo bands (section 4).
 
 - returns `None`, changing nothing, when the flag is off, the cycle has no
   envelope, the month's cap (`rl.reforecast_max_per_month`, 2) is reached,
-  no rows remain after `review_date`, or any step fails;
+  no rows remain after `review_date`, every such row's session has already
+  closed, or any step fails;
 - copies the current envelope to `archived_envelopes/<YYYY-MM>_v<n>.json`
   first;
 - runs a fresh analysis with the decision weights. An abstaining analysis is
@@ -1433,7 +1447,11 @@ their Monte Carlo bands (section 4).
   numbers. When `review_date` is today (the pre-open check, a manual run) that
   is the latest close; for the 16:30 review of the previous session it is that
   session's close, and the re-forecast is skipped when that session's bar is
-  not available. Rows on or before `review_date` are kept byte for byte;
+  not available. Rows on or before `review_date` are kept byte for byte, and
+  so is the row of every later session that had closed when it ran: the next
+  review grades that row on a close already known. The path is still drawn
+  through it. Example: the review of Monday, run Tuesday 16:45, keeps
+  Tuesday's row; Wednesday's is the first new one;
 - updates the envelope's count, history, profile, learning mode, gate and
   instrument. New rows carry their own stamps, and the history event records
   when it ran (`at`, IST).

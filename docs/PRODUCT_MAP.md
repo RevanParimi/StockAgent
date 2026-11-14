@@ -351,13 +351,14 @@ completed, degraded, data_gated, skipped or failed.
   re-forecasts contradicted envelopes among the native sectors' built-in
   ticker lists.
 - `regenerate_envelope` in `generate_forecast.py`: archives the current
-  envelope and replaces only the rows after the trigger date.
+  envelope and replaces only the rows after the trigger date whose session
+  was still open when it ran.
 - `stores/offmarket_fetcher.py`: block and bulk deals and the pre-open
   price, saved after each review as the next day's context.
 
 ### 7.6 Schemas
 
-`src/backend/shared/schemas/feedback.py` (1,099 lines): the envelope, the
+`src/backend/shared/schemas/feedback.py` (1,133 lines): the envelope, the
 feedback log, weight memory and the learning ledger, among some thirty
 Pydantic models.
 

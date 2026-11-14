@@ -16,10 +16,11 @@ Covers:
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
+from core.intelligence.rl.nse_calendar import IST
 from core.intelligence.rl.stores.prediction_store import PredictionStore
 from core.intelligence.rl.workflows import generate_forecast as gf
 from backend.shared.schemas.feedback import (
@@ -109,6 +110,11 @@ def _patch_pipeline(monkeypatch, tmp_path, report=None, base_close=1050.0, raise
         return fake_orch
 
     monkeypatch.setattr(gf, "get_orchestrator", _get_orchestrator)
+    # FIX-031: a re-forecast keeps the row of every session closed when it
+    # ran, so the clock is the review day's evening (Tue 9 Jun 16:45 IST): the
+    # rows after 9 Jun are still open. A test may set its own clock after this.
+    monkeypatch.setattr(gf, "now_ist",
+                        lambda: datetime(2026, 6, 9, 16, 45, tzinfo=IST))
     monkeypatch.setattr(gf, "get_sector_weights", lambda sector: {"sales_demand": 1.0})
     monkeypatch.setattr(gf, "_fetch_actual_close", lambda ticker: base_close)
     monkeypatch.setattr(gf, "_review_session_close", lambda ticker, on: base_close)   # FIX-027

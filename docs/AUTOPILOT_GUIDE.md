@@ -125,9 +125,9 @@ a missing artifact leaves a conservative default.
 | Stop | 3 × ATR(20) as % of price, clamped to the market-cap bucket: large 8–12%, mid 12–18%, small 15–22%. Unknown market cap reads as mid; a conservative profile tightens one bucket |
 | Unrealised P/L | Against `adj_avg_price`, dividends included |
 | Envelope direction | The last remaining forecast close against today's close: UP above +1%, DOWN below −1%, else FLAT |
-| Confidence, trend | Mean confidence of the remaining rows; last minus first |
+| Confidence, trend | Mean confidence of the remaining rows, each as it stood at the review session's close (a daily-review revision made after it is undone, `confidence_at`); last minus first |
 | Reversion prior | The envelope's conviction streak |
-| Regime, thesis | The review day's own feedback entry's regime; with no entry of its own for the day, the label another ticker's review recorded for it (with none recorded, the older label, and ADD is held); the latest thesis review |
+| Regime, thesis | The review day's own feedback entry's regime; with no entry of its own for the day, the label another ticker's review recorded for it (with none recorded, the older label, and ADD is held); the latest thesis review written before the review session's close (`written_before`: the review of Monday, written Tuesday 16:30, first counts at Wednesday's close) |
 | Direction accuracy | Share of the cycle's last 7 feedback entries graded correct |
 | Position weight | The holding's share of **total equity**: every holding at the review's close (at cost when it has none) plus cash ([sizing.py](../core/portfolio/sizing.py)) |
 | Sector weight | The same share for all holdings with the holding's sector label |

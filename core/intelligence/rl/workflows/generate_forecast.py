@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from core.config import settings
 from core.intelligence.rl.workflows.sector_router import get_orchestrator, get_sector_weights
@@ -31,7 +31,7 @@ from core.schemas.feedback import (
 )
 from core.schemas.pipeline import FinalReport
 from core.intelligence.rl.stores.prediction_store import PredictionStore
-from core.intelligence.rl.nse_calendar import now_ist
+from core.intelligence.rl.nse_calendar import now_ist, session_close_at
 from core.intelligence.algorithms.indicators.fetcher import get_price_history
 from core.intelligence.seasonal.calendar import SeasonalCalendar
 from core.intelligence.prompt_enhancer.enhancer import PromptEnhancer
@@ -637,6 +637,11 @@ def generate_forecast(
 # Living Envelope (RL Phase 2.5, Component 2) — mid-cycle shock re-forecast
 # ---------------------------------------------------------------------------
 
+def _closed_by(day: str, at: datetime) -> bool:
+    """True when session `day` (ISO) had closed (15:30 IST) at `at`."""
+    return session_close_at(date.fromisoformat(day)) <= at
+
+
 def regenerate_envelope(
     ticker: str,
     sector: str,
@@ -649,18 +654,22 @@ def regenerate_envelope(
     days of the CURRENT cycle only.
 
     Archives the superseded envelope first (via PredictionStore.archive_envelope()).
-    Past days' forecasts (date <= review_date) are kept byte-identical; only
-    days strictly after review_date are replaced with a fresh price path
-    anchored on review_date's own close (`_review_session_close`: the most
-    recent close when review_date is today). The event records when it ran
-    (ReforecastEvent.at), so a decision booked at an earlier close does not
-    read the new path (FIX-027, core/portfolio/advisor.envelope_at_close).
+    Past days' forecasts (date <= review_date) are kept byte-identical, and so
+    is the row of every later session that had closed when it ran (FIX-031:
+    that row is graded on a close already known). The other days after
+    review_date are replaced with a fresh price path anchored on review_date's
+    own close (`_review_session_close`: the most recent close when review_date
+    is today). The event records when it ran (ReforecastEvent.at), so a
+    decision booked at an earlier close does not read the new path (FIX-027,
+    core/portfolio/advisor.envelope_at_close).
 
     NEVER raises — returns None on:
       - RL_REFORECAST_ENABLED == False (no side effects)
       - no existing envelope for the current cycle
       - reforecast_count already at settings.RL_REFORECAST_MAX_PER_MONTH (no
         archive/save side effects)
+      - every forecast day after review_date has already closed (no archive
+        or save; after the analysis: the envelope left untouched)
       - any failure in the orchestrator/profile/MC pipeline (original
         envelope left untouched)
 
@@ -672,9 +681,10 @@ def regenerate_envelope(
     trigger : short key — "external_shock" | "thesis_break" | "regime_flip"
               | "preopen_shock" | "manual" | ...
     review_date : the trading date that triggered this re-forecast (defaults
-              to today). Forecast rows with date <= review_date are preserved
-              unchanged; rows with date > review_date are regenerated, from
-              that session's close.
+              to today). Forecast rows with date <= review_date, or whose
+              session had closed when it ran, are preserved unchanged; the
+              other rows after review_date are regenerated, from that
+              session's close.
     """
     if not getattr(settings, "RL_REFORECAST_ENABLED", True):
         return None
@@ -710,6 +720,12 @@ def regenerate_envelope(
         if not remaining_existing:
             logger.info(
                 "[regenerate_envelope] %s: no remaining forecast days after %s — skipping",
+                ticker, review_date_str,
+            )
+            return None
+        if all(_closed_by(f.date, now_ist()) for f in remaining_existing):
+            logger.info(
+                "[regenerate_envelope] %s: every forecast day after %s has closed — skipping",
                 ticker, review_date_str,
             )
             return None
@@ -767,15 +783,30 @@ def regenerate_envelope(
             regime_label=regime_label,
         )
 
-        # Re-number `day` to continue from the last preserved past day, and
-        # mark these rows as already-revised (they supersede any pending
-        # Step-7 revision for this run).
-        past_forecasts = [f for f in envelope.daily_forecasts if f.date <= review_date_str]
+        # FIX-031: a session that had closed when this ran keeps its row as
+        # issued, though the new path is drawn through it: that row is graded
+        # by the next review, and a forecast written after its close would be
+        # graded on a close already known. Example: Tuesday 16:45 the review
+        # of Monday re-forecasts; Tuesday closed at 15:30, so Tuesday's row
+        # stays and Wednesday's is the first new one.
+        ran_at = now_ist()
+        closed_rows = {f.date for f in remaining_existing if _closed_by(f.date, ran_at)}
+        new_forecasts = [fc for fc in new_forecasts if fc.date not in closed_rows]
+        if not new_forecasts:
+            logger.warning(
+                "[regenerate_envelope] %s: every forecast day closed while it ran — "
+                "re-forecast skipped (original envelope intact)", ticker,
+            )
+            return None
+
+        # Re-number `day` to continue from the last preserved row.
+        past_forecasts = [f for f in envelope.daily_forecasts
+                          if f.date <= review_date_str or f.date in closed_rows]
         next_day = (past_forecasts[-1].day if past_forecasts else 0) + 1
         for i, fc in enumerate(new_forecasts):
             fc.day = next_day + i
 
-        # Past days remain byte-identical; only future days are replaced.
+        # Kept rows remain byte-identical; only rows of sessions still open are replaced.
         envelope.daily_forecasts = past_forecasts + new_forecasts
         envelope.reforecast_count += 1
         envelope.reforecast_history.append(ReforecastEvent(
@@ -783,7 +814,7 @@ def regenerate_envelope(
             reason=reason,
             trigger=trigger,
             archived_file=archived_file,
-            at=now_ist().isoformat(),
+            at=ran_at.isoformat(),
         ))
 
         # The new forecast profile / weight version describe the regenerated

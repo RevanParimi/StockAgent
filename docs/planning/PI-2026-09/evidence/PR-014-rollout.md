@@ -16,10 +16,10 @@ push time and scheduled runs. Each conversation adds a section here.
 | --- | --- | --- |
 | 1 | `FIX-030-M1`, the Saturday counts | **Waits for the owner's read** (below) |
 | 2 | Commit FIX-031, then the docs | **Done**, 14 Nov |
-| 3 | Full suite on the tree to be pushed | Recorded under "Full suite" |
+| 3 | Full suite on the tree to be pushed | **Done**: passed on `7487104` |
 | 4 | Push: deploys FIX-030, FIX-031 and CLEAN-001 | Not started: waits for step 1 and a time the owner agrees |
 | 5 | Read the paper lane's record | Not started |
-| 6 | Switch on (`portfolio.overrides.primary.deploy_idle_cash: true`) | Not started |
+| 6 | Switch on (`portfolio.overrides.primary.deploy_idle_cash: true`) | Setting made; goes out with step 4 in one push |
 | 7 | The first run's `deployment` record | Not started |
 | 8 | Three dated checks in STATE | Not started |
 | 9 | Remind the owner of the deferred setup actions | Not started |
@@ -57,6 +57,29 @@ FIX-030 is deployed, only decided ideas are offered. The 7 are re-dived first on
 and until then they are not bought. The probe's `decided_configured_key`, run after Saturday 14
 Nov's dives, is the number of ideas deployment can buy from in its first week.
 
+### Before step 6: will the switch reach the portfolio the autopilot trades?
+
+The switch is keyed by user id: `portfolio.overrides.primary.deploy_idle_cash`. Deployment
+runs for a portfolio only when four things hold (`deployment.active`): the autopilot is on,
+the portfolio opted in (`autopilot: true`), it keeps cash (`cash_deployable` set), and the
+switch is on for that portfolio's user id. Atlas is on (`atlas.enabled: true`), so the
+scheduler runs the users table's ids, not the folders on disk.
+
+- **By code inspection:** the first signup becomes the owner under the default id `primary`
+  (`services/api/routes/auth_api.py` `signup`), so a key of `primary` names the owner's
+  portfolio.
+- **Not yet measured:** that the owner's portfolio in production is opted in, keeps cash and
+  is in the users table. One read-only probe answers all four, with booleans and counts only
+  (no user ids, symbols or amounts). It was dry-run here on a stale local copy, and wrote
+  nothing. From Git Bash in the repository:
+
+   ```text
+   railway ssh "cd /app && echo $(gzip -9c analysis_data/pr014/switch_probe.py | base64 -w0) | base64 -d | python -c 'import sys,zlib;exec(zlib.decompress(sys.stdin.buffer.read(),31))'"
+   ```
+
+  **Pass:** `verdict.override_keyed_primary_would_switch_on` is 1. If it is 0, step 6's key
+  is wrong, and the probe's rows show which condition fails.
+
 ### Step 2: FIX-031 committed
 
 - **`899526a`, the code:** exactly FIX-031's 16 reviewed files. Before the commit,
@@ -93,9 +116,52 @@ Nov's dives, is the number of ideas deployment can buy from in its first week.
 
 ### Full suite
 
-It runs on the docs commit, the tree to be pushed. The result is written here after the run.
+Run once on the docs commit `7487104`, the tree to be pushed, with a clean working tree:
+**6,456 passed / 12 skipped / 1 xfailed / 0 failed**, pytest return code 0, 22m44s (00:01–00:24 IST on 2026-11-15). `git status` was the same before and after
+the run. Command: `.stockai/Scripts/python.exe -m pytest -q -p no:cacheprovider tests`; the
+hermetic boundary blocks the network.
+
+This result was written after the docs commit, so it is not in it: STATE, HANDOFF and this
+receipt carry it in the working tree and go with the next commit (step 6's). The pushed tree
+is the tested tree.
 
 ### Stopped at step 4
 
 The push deploys FIX-030, FIX-031 and CLEAN-001 together and rebuilds every unpinned package. It
 waits for step 1 and for a time the owner agrees. The switch is off.
+
+**Timing, Sunday 15 Nov** (job times in KT section 9; a push needs about 2 hours clear):
+
+- **Step 4** fits from about 08:10 to 15:40 IST: the next jobs are the 17:45 IPO refresh and
+  the 18:00 weekly review.
+- **Step 6** comes after step 4's build, `/health` and the first job after it are read: about
+  19:25 to 20:50 IST, or 00:10 to 06:20 IST on Monday. Either way the Monday 16 Nov 16:30
+  review is the first run with the switch on.
+- **One push for both** is the owner's choice (the card's step 6). It saves a deploy, and a
+  failed build would then hold the switch back too.
+- **FIX-030's cost of a Sunday deploy:** the 7 ideas whose key the old Yahoo table set are not
+  offered Monday to Friday, 16–20 Nov. They are re-dived first on Saturday 21 Nov.
+
+### One push for steps 4 and 6 (owner, Sunday 15 Nov)
+
+At about 06:30 IST the owner asked: "today is sunday, nothing to wait for right, why cant we
+commit and push everything?" The card leaves one push for both to the owner, so step 6's
+setting goes out with step 4:
+
+- `config.yaml`: `portfolio.overrides: {primary: {deploy_idle_cash: true}}`. Loaded through
+  the settings, `deployment.breadth("primary").deploy` is true and any other user id's is
+  false; the global `autopilot.deploy_idle_cash` stays false.
+- **Why one push is safe enough here:** the switch acts only in the post-review pipeline
+  (`core/portfolio/pipeline.py` `run_post_review_pipeline`), which the scheduler runs after
+  the Monday to Friday 16:30 review, or the owner triggers by hand. A Sunday push leaves Sunday
+  and Monday morning to read the build, `/health` and the Sunday jobs, and to remove the
+  setting before Monday's 16:30 run if anything is wrong.
+- **What one push gives up:** a build that fails takes the switch with it; the rollback is the
+  same one-line edit and push.
+- The full suite runs again on this tree (the setting and these records), before the push.
+- **The first run on it failed one guard, as it should:** `test_deploy_idle_cash_sa049.py`
+  pinned SA-049's shipped config, `portfolio.overrides == {}` (6,455 passed / 1 failed,
+  06:35–06:56 IST). The guard now pins the new shipped config,
+  `test_the_shipped_config_switches_on_only_the_primary_portfolio`: the global switch off and
+  exactly one override, `primary`. A global switch-on, or one for another portfolio, still
+  fails it. Not pushed after that run; the suite runs again on the tree with the guard.

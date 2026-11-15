@@ -17,19 +17,32 @@
     - the 14 Nov decisions in KT sections 11 and 12 and AUTOPILOT_GUIDE section 16;
     - the 14 Nov planning files, STATE, this file and the receipt.
   - `check_kt_docs` gives `errors: []`.
-- **Step 3, the full suite,** runs on the docs commit. Its result is in the receipt's "Full
-  suite" section and in STATE's history.
+- **Step 3, done: the full suite passed** on the docs commit `7487104`, the tree to be pushed:
+  6,456 passed / 12 skipped / 1 xfailed / 0 failed, return code 0, 22m44s (00:01–00:24 IST on 2026-11-15).
+  This line, STATE's and the receipt's are uncommitted and go with step 6's commit.
 - **Step 1, `FIX-030-M1`, is yours.** The receipt has both commands: Saturday's
   `[Scheduler] Discovery` line in Railway's log view, and the counts probe through `railway ssh`.
   - It decides whether a one-point card comes before the deploy.
   - The probe's `decided_configured_key` is also the number of ideas deployment can buy from in
     its first week. On 13 Nov it was 4 of 19; 7 more wait for the Saturday after the deploy.
-- **Step 4, the push, waits for step 1 and a time you agree.** It deploys FIX-030, FIX-031 and
+- **Before step 6, one more read for you:** `analysis_data/pr014/switch_probe.py`, the same
+  `railway ssh` form (command in the receipt). It shows, with booleans and counts only,
+  whether `portfolio.overrides.primary` reaches the portfolio the autopilot trades. By code it
+  does: the first signup is the owner, under `primary`. Pass: `override_keyed_primary_would_
+  switch_on` is 1.
+- **Step 4, the push, waits for step 1 and a time you agree.** On Sunday it fits from about
+  08:10 to 15:40 IST; step 6 then about 19:25 to 20:50 IST, or early Monday. Monday's 16:30
+  review is the first run with the switch on. It deploys FIX-030, FIX-031 and
   CLEAN-001 together and reinstalls every unpinned package. The build's result, `/health` and the
   first scheduled job are read before step 6.
 - **STATE:** PR-014 `in_progress` (active and next); FIX-031 carries its commit.
 - **Small finding, in the backlog (B-4):** four living documents still call off-plan or paused
   stories "Planned".
+- **Sunday 15 Nov, about 06:30 IST: one push for everything,** at your question ("why cant
+  we commit and push everything?"). Step 6's setting is in `config.yaml`
+  (`overrides: {primary: {deploy_idle_cash: true}}`) and goes out with step 4. The switch acts
+  only after the weekday 16:30 review, so Monday 16 Nov is its first run, and Sunday leaves time
+  to check the deploy. The full suite runs again on this tree first.
 - **Next `continue`: PR-014 again,** from step 1's result. The switch stays off until step 6.
 
 ## 14 Nov: owner's backlog and architecture review → four decisions made, PR-014 next

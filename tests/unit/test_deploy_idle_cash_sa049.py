@@ -436,10 +436,13 @@ def test_an_unreadable_surveillance_report_means_no_report(monkeypatch):
         "NSE's surveillance report is unavailable (none from the last 7 days)"
 
 
-def test_the_switch_is_off_in_the_shipped_config():
+def test_the_shipped_config_switches_on_only_the_primary_portfolio():
+    """The global switch ships off; the owner switched it on for the primary
+    portfolio alone (PR-014, 15 Nov 2026). Any other portfolio, or a global
+    switch-on, fails here."""
     from backend.shared.config.settings.loader import cfg
     assert cfg("autopilot.deploy_idle_cash") is False
-    assert cfg("portfolio.overrides") == {}
+    assert cfg("portfolio.overrides") == {"primary": {"deploy_idle_cash": True}}
     assert {k: float(v) for k, v in cfg("autopilot.deploy_target_invested_pct").items()} \
         == TARGETS
     assert (cfg("autopilot.deploy_max_new_per_day"), cfg("portfolio.min_holdings"),

@@ -484,7 +484,11 @@ portfolio:
   # deploy_target_invested_pct, whose regimes replace those it names.
   # Example: {primary: {deploy_idle_cash: true}} switches deployment on for
   # one portfolio only.
-  overrides: {}
+  # primary is the owner's paper portfolio (the first signup takes that id).
+  # Rollback: remove the entry, or set it false, and push; nothing is sold.
+  overrides:
+    primary:
+      deploy_idle_cash: true
 
 # Compass Autopilot: executes the advisor's verdicts on the paper portfolio
 # (core/portfolio/autopilot.py).

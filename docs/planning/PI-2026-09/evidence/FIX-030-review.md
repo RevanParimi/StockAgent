@@ -303,3 +303,9 @@ The owner said "ya commit" in the same conversation (about 17:00 IST). Nothing w
   and PDF differ from it by these edits only.
 - **Not pushed.** `main` is 2 ahead of `origin`, and the push deploys FIX-030. It waits for
   the `FIX-030-M1` check, a full-suite run and the owner's word, in a job-free window.
+
+## M1 checked (15 Nov): does not occur
+
+Owner's read, Sun 15 Nov about 06:40 IST (railway ssh, analysis_data/fix030/prod_probe.py, counts only; production f368f20, after Saturday 14 Nov's 12:30 run): 20 active ideas; 12 with a decided configured key (13 Nov: 4); readings: 10 from an analysis, 2 managed, 8 none; 2 named generic by an analysis; 5 keyed by the old Yahoo table (13 Nov: 7), all last dived 7 Nov, the first re-dive group after the deploy; 1 unnamed (13 Nov: 8), with no reading, not an analysis that gave no answer. M1 does NOT occur: Saturday's analyses answered the sector question. Peer cache 229 profiles, R1 sign 0. Not read: the Discovery log line's 'disputed' count (M2's size on the code before FIX-030); FIX-030 removes that cause either way.
+
+FIX-030 was then deployed with PR-014's push (`1913017`, 07:16 IST Sunday 15 Nov). Railway deploy 080913e7 (commit 1913017) was created at 07:16:59 IST and reached SUCCESS by 07:19:23; the previous deployment 09698fde is REMOVED; the public /health answered 200 at 07:19:24. The build reinstalled every package (requirements.txt changed). Against the last build that installed packages (7a0719d2, 7 Nov): 76 the same, 12 minor or patch bumps (fastapi 0.162.0 to 0.163.0, langgraph 1.2.20 to 1.2.22, langchain-core 1.7.6 to 1.8.0, filelock 4.2.9 to 4.2.10 among them), none added, and 82 removed: CLEAN-001's RAG stack (torch, chromadb, sentence-transformers, transformers, the CUDA wheels) and the test tools. No module under core/, services/ or src/ imports a removed package; passwords use the standard library's hashlib.scrypt.

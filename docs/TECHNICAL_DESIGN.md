@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-11-14 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-11-15 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `899526a5116b3024c7b3c2db056868045eedb7bf`
+**Code inspected:** `1913017f1b8dee9d72dd22e6eacab4c465a17420`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,25 +35,24 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs `f368f20`: FIX-029 (every door to a buy
-reads the same facts; its fresh review accepted it on 12 November) and SA-044
-(a valuation is compared only with same-industry peers; its fresh review
-accepted it on 12 November), on top of FIX-028 (a sold stock leaves
-the daily review). It was pushed at about 14:35 IST on 12 November 2026 (the
-deployment list showed it SUCCESS; `/health` answered 200), with idle-cash
-deployment off. The inspected code is not yet deployed. It adds FIX-030 (a
+Production runs the inspected code, `1913017`. It was pushed at about 07:16
+IST on 15 November 2026 (the deployment list showed it SUCCESS at 07:19;
+`/health` answered 200; that day's 17:45 IPO refresh, 18:00 weekly review and
+19:00 IPO deep dive ran on it). Against what ran before, it adds FIX-030 (a
 generic-graph analysis reads no other sector's funds; a key no analysis named
 is re-examined; an unnamed idea stops taking a weekly re-dive; the peer cache
 keeps only answers) and FIX-031 (a decision at a session's close reads the
 thesis, the confidence, the events and the research verdicts as they stood at
-that close). It also drops code that nothing ran: the RAG pipeline, the C#
-scheduler and score proxy, and the early single-sector CLI. The table gives
+that close). It drops code that nothing ran: the RAG pipeline, the C#
+scheduler and score proxy, and the early single-sector CLI. Its configuration
+switches idle-cash deployment on for the owner's portfolio. The table gives
 the configuration that differs from the repository and the state of each
 operational control.
 
 | Area | State in production | Evidence |
 |---|---|---|
 | Learning mode | `observe` since 2026-09-26, set by the Railway variable `RL_LEARNING_MODE`; the repository default is `adapt`. Weight versions stay unchanged across reviews, and every review records its proposal. Every envelope since the 2026-10-01 monthly forecast was issued in `observe`. | Verified 2026-10-01 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)) |
+| Idle cash | Idle-cash deployment is on for the primary portfolio since the 15 Nov 2026 deploy, as the repository configures it (`portfolio.overrides.primary.deploy_idle_cash: true`; the global switch off). It acts in the pipeline after each weekday 16:30 review, first on Monday 16 Nov. Before it: 2 holdings, 15.6% invested, equity ₹9,82,408 at the 12 Nov point against ₹10,00,000 put in. | Deploy 15 Nov; read-only probe 15 Nov 21:10 IST ([PR-014 receipt](planning/PI-2026-09/evidence/PR-014-rollout.md)) |
 | Decision gate | `record`, the repository default: computed and logged everywhere, nothing withheld. The 2026-10-01 decision kept `record`, because 25 of 78 analyses (32%) would have abstained, most for reasons since fixed. | [Enforce decision](planning/PI-2026-09/evidence/SA-003-enforce-decision-2026-10-01.md) |
 | Instrument identity | Since 2026-10-01, TATAMOTORS is disabled in the managed list, with its history kept, and TMPV is managed as its own automobile ticker. The registry lists TATAMOTORS and HEXAWARE as unresolved. | Owner's dashboard change, 2026-10-01 |
 | Prediction stores | The ownership quarantine was applied on 2026-10-01. It moved 16 stray `automobile/<TICKER>` copies, byte-identical, into `data/prediction_quarantine/20260930T184031Z-ce3556d023d3/`. Rollback remains available. | Apply record in [STATE.json](planning/PI-2026-09/STATE.json) |
@@ -1890,8 +1889,9 @@ idea passes, and then the run says why (the owner, 27 Sep).
 much may be invested; the executor (`_deploy_idle_cash` in
 [`autopilot.py`](../core/portfolio/autopilot.py)) buys, after the day's sells,
 switches and ADDs. It runs only when `autopilot.deploy_idle_cash` is on for
-the portfolio (it ships off; `portfolio.overrides.<user id>` can switch one
-portfolio on or off and give it its own breadth below).
+the portfolio. The global switch ships off; `portfolio.overrides.<user id>`
+can switch one portfolio on or off and give it its own breadth below, and the
+shipped configuration switches it on for `primary`, the owner's portfolio.
 
 **The regime sets the target.** The daily review's sticky regime label for the
 review day (`label_recorded_for` in
@@ -3491,11 +3491,10 @@ learning to `observe`. SA-023 puts learned lessons on measurable probation.
 
 ### Portfolio economics
 
-- Idle-cash deployment (section 6, Cash deployment) ships off. **Planned:**
-  PR-014 switches it on for the primary portfolio once the inspected code is
-  deployed. The paper lane's record of shelf ideas against the Nifty is read
-  and recorded first. It is not a gate: the book is paper money, and buying
-  is the test. After ten review sessions the refusal reasons are read; if
+- Idle-cash deployment (section 6, Cash deployment) is on for the primary
+  portfolio. **Planned:** PR-014 reads what it does. Each run's `deployment`
+  record says what was bought and why the rest was not. After ten review
+  sessions the refusal reasons are read; if
   more than a third of the BUY ideas offered were refused "above entry band",
   the band gets its own fix. At four and eight weeks the owner reads the
   results: the share invested, the holdings, the book against the Nifty
@@ -3522,7 +3521,7 @@ The planned changes connect the research to the money:
 - **Sell on evidence.** Both exit rules run, the price-path rule acting and
   the evidence rule recorded beside it (section 6). **Planned:** the evidence
   rule acts (PR-015) once the shock exit reads the re-forecast's trigger
-  (FIX-015) and deployment is on. The price-path rule's verdict is still
+  (FIX-015). The price-path rule's verdict is still
   recorded each day, so the same comparison runs with the roles swapped. The
   owner keeps the rule or rolls it back at the eight-week results, without
   waiting for the switch gate to fill.
@@ -3591,8 +3590,9 @@ verification is tracked separately (section 1).
 Since 14 November 2026 the order follows the product's profit path: invest,
 hold, sell and measure
 ([profit-path review](audit/2026-11-14-profit-path-architecture-review.md)).
-Switching idle-cash deployment on (PR-014) comes first, then the fixes that
-protect a deployed book and the evidence exit rule (PR-015). Two groups are
+Idle-cash deployment is on for the primary portfolio, and reading what it does
+(PR-014) comes first, then the fixes that protect a deployed book and the
+evidence exit rule (PR-015). Two groups are
 not built unless the owner promotes them. The learning rebuild (SA-012 to
 SA-024 and SA-043) is off the plan ("Off plan" in the table), and learning
 stays in `observe`. The factor engine (SA-026 and SA-045 to SA-047, with

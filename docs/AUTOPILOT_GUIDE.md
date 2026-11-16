@@ -447,7 +447,9 @@ invested; `_deploy_idle_cash` in autopilot.py buys. Off unless
 `autopilot.deploy_idle_cash` is on, globally or for the portfolio in
 `portfolio.overrides.<user id>` (which can also set `min_holdings`,
 `target_holdings`, `max_holdings` and the regimes of
-`autopilot.deploy_target_invested_pct` it names).
+`autopilot.deploy_target_invested_pct` it names). The shipped `config.yaml`
+keeps the global switch off and switches it on for `primary`, the owner's
+portfolio, only.
 The steps, after the day's sells, switch legs and ADDs:
 
 1. **Target.** The daily review's sticky regime label recorded for the review
@@ -788,7 +790,7 @@ give it envelopes, reviews and a dossier.
 | `AUTOPILOT_DEPLOY_MAX_NEW_PER_DAY` (`autopilot.deploy_max_new_per_day`) | 2 | New positions a day |
 | `AUTOPILOT_DEPLOY_TARGET_PCT` (`autopilot.deploy_target_invested_pct`) | NORMAL, RISK_ON, MOMENTUM_EXTENDED, OVERSOLD 80 · RISK_OFF 50 · MACRO_CRISIS 0 | Target share of total equity in stocks, by sticky regime; a label not listed opens nothing |
 | `PORTFOLIO_MIN_HOLDINGS`, `PORTFOLIO_TARGET_HOLDINGS`, `PORTFOLIO_MAX_HOLDINGS` (`portfolio.min_holdings`, `.target_holdings`, `.max_holdings`) | 10, 12, 15 | A soft minimum in calm regimes (reported, never forces a buy); sets a new position's size (the NORMAL share of equity ÷ it); the most ever held |
-| `PORTFOLIO_OVERRIDES` (`portfolio.overrides`) | {} | Per portfolio (user id): any of the three keys above, `deploy_idle_cash`, and `deploy_target_invested_pct`, whose regimes replace those it names |
+| `PORTFOLIO_OVERRIDES` (`portfolio.overrides`) | `{primary: {deploy_idle_cash: true}}` | Per portfolio (user id): any of the three keys above, `deploy_idle_cash`, and `deploy_target_invested_pct`, whose regimes replace those it names |
 | `advisor.max_position_pct` | 10.0 | ADD eligibility, the `POSITION_LARGE` note and every buy's post-trade position cap, of total equity |
 | `advisor.max_sector_pct` | 30.0 | The `SECTOR_CONCENTRATION_HIGH` note, the weekly flag and every buy's post-trade sector cap, of total equity |
 | `advisor.atr_period`, `advisor.stop_atr_mult`, `advisor.stop_buckets` | 20, 3.0, large [8, 12] · mid [12, 18] · small [15, 22] | Stops |
@@ -855,14 +857,13 @@ encode the two constraints most likely to fail silently.
 
 ## 16. Planned work
 
-- Switching idle-cash deployment on (PR-014): once FIX-030 and FIX-031 are
-  deployed, the paper lane's record is read and recorded (it is not a gate),
-  then `portfolio.overrides.primary.deploy_idle_cash` is set to `true`. The
-  first run's `deployment` record is read, then the refusal reasons after ten
-  review sessions, then the results at four and eight weeks.
+- Reading what idle-cash deployment does (PR-014): it is on for the primary
+  portfolio. The first run's `deployment` record is read, then the refusal
+  reasons after ten review sessions, then the results at four and eight
+  weeks.
 - The evidence exit rule acts (PR-015): `advisor.exit_rule: evidence`, once
-  the shock exit reads the re-forecast's trigger (FIX-015) and deployment is
-  on. The price-path rule's verdict is still recorded each day.
+  the shock exit reads the re-forecast's trigger (FIX-015). The price-path
+  rule's verdict is still recorded each day.
 - The tax estimate at each lot's own cost (FIX-022).
 - A safe `identity_reconcile apply` (SA-008 change 1).
 - Learning from executed advice remains future work: every autopilot row

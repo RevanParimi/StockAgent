@@ -2,7 +2,7 @@
 
 ## The goal
 
-The owner judges this product by one thing: investments turning into profits, visible on the product (owner, 6 and 14 Nov 2026). The portfolio is paper money. Before starting a story, name the step of the profit path it serves: invest, hold, sell or measure. A story that serves none of them waits unless the owner asks for it. The learning rebuild is off the plan and the factor engine is paused (STATE scope `removed` and `paused`); adaptive learning stays observe-only. The dated review behind these priorities is `docs/audit/2026-11-14-profit-path-architecture-review.md`.
+The owner judges this product by one thing: investments turning into profits, visible on the product (owner, 6 and 14 Nov 2026). The portfolio is paper money. Before starting a story, name the step of the profit path it serves: invest, hold, sell or measure. A story that serves none of them waits unless the owner asks for it. The learning rebuild is off the plan and the factor engine is paused (STATE scope `removed` and `paused`); adaptive learning stays observe-only. The dated review behind these priorities is `docs/audit/2026-11-14-profit-path-architecture-review.md`. The path from "it invests" to "it beats a professional, and can prove it" is `docs/planning/PI-2026-09/EDGE-ROADMAP.md`: read it before any story it lists, check its "what already exists" table before building, and at each results review ask the owner which paused stories to promote.
 
 ## Continuing the active PI
 

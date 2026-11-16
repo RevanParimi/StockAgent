@@ -210,7 +210,9 @@ These items are planned, not implemented
   adds durable outcomes for every job, source-health ledgers, silent-degradation
   checks, provider-credit alerts, a read-only status fetcher and an outside
   witness for missed jobs.
-- **Portfolio economics.** Idle-cash deployment is built and ships off; the
-  owner switches it on.
+- **Portfolio economics.** Idle-cash deployment is built, and the shipped
+  configuration switches it on for the owner's portfolio only. What is
+  planned is reading what it does: refusal reasons after ten review sessions,
+  results at four and eight weeks.
 - **Interface.** Verifiable learning evidence and honest unavailable or demo
   states.

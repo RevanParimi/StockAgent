@@ -14,15 +14,15 @@ push time and scheduled runs. Each conversation adds a section here.
 
 | # | Step | State |
 | --- | --- | --- |
-| 1 | `FIX-030-M1`, the Saturday counts | **Waits for the owner's read** (below) |
+| 1 | `FIX-030-M1`, the Saturday counts | **Passed**: M1 does not occur |
 | 2 | Commit FIX-031, then the docs | **Done**, 14 Nov |
 | 3 | Full suite on the tree to be pushed | **Done**: passed on `7487104` |
-| 4 | Push: deploys FIX-030, FIX-031 and CLEAN-001 | Not started: waits for step 1 and a time the owner agrees |
-| 5 | Read the paper lane's record | Not started |
-| 6 | Switch on (`portfolio.overrides.primary.deploy_idle_cash: true`) | Setting made; goes out with step 4 in one push |
+| 4 | Push: deploys FIX-030, FIX-031 and CLEAN-001 | **Pushed** 07:16 IST Sun 15 Nov, with step 6 (`1913017`); the first jobs after it ran |
+| 5 | Read the paper lane's record | **Recorded**, 15 Nov |
+| 6 | Switch on (`portfolio.overrides.primary.deploy_idle_cash: true`) | **Pushed** with step 4 (`1913017`) |
 | 7 | The first run's `deployment` record | Not started |
-| 8 | Three dated checks in STATE | Not started |
-| 9 | Remind the owner of the deferred setup actions | Not started |
+| 8 | Three dated checks in STATE | **Done**, 15 Nov |
+| 9 | Remind the owner of the deferred setup actions | **Done**, 15 Nov |
 
 ## Conversation 1: Saturday 14 Nov, from about 23:45 IST
 
@@ -165,3 +165,150 @@ setting goes out with step 4:
   `test_the_shipped_config_switches_on_only_the_primary_portfolio`: the global switch off and
   exactly one override, `primary`. A global switch-on, or one for another portfolio, still
   fails it. Not pushed after that run; the suite runs again on the tree with the guard.
+
+### The owner's two reads, the suite, the push
+
+- **`FIX-030-M1`, passed: M1 does not occur.** The owner ran the probe at about 06:40 IST
+  (production `f368f20`, after Saturday's run). Of 20 active ideas, 12 now carry a decided
+  sector key (4 on 13 Nov); 10 readings come from an analysis. One idea has no key (8 on 13
+  Nov), and it has no reading at all, not an analysis that gave no answer. Five ideas still
+  carry a key from the old Yahoo table; FIX-030 re-dives them first on Saturday 21 Nov, and until
+  then they are not offered. Not read: the Discovery log line's "disputed" count (M2's size on
+  the old code), which FIX-030 removes either way.
+- **The switch check, passed.** The same read of `analysis_data/pr014/switch_probe.py`: one
+  portfolio, the folder `primary`, opted in, keeping cash, 2 holdings, in the scheduler's run
+  list; `override_keyed_primary_would_switch_on` is 1.
+- **Full suite on the tree to push** (the setting, the guard and these records, snapshotted
+  with a temporary index), run 2: 6,456 passed / 12 skipped / 1 xfailed / 0 failed, rc 0, 18m22s (06:58-07:16 IST). `git status` was the same before and after.
+- **Committed `1913017`** (`config.yaml`, the guard test and the three records); its tree equals
+  the tested tree.
+  **Pushed at 07:16 IST** at the owner's word ("Push when suite passes"), `5ae2749..1913017`:
+  FIX-030, CLEAN-001, FIX-031, their docs and the switch.
+- **After the push:** Railway deploy 080913e7 (commit 1913017) was created at 07:16:59 IST and reached SUCCESS by 07:19:23; the previous deployment 09698fde is REMOVED; the public /health answered 200 at 07:19:24. The build reinstalled every package (requirements.txt changed). Against the last build that installed packages (7a0719d2, 7 Nov): 76 the same, 12 minor or patch bumps (fastapi 0.162.0 to 0.163.0, langgraph 1.2.20 to 1.2.22, langchain-core 1.7.6 to 1.8.0, filelock 4.2.9 to 4.2.10 among them), none added, and 82 removed: CLEAN-001's RAG stack (torch, chromadb, sentence-transformers, transformers, the CUDA wheels) and the test tools. No module under core/, services/ or src/ imports a removed package; passwords use the standard library's hashlib.scrypt.
+- **The switch first acts at Monday 16 Nov's 16:30 run.** Rollback: remove the override and push.
+
+Still to do (a new conversation): the first scheduled jobs after the deploy, step 5, step 7
+(Monday's `deployment` record), step 8 and step 9, and the docs commit that says the switch is on.
+
+## Conversation 2: Sunday 15 Nov, from about 21:00 IST
+
+Session `stockagent-main-34` [8fe718], a new conversation opened with "continue". `origin/main`
+was `1913017` after a fetch, so nothing had arrived from the other device. One peer session
+(`stockagent-main-a5`) was idle; its uncommitted planning files were kept as they were.
+
+### Step 4's last check: the first jobs after the deploy ran
+
+One read-only probe, `analysis_data/pr014/step5_probe.py`, was run through `railway ssh` at
+21:10 IST, at the owner's word in this conversation (the same gzip and base64 form as the
+probes above). It opens files read-only and writes nothing. It printed counts, dates and the
+book's own paper figures. The raw output stays under the ignored `analysis_data/pr014/step5/`.
+Its list of files written since the deploy printed a second account's folder name. That name is
+in no tracked file, and the probe now masks it.
+
+- **17:45 IPO refresh:** wrote the IPO cache at 17:45. The 08:00 refresh wrote the same file, so
+  its own run is not visible in the files.
+- **18:00 weekly review:** wrote the 15 Nov weekly review for both accounts at 18:00. The index
+  watch wrote its constituents cache at the same time.
+- **19:00 IPO deep dive:** finished at 19:00: enabled, 0 candidates, 0 errors.
+- **Not yet run at the read:** the 23:00 to 23:45 nightly jobs (Atlas, backup, audit). Step 7's
+  probe reads the audit's and the backup's last run.
+- **Not read:** whether the weekly review's mail was delivered.
+
+### Step 5: the paper lane's record, recorded
+
+The card's "paper lane's record of shelf ideas against the Nifty" is the nightly auditor's shelf
+lane (`grade_shelf_lane` in `core/audit/outcomes.py`). It takes each shelf idea's return from the
+close of the day it was added and compares it with the NIFTY 50 over the same sessions, at 10, 30
+and 60 sessions. The paper lane module itself (`core/discovery/paper_lane.py`) grades each idea's
+30-day price forecast, not its return against the Nifty, so it was not read.
+
+33 ideas added from 18 Jul to 24 Oct, 79 graded rows, the last graded on 12 Nov:
+
+| Sessions after the add | Graded | Beat the Nifty | Mean excess (points) | Median excess | Ideas' mean return | Nifty's mean return |
+| --- | --- | --- | --- | --- | --- | --- |
+| 10 | 33 | 12 | −3.2 | −1.9 | −1.4% | +1.8% |
+| 30 | 25 | 14 | +3.2 | 0.0 | +0.8% | −2.4% |
+| 60 | 21 | 13 | +3.0 | +5.2 | −0.2% | −3.1% |
+
+- **In plain words:** over 30 and 60 sessions, a little over half the ideas beat the Nifty, by
+  about 3 points on average. Most of that came from the Nifty falling: the ideas themselves were
+  about flat. Over 10 sessions they lagged the Nifty by about 3 points. On 11 Oct the count at 30
+  sessions was 13 of 21; it is now 14 of 25.
+- **By month added:** at 10 sessions, October's 8 ideas beat the Nifty once, with a mean of −15.5
+  points (median −5.3), so at least one fell hard. At 30 sessions: July 6 of 10 (mean +1.5),
+  August 7 of 11 (+7.4), September 1 of 4 (−4.2). At 60 sessions: July 7 of 10 (+7.5), August 6
+  of 11 (−1.1).
+- **Conviction, split at the median (0.62):** at 30 sessions the higher half beat the Nifty 9
+  times in 14 (mean +5.2) and the lower half 5 in 11 (+0.7). At 60 sessions the order reverses: 7
+  in 12 (+1.1) against 6 in 9 (+5.6). These small numbers show no consistent order. PR-017 and
+  PR-018 measure it properly.
+- **The shelf now:** 56 ideas, 20 active and 36 dropped.
+- It is a record, not a gate (the card): on paper money, buying is the test.
+
+### The book before the switch's first run
+
+- 2 holdings; the autopilot on; cash kept; the last autopilot run reviewed the 12 Nov session.
+- 84 value points. The first, 11 Jul: ₹10,00,000, 98.9% invested. The last, 12 Nov: equity
+  ₹9,82,408, cash ₹8,28,910, 15.6% invested, capital put in ₹10,00,000 (−1.8% since 11 Jul).
+- Since 1 Nov: one buy, one sale and one dividend, the last on 11 Nov.
+- The value points carry no Nifty close. `PR-014-R1` reads the NIFTY 50 for the same dates from
+  the auditor's benchmark series.
+- **This is `PR-014-R1`'s baseline:** the 12 Nov point is the last before the switch acted.
+
+### Step 8: three dated checks, in STATE
+
+| Check | Due | What it reads |
+| --- | --- | --- |
+| `PR-014-D1`, the door read | From Tue 1 Dec 2026, after Monday 30 Nov's 16:30 review: the 10th distinct session reviewed with the switch on (13, 16–20, 23 and 25–27 Nov; Tue 24 Nov is an NSE holiday) | Per day: ideas offered, bought, and not bought by outcome. If more than a third of the BUY ideas offered were refused "above entry band", a 2-point card for the band; otherwise closed as not occurring. The reason that most often stopped the run. PR-019 starts after it. |
+| `PR-014-R1`, results at 4 weeks | From Mon 14 Dec 2026, after its 16:30 review | Share invested, holdings, the book against the NIFTY 50 from the 12 Nov baseline, closed trades by exit reason, refusal counts; which paused cards' start conditions are met. PR-020 starts after it. |
+| `PR-014-R2`, results at 8 weeks | From Mon 11 Jan 2027, after its 16:30 review | The same figures. The owner decides on PR-015's exit rule, the factor engine, the learning rebuild, the daily price-path loop, and CLEAN-006 (CLEAN-003's sector-prompt rule). |
+
+### Step 9: the deferred setup, reminded
+
+In this conversation's closing message: Railway alerts, the OpenRouter key's monthly limit,
+Healthchecks.io with Telegram, and SA-007's off-site backup bucket. The owner chose on 24 and 29
+Sep to do them at the end of the PI.
+
+### The documents say the switch is on
+
+- **KT:** header `1913017`, edition 2026-11-15. Section 1's paragraph now says production runs
+  the inspected code, and a new "Idle cash" row gives the switch and the book before it. Section
+  6: the shipped configuration switches deployment on for `primary`. Section 11: the planned work
+  is reading what deployment does, and PR-015 no longer waits on the switch. Section 12's order
+  paragraph. `check_kt_docs`: `errors: []`. The PDF has 72 pages, source digest `329e3143`. The
+  row's label is "Idle cash" because "deployment" broke across lines in the table's narrow cell;
+  the text layer was read back after the rebuild.
+- **AUTOPILOT_GUIDE:** section 7 (the shipped configuration), section 13's `portfolio.overrides`
+  row, section 16.
+- **ARCHITECTURE:** the planned "Portfolio economics" line.
+- **TEAM_TESTING_GUIDE:** 06-O and 07-Q deployed 15 Nov; 07-G switched on.
+- **Not edited:** PRODUCT_MAP's row, which describes the code ("Off unless switched on").
+
+### Full suite
+
+Run once on the working tree with this conversation's edits:
+**6,456 passed / 12 skipped / 1 xfailed / 0 failed, return code 0, 17m33s (21:16-21:34 IST)**. Command: `.stockai/Scripts/python.exe -m pytest -q -p no:cacheprovider tests`; the
+hermetic boundary blocks the network. `git status` was the same before and after the run. The
+bookkeeping files changed after the run started; no test reads them.
+
+### Committed, not pushed
+
+At the owner's word ("ya go ahead and commit", Mon 16 Nov about 08:30 IST), one docs commit holds this
+section, the morning's records and the two planning sessions' files. It is not pushed: a
+docs-only push redeploys the container, so it goes after Monday's 16:30 run, at the owner's word.
+
+### Next: step 7
+
+From about 17:10 IST on Monday 16 Nov, after the first run with the switch on. From Git Bash in
+the repository:
+
+```text
+railway ssh "cd /app && echo $(gzip -9c analysis_data/pr014/step7_probe.py | base64 -w0) | base64 -d | python -c 'import sys,zlib;exec(zlib.decompress(sys.stdin.buffer.read(),31))'"
+```
+
+It prints every run's `deployment` record since the switch-on (what was bought, why the run
+stopped, each offered idea's outcome by symbol), that day's transactions, the book after the
+run, and the nightly jobs of 15 Nov. It was dry-run on a made-up fixture and writes nothing.
+After step 7 is recorded, PR-014 is accepted in the light lane and becomes `done`; its three
+checks stay pending.
+

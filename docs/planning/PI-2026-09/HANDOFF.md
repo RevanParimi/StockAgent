@@ -1,4 +1,163 @@
-# Current handoff - 2026-11-14 (PR-014 in progress: FIX-031 committed, nothing pushed; FIX-030-M1 and the push time are the owner's; the switch is off)
+# Current handoff - 2026-11-15 (PR-014: one push deployed FIX-030, FIX-031, CLEAN-001 and switched deployment on; steps 5, 8, 9 done; step 7 reads Monday's 16:30 run; edge roadmap added; keep-or-remove decisions made)
+
+## 15 Nov, night: PR-014 steps 5, 8 and 9 done; step 7 reads Monday's 16:30 run
+
+- **Session `stockagent-main-34`** [8fe718], a new conversation opened with "continue", Sunday
+  from about 21:00 IST. `origin/main` was `1913017` after a fetch. One peer (`-a5`) was idle; its
+  files were kept. Receipt: [evidence/PR-014-rollout.md](evidence/PR-014-rollout.md),
+  "Conversation 2". Lane: light (rollout). Nothing committed, pushed or changed in production.
+- **One read-only production read** at 21:10 IST, at your word in this conversation
+  (`analysis_data/pr014/step5_probe.py`, counts only, nothing written).
+- **Step 4's last check passed:** Sunday's 17:45 IPO refresh, 18:00 weekly review and 19:00 IPO
+  deep dive ran on the new deploy. The nightly jobs had not yet run; step 7 reads them.
+- **Step 5, the shelf ideas against the Nifty** (33 ideas added 18 Jul to 24 Oct):
+  - over 30 sessions they beat the Nifty 14 times in 25, by 3.2 points on average; over 60
+    sessions 13 in 21, by 3.0 points; over 10 sessions only 12 in 33, 3.2 points behind;
+  - **most of the lead came from the Nifty falling.** The ideas' own average return was +0.8% at
+    30 sessions and −0.2% at 60. They lost less than the market; they did not make money;
+  - higher conviction did not reliably do better on these small numbers (PR-017 and PR-018
+    measure it properly).
+- **The book before the switch's first run:** 2 holdings, 15.6% invested, equity ₹9,82,408 at
+  the 12 Nov point against ₹10,00,000 put in. This is the baseline the 4-week results compare
+  with.
+- **Step 8: three dated checks in STATE:**
+  - `PR-014-D1`, the door read, from Tue 1 Dec (10 sessions reviewed with the switch on);
+  - `PR-014-R1`, results at 4 weeks, from Mon 14 Dec;
+  - `PR-014-R2`, results at 8 weeks, from Mon 11 Jan 2027.
+- **Step 9:** you were reminded of the four deferred setup actions.
+- **The documents say the switch is on:** KT (header `1913017`, edition 2026-11-15, sections 1,
+  6, 11, 12, PDF), AUTOPILOT_GUIDE, ARCHITECTURE, guide 06-O, 07-G and 07-Q.
+- **Full suite:** 6,456 passed / 12 skipped / 1 xfailed / 0 failed, return code 0, 17m33s (21:16-21:34 IST).
+- **Committed at your word** ("ya go ahead and commit", Mon 16 Nov about 08:30 IST): one docs commit with this
+  section, STATE, the receipt, the documents above, the morning's records and the two planning
+  sessions' files. **Not pushed:** a docs-only push still redeploys, so push after Monday's 16:30
+  run, in a job-free window, at your word.
+- **Next `continue`, from about 17:10 IST Monday 16 Nov: PR-014 step 7.** Run
+  `analysis_data/pr014/step7_probe.py` (command in the receipt) and record what the first run
+  bought and why it stopped. Then PR-014 is accepted. A `continue` before then may start FIX-032
+  (PR-014's `blocked_reason`).
+
+## 15 Nov, evening: firm keep-or-remove decisions → CLEAN-004, CLEAN-005, PR-032; PR-014 unchanged
+
+- **Session `stockagent-main-a5`** [16fe2a], Sunday about 20:00–22:30 IST. Planning only: no code
+  or test changed, nothing committed, pushed or deployed. No other session was running. PR-014
+  stays the active task; none of its fields or records was touched.
+- **What you asked:** production logs, and a firm remove or keep decision on each item of "what
+  the goal does not need".
+- **One read-only production probe** at 20:15 IST (`railway ssh`, counts only, nothing written).
+  Its counts: [CLEAN-003-production-counts-2026-11-15.md](evidence/CLEAN-003-production-counts-2026-11-15.md).
+  The raw output is under the ignored `analysis_data/clean003/`.
+- **Remove, your words:**
+  - live prompt editing with its screen, and the C++ indicator copy:
+    [CLEAN-004](stories/CLEAN-004.md) (light, after CLEAN-002);
+  - the backup analysis and the old per-analyst layer it runs on:
+    [CLEAN-005](stories/CLEAN-005.md) (decision path, after CLEAN-004). It ran 21 times in about
+    1,360 analyses, all in October.
+- **Remove, decided for you at your request and approved by you about 21:30** ("go ahead with the
+  recommendations, I like it"):
+  - the daily second AI call (CLEAN-004 item 2). It did its job: see the finding below;
+  - the learning writes and the 30-day price forecast, after PR-015 has acted for a month and
+    PR-005 is done ([CLEAN-003](stories/CLEAN-003.md), retitled; it now lists what the two are
+    made of and what each costs).
+- **Keep:** the IPO lane (yours); a second judge on each weekly buy idea, at most 20 calls a week
+  (PR-017 lane `bare`).
+- **The four sector prompts: keep until `PR-014-R2`, then merge unless they have earned their
+  place.** They cost no extra call and their data calls return data in 93% to 100% of runs. The
+  rule is written in CLEAN-003 and in the paused [CLEAN-006](stories/CLEAN-006.md), which does the
+  merge. **At `PR-014-R2`, apply that rule and ask the owner whether to promote CLEAN-006.**
+- **The design for the search gap already existed:** the lenses design you adopted on 26 Sep
+  (sector knowledge as data; card SA-026, paused on 14 Nov with the factor engine).
+  [PR-032](stories/PR-032.md) (decision path, 5 points, after PR-018) builds its first slice for the
+  general path: one small data file per industry (what moves its profits, the search words, the
+  macro items), the same four web calls worded from it, a short industry block told to the
+  analyst, lenses written offline and committed, one setting that stays off until a bench passes a
+  rule written in advance. SA-026 itself stays paused.
+- **A hazard recorded in CLEAN-003:** `config.yaml` still says `rl.learning_mode: adapt`.
+  Production is observe-only through the Railway variable you set on 26 Sep. CLEAN-003 starts by
+  making `observe` the file's value.
+- **Two more corrections:** an analysis does not read a whole web page. It reads a 600-character
+  extract of one page, and five title-and-snippet results from each of three searches. And PR-032
+  was first written without checking the paused cards; it partly re-invented SA-026 until the
+  rewrite. SA-026 and SA-027 now say which planned cards took which part of them.
+- **A finding from the probe: the daily price forecast has no measured skill.** In August,
+  September and October its next-session direction calls were right 25% to 32% of the time, a bare
+  model's 38% to 44%, "same as yesterday" 65% to 77%. About 30% of all model calls serve that
+  forecast and the frozen learner.
+- **A correction:** this session told you a saved Prompt Lab edit changes the very next analysis.
+  It does not. The screen edits only the old per-analyst prompts, which only the backup analysis
+  reads; the main analysis's prompt is not on it. No prompt was ever deployed through it.
+- **The planned queue is now 36 cards, 102 points.** Order after PR-014: FIX-032, FIX-015, PR-015,
+  FIX-017, CLEAN-002, CLEAN-004, CLEAN-005, PR-013, PR-016, PR-017, PR-018, PR-032, PR-005, PR-007,
+  PR-008, CLEAN-003, then the reliability cards. Paused: 17 cards, CLEAN-006 among them.
+- **For the next docs commit, with the morning's files:** this section, STATE's four new tasks and
+  two history entries, the evidence note, CLEAN-004, CLEAN-005, CLEAN-006 and PR-032, and the edits
+  to CLEAN-003, PR-017, SA-026, SA-027, EDGE-ROADMAP.md and the PI README.
+- **Next `continue` is unchanged:** PR-014's remaining steps (two sections below).
+
+## 15 Nov: edge roadmap → 17 new cards (6 planned, 11 paused); PR-014 unchanged
+
+- **Session `stockagent-main-c5`** [7eec65], Sunday about 07:30–09:30 IST. Planning only: no code or
+  test changed, production not read. PR-014 stays the active task (section below); none of its
+  fields or records was touched. Five peers were idle.
+- **What you asked:** what is missing for decisions more accurate than a senior professional's;
+  then to add every gap as a card with enough detail for a conversation that knows nothing; in the
+  recommended order; and to name what the goal does not need.
+- **Read this file first for any of the new cards:** [EDGE-ROADMAP.md](EDGE-ROADMAP.md). It holds
+  the goal and its bar, the product in eight lines, the path as a tree, what already exists (so
+  nobody builds it twice) and what the goal does not need.
+- **Planned, in the queue:**
+  - after PR-013: [PR-016](stories/PR-016.md) the book at prices that could really be had,
+    [PR-017](stories/PR-017.md) every deep dive graded at the conviction it was issued with,
+    [PR-018](stories/PR-018.md) the conviction check on the scorecard,
+    [PR-019](stories/PR-019.md) what each refusal rule cost (blocked until `PR-014-D1`);
+  - after PR-008: [CLEAN-003](stories/CLEAN-003.md) switch off and remove what the goal does not
+    need (it measures, asks you, then removes), [PR-020](stories/PR-020.md) one page that shows the
+    record (blocked until `PR-014-R1`).
+- **Paused, each with its start condition in STATE's `scope_note`:** PR-021 to PR-031 (dated
+  financials, full results documents, accounting red flags, an independent challenge, two runs must
+  agree, replay on past years, holdings that fall together, a book loss limit, size by conviction,
+  which signal earns money, a real-money mirror). "continue" never selects them. **At each results
+  review (`PR-014-R1`, `PR-014-R2`, then monthly) list which start conditions are met and ask the
+  owner which to promote.**
+- **Two findings behind the first cards** (code inspection, not measured):
+  - **The paper book trades at a price nobody could get.** The 16:30 job on day T reviews session
+    T−1 and books at T−1's close. The first real price is T's open at best. PR-016 measures the gap
+    before anything changes.
+  - **The conviction check reads the wrong conviction.** The auditor's shelf lane takes an idea's
+    conviction when a horizon matures, after a re-dive may have overwritten it. It also grades only
+    ideas on the shelf, and never the screen's other candidates. PR-017 fixes and extends it.
+- **A correction to this session's own earlier words:** idea grading and a conviction check were
+  called missing on 14 Nov. Both exist (`grade_shelf_lane`, `conviction_calibration`). The cards
+  say what exists and what is wrong with it.
+- **Your first answers on what the goal does not need** (about 11:30 IST) are in
+  [CLEAN-003](stories/CLEAN-003.md): the IPO lane stays (you want IPO buy-or-skip in the brief);
+  the second judge stays and moves to the weekly idea (PR-017's `bare` lane); the price forecast
+  and the sector graphs go only after a measurement and with nothing good lost. Live prompt
+  editing was still yours to answer; the evening's section above has your answer and the rest.
+- **The planned queue is now 33 cards, 89 points.** Order after PR-014: FIX-032, FIX-015, PR-015,
+  FIX-017, CLEAN-002, PR-013, PR-016, PR-017, PR-018, PR-005, PR-007, PR-008, CLEAN-003, then the
+  reliability cards.
+- **For the next docs commit:** this section, STATE's 17 new tasks and history entry,
+  EDGE-ROADMAP.md, the 17 cards, and one sentence each in AGENTS.md and the PI README. KT
+  section 12 does not list the new cards yet.
+- **Next `continue` is unchanged:** PR-014's remaining steps (section below).
+
+## 15 Nov: one push → FIX-030, FIX-031, CLEAN-001 deployed, deployment switched on
+
+- **Your two reads** (about 06:40 IST): `FIX-030-M1` passed, M1 does not occur (12 of 20 ideas
+  carry a decided sector, 1 none); the switch reaches your portfolio
+  (`override_keyed_primary_would_switch_on` 1).
+- **Full suite on the tree to push:** 6,456 passed / 12 skipped / 1 xfailed / 0 failed, rc 0, 18m22s (06:58-07:16 IST).
+- **Committed `1913017`** (`config.yaml`: `portfolio.overrides: {primary: {deploy_idle_cash: true}}`,
+  and PR-014's records) and **pushed at 07:16 IST**, `5ae2749..1913017`.
+- **After the push:** Railway deploy 080913e7 (commit 1913017) was created at 07:16:59 IST and reached SUCCESS by 07:19:23; the previous deployment 09698fde is REMOVED; the public /health answered 200 at 07:19:24. The build reinstalled every package (requirements.txt changed). Against the last build that installed packages (7a0719d2, 7 Nov): 76 the same, 12 minor or patch bumps (fastapi 0.162.0 to 0.163.0, langgraph 1.2.20 to 1.2.22, langchain-core 1.7.6 to 1.8.0, filelock 4.2.9 to 4.2.10 among them), none added, and 82 removed: CLEAN-001's RAG stack (torch, chromadb, sentence-transformers, transformers, the CUDA wheels) and the test tools. No module under core/, services/ or src/ imports a removed package; passwords use the standard library's hashlib.scrypt.
+- **The switch first acts at Monday 16 Nov's 16:30 run.** Rollback: remove the override, push.
+- **This record is uncommitted.** It goes in the next docs commit, with the documents that say
+  the switch is on (KT section 1 and 12, AUTOPILOT_GUIDE section 16, guide 07-G; guide 06-O and
+  07-Q deployed).
+- **Next `continue`: PR-014's remaining steps:** the first jobs after the deploy, step 5 (the
+  paper lane's record), step 7 (Monday's `deployment` record), step 8
+  (three dated checks), step 9 (the deferred setup reminder).
 
 ## 14 Nov, late: PR-014 started → FIX-031 committed; step 1 and the push wait for you
 

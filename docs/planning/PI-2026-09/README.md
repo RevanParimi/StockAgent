@@ -21,8 +21,12 @@ its order, after the owner's decisions on the
 [profit-path review](../../audit/2026-11-14-profit-path-architecture-review.md): PR-014 (switch
 deployment on) first, then FIX-032, FIX-015, PR-015, FIX-017, CLEAN-002, PR-013, PR-005. The
 learning rebuild (SA-012 to SA-024, SA-043) is removed from the plan and the factor engine (SA-026,
-SA-045 to SA-047, with SA-027) is paused. Small findings go to [BACKLOG.md](BACKLOG.md). The tables
-below show the plan as it was first drawn.
+SA-045 to SA-047, with SA-027) is paused. Small findings go to [BACKLOG.md](BACKLOG.md). **Since
+15 Nov 2026** the [edge roadmap](EDGE-ROADMAP.md) adds PR-016 to PR-020 and CLEAN-003 to the queue
+and PR-021 to PR-031 as paused cards, each with a start condition. The owner's keep-or-remove
+decisions of that evening add CLEAN-004 and CLEAN-005 (after CLEAN-002), PR-032 (after PR-018) and
+the paused CLEAN-006; the decision table is in [CLEAN-003](stories/CLEAN-003.md). The tables below show the plan as it
+was first drawn.
 
 Planning assumption: six two-week sprints, one story implementation and a separate review conversation at a time. Start dates and team capacity are not known; these are relative sprints, not promised calendar deadlines. Estimates are relative, provisional points; re-estimate after Sprint 1. Do not expand a story just to meet a point budget.
 

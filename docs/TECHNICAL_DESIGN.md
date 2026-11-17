@@ -1,8 +1,8 @@
 # StockAgent — Technical Design and Knowledge Transfer
 
-**Edition:** 2026-11-15 · **Audience:** engineers and teammates learning the product
+**Edition:** 2026-11-17 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `1913017f1b8dee9d72dd22e6eacab4c465a17420`
+**Code inspected:** `28ec4c9d7081a900980db6d9d91dac40e10648d0`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,7 +35,7 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs the inspected code, `1913017`. It was pushed at about 07:16
+Production runs `1913017`. It was pushed at about 07:16
 IST on 15 November 2026 (the deployment list showed it SUCCESS at 07:19;
 `/health` answered 200; that day's 17:45 IPO refresh, 18:00 weekly review and
 19:00 IPO deep dive ran on it). Against what ran before, it adds FIX-030 (a
@@ -45,7 +45,11 @@ keeps only answers) and FIX-031 (a decision at a session's close reads the
 thesis, the confidence, the events and the research verdicts as they stood at
 that close). It drops code that nothing ran: the RAG pipeline, the C#
 scheduler and score proxy, and the early single-sector CLI. Its configuration
-switches idle-cash deployment on for the owner's portfolio. The table gives
+switches idle-cash deployment on for the owner's portfolio. The inspected
+code, `28ec4c9`, adds FIX-032, committed and not yet deployed: the home
+page's watchlist save changes only the stock it names, and a removal takes a
+stock out of the daily review only when no portfolio holds it and no user
+watches it. The table gives
 the configuration that differs from the repository and the state of each
 operational control.
 
@@ -3686,7 +3690,7 @@ section 10) are part of the current design.
 | [FIX-029](planning/PI-2026-09/stories/FIX-029.md) | Every door to a buy reads the same facts: the day's regime, the sale and the verdict | Done | 6 Portfolio; 8 Discovery | FIX-025 |
 | [FIX-030](planning/PI-2026-09/stories/FIX-030.md) | A generic-graph analysis sees no automobile evidence; a key the old Yahoo table set is re-examined; an unnamed idea stops taking a weekly re-dive | Done | 4 Research; 8 Discovery | FIX-026 |
 | [FIX-031](planning/PI-2026-09/stories/FIX-031.md) | Every input a decision at a session's close reads is from before that close | Done | 6 Portfolio; 5 Learning | FIX-027 |
-| [FIX-032](planning/PI-2026-09/stories/FIX-032.md) | A home-page watchlist save keeps what it does not show, and a removal there leaves the daily review | Open | 6 Portfolio; 10 Interface | FIX-028 |
+| [FIX-032](planning/PI-2026-09/stories/FIX-032.md) | A home-page watchlist save keeps what it does not show, and a removal there leaves the daily review | Done | 6 Portfolio; 10 Interface | FIX-028 |
 | [SA-050](planning/PI-2026-09/stories/SA-050.md) | Apply one sizing rule to every autopilot buy | Done | 6 Portfolio | None |
 | [SA-051](planning/PI-2026-09/stories/SA-051.md) | Show the portfolio against the Nifty, with honest labels | Done | 7 Marksheets; 10 Interface | None |
 | [FIX-006](planning/PI-2026-09/stories/FIX-006.md) | An anonymous watchlist read never falls back to the owner | Open | 10 Interface | None |

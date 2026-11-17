@@ -1,4 +1,114 @@
-# Current handoff - 2026-11-15 (PR-014: one push deployed FIX-030, FIX-031, CLEAN-001 and switched deployment on; steps 5, 8, 9 done; step 7 reads Monday's 16:30 run; edge roadmap added; keep-or-remove decisions made)
+# Current handoff - 2026-11-17 (FIX-032 committed, pushed after the suite; PR-014 step 7 waits for your paste)
+
+## 17 Nov: FIX-032 committed; the push follows the suite; step 7 is your read
+
+- **Session `stockagent-main-35`** [341d05], a new conversation opened with "continue", Tuesday
+  from about 06:24 IST. `origin/main` `1913017` after a fetch; `main` `2f0c777`, 1 ahead. Peers
+  `-1a`, `-6d`, `-31` and `-17` were idle.
+- **Your two answers:** you run PR-014's step 7 probe yourself and paste the output; FIX-032:
+  "commit and push now".
+- **Committed:** `28ec4c9`, FIX-032's 13 reviewed files byte for byte (manifest `7f30781e`
+  verified against the working tree and against the commit). Then a docs commit: FIX-032's
+  receipts and manifest, the five commit-time edits (KT header `28ec4c9`, edition 2026-11-17; KT
+  section 1, FIX-032 committed and not yet deployed; KT section 12 Done; guide 07-R accepted; PDF
+  72 pages, source `87ad3798`; `check_kt_docs` `errors: []`), BACKLOG B-6, SA-026's note, and the
+  peer `-6d`'s PR-033, PR-034, README and SA-041.
+- **The push** of `2f0c777` and both FIX-032 commits follows the full suite on the committed tree.
+  After the deploy: reload any open home page, and the dated watch `FIX-032-W1` goes into STATE.
+- **PR-014 step 7:** from Git Bash in the repository:
+
+  ```text
+  railway ssh "cd /app && echo $(gzip -9c analysis_data/pr014/step7_probe.py | base64 -w0) | base64 -d | python -c 'import sys,zlib;exec(zlib.decompress(sys.stdin.buffer.read(),31))'"
+  ```
+
+  Then PR-014 is accepted in the light lane; its three dated checks stay pending.
+
+## 16 Nov: FIX-032 fresh review → ACCEPTED
+
+- **Session `stockagent-main-17`** [707fb1], a new conversation opened with "continue", Monday
+  from about 13:54 IST. `origin/main` `1913017` after a fetch; `main` `2f0c777`, 1 ahead, not
+  pushed. The implementer (`-1a`), `-6d` and `-31` were idle. Lane: decision path. Receipt:
+  [evidence/FIX-032-review.md](evidence/FIX-032-review.md). Nothing committed, pushed or
+  deployed; production not read (your `FIX-032-P1` read was already recorded).
+- **Input verified** at the start and the end: manifest `7f30781e` (13 files, 0 mismatches),
+  diff `bbf40aee` against `2f0c777`.
+- **Checked independently, through the real routes** (reviewer cases in
+  `analysis_data/fix032_review/`):
+  - 60 random sequences of 30 operations by three users: the home page's add and remove, an old
+    page's whole list, the API's watch and holding adds and deletes, the autopilot's note. After
+    every operation each watchlist and each managed entry equals what the card's rule says;
+  - a quarantine made by the real store: nothing is released or demoted, the log says why, and
+    once the file is restored the next run releases;
+  - the scheduler's list of tickers to review follows a home-page removal;
+  - a page loaded before a real autopilot note and a shelf idea drops neither.
+  - On the code before the story all of them fail, also when they send exactly what the old page
+    sent.
+- **The implementer's calls stand.** The page sends only the change; the old whole-list form
+  only adds. So FIX-028's RV4b passes with the page's real request (it fails as written, by
+  design). One cost: a home-page tab opened before the deploy hides a removed stock without
+  telling the server; reload the page after the deploy.
+- **One low finding, pre-existing (R1 → BACKLOG B-6):** the API's watch add saves the watch only
+  after it promotes the stock. If another user removes the same stock in that instant, the stock
+  stays on the adder's watchlist with no review. It needs two users on one stock within
+  milliseconds; the fix is to save first, as the shelf already does.
+- **Full suite:** 6,748 passed / 12 skipped / 1 xfailed / 1 failed, rc 1, 22m17s (14:14-14:36 IST); the one failure is the Windows file-lock flake (WinError 5 on os.replace in its temp folder) in tests/unit/ops/test_watchdog_backup.py::test_nightly_job_to_watchdog_end_to_end, which passed 5 of 5 alone; no FIX-032 file touches backups, and the implementer's run on the same code bytes had 0 failures.
+- **STATE:** FIX-032 `done`, production `pending_deployment`; `active_task` and `next_task`
+  PR-014.
+- **For you:**
+  - Commit at your word: the 13 reviewed files, then the docs with the five commit-time edits in
+    the review receipt (KT header and section 1, KT section 12 Done, guide 07-R, the PDF).
+  - Deploy at your word in a job-free window. `FIX-032-P1` passed, so nothing else blocks it,
+    and it can go with the docs push already waiting for after today's 16:30 run. After it,
+    reload any open home page; the deploying conversation adds the dated watch `FIX-032-W1`.
+- **Next `continue`, from about 17:10 IST today: PR-014 step 7**, then PR-033.
+
+## 16 Nov: FIX-032 implemented → review_required (the home page's watchlist save; who holds or watches before a demotion)
+
+- **Session `stockagent-main-1a`** [100a12], a new conversation opened with "continue", Monday
+  from about 09:20 IST. `origin/main` `1913017`; `main` `2f0c777`, 1 ahead, not pushed. PR-014's
+  step 7 waits for today's 16:30 run, so FIX-032 went first, as its `blocked_reason` allows. Lane:
+  decision path (watchlist buy candidates; who can change an account's watchlist). Receipt:
+  [evidence/FIX-032-implementation.md](evidence/FIX-032-implementation.md). Nothing committed,
+  pushed or deployed; production not read. The peer `-6d`'s PR-033/PR-034 files are kept (section
+  below).
+- **What changes, in one example:** your watchlist holds MARUTI, BACK (added through the API),
+  NEWCO (promoted from the shelf) and OLD (the autopilot's note). Adding HEROMOTOCO on the home page
+  used to leave only MARUTI and HEROMOTOCO, silently dropping NEWCO as a watchlist buy. Now the page
+  sends only the change, so all four stay; removing MARUTI keeps the other four.
+- **A removal leaves the daily review only when nobody holds or watches the stock:** on the home
+  page and in the API's two deletes alike. Before, the API looked only at your own portfolio, and
+  the home page never asked.
+- **Two technical calls I made (receipt, F32-D1 and F32-D2):** the page sends only the change; the
+  old whole-list form only adds, because a stock it omits may be one that page never saw. So
+  FIX-028's reviewer case RV4b, which removes BACK with the old form, fails as written and passes
+  with the page's real request. The fresh review decides whether that stands.
+- **`FIX-032-P1` passed** (your read, about 13:50 IST): no quarantined portfolio left
+  unrestored, so deploying FIX-032 does not stop the release. Production's watchlist holds 21
+  items, all the autopilot's notes of its sales: no shelf idea and no stock you added, so the
+  bug has not dropped a buy candidate yet; one home-page save would have dropped 20 notes. No
+  old watchlist entry is left in the review (BACKLOG B-5 not triggered).
+- **Evidence:** story file 293 tests; a browser test (the page sends only the change); mutants
+  20/20 caught; full suite 6,749 passed / 12 skipped / 1 xfailed / 0 failed, rc 0, 21m59s (10:00-10:22 IST); KT, AUTOPILOT_GUIDE, CODEBASE, UI_SPEC, guide case 07-R, PDF.
+  Manifest `7f30781e`, diff `bbf40aee` against `2f0c777`.
+- **Next `continue`:** from about 17:10 IST today, PR-014 step 7 first (its own conversation).
+  Otherwise, and after it, **FIX-032's fresh review** in a new conversation.
+
+
+## 16 Nov: two cards added at the owner's request: production watches (PR-033, PR-034)
+
+- **Session `stockagent-main-6d`** [efa836], Monday morning. No code changed. A peer (`-1a`) was
+  implementing FIX-032; its entries, `active_task` and `next_task` were not touched.
+- **Why:** 38 accepted stories are deployed with a free-text watch that has no date and no trigger.
+  The owner: "I am worried about this."
+- **[PR-033](stories/PR-033.md)** (P1, 3 points, light): one read-only probe reads every open watch
+  once. Each story ends verified, failed and routed, waiting or needs-eyes with a dated row in
+  `pending_production_checks`, or closed by the owner. It also corrects six stale deployment labels.
+- **[PR-034](stories/PR-034.md)** (P1, 3 points, light, after PR-033): watch entries in the
+  watchdog's registry, a Sunday 20:00 IST report to the owner only, and a CI guard so no story is
+  deployed without a watch.
+- **Order (delegated; the owner may change it):** FIX-032, then PR-033 and PR-034, then FIX-015 and
+  PR-015 as before. PR-014's step 7 is unchanged.
+- [SA-041](stories/SA-041.md) carries a note to serve PR-034's report. Nothing is committed.
 
 ## 15 Nov, night: PR-014 steps 5, 8 and 9 done; step 7 reads Monday's 16:30 run
 

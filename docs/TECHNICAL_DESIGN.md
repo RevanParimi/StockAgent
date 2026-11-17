@@ -1225,13 +1225,14 @@ as made before). One made at or after the reviewed session's 15:30 close, by
 the same clock as a buy's analysis (`close_before_decision`), is not read: the
 review's own (a thesis break, a shock, a flip into crisis), run on the next
 afternoon, and that morning's pre-open check. The advisor takes the direction,
-the confidence and the shock reason from the envelope archived before the
+the confidence and the shock trigger from the envelope archived before the
 first such re-forecast (`envelope_at_close`); when that archive cannot be read
 it reads no path at all (FLAT). The review's re-forecast anchors its path on
 the reviewed session's own close, and is skipped when that session's bar is
 not available. An ADD only the later path would allow is not taken: the note
 `ENVELOPE_AFTER_CLOSE` and the record's `envelope_after_close` name the
-re-forecast and the close. A sale waits in the same way. Monday closes at
+re-forecast (its trigger and time) and the close: "the external_shock
+re-forecast of 2026-06-09T16:45:00+05:30 is after the close of 2026-06-08". A sale waits in the same way. Monday closes at
 ₹1,000 and Tuesday at ₹900; Tuesday 16:45 the review of Monday re-forecasts a
 path ending at ₹900 and says "not intact". Tuesday's and Wednesday's runs (they
 review Monday and Tuesday, both closed before 16:45) do not sell on it; the
@@ -1275,6 +1276,27 @@ review's grade of that session and the day's regime label, which reads no bar
 after it. Not covered: the earnings-gap note (`EARNINGS_GAP_PROTECTION`, an
 annotation, not a verdict) reads the board-meeting calendar the run
 refreshes, which keeps no announcement time. **Planned:** PR-007.
+
+**The shock exit.** `shock_reforecast` sells when the latest re-forecast in
+the envelope as it stood at the close was a market or company shock, made
+before one of the first two session closes after it, and the remaining path
+points down (beyond the ±1% flat band). The advisor reads the event's
+`trigger` key, never its `reason`, which is a sentence for people. Two keys
+count: `external_shock` (the daily review's miss classified as a shock) and
+`preopen_shock` (the 08:45 check's overnight shock). `thesis_break` does not:
+it is the price-path rule's own path, so the evidence rule cannot sell on it
+through this trigger. `regime_flip` has the crisis exit, and `manual` is an
+operator's. The two closes are counted from when the re-forecast was made
+(`at`), not from the session it is dated: the daily review that runs Tuesday
+evening dates its re-forecast Monday, and the first close after it is
+Wednesday's (`advisor.recent_reforecast_trigger`). Example: Tuesday 16:45 the
+review of Monday finds an external shock and re-forecasts a path ending at
+₹900 against a ₹1,000 close (−10%). Wednesday's and Thursday's decisions EXIT
+with `shock_reforecast` under either exit rule; Friday's does not, though the
+path is unchanged. A pre-open shock at Tuesday 08:45 counts at Tuesday's and
+Wednesday's closes. A later re-forecast of any kind replaces the shock's path
+and its claim, and an event stored without a time (before FIX-027) never
+counts.
 
 ### Two exit rules
 
@@ -1595,10 +1617,6 @@ through and the decision pace to the scorecard.
 
 **Limits.**
 
-- `shock_reforecast` compares the latest re-forecast's stored `reason`, which
-  is a sentence ("pre-open shock: …"), with trigger keys such as
-  `preopen_shock`, so it never fires under either rule. The key is in the
-  event's `trigger` field. **Planned:** FIX-015.
 - A holding bought from a watchlist BUY has no stored shelf idea, so the
   invalidation test cannot fire for it.
 - For a holding dived before its buy, the invalidation test needs NSE's list to
@@ -3556,8 +3574,7 @@ The planned changes connect the research to the money:
   inputs (PR-005).
 - **Sell on evidence.** Both exit rules run, the price-path rule acting and
   the evidence rule recorded beside it (section 6). **Planned:** the evidence
-  rule acts (PR-015) once the shock exit reads the re-forecast's trigger
-  (FIX-015). The price-path rule's verdict is still
+  rule acts (PR-015). The price-path rule's verdict is still
   recorded each day, so the same comparison runs with the roles swapped. The
   owner keeps the rule or rolls it back at the eight-week results, without
   waiting for the switch gate to fill.

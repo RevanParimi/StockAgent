@@ -105,9 +105,13 @@ class ReforecastEvent(BaseModel):
     Phase 2.5, Component 2). Recorded each time regenerate_envelope() runs
     for this ticker/cycle.
     """
-    date: str               # ISO date the re-forecast happened
-    reason: str             # "external_shock" | "thesis_break" | "regime_flip" | "preopen_shock" | "manual_verification" | ...
-    trigger: str = ""       # free-text detail (e.g. which signal fired)
+    # ISO date: the session the daily review reviewed (it runs the next
+    # evening), or the day of the pre-open check or the manual command
+    date: str
+    reason: str             # a sentence for people ("External shock on 2026-10-22: …", "pre-open shock: …")
+    # the key code reads (FIX-015): "external_shock" | "thesis_break" |
+    # "regime_flip" | "preopen_shock" | "manual"
+    trigger: str = ""
     archived_file: str = ""  # path to the archived superseded envelope, if any
     # FIX-027: when it ran, ISO with the IST offset. "" = stored before the
     # field existed; such an event counts as made before any decision.

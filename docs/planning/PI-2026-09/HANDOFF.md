@@ -1,4 +1,22 @@
-# Current handoff - 2026-11-17 (the owner's investment track goes first: PR-035 next; the backup email is removed and deployed)
+# Current handoff - 2026-11-17 (PR-035's probe is ready and waits for your word to read production; CLEAN-002 next)
+
+## 17 Nov, night (autopilot): PR-035's probe written and dry-run; the read waits for your word
+
+- **Autopilot session `1117-2304-p1`**, a `continue` on the code-server from about 23:04 IST.
+  `main` = `origin/main` = `d2f45cd`. This machine has no `analysis_data/` from the laptop, so the
+  probe was written again from the card.
+- **The probe** (`analysis_data/pr035/invest_probe.py`, on the code-server): the door per review
+  session since 13 Nov, using the buy list's own code on the shelf as it stood at each run; the
+  entry band (B-3); the last 8 Saturdays' yield; the load and the unit costs. Read-only, counts
+  and symbols only. Receipt: [evidence/PR-035.md](evidence/PR-035.md).
+- **Dry run:** on a made-up fixture with one idea per door, through the exact production command
+  form, every row printed as expected and nothing in the fixture changed.
+- **Needs you:** say "run the PR-035 probe" in a session on the code-server, or run the command in
+  the receipt and paste the output. Best before Saturday 21 Nov 12:00 IST; not 16:30-17:10.
+- **STATE:** PR-035 `blocked` on that word; `active_task` null; `next_task` CLEAN-002 (the next
+  ready story). `next_phase` is now short; its old text repeated this file.
+- **Nothing in production was read or changed.** Docs only; the full suite was not run.
+- **Next `continue`:** CLEAN-002, unless you have given the word, then PR-035 first.
 
 ## 17 Nov, afternoon: your repository review → six decisions recorded, committed and pushed
 

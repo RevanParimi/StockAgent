@@ -41,7 +41,12 @@
   PR-040. `STATE.json` also carries -9d's marker that PR-035 is `in_progress`, which is true. The
   push went right after the commit: after the 16:30 review's usual finish (16:54 on a recent day)
   and before the 17:45 IPO refresh. It restarts the app and changes no production behaviour.
-  **If `origin/main` is still `63469a9`, the push did not happen.**
+  **If `origin/main` is still `63469a9`, the push did not happen.** It did: `2455495` at 17:07:16
+  IST; Railway `26be013c` SUCCESS and `/health` 200 at 17:08:18.
+- **Other devices** (your question at about 17:40): a fresh clone already has every task. START
+  HERE's "Working from another device" now lists the setup and the assistant's laptop-only rules.
+  Committed at your word; its push is held until after the 17:45 IPO refresh (see the commit
+  after `2455495`). **If `origin/main` is still `2455495`, that push did not happen.**
 - **Next:** PR-035 continues in its own conversation; then CLEAN-002.
 
 ## 17 Nov: ₹1 crore in 20 to 30 holdings becomes the plan; the backup email is removed
@@ -1244,15 +1249,21 @@ Docs only; nothing committed, pushed, deployed or configured.
 
 ## START HERE — resume checklist, in order
 
-**Working from another device** (the owner, 7 Nov: the next `continue` starts there). Pull `main` first. Git carries
-the code, the docs, STATE and this file. These stay on the laptop:
+**Working from another device** (the owner, 7 and 17 Nov: a `continue` may start on another laptop or in a cloud
+session). Pull `main` first. Git carries the code, the docs, STATE, this file, every card and every receipt, so
+`continue` works from a fresh clone. A fresh clone lacks only what follows:
 
-- **`analysis_data/` (ignored):** raw diagnostics and review tooling. FIX-027's and FIX-029's cards name reviewer cases in it
-  (`fix024_review/test_rv_fix024.py`, `fix025_review/test_rv_fix025.py`); if they are not there, write the cases from the
-  cards' examples. FIX-026's card names nothing in it.
-- **`.env`, the `.stockai` venv, `node_modules` (Playwright, for the PDF) and `railway link`:** set up per device. Tests run
-  through the venv.
-- **The assistant's local notes.** What they hold that the repository's rules do not:
+- **Setup, once per device.** Python 3.11, as CI uses. `pip install -r requirements.txt -r requirements-test.txt` for the
+  suite; `pip install -r scripts/docs/requirements.txt` for `check_kt_docs.py`; `npm ci` and
+  `npx playwright install chromium` for `npm run test:frontend` and a PDF build. The suite needs no `.env` and no network:
+  `tests/hermetic.py` switches dotenv off and blocks outbound connections (SA-005). `.env` is never committed. `railway
+  link` and a Railway login are needed only to read production, at the owner's word. On the laptop the venv is `.stockai`.
+- **`analysis_data/` (ignored), laptop only:** raw diagnostics, probes and reviewer cases. Open cards name files in it:
+  PR-035's `pr035/invest_probe.py`, PR-033's `pr033/watch_probe.py`, and reviewer cases named by PR-005, PR-007, PR-012,
+  FIX-014, FIX-020, FIX-022, SA-031, SA-033, SA-041 and BACKLOG B-6. Where one is missing, write it again from the card's
+  description and examples.
+- **The assistant's notes on the laptop** (its memory folder, which no clone carries). What they hold that the
+  repository's rules do not:
   - **Every push to `main` redeploys, docs-only too.** The deploy of 7 Nov took about 27 minutes. Push only at the owner's
     word, about 2 h clear of the jobs in KT section 9; safest 00:10–06:20 IST. Read the IST clock first. On the 1st, never
     before the 09:00 monthly forecast. Push with `git -c credential.username=RevanParimi push origin main`.
@@ -1263,6 +1274,21 @@ the code, the docs, STATE and this file. These stay on the laptop:
   - **Deleting lines from `milestones.yaml`** needs the owner's approval each time.
   - **Owner setup waits for rollout:** Railway alerts, the OpenRouter key limit, Healthchecks.io with Telegram, SA-007's
     backup bucket. Remind the owner then.
+  - **Run the full suite before any push** (about 26 minutes on the laptop). On 17 Nov a push of documents and the docs
+    check went without it, at the owner's "now", and its record says so.
+  - **Other sessions may share a checkout** (eight on the laptop on 17 Nov). Before writing STATE or HANDOFF, list them
+    and compare file times; run review tests in a detached `git worktree`. On any device, pull before committing and
+    check `origin/main` again just before pushing.
+  - **Look before calling something missing.** Search the code, the paused and removed cards and
+    `docs/superpowers/specs` before saying a feature does not exist or writing a card for it. On 14 and 15 Nov three
+    "missing" items already existed.
+  - **Production is read only at the owner's word in the same conversation** (`railway ssh` probes). Otherwise hand
+    the owner the command to run.
+  - **When the owner asks to be walked through the product:** one point per reply, plain and exact, ending with "Next:"
+    and the next topic.
+  - **The unattended `continue` loop** (`scripts/devbox/auto_continue.sh`, a briefings file, waits at usage limits) is
+    a draft on the branch `claude/serene-pascal-hm7lek`, not merged. It is the owner's tooling awaiting review: do not
+    delete it.
 
 **FIX-026 fresh review → ACCEPTED** (9 Nov, a new conversation opened with "continue"). Receipt:
 [FIX-026-review](evidence/FIX-026-review.md). Focused tests 292 passed; manifest verified; the full suite

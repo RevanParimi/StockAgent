@@ -149,7 +149,7 @@ The cascade is **EXIT → TRIM → ADD → HOLD**; the first that fires wins.
 
 | Verdict | Fires when |
 |---|---|
-| EXIT | Any of: unrealised loss at or beyond the stop; thesis broken and envelope DOWN; a re-forecast for `external_shock`, `thesis_break` or `preopen_shock` and envelope DOWN; `MACRO_CRISIS` and envelope DOWN; or a trailing stop: the peak was at least 10% above cost and the close has since fallen from it by at least the stop |
+| EXIT | Any of: unrealised loss at or beyond the stop; thesis broken and envelope DOWN; the latest re-forecast a market or company shock (`external_shock` or `preopen_shock`, never `thesis_break`) made before one of the first two closes after it, and envelope DOWN (`shock_reforecast`); `MACRO_CRISIS` and envelope DOWN; or a trailing stop: the peak was at least 10% above cost and the close has since fallen from it by at least the stop |
 | TRIM | Profit of at least 25%, and confidence falling by 0.05 or more, or a reversion prior of 0.20 or more |
 | ADD | Envelope UP, regime not `MACRO_CRISIS` or `RISK_OFF`, position weight below 10% of total equity, and at least 60% of the last 7 reviews correct; and the review day's regime established from live inputs: on a day it was not (India VIX did not answer, say), the ADD is held in either gate mode with the note `REGIME_UNAVAILABLE`; the record's `regime_unavailable` says "market regime unavailable for 2026-10-30: India VIX did not answer". The crisis EXIT still reads the kept label |
 | HOLD | Nothing above |

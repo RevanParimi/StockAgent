@@ -35,7 +35,12 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs the inspected code, `73e0c29`. It was pushed at about 08:05
+Production runs `8422a23`. It was pushed at about 00:27 IST on 18 November
+2026 (the deployment list showed it SUCCESS at 00:28; `/health` answered 200).
+Against the inspected code it adds FIX-015, the shock exit (section 6): a held
+stock whose latest re-forecast is a market or company shock with a falling
+path, made before one of the first two closes after it, is sold at that close
+under either exit rule. The inspected code, `73e0c29`, was pushed at about 08:05
 IST on 17 November 2026 (the deployment list showed it SUCCESS at 08:07;
 `/health` answered 200) and adds CLEAN-007: the nightly backup sends no email.
 Before it, `28ec4c9` was pushed at about 07:01

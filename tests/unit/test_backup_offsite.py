@@ -435,7 +435,6 @@ def test_secrets_never_reach_reasons_logs_status_or_repr(data_dir, monkeypatch, 
                         ("BACKUP_S3_ACCESS_KEY_ID", "AKIDTEST"),
                         ("BACKUP_S3_SECRET_ACCESS_KEY", SECRET)):
         monkeypatch.setattr(f"core.config.settings.{name}", value, raising=False)
-    monkeypatch.setattr("core.delivery.channels.send_email", lambda *a, **k: False)
 
     cfg = offsite.config_from_settings()
     assert SECRET not in repr(cfg) and KEY not in repr(cfg)

@@ -44,7 +44,8 @@ def test_nightly_backup_job_registered_at_2330_ist():
 def test_backup_job_runs_run_backup_job(monkeypatch):
     sched = AutomobileScheduler()
     with patch("services.data.backup.run_backup_job",
-               return_value={"archive": "x.zip", "bytes": 1, "emailed": True, "pruned": 0}) as m:
+               return_value={"archive": "x.zip", "bytes": 1, "offsite_confirmed": False,
+                             "pruned": 0}) as m:
         sched._backup_job()
     assert m.called
 

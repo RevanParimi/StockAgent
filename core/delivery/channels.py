@@ -448,7 +448,7 @@ def send_email_result(subject: str, body: str, attachments: list[Path] | None = 
 
 def _unconfigured(what: str) -> SendResult:
     """Email is enabled but cannot be sent. Logged, because the direct callers
-    (monthly report, watchdog heartbeat, backup) have no outbox row to hold
+    (monthly report, watchdog heartbeat) have no outbox row to hold
     the reason."""
     logger.warning("[delivery] email enabled but unconfigured: %s", what)
     return _refuse(f"unconfigured: {what}")

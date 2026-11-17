@@ -42,7 +42,6 @@ logger = logging.getLogger(__name__)
 DATA_DIR = Path("data")
 BACKUP_SUBDIR = "backups"
 BACKUP_KEEP = 7
-EMAIL_MAX_BYTES = 20 * 1024 * 1024   # Gmail cap is 25MB; leave headroom for base64
 
 FORMAT = "stockagent-backup/1"
 ARCHIVE_PREFIX = "stockagent-backup-"
@@ -279,7 +278,7 @@ def read_status(dest_dir: Path) -> dict:
         return {}
 
 
-def _write_status(dest_dir: Path, sidecar: dict, drill, off, emailed: bool) -> dict:
+def _write_status(dest_dir: Path, sidecar: dict, drill, off) -> dict:
     prior = read_status(dest_dir)
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     status = {
@@ -294,7 +293,6 @@ def _write_status(dest_dir: Path, sidecar: dict, drill, off, emailed: bool) -> d
         "offsite": {**off.as_dict(), "at": now},
         "last_offsite_confirmed_at": now if off.confirmed else prior.get("last_offsite_confirmed_at"),
         "last_offsite_object": off.object if off.confirmed else prior.get("last_offsite_object"),
-        "emailed": emailed,
     }
     _write_json_atomic(Path(dest_dir) / STATUS_NAME, status)
     return status
@@ -302,11 +300,12 @@ def _write_status(dest_dir: Path, sidecar: dict, drill, off, emailed: bool) -> d
 
 def run_backup_job(data_dir: Path = DATA_DIR) -> dict:
     """Create the nightly archive, restore-drill it, rotate local copies, push
-    an encrypted copy off-site, email it, and record the outcome.
+    an encrypted copy off-site when a target is configured, and record the
+    outcome. The archive is never emailed: with no off-site target, the
+    copies under data/backups/ are the only ones.
     Archive-creation errors and a failed drill RAISE (the scheduler's
-    job-error alerting must hear about them); off-site and email problems
-    only WARN, and the watchdog's backup_recoverable check reports them."""
-    from core.delivery import channels
+    job-error alerting must hear about them); an off-site problem only
+    WARNS, and the watchdog's backup_recoverable check reports it."""
     from services.data import offsite, restore
 
     data_dir = Path(data_dir)
@@ -327,24 +326,11 @@ def run_backup_job(data_dir: Path = DATA_DIR) -> dict:
     if not off.confirmed:
         logger.warning("[backup] no confirmed off-site copy for %s: %s", archive.name, off.reason)
 
-    emailed = False
-    size = sidecar["bytes"]
-    if size <= EMAIL_MAX_BYTES:
-        emailed = channels.send_email(
-            f"StockAgent nightly backup — {archive.name}",
-            f"Nightly data/ backup attached ({size / 1024:.0f} KB). "
-            "Ledgers + predictions + telemetry; caches excluded.",
-            attachments=[archive],
-        )
-    else:
-        logger.warning("[backup] archive %s is %.1f MB — over the email cap, "
-                       "NOT emailed", archive.name, size / 1e6)
-
-    _write_status(dest_dir, sidecar, drill, off, emailed)
-    summary = {"archive": str(archive), "bytes": size, "sha256": sidecar["sha256"],
+    _write_status(dest_dir, sidecar, drill, off)
+    summary = {"archive": str(archive), "bytes": sidecar["bytes"], "sha256": sidecar["sha256"],
                "drill_ok": drill.ok, "drill_warnings": len(drill.warnings),
                "offsite_confirmed": off.confirmed, "offsite_reason": off.reason,
-               "emailed": emailed, "pruned": pruned}
+               "pruned": pruned}
     logger.info("[backup] %s", summary)
     if not drill.ok:
         raise BackupError(f"{archive.name} failed its restore drill: "

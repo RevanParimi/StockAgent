@@ -440,7 +440,7 @@ class AutomobileScheduler:
         # ── Job 15: Nightly data backup (23:30 IST daily — AUD-088, SA-007) ─
         # Always on: the local rotation under data/backups/ is free. Each
         # archive is restore-drilled; a passing one goes off-site encrypted
-        # when BACKUP_OFFSITE_TARGET is configured, and is also emailed.
+        # when BACKUP_OFFSITE_TARGET is configured. Nothing is emailed.
         scheduler.add_job(
             func=self._backup_job,
             trigger=CronTrigger(hour=23, minute=30, timezone="Asia/Kolkata"),
@@ -1111,9 +1111,8 @@ class AutomobileScheduler:
         backup_recoverable check reports it."""
         from services.data.backup import run_backup_job
         summary = run_backup_job()
-        logger.info("[Scheduler] nightly backup done: offsite=%s emailed=%s bytes=%d",
-                    summary.get("offsite_confirmed"), summary.get("emailed"),
-                    summary.get("bytes", 0))
+        logger.info("[Scheduler] nightly backup done: offsite=%s bytes=%d",
+                    summary.get("offsite_confirmed"), summary.get("bytes", 0))
 
     def _universe_recompute_job(self) -> None:
         """Job 16 — Atlas Universe recompute (C4). No-op unless ATLAS_ENABLED;

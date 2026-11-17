@@ -1,4 +1,4 @@
-"""AUD-088: nightly data/ backup — zip ledgers, snapshot sqlite, rotate, email offsite."""
+"""AUD-088: nightly data/ backup — zip ledgers, snapshot sqlite, rotate; never emailed (CLEAN-007)."""
 import sqlite3
 import zipfile
 from pathlib import Path
@@ -59,24 +59,65 @@ def test_prune_keeps_newest(data_dir):
     assert len(left) == 7 and left[0].startswith("stockagent-backup-20260713")
 
 
-def test_run_backup_job_emails_archive(data_dir, monkeypatch):
-    sent = {}
+@pytest.mark.parametrize("transport", ["smtp", "resend"])
+def test_nightly_job_sends_no_email_on_either_transport(data_dir, monkeypatch, transport):
+    """CLEAN-007: the archive stays on the volume. With email fully configured
+    and working, the nightly job opens no SMTP connection and posts nothing to
+    Resend, and neither its summary nor the status file speaks of an email."""
+    import json
 
-    def _fake_send(subject, body, attachments=None):
-        sent["attachments"] = attachments
-        return True
+    import requests
 
-    monkeypatch.setattr("core.delivery.channels.send_email", _fake_send)
+    import core.delivery.channels as ch
+
+    opened = []
+
+    class _SMTP:
+        def __init__(self, *a, **k):
+            opened.append(("smtp", a))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def starttls(self):
+            pass
+
+        def login(self, *a):
+            pass
+
+        def sendmail(self, *a):
+            opened.append(("sendmail", a[1]))
+
+    class _Accepted:
+        status_code = 200
+
+        def json(self):
+            return {"id": "msg_1"}
+
+    def _post(url, **kwargs):
+        opened.append(("post", url))
+        return _Accepted()
+
+    for name, value in (("DELIVERY_EMAIL_ENABLED", True), ("EMAIL_TRANSPORT", transport),
+                        ("SMTP_HOST", "smtp.example.com"), ("SMTP_USER", "u@example.com"),
+                        ("SMTP_PASSWORD", "pw"), ("RESEND_API_KEY", "re_test"),
+                        ("RESEND_FROM", "StockAgent <reports@example.com>"),
+                        ("DELIVERY_EMAIL_TO", "me@example.com")):
+        monkeypatch.setattr(ch.settings, name, value, raising=False)
+    monkeypatch.setattr(ch.smtplib, "SMTP", _SMTP)
+    monkeypatch.setattr(requests, "post", _post)
+
+    # The fakes do record a send: the channel is live for this test.
+    assert ch.send_email("probe", "body") is True and opened
+    opened.clear()
+
     summary = backup.run_backup_job(data_dir=data_dir)
-    assert summary["emailed"] is True
-    assert Path(summary["archive"]).exists()
-    assert sent["attachments"] == [Path(summary["archive"])]
 
-
-def test_run_backup_job_skips_email_when_oversize(data_dir, monkeypatch):
-    monkeypatch.setattr(backup, "EMAIL_MAX_BYTES", 1)   # force oversize
-    called = []
-    monkeypatch.setattr("core.delivery.channels.send_email",
-                        lambda *a, **k: called.append(1) or True)
-    summary = backup.run_backup_job(data_dir=data_dir)
-    assert summary["emailed"] is False and called == []
+    assert opened == []
+    assert Path(summary["archive"]).exists() and summary["drill_ok"] is True
+    status = json.loads((data_dir / "backups" / backup.STATUS_NAME).read_text())
+    assert "emailed" not in summary and "emailed" not in status
+    assert not hasattr(backup, "EMAIL_MAX_BYTES")

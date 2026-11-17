@@ -164,7 +164,6 @@ def test_nightly_job_to_watchdog_end_to_end(tmp_path, monkeypatch, clock):
     data = tmp_path / "data"
     (data / "portfolio" / "primary").mkdir(parents=True)
     (data / "portfolio" / "primary" / "transactions.jsonl").write_text('{"t": 1}\n')
-    monkeypatch.setattr("core.delivery.channels.send_email", lambda *a, **k: False)
     monkeypatch.setattr(C, "_DATA_DIR", data)
     settings = {"BACKUP_OFFSITE_TARGET": "dir", "BACKUP_ENCRYPTION_KEY": KEY,
                 "BACKUP_OFFSITE_DIR": str(tmp_path / "second-disk")}

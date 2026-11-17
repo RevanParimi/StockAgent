@@ -375,10 +375,11 @@ def test_local_retention_never_deletes_the_newest(tmp_path):
 
 @pytest.fixture()
 def no_email(monkeypatch):
-    sent = []
-    monkeypatch.setattr("core.delivery.channels.send_email",
-                        lambda *a, **k: sent.append(k.get("attachments")) or False)
-    return sent
+    """The nightly job sends no email (CLEAN-007): a send fails the test."""
+    def _refuse(*args, **kwargs):
+        raise AssertionError("the backup job tried to send an email")
+    monkeypatch.setattr("core.delivery.channels.send_email", _refuse)
+    monkeypatch.setattr("core.delivery.channels.send_email_result", _refuse)
 
 
 def test_job_records_the_missing_offsite_copy(data_dir, no_email, caplog):

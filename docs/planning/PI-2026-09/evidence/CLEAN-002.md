@@ -105,7 +105,7 @@ that made the first repository edit):
 |---|---|---|
 | Autopilot phase 1 (PR-035), 17 Nov | the old files | 207,687 |
 | This phase (CLEAN-002), 17 Nov | the old files, in parts | 112,622 |
-| The next conversation | the new files | to be recorded here |
+| Autopilot phase 3 (FIX-015), 17 Nov | the new files | 116,069: 41,301 at its first call, 57,200 once AGENTS.md, HANDOFF, STATE's fields and the card were read; the rest was FIX-015's code, read before the story was marked active |
 
 ## Changed files
 

@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-17 (CLEAN-002 done: this file and STATE are short; PR-035 waits for your word; FIX-015 next)
+# Current handoff - 2026-11-18 (FIX-015 implemented on its branch, awaiting its fresh review; PR-035 waits for your word)
 
 **Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
 
@@ -17,20 +17,16 @@
 
 ## Now
 
-- **Next `continue`: FIX-015** (the shock exit reads the re-forecast's trigger), the first ready
-  story in STATE's order: PR-036, PR-037 and PR-038 wait for PR-035. If you have given PR-035's word
-  by then, PR-035 goes first.
-- **Git:** `main` carries PR-035's docs commit `8f47a0d` and CLEAN-002's commit after it, both
-  docs only; push pending, since the window opens at 00:10 IST. The autopilot or the next session
-  in a window pushes them once the full suite passes on them; it redeploys the same code. If
-  `origin/main` is still `d2f45cd`, they are not pushed.
+- **Next `continue`: FIX-015's fresh review** (REVIEW.md), on the branch `story/FIX-015`
+  (commit `b159073`, local to the code-server, not pushed), in a detached worktree. On acceptance,
+  merge it into `main`; `main` holds only accepted work. Then the next ready story in STATE's
+  order: PR-015 (after FIX-015), PR-039, PR-005. PR-036, PR-037 and PR-038 wait for PR-035.
+- **Git:** `main` carries `8f47a0d` (PR-035's probe), `64b3cbb` (CLEAN-002) and this phase's
+  records (FIX-015's receipt and manifest, STATE, HANDOFF, CLEAN-002's measure), all docs; push
+  pending until the full suite passes on them in the 00:10-06:20 IST window (the autopilot does
+  it between phases). If `origin/main` is still `d2f45cd`, they are not pushed.
 - **Nothing is uncommitted or held.** Nothing in production was read or changed since the push of
   17 Nov 17:50 IST.
-- **CLEAN-002's measure, for the next conversation:** record your context at your first repository
-  edit in the measure table of [evidence/CLEAN-002.md](evidence/CLEAN-002.md), then delete this
-  bullet. On the code-server: `.stockai/bin/python analysis_data/clean002/context_at_first_edit.py
-  "$(ls -t ~/.claude/projects/-home-coder-project-StockAgent/*.jsonl | head -1)"`; elsewhere, the
-  context tokens at the first Edit or Write in the conversation's log.
 - **The investment track** you set on 17 Nov, in STATE's order: PR-035, PR-036, PR-037, FIX-015,
   PR-015, PR-038, PR-039, PR-005, then PR-033 and PR-034. The reasons and the provisional numbers
   are in the archive's entry "17 Nov: ₹1 crore in 20 to 30 holdings becomes the plan".
@@ -57,6 +53,23 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Mon 11 Jan 2027 | `PR-014-R2` | results at 8 weeks; whether to promote CLEAN-006 |
 
 Deployed stories still `pending_observation` without a dated row get one from PR-033.
+
+## 17-18 Nov, night (autopilot): FIX-015 implemented on `story/FIX-015`; awaiting its fresh review
+
+- **Autopilot session `1117-2344-p3`**, a `continue` on the code-server from about 23:44 IST.
+  Decision path (when a holding is sold), so the code is on `story/FIX-015` (`b159073`), not on
+  `main`. Receipt: [evidence/FIX-015-implementation.md](evidence/FIX-015-implementation.md).
+- **The change:** the advisor reads the re-forecast's `trigger` key, not its sentence.
+  `shock_reforecast` counts `external_shock` and `preopen_shock` only, never `thesis_break`, at the
+  first two closes after the re-forecast was made. Example: the review of Monday re-forecasts on a
+  shock at Tuesday 16:45 to a path ending 10% below the close: Wednesday's and Thursday's decisions
+  sell; Friday's does not.
+- **One departure from the card (F15-D1):** the window counts from when the re-forecast was made,
+  not from its date. The daily review dates its re-forecast the session it reviewed (the day
+  before it runs), so the card's "dated the review day or the session before" would never let a
+  daily-review shock fire. The fresh review should press on it.
+- **Tests:** 42 story tests; 4 mutants caught; PR-009's file unchanged; full suite passed on the
+  branch. Nothing in production was read or changed.
 
 ## 17 Nov, night (autopilot): PR-035's probe written and dry-run; the read waits for your word
 

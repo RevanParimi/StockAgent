@@ -1,0 +1,40 @@
+{
+  "story": "FIX-015",
+  "phase": "implementation",
+  "base": "64b3cbb",
+  "branch": "story/FIX-015",
+  "date": "2026-11-17",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "core/portfolio/advisor.py",
+      "git_blob": "59c51a1fdc7dc45f5a212ffea0c8f15190a80e1d",
+      "sha256": "13fb8404a1aaa2b4b259112114de89e3f76af36ddfc12d59d1572b1362033b20"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "4b88f7868d9a096bce049caa6e6527ca944998f1",
+      "sha256": "89d84a9ee52050c8a459827d1811a8918a2b48554490712b6108781c586c6151"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "99d8abf01203d1420d2b3ee77c094049b137ff30",
+      "sha256": "e01afd6a7f103c6d3657e14f41fd284e778e93a516b4b90b3b2bdafbe26365c9"
+    },
+    {
+      "path": "src/backend/shared/schemas/feedback.py",
+      "git_blob": "f7d1a9c20e6130b1813d5732ae57aac3a834d489",
+      "sha256": "361b364c7cbba5c1cefaca6f2ac8879d273a03d948673e811a206a936fd1574d"
+    },
+    {
+      "path": "tests/unit/test_envelope_after_close_fix027.py",
+      "git_blob": "4ee281a4f9abdedb1c26f1e458d8bd2daa252e5f",
+      "sha256": "b7f9c0f8868ef8946066f7066fe3ebc02cda88e79913a6018f77bf635ba9a4b1"
+    },
+    {
+      "path": "tests/unit/test_shock_reforecast_fix015.py",
+      "git_blob": "9d9391453ba13e930152a968db0b48ed24be728a",
+      "sha256": "ca06d33124e1d3fc23000f04adb0b3833aa5dbc5cd9db635a597afc3254da927"
+    }
+  ]
+}

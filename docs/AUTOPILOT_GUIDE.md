@@ -149,11 +149,23 @@ The cascade is **EXIT → TRIM → ADD → HOLD**; the first that fires wins.
 
 | Verdict | Fires when |
 |---|---|
-| EXIT | Any of: unrealised loss at or beyond the stop; thesis broken and envelope DOWN; the latest re-forecast a market or company shock (`external_shock` or `preopen_shock`, never `thesis_break`) made before one of the first two closes after it, and envelope DOWN (`shock_reforecast`); `MACRO_CRISIS` and envelope DOWN; or a trailing stop: the peak was at least 10% above cost and the close has since fallen from it by at least the stop |
+| EXIT | Any of: unrealised loss at or beyond the stop; the acting exit rule's reason test (below); the latest re-forecast a market or company shock (`external_shock` or `preopen_shock`, never `thesis_break`) made before one of the first two closes after it, and envelope DOWN (`shock_reforecast`); `MACRO_CRISIS` and envelope DOWN; or a trailing stop: the peak was at least 10% above cost and the close has since fallen from it by at least the stop |
 | TRIM | Profit of at least 25%, and confidence falling by 0.05 or more, or a reversion prior of 0.20 or more |
 | ADD | Envelope UP, regime not `MACRO_CRISIS` or `RISK_OFF`, position weight below 10% of total equity, and at least 60% of the last 7 reviews correct; and the review day's regime established from live inputs: on a day it was not (India VIX did not answer, say), the ADD is held in either gate mode with the note `REGIME_UNAVAILABLE`; the record's `regime_unavailable` says "market regime unavailable for 2026-10-30: India VIX did not answer". The crisis EXIT still reads the kept label |
 | HOLD | Nothing above |
 | SWITCH | An EXIT becomes SWITCH when a buy candidate qualifies (below) |
+
+**The reason test** depends on `advisor.exit_rule`. With `evidence`, the repository's setting, it
+is `case_broken`: from 10 sessions after the buy (`advisor.min_hold_sessions`), one of a
+high-materiality negative NSE filing or rule-typed disclosure about the stock in the last 5
+sessions (a news article is a watch item, never a sale), an actionable SELL research verdict run
+after the buy and at most 22 sessions old, or the close at the idea's invalidation price. With
+`shadow` (the rollback) or `legacy` it is `thesis_break`: the thesis review said "not intact" and
+the envelope is DOWN. Under `evidence` and `shadow` the other rule's verdict is recorded, never
+acted on, one row per holding per review day in `exit_shadow.jsonl` (KT section 6). Example:
+bought at ₹500, the close ₹480, the review "not intact" with a path ending at ₹478, no negative
+filing, no SELL verdict, the invalidation price ₹455. Under `evidence` the advice is HOLD and the
+row records the price-path rule's EXIT; under `shadow` the stock is sold at ₹480.
 
 "Envelope" in these rules is the envelope as it stood at the close the decision is booked at.
 A re-forecast made at or after that close (the next afternoon's review, or that morning's
@@ -874,9 +886,9 @@ encode the two constraints most likely to fail silently.
   portfolio. The first run's `deployment` record is read, then the refusal
   reasons after ten review sessions, then the results at four and eight
   weeks.
-- The evidence exit rule acts (PR-015): `advisor.exit_rule: evidence`, once
-  the shock exit reads the re-forecast's trigger (FIX-015). The price-path
-  rule's verdict is still recorded each day.
+- The evidence exit rule is judged (PR-015): the owner keeps it or rolls it
+  back to `shadow` at the eight-week results (PR-014-R2). Retiring the thesis
+  review's exit path is a later decision.
 - The tax estimate at each lot's own cost (FIX-022).
 - A safe `identity_reconcile apply` (SA-008 change 1).
 - Learning from executed advice remains future work: every autopilot row

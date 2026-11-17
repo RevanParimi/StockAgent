@@ -544,10 +544,12 @@ advisor:
   # day in data/portfolio/<user>/exit_shadow.jsonl. evidence: case_broken decides
   # (a material negative NSE filing or rule-typed disclosure, never a news article
   # alone; an actionable SELL run after the buy, at most 22 sessions old; or the
-  # invalidation price), switched only by the owner on the weekly scorecard's
-  # predeclared gate (not worse in count and money, against cash or the Nifty).
-  # Rollback = legacy. An unknown value reads as shadow.
-  exit_rule: shadow
+  # invalidation price), and the legacy verdict is still recorded in the same row.
+  # evidence since PR-015: the owner switched on 14 Nov 2026 without waiting for
+  # the weekly scorecard's gate, and judges at the 8-week results (PR-014-R2).
+  # Rollback = shadow (legacy decides again, both still recorded). An unknown
+  # value reads as shadow.
+  exit_rule: evidence
   min_hold_sessions: 10          # case_broken waits this many sessions after the buy; stops never wait
 
 # =============================================================================

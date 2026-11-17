@@ -5,7 +5,8 @@ including UI"; "remove if it's no use") · Estimate: **3 points** · Lane: **lig
 size or grade reads any of the three; the reasons are under each item)
 
 Status lives in [STATE.json](../STATE.json), not this card. No dependency. **Order:** after
-[CLEAN-002](CLEAN-002.md).
+[FIX-017](FIX-017.md). (CLEAN-002, which this card used to follow, moved up on 17 Nov 2026.)
+[PR-040](PR-040.md) follows this card and edits the same interface files.
 
 **New conversation? Read first:** the evidence note
 [CLEAN-003-production-counts-2026-11-15.md](../evidence/CLEAN-003-production-counts-2026-11-15.md)
@@ -110,6 +111,13 @@ the owner the local `.pyd` can be deleted by hand (it is untracked; do not delet
 
 **Acceptance for this item.** An indicator test that passes with and without the `.pyd` on the
 machine, and gives the same numbers both times.
+
+## Routed input — BACKLOG B-8 (owner's review, 17 Nov 2026)
+
+[B-8](../BACKLOG.md) lists small leftovers that nothing in production imports. While this card is
+open, fold in the ones that are as plainly unused as its own three items: the three benchmark
+scripts, the stale ignore entries and the pasted line in `docs/README.md`. Each needs the same
+proof of non-use. Leave the rest in B-8.
 
 ## Not in this card
 

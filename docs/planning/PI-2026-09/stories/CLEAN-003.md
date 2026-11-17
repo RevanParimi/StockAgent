@@ -87,7 +87,8 @@ the recommendations, I like it."**
 | 7c | The four-sector seasonal calendar | **Remove** | owner | Read by the monthly forecast, the daily review and the month-end validation | With item 3 |
 | 7d | The mutual-fund lists for four sectors | **Decide with item 8** | delegated | Part of the sector paths; the call returns data | With item 8 |
 | 8 | The four sector prompts of the main analysis | **Keep until the 8-week review, then merge into one path unless they have earned their place** | delegated | They cost no extra call and their data calls work (93% to 100%). Whether they pick better stocks is not measured | Rule below; [PR-032](PR-032.md) first; the merge is [CLEAN-006](CLEAN-006.md), paused |
-| 9 | Operator extras (analytics feed, weight tuning, Tweaks panel, Learn page) | Not asked yet | — | — | Step 1 of this card |
+| 9 | Operator extras (analytics feed, weight tuning, Tweaks panel, Learn page) | Analytics feed: not asked yet. The other three are settled in [PR-040](PR-040.md) | — | The Learn page and the Tweaks panel were on PR-010's removal list of 11 Oct; weight tuning is PR-040's decision for the owner | Step 1 of this card, for the analytics feed |
+| 10 | The RL Monitor screen and its five routes | **Remove** | owner, 17 Nov 2026 | It charts the daily grading of the price forecast and the learner's weights and misses, which items 2 and 3 stop writing | This card, with the later of items 2 and 3 |
 
 **The rule for item 8, written in advance.** At `PR-014-R2` (8 weeks after the switch-on), read
 PR-017's results by path. The four sector prompts stay only if BUY ideas from the sector paths beat
@@ -140,6 +141,23 @@ forecast and learning steps go.
 
 **Not yet placed:** `macro_reviewer` (90 calls) and `preopen_check` (20 calls). Step 1 says which
 item, if either, they belong to.
+
+**Item 10, the RL Monitor** (owner, 17 Nov 2026: remove; code inspection the same day). An
+owner-only screen with five read routes under `/ui/rl`: tickers, summary, predictions, weights and
+misses. It shows each stock's predicted and actual price by day, the learner's weights with their
+history, and the misses counted by type. A member cannot open it (PR-001), though every browser
+downloads it until [PR-040](PR-040.md).
+
+| Part | Where |
+|---|---|
+| The screen and its data layer | `src/frontend/prototypes/rl-monitor.jsx` (45 KB), `rl-data.jsx` (11 KB) |
+| Its entries | `index.html` (two script tags, `OPERATOR_SCREENS`, the render line, the nav chip, the quick-jump button), `home.jsx` (the menu entry), `sw.js` (the cache list) |
+| The routes | `services/api/routes/rl_monitor.py`; its import and `include_router` in `services/api/server.py` |
+| Tests and tools | `tests/unit/test_rl_monitor_api.py`; one case in `tests/unit/intelligence/rl/test_learning_mode_sa039.py`; `tests/unit/test_spa_catchall.py`, which uses `/rl-data.jsx` as its sample file and needs another; the `OPERATOR_ONLY` set in `tests/unit/test_ui_no_invented_figures_pr001.py`; the screen list in `scripts/ui_responsive_audit.mjs` |
+
+Before deleting, the receipt says with one example what the owner no longer sees, and whether
+anything on the screen is still wanted elsewhere. One candidate: the learning mode shown beside
+the weights, if PR-040 keeps weight tuning.
 
 ## Step 2 — plan the removals of items 2 and 3
 

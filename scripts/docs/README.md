@@ -8,15 +8,25 @@ Keep application/test dependencies separate from these rendering tools.
 ```text
 python scripts/docs/build_kt_pdf.py
 python scripts/docs/check_kt_docs.py
+python scripts/docs/check_kt_docs.py --require-fresh-pdf
 python scripts/docs/run_kt_checks.py
 ```
+
+**When the PDF is built (owner's rule of 17 Nov 2026).** Only when the owner
+asks for it, or at the PI's end with SA-031. A story edits the Markdown and
+leaves the PDF alone, so between builds the committed PDF may describe an
+older Markdown.
 
 - `build_kt_pdf.py` renders `docs/TECHNICAL_DESIGN.md` through local Chromium
   into `docs/StockAgent-Three-Loops.pdf`. Browser requests are blocked. The
   footer records the Markdown hash; private local paths are not embedded.
 - `check_kt_docs.py` checks local link targets, all SA story rows/dependencies,
-  possible scheduler IDs, selected repository config values, PDF text and
-  source hash, and the original PDF archive hash. Update its explicit config
+  possible scheduler IDs, selected repository config values, the committed PDF
+  and the original PDF archive hash. A PDF older than the Markdown is reported
+  as `pdf_fresh: false` and is not an error; its chapters and stories are then
+  not compared. `--require-fresh-pdf` makes an older PDF an error: use it for
+  the run that follows a build. Empty pages and local paths in the PDF are
+  errors whatever its age. Update its explicit config
   expectations when an accepted PI change alters the documented defaults.
   It does not prove link fragments or every sentence are semantically correct.
   It also guards the KT header, using read-only local `git`. The `Code
@@ -47,5 +57,5 @@ python scripts/docs/run_kt_checks.py
 Logs, intermediate HTML and machine-readable check summaries go to ignored
 `analysis_data/kt_20260915/`. Do not commit those raw diagnostics. The original
 PDF archive under `docs/archive/` is preserved separately and is never touched
-by these tools. Regenerate and inspect the output PDF after source changes;
-the checker does not regenerate it automatically or accept PI stories.
+by these tools. After a build, inspect the output PDF and run the checker with
+`--require-fresh-pdf`; the checker does not build the PDF or accept PI stories.

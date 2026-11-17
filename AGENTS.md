@@ -21,7 +21,7 @@ If the user explicitly changes scope or requests a specific task, their instruct
 
 ## Review and change boundaries
 
-- Update affected living documentation and human testing cases with each implementation story. Regenerate `docs/StockAgent-Three-Loops.pdf` whenever its source `docs/TECHNICAL_DESIGN.md` changes. Keep current code, planned PI behavior and measured production evidence distinct; SA-031 is the final consistency check, not a deferral of documentation to the end.
+- Update affected living documentation and human testing cases with each implementation story. Do not regenerate or commit `docs/StockAgent-Three-Loops.pdf` with a story: it is built from `docs/TECHNICAL_DESIGN.md` only when the owner asks for it or at the PI's end with SA-031, and a card that says "and its PDF" is read that way (owner, 17 Nov 2026; `scripts/docs/check_kt_docs.py` reports an older PDF without failing). Keep current code, planned PI behavior and measured production evidence distinct; SA-031 is the final consistency check, not a deferral of documentation to the end.
 - Follow `docs/planning/PI-2026-09/REVIEW.md`. Financial targets, issue-time information, price identity/freshness, idempotency and final weight constraints require independent invariant tests, not only implementation-shaped assertions.
 - Distinguish code inspection, local reproduction, measured production evidence and inference. Do not equate changed weights, retrospective replay, successful HTTP/LLM calls or code completion with demonstrated learning benefit.
 - Keep tasks focused. Prefer correcting contracts and deleting measured duplication to new frameworks, distributed infrastructure or more adaptive modifiers.

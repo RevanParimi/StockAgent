@@ -60,7 +60,7 @@ jobs:
         run: python scripts/ci/check_broad_except.py
       - name: Install documentation tools
         run: python -m pip install -r scripts/docs/requirements.txt
-      - name: KT links, config values and PDF freshness
+      - name: KT links and config values (a PDF older than its source is reported, not failed)
         run: python scripts/docs/check_kt_docs.py
 
   browser:

@@ -34,8 +34,11 @@ the investment track goes first: [PR-035](stories/PR-035.md) (read why the buy l
 [PR-037](stories/PR-037.md) (enough analysed ideas), FIX-015 and PR-015 (the exit rule),
 [PR-038](stories/PR-038.md) (a stock is not refused for having risen),
 [PR-039](stories/PR-039.md) (where the funnel lost the stocks that rose) and PR-005; PR-033 and
-PR-034 follow them. [CLEAN-007](stories/CLEAN-007.md) removed the backup email the same day. The
-tables below show the plan as it was first drawn.
+PR-034 follow them. [CLEAN-007](stories/CLEAN-007.md) removed the backup email the same day. Also
+on 17 Nov, after the owner's review of the repository and of what a `continue` costs,
+[CLEAN-002](stories/CLEAN-002.md) (shorten what every conversation reads) moves up to follow
+PR-035, and [PR-040](stories/PR-040.md) (members see three screens and load no operator code, the
+first half of PR-010) follows CLEAN-004. The tables below show the plan as it was first drawn.
 
 Planning assumption: six two-week sprints, one story implementation and a separate review conversation at a time. Start dates and team capacity are not known; these are relative sprints, not promised calendar deadlines. Estimates are relative, provisional points; re-estimate after Sprint 1. Do not expand a story just to meet a point budget.
 
@@ -214,7 +217,8 @@ benefit" is a valid result.
 DOC-001 is an additional user-requested documentation task outside those point
 totals. Its resequencing does not waive SA-031's unresolved dependencies.
 Every implementation now updates its affected living documentation and human
-test cases, including regenerating the KT PDF when its source changes.
+test cases. The KT PDF is built only when the owner asks for it or at the PI's end
+(owner, 17 Nov 2026).
 SA-031 remains the final consistency check, not deferred documentation work.
 
 P0 learning defects need a correct target and issuance contract before a safe replacement can be activated. SA-039, split from SA-003 on 2026-09-23 by owner decision and ordered first, therefore adds reversible observe-only containment. Decisions use the configured default weights, while the learner keeps computing into a diagnostic record and leaves stored weights untouched. SA-012–SA-016 build and review the corrected path. Activating containment in production is a separate, owner-authorized configuration push. This plan does not endorse treating existing learning statistics as valid during that interval or automatically changing production flags.

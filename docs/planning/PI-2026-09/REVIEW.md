@@ -12,7 +12,8 @@ Update affected sections of [the current KT](../../TECHNICAL_DESIGN.md), the
 architecture overview and [human testing cases](../../TEAM_TESTING_GUIDE.md)
 in the same implementation phase as the behavior change. Use KT section 12
 as the initial mapping, and adjust it when a story's actual scope changes.
-Regenerate `docs/StockAgent-Three-Loops.pdf` when its Markdown source changes.
+Do not regenerate `docs/StockAgent-Three-Loops.pdf` with a story: it is built only when
+the owner asks for it or at the PI's end (AGENTS.md, owner's rule of 17 Nov 2026).
 Record the documentation paths, checks and remaining planned behavior in the
 receipt. If a story has no reader-visible documentation impact, record that
 reason explicitly. SA-031 checks final consistency; it does not postpone

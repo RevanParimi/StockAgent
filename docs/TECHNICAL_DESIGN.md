@@ -3315,7 +3315,8 @@ and a member sent to an operator screen lands on Home. Hiding is not the
 protection: the server keeps `require_owner` on every tuning write and on the
 log reads. The RL client still has demo/fallback paths on API failure, so
 populated operator charts alone do not prove live data. **Planned:** four
-member screens and an Operator menu (PR-010); honest unavailable states on the
+member screens and an Operator menu, with operator code loaded only for the
+owner (PR-040, then PR-010); honest unavailable states on the
 remaining screens (SA-024); a public-read and demo-data policy (SA-032).
 
 Chat replies are untrusted text: the model quotes news snippets and tool
@@ -3564,7 +3565,7 @@ The planned changes connect the research to the money:
   why, what would change our mind, what next", grounded and free of internal
   words (PR-007). The brief opens with your stocks (PR-008).
 - **Show only what is real.** On top of section 10's real-figures rule,
-  members see four screens and the owner an Operator menu (PR-010).
+  members see four screens and the owner an Operator menu (PR-040, then PR-010).
 - **Choose models on evidence.** Models are chosen per role from a bench on
   stored bundles (PR-012).
 
@@ -3726,7 +3727,7 @@ section 10) are part of the current design.
 | [PR-007](planning/PI-2026-09/stories/PR-007.md) | Plain, fact-grounded buy and sell explanations | Open | 6 Portfolio | PR-005, PR-006 |
 | [PR-008](planning/PI-2026-09/stories/PR-008.md) | "Your stocks overnight" at the top of the morning brief | Open | 10 Delivery | PR-003, PR-006 |
 | [PR-009](planning/PI-2026-09/stories/PR-009.md) | Exit on evidence, not on a price-path miss (shadow, then switch) | Done | 6 Portfolio | PR-002, PR-006 |
-| [PR-010](planning/PI-2026-09/stories/PR-010.md) | Four screens for members; an Operator menu for the owner | Open | 10 Interface | PR-001 |
+| [PR-010](planning/PI-2026-09/stories/PR-010.md) | Four screens for members; an Operator menu for the owner | Open | 10 Interface | PR-001, PR-040 |
 | [PR-011](planning/PI-2026-09/stories/PR-011.md) | New data: promoter and insider trades, pledges, shareholding changes | Done | 4 Research; 8 Discovery | PR-006 |
 | [PR-012](planning/PI-2026-09/stories/PR-012.md) | Choose models by role, benched on our own data; refresh cost rates | Open | 3 Configuration | PR-007 |
 | [FIX-011](planning/PI-2026-09/stories/FIX-011.md) | NSE's per-symbol meta API is gone: restore the surveillance and suspension guards and an industry source | Done | 4 Research; 8 Discovery | None |
@@ -3743,6 +3744,7 @@ section 10) are part of the current design.
 | [PR-037](planning/PI-2026-09/stories/PR-037.md) | Enough analysed ideas to hold 25 to 30 stocks | Open | 8 Discovery | PR-035, PR-036 |
 | [PR-038](planning/PI-2026-09/stories/PR-038.md) | A stock is not refused for having risen since its analysis | Open | 6 Portfolio | PR-035 |
 | [PR-039](planning/PI-2026-09/stories/PR-039.md) | Where the funnel lost the stocks that rose | Open | 7 Marksheets; 8 Discovery | None |
+| [PR-040](planning/PI-2026-09/stories/PR-040.md) | Members see three screens and load no operator code | Open | 10 Interface | PR-001 |
 | [CLEAN-007](planning/PI-2026-09/stories/CLEAN-007.md) | The nightly backup stops emailing the archive | Done | 1 Production state; 10 Operations | None |
 | [FIX-017](planning/PI-2026-09/stories/FIX-017.md) | The holding sync reads every NSE corporate-action row it is given, under NSE's code | Open | 6 Portfolio | None |
 | [FIX-018](planning/PI-2026-09/stories/FIX-018.md) | The switch gate sets aside a decision whose result can never be known: named, and within a cap | Done | 6 Portfolio; 7 Marksheets | FIX-016 |
@@ -3755,8 +3757,9 @@ section 10) are part of the current design.
 
 Each implementation updates the affected sections so that they describe the
 new behaviour as current design. It does not add a change note. It also sets
-the story's status in the table above, adjusts the relevant human test cases and
-regenerates the PDF when this Markdown changes. Commits, reviews and deploys
+the story's status in the table above and adjusts the relevant human test cases.
+The PDF is built from this Markdown only when the owner asks for it or at the
+PI's end, so between builds it can be older than this page. Commits, reviews and deploys
 belong in STATE.json and the evidence receipts, not in this document. Measured
 production state belongs in section 1's table. SA-031 is the final
 cross-document consistency check, not a reason to postpone normal

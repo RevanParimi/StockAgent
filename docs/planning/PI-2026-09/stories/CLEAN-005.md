@@ -114,6 +114,12 @@ safe result with a visible reason.
   `docs/PRODUCT_MAP.md`, `CODEBASE.md`, the testing guide.
 - Nothing pushed or deployed. The setting reaches production with the owner's next push.
 
+## Routed input — BACKLOG B-8 (owner's review, 17 Nov 2026)
+
+[B-8](../BACKLOG.md) lists re-export files and a second `feedback_agent.py` prompt under
+`src/backend/shared/` that nothing imports. Remove with this card the ones that belong to the
+layer it deletes, with the same proof of non-use. Leave the rest in B-8.
+
 ## Not in this card
 
 The four sector prompts of the main analysis and the general one (they stay; CLEAN-003 candidate

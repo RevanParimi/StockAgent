@@ -1,5 +1,49 @@
 # Current handoff - 2026-11-17 (the owner's investment track goes first: PR-035 next; the backup email is removed and deployed)
 
+## 17 Nov, afternoon: your repository review → six decisions recorded, committed and pushed
+
+- **Session `stockagent-main-a1`** [ed2a91], a conversation you opened with a review request:
+  unnecessary files and code, screens regular users do not need, and what a `continue` costs. A
+  read-only review, then your "yes to all 6, go ahead". The peer `-9d` had set PR-035
+  `in_progress` in STATE at about 12:03; that edit is kept and nothing of PR-035 was touched.
+- **What a `continue` cost:** 92,000 to 258,000 tokens of context before the first edit, in ten
+  recent conversations (median about 127,000; about 49,000 are there before anything is read).
+- **The six decisions:**
+  1. The assistant's own resume note (181 KB, outside the repository) now holds current state
+     only, about 3 KB.
+  2. [CLEAN-002](stories/CLEAN-002.md) moves to right after PR-035 and is tightened: the current
+     handoff at most 8 KB, a dated entry archived when its story is accepted, passed production
+     checks and older STATE history archived word for word, `next_phase` at most 600 characters,
+     one place for each fact. 3 points.
+  3. [PR-040](stories/PR-040.md), new, light, after CLEAN-004: members see Today, Portfolio and Ask,
+     and operator code loads only for the owner. [PR-010](stories/PR-010.md) keeps the Ideas
+     screen and now depends on PR-040 (3 points, was 5).
+  4. The RL Monitor is removed with [CLEAN-003](stories/CLEAN-003.md) (its row 10).
+  5. **The KT PDF is no longer built with a story,** only when you ask or at the PI's end
+     (AGENTS.md; also docs/README, REVIEW, this folder's README, KT section 12 and SA-031).
+     `scripts/docs/check_kt_docs.py` reports an older PDF as `pdf_fresh: false` without failing;
+     `--require-fresh-pdf` makes it an error, for the run after a build. The PDF in the tree now
+     describes an older Markdown (source `6b446816`; the Markdown is `0a99e5e7`), as intended.
+  6. Small leftovers are [BACKLOG B-8](BACKLOG.md), folded into CLEAN-004 and CLEAN-005 when they
+     run.
+- **Checks:** `check_kt_docs.py` `errors: []` with `pdf_fresh: false`. With `--require-fresh-pdf`:
+  exit 1, "PDF source digest does not match current Markdown", as intended. The new checker on
+  HEAD's tree, where the PDF matches: `errors: []`, `pdf_fresh: true`. With a chapter the PDF lacks
+  added there: "PDF missing chapter", exit 1. `check_broad_except.py` OK (148). The STATE splice
+  was checked by script: top-level fields and history unchanged apart from the new first entry;
+  among existing tasks only CLEAN-002 and PR-010 changed; no other task moved. **The full suite was
+  not run:** no application code changed, and no test imports `check_kt_docs.py`.
+- **Committed and pushed at your word** ("commit and push now", about 17:05 IST), as one
+  docs-only commit on `63469a9`: `AGENTS.md`, `.github/workflows/ci.yml`,
+  `scripts/docs/check_kt_docs.py`, `scripts/docs/README.md`, `docs/README.md`,
+  `docs/TECHNICAL_DESIGN.md`, and in this folder `README.md`, `REVIEW.md`, `BACKLOG.md`,
+  `HANDOFF.md`, `STATE.json` and the stories CLEAN-002 to CLEAN-005, PR-010, SA-031 and the new
+  PR-040. `STATE.json` also carries -9d's marker that PR-035 is `in_progress`, which is true. The
+  push went right after the commit: after the 16:30 review's usual finish (16:54 on a recent day)
+  and before the 17:45 IPO refresh. It restarts the app and changes no production behaviour.
+  **If `origin/main` is still `63469a9`, the push did not happen.**
+- **Next:** PR-035 continues in its own conversation; then CLEAN-002.
+
 ## 17 Nov: ₹1 crore in 20 to 30 holdings becomes the plan; the backup email is removed
 
 - **Session `stockagent-main-bf`** [8282a6], a new conversation you opened with two requests,

@@ -22,10 +22,10 @@ Two kinds of documents live here. Know which kind you're reading.
 | [CHAT_ARCHITECTURE.md](CHAT_ARCHITECTURE.md) | The streaming tool loop behind `/ui/chat/stream`: runtime contract, tools, the sanitizing boundary | Chat developers |
 | [AGENTIC_DESIGN.md](AGENTIC_DESIGN.md) | Every LLM component and model tier, the research pipeline and data bundle, static-vs-LLM boundaries | Prompt/agent developers |
 | [TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md) | **Start here for KT.** Current workflows, examples, storage, jobs, IPO, P/L, report contracts and all PI targets | Everyone learning the system |
-| [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf) | Generated PDF edition of the technical KT; [original PDF archive](archive/README.md) retained | KT sessions and sharing |
+| [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf) | Generated PDF edition of the technical KT, built on request or at the PI's end; [original PDF archive](archive/README.md) retained | KT sessions and sharing |
 | [TEAM_TESTING_GUIDE.md](TEAM_TESTING_GUIDE.md) | Separate non-code-intensive duties, scenarios, expected results and evidence template | Human functional testers |
 
-Update affected living documentation with every implementation story, describing the new behaviour as current design rather than adding change notes (commits, reviews and deploys belong in the PI state and evidence receipts), and regenerate the PDF when its Markdown source changes. SA-031 is a final consistency check, not deferred documentation work. Each living deep-dive opens with its edition and the code revision it was checked against; measured production state lives only in KT section 1.
+Update affected living documentation with every implementation story, describing the new behaviour as current design rather than adding change notes (commits, reviews and deploys belong in the PI state and evidence receipts). The PDF is built only when the owner asks for it or at the PI's end, so it can be older than its Markdown source. SA-031 is a final consistency check, not deferred documentation work. Each living deep-dive opens with its edition and the code revision it was checked against; measured production state lives only in KT section 1.
 
 ## StockAgent — Complete Module Map (at a glance)
 

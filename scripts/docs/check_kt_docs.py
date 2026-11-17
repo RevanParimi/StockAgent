@@ -1,5 +1,11 @@
 """Check current KT links, PI coverage, job IDs, config claims, header revision
-and PDF freshness.
+and the committed PDF.
+
+The PDF is built when the owner asks for it or at the PI's end, not with each
+story (AGENTS.md, owner's rule of 17 Nov 2026). Between builds it may describe
+an older Markdown: that is reported as `pdf_fresh: false` and is not an error.
+Run with `--require-fresh-pdf` after a build, to fail when the PDF does not
+carry the current Markdown's digest.
 
 Read-only source/document inspection. No application imports or transports;
 the only subprocess is local read-only `git`, used to check the KT header's
@@ -21,6 +27,7 @@ from pathlib import Path, PurePosixPath
 import posixpath
 import re
 import subprocess
+import sys
 from urllib.parse import unquote
 
 from pypdf import PdfReader
@@ -104,7 +111,14 @@ def check_header_revision(kt: str, documented_jobs: list[str], errors: list[str]
             "linked_sources_changed_since_revision": changed}
 
 
-def main() -> None:
+REQUIRE_FRESH_PDF = "--require-fresh-pdf"
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = sys.argv[1:] if argv is None else argv
+    if any(arg != REQUIRE_FRESH_PDF for arg in args):
+        raise SystemExit(f"usage: check_kt_docs.py [{REQUIRE_FRESH_PDF}]")
+    require_fresh_pdf = REQUIRE_FRESH_PDF in args
     errors: list[str] = []
     links = 0
     for name in DOCS:
@@ -181,14 +195,19 @@ def main() -> None:
     text = "\n".join(texts)
     compact = re.sub(r"\s+", "", text)
     digest = canonical_sha256(kt_path)
-    if digest[:12] not in compact:
+    pdf_fresh = digest[:12] in compact
+    if not pdf_fresh and require_fresh_pdf:
         errors.append("PDF source digest does not match current Markdown")
-    for title in re.findall(r"^## (.+)$", kt, re.M):
-        if re.sub(r"\s+", "", title) not in compact:
-            errors.append("PDF missing chapter: " + title)
-    for task in sa:
-        if task["id"] not in text:
-            errors.append("PDF missing PI story: " + task["id"])
+    if pdf_fresh:
+        # Only a PDF built from this Markdown can be held to its chapters and
+        # stories; an older one cannot contain what was written after it.
+        for title in re.findall(r"^## (.+)$", kt, re.M):
+            if re.sub(r"\s+", "", title) not in compact:
+                errors.append("PDF missing chapter: " + title)
+        for task in sa:
+            if task["id"] not in text:
+                errors.append("PDF missing PI story: " + task["id"])
+    # These hold for the committed file whatever its age.
     if any(len(t.strip()) < 40 for t in texts):
         errors.append("PDF contains an empty or nearly-empty page")
     if "C:\\Users\\" in text or "file:///" in text:
@@ -199,6 +218,7 @@ def main() -> None:
     summary = {"documents": len(DOCS), "local_links_checked": links, "pi_stories": len(sa),
                "scheduler_job_ids": len(jobs), "configuration_claims": len(claims),
                "pdf_pages": len(pdf.pages), "pdf_text_characters": len(text),
+               "pdf_fresh": pdf_fresh, "pdf_freshness_required": require_fresh_pdf,
                "source_sha256": digest, "header": header, "errors": errors}
     out = ROOT / "analysis_data/kt_20260915"
     out.mkdir(parents=True, exist_ok=True)

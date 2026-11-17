@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-18 (FIX-015 accepted and merged; PR-015 next; PR-035 waits for your word)
+# Current handoff - 2026-11-18 (PR-015 prepared and held for your word; PR-039 next; PR-035 waits for your word)
 
 **Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
 
@@ -17,35 +17,39 @@
 
 ## Now
 
-- **Next `continue`: PR-015** (the evidence exit rule acts; light, rollout: one production
-  setting, `advisor.exit_rule: evidence`). Its dependencies FIX-015 and PR-014 are done. It changes
-  a production setting, so the session prepares the change and asks you before switching it; while
-  it waits, the next ready story in STATE's order goes on: PR-039, then PR-005. PR-036, PR-037 and
-  PR-038 wait for PR-035.
-- **FIX-015 is accepted** (fresh review, 18 Nov; [receipt](evidence/FIX-015-review.md)) and merged
-  into `main` as `2e10c9c`, a merge commit that keeps the reviewed `b159073`. Its dated entries are
-  in the archive. **Deploying it turns the shock exit on:** a held stock whose latest re-forecast
-  is a recent market or company shock with a falling path is sold at that close.
-- **Git:** `main` carries `8f47a0d`, `64b3cbb`, `1c9be93`, the merge `2e10c9c` and this phase's
-  records. This phase pushes them in the 00:10-06:20 IST window once the full suite passes on the
-  exact commit; if `origin/main` is still `d2f45cd`, they were not pushed, and the autopilot pushes
-  them between phases. The deploy and `/health` are in `SESSION_LOG.md` (outside the repository)
-  and go into STATE with the next phase.
-- **Two tests fixed (BACKLOG B-11, closed):** they took the machine's date (UTC on the code-server)
-  against the code's IST date, so the full suite failed from 00:00 to 05:30 IST, the push window.
-  No product code changed.
-- **Nothing is uncommitted or held.** Nothing in production was read or changed since the push of
-  17 Nov 17:50 IST.
+- **Next `continue`: PR-039** (where the funnel lost the stocks that rose; light, a report; profit
+  step: measure). It is the first ready story in STATE's order: PR-035 and PR-015 wait for your
+  word, and PR-036, PR-037 and PR-038 wait for PR-035. Then PR-005.
+- **PR-015 is prepared and held** on the branch `story/PR-015` (`12b7901`, local to the
+  code-server): `advisor.exit_rule: evidence` and its living documents; the full suite passed on
+  it. It is not on `main`, because pushing `main` switches which rule sells. Say "switch PR-015"
+  and the next session in a push window merges it, runs the suite, pushes and checks the deploy.
+  Example: bought at ₹500, a market fall takes it to ₹480 and the thesis review says "not
+  intact"; today it is sold at ₹480, after the switch it is kept unless a filing, a SELL verdict
+  or its invalidation price (₹455) says the case broke. Receipt:
+  [evidence/PR-015-rollout.md](evidence/PR-015-rollout.md).
+- **FIX-015 is live:** `8422a23` deployed on 18 Nov at 00:28 IST (`/health` 200, again at 00:32).
+  KT section 1 says so (`4fd57ab`), and AUTOPILOT_GUIDE 3.2 no longer lists `thesis_break` among
+  the shock exit's triggers.
+- **New backlog entry B-12:** after the switch, the scorecard's gate sentence still says the
+  evidence rule "may replace" the price-path rule; it waits for PR-013.
+- **Git:** `main` carries `4fd57ab` and this phase's records, pushed in this window if the full
+  suite passes on the exact commit (the result is in SESSION_LOG.md and goes into STATE with the
+  next phase). `story/PR-015` is not pushed.
+- **Nothing is uncommitted.** Nothing in production was read or changed but `/health` and
+  `railway status`.
 - **The investment track** you set on 17 Nov, in STATE's order: PR-035, PR-036, PR-037, FIX-015
   (done), PR-015, PR-038, PR-039, PR-005, then PR-033 and PR-034. The reasons and the provisional
   numbers are in the archive's entry "17 Nov: ₹1 crore in 20 to 30 holdings becomes the plan".
 
 ## Waits for you
 
+- **PR-015's switch:** say "switch PR-015". Recommended soon: until then the price-path rule keeps
+  deciding sales, and the 8-week judgment (`PR-014-R2`, from 11 Jan) has fewer weeks of the
+  evidence rule to read. Rollback is one setting (`shadow`) and a push.
 - **PR-035's production read:** how and when are in its entry below.
 - **`CLEAN-007-W1`:** did a "StockAgent nightly backup" mail arrive for the night of 17 Nov? None
-  should. Asked on 18 Nov at about 00:30 IST (the phase's push); no answer yet.
-- **PR-015** will ask you before it switches `advisor.exit_rule` to `evidence` in production.
+  should. Asked on 18 Nov at about 00:30 IST; no answer yet.
 - **Optional:** the weekly watchdog line "No off-site copy has ever been confirmed" stays while it
   is true; removing it is a registry edit you approve separately.
 
@@ -64,6 +68,19 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Mon 11 Jan 2027 | `PR-014-R2` | results at 8 weeks; whether to promote CLEAN-006 |
 
 Deployed stories still `pending_observation` without a dated row get one from PR-033.
+
+## 18 Nov, night (autopilot): PR-015 prepared on `story/PR-015`; the switch waits for your word
+
+- **Autopilot session `1118-0029-p5`**, a `continue` on the code-server from about 00:29 IST.
+  `main` = `origin/main` = `8422a23`.
+- **Step 1 confirmed from the code:** under `evidence` the pipeline still decides with the
+  price-path rule too and records both verdicts in `exit_shadow.jsonl`; the thesis review still
+  runs; the scorecard reads every row whatever its mode. PR-009's pipeline test covers all three
+  modes.
+- **`12b7901` on `story/PR-015`:** the setting and the living documents (KT sections 1, 3, 4, 6,
+  11, 12; AUTOPILOT_GUIDE; README; guide case 07-L). Held: the card says "at a time the owner
+  agrees". On the word, the merging session follows the receipt's "What the owner's word starts".
+- **STATE:** PR-015 `blocked` on that word; `next_task` PR-039.
 
 ## 17 Nov, night (autopilot): PR-035's probe written and dry-run; the read waits for your word
 

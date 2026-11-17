@@ -45,8 +45,12 @@
   IST; Railway `26be013c` SUCCESS and `/health` 200 at 17:08:18.
 - **Other devices** (your question at about 17:40): a fresh clone already has every task. START
   HERE's "Working from another device" now lists the setup and the assistant's laptop-only rules.
-  Committed at your word; its push is held until after the 17:45 IPO refresh (see the commit
-  after `2455495`). **If `origin/main` is still `2455495`, that push did not happen.**
+  Pushed at your word as `8046bf8` (17:50:13 IST; Railway `1654fa23` SUCCESS, `/health` 200 at
+  17:51:13). Then, at your request, `scripts/setup_dev.sh` makes the setup part of every
+  `continue` (AGENTS.md step 1). Tested on a new copy of the repository with nothing installed:
+  READY after 5 min 26 s; then 33 tests, the exception guard, `check_kt_docs` and the 42 screen
+  tests passed there. On the laptop the check reports two documentation-tool versions that differ
+  from CI's pins (`markdown2` 2.4.13, `pypdf` 6.13.3); the next laptop `continue` installs them.
 - **Next:** PR-035 continues in its own conversation; then CLEAN-002.
 
 ## 17 Nov: ₹1 crore in 20 to 30 holdings becomes the plan; the backup email is removed
@@ -1253,11 +1257,12 @@ Docs only; nothing committed, pushed, deployed or configured.
 session). Pull `main` first. Git carries the code, the docs, STATE, this file, every card and every receipt, so
 `continue` works from a fresh clone. A fresh clone lacks only what follows:
 
-- **Setup, once per device.** Python 3.11, as CI uses. `pip install -r requirements.txt -r requirements-test.txt` for the
-  suite; `pip install -r scripts/docs/requirements.txt` for `check_kt_docs.py`; `npm ci` and
-  `npx playwright install chromium` for `npm run test:frontend` and a PDF build. The suite needs no `.env` and no network:
-  `tests/hermetic.py` switches dotenv off and blocks outbound connections (SA-005). `.env` is never committed. `railway
-  link` and a Railway login are needed only to read production, at the owner's word. On the laptop the venv is `.stockai`.
+- **Setup is automatic.** AGENTS.md's first step runs `bash scripts/setup_dev.sh --check`, and `bash scripts/setup_dev.sh`
+  when something is missing. It creates `.venv` with the oldest Python from 3.11 up (the laptop keeps `.stockai`), installs
+  the three requirement files, runs `npm ci` and installs Playwright's Chromium. On a new copy that took 5 min 26 s on
+  17 Nov; a second run installs nothing. The suite needs no `.env` and no network (`tests/hermetic.py`, SA-005), and
+  `.env` is never committed. Node.js itself and, to read production, `railway link` with a Railway login are not
+  installed by the script.
 - **`analysis_data/` (ignored), laptop only:** raw diagnostics, probes and reviewer cases. Open cards name files in it:
   PR-035's `pr035/invest_probe.py`, PR-033's `pr033/watch_probe.py`, and reviewer cases named by PR-005, PR-007, PR-012,
   FIX-014, FIX-020, FIX-022, SA-031, SA-033, SA-041 and BACKLOG B-6. Where one is missing, write it again from the card's

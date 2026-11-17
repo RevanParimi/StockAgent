@@ -943,6 +943,7 @@ All paths verified to exist. Paths are relative to project root.
 | `services/api/routes/delivery_api.py` | /delivery/* — briefs, weekly, alerts, push subscriptions |
 | `services/api/routes/ops_api.py` | /ops/errors* — the operations backlog: ranked issues, plain-text digest, triage (owner or machine key) |
 | `scripts/gen_vapid_keys.py` | One-time VAPID keypair generation for web-push |
+| `scripts/setup_dev.sh` | Prepares any checkout for a `continue` session: `--check` says what is missing; without it, creates `.venv` (oldest Python from 3.11 up) and installs the three requirement files, the Node packages and Playwright's Chromium into ignored folders. Needs no `.env` |
 | `services/data/stores/eod_store.py` | `EodStore` — per-day parquet EOD cache (canonical 12-column schema) |
 | `services/data/fetchers/bhavcopy.py` | NSE delivery-bhavcopy fetcher + resumable `sync_recent()`; the instrument listing (series and ISIN per symbol from the UDiFF bhavcopy): `refresh_listing()`, `load_listing()`, cached in `data/discovery/listing.json` |
 | `services/data/fetchers/bulk_block.py` | Bulk/block deals cache (degraded-mode keeps stale deals) |

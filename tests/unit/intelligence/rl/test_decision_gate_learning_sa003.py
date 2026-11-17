@@ -372,7 +372,10 @@ def test_enforce_reforecast_leaves_the_envelope_intact(tmp_path, monkeypatch, ga
 
 def test_a_reforecast_row_names_the_run_that_issued_it(tmp_path, monkeypatch, gate_mode):
     from core.intelligence.rl.workflows import generate_forecast as gf
-    today = date.today()
+    from core.intelligence.rl.nse_calendar import now_ist
+    # The code's clock is IST (`_review_session_close`); the machine's may not be,
+    # and from 00:00 to 05:30 IST a UTC clock still reads yesterday.
+    today = now_ist().date()
     _seed_envelope(tmp_path, today)
     _patch_forecast(gf, monkeypatch, tmp_path, _report("actionable", run_id="shock-run"))
     monkeypatch.setattr(gf.settings, "RL_REFORECAST_ENABLED", True)

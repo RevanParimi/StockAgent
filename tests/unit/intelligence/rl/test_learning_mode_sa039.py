@@ -295,7 +295,10 @@ def test_reforecast_uses_sector_defaults_in_observe(tmp_path, monkeypatch, mode,
     """regenerate_envelope (Living Envelope re-forecast) is a decision path too."""
     from core.intelligence.rl.workflows import generate_forecast as gf
     from core.schemas.feedback import DailyForecast, PredictionEnvelope
-    today = date.today()
+    from core.intelligence.rl.nse_calendar import now_ist
+    # The code's clock is IST (`_review_session_close`); the machine's may not be,
+    # and from 00:00 to 05:30 IST a UTC clock still reads yesterday.
+    today = now_ist().date()
     store = _seed_weights(tmp_path, "GENCO", "pharma", GENERIC_LEARNED, GENERIC_DEFAULTS)
     store.save_envelope(PredictionEnvelope(
         ticker="GENCO", sector="pharma", cycle_id=store.cycle_id_for(today),

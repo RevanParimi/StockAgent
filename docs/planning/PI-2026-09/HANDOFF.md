@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-18 (FIX-015 implemented on its branch, awaiting its fresh review; PR-035 waits for your word)
+# Current handoff - 2026-11-18 (FIX-015 accepted and merged; PR-015 next; PR-035 waits for your word)
 
 **Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
 
@@ -17,25 +17,35 @@
 
 ## Now
 
-- **Next `continue`: FIX-015's fresh review** (REVIEW.md), on the branch `story/FIX-015`
-  (commit `b159073`, local to the code-server, not pushed), in a detached worktree. On acceptance,
-  merge it into `main`; `main` holds only accepted work. Then the next ready story in STATE's
-  order: PR-015 (after FIX-015), PR-039, PR-005. PR-036, PR-037 and PR-038 wait for PR-035.
-- **Git:** `main` carries `8f47a0d` (PR-035's probe), `64b3cbb` (CLEAN-002) and this phase's
-  records (FIX-015's receipt and manifest, STATE, HANDOFF, CLEAN-002's measure), all docs; push
-  pending until the full suite passes on them in the 00:10-06:20 IST window (the autopilot does
-  it between phases). If `origin/main` is still `d2f45cd`, they are not pushed.
+- **Next `continue`: PR-015** (the evidence exit rule acts; light, rollout: one production
+  setting, `advisor.exit_rule: evidence`). Its dependencies FIX-015 and PR-014 are done. It changes
+  a production setting, so the session prepares the change and asks you before switching it; while
+  it waits, the next ready story in STATE's order goes on: PR-039, then PR-005. PR-036, PR-037 and
+  PR-038 wait for PR-035.
+- **FIX-015 is accepted** (fresh review, 18 Nov; [receipt](evidence/FIX-015-review.md)) and merged
+  into `main` as `2e10c9c`, a merge commit that keeps the reviewed `b159073`. Its dated entries are
+  in the archive. **Deploying it turns the shock exit on:** a held stock whose latest re-forecast
+  is a recent market or company shock with a falling path is sold at that close.
+- **Git:** `main` carries `8f47a0d`, `64b3cbb`, `1c9be93`, the merge `2e10c9c` and this phase's
+  records. This phase pushes them in the 00:10-06:20 IST window once the full suite passes on the
+  exact commit; if `origin/main` is still `d2f45cd`, they were not pushed, and the autopilot pushes
+  them between phases. The deploy and `/health` are in `SESSION_LOG.md` (outside the repository)
+  and go into STATE with the next phase.
+- **Two tests fixed (BACKLOG B-11, closed):** they took the machine's date (UTC on the code-server)
+  against the code's IST date, so the full suite failed from 00:00 to 05:30 IST, the push window.
+  No product code changed.
 - **Nothing is uncommitted or held.** Nothing in production was read or changed since the push of
   17 Nov 17:50 IST.
-- **The investment track** you set on 17 Nov, in STATE's order: PR-035, PR-036, PR-037, FIX-015,
-  PR-015, PR-038, PR-039, PR-005, then PR-033 and PR-034. The reasons and the provisional numbers
-  are in the archive's entry "17 Nov: ₹1 crore in 20 to 30 holdings becomes the plan".
+- **The investment track** you set on 17 Nov, in STATE's order: PR-035, PR-036, PR-037, FIX-015
+  (done), PR-015, PR-038, PR-039, PR-005, then PR-033 and PR-034. The reasons and the provisional
+  numbers are in the archive's entry "17 Nov: ₹1 crore in 20 to 30 holdings becomes the plan".
 
 ## Waits for you
 
 - **PR-035's production read:** how and when are in its entry below.
-- **`CLEAN-007-W1`, from Wed 18 Nov:** did a "StockAgent nightly backup" mail arrive for the night
-  of 17 Nov? None should. The first `continue` on or after that day asks you (STATE's row).
+- **`CLEAN-007-W1`:** did a "StockAgent nightly backup" mail arrive for the night of 17 Nov? None
+  should. Asked on 18 Nov at about 00:30 IST (the phase's push); no answer yet.
+- **PR-015** will ask you before it switches `advisor.exit_rule` to `evidence` in production.
 - **Optional:** the weekly watchdog line "No off-site copy has ever been confirmed" stays while it
   is true; removing it is a registry edit you approve separately.
 
@@ -49,27 +59,11 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Wed 18 Nov | `CLEAN-007-W1` | no backup mail for the night of 17 Nov |
 | Tue 24 Nov | `FIX-032-W1` | your re-run of FIX-032's probe |
 | Tue 1 Dec | `PR-014-D1` | the door read: what the buy list offered and refused |
+| Tue 1 Dec | `FIX-015-W1` | every shock sale since the deploy, read with `PR-014-D1` |
 | Mon 14 Dec | `PR-014-R1` | results at 4 weeks; which paused cards to promote |
 | Mon 11 Jan 2027 | `PR-014-R2` | results at 8 weeks; whether to promote CLEAN-006 |
 
 Deployed stories still `pending_observation` without a dated row get one from PR-033.
-
-## 17-18 Nov, night (autopilot): FIX-015 implemented on `story/FIX-015`; awaiting its fresh review
-
-- **Autopilot session `1117-2344-p3`**, a `continue` on the code-server from about 23:44 IST.
-  Decision path (when a holding is sold), so the code is on `story/FIX-015` (`b159073`), not on
-  `main`. Receipt: [evidence/FIX-015-implementation.md](evidence/FIX-015-implementation.md).
-- **The change:** the advisor reads the re-forecast's `trigger` key, not its sentence.
-  `shock_reforecast` counts `external_shock` and `preopen_shock` only, never `thesis_break`, at the
-  first two closes after the re-forecast was made. Example: the review of Monday re-forecasts on a
-  shock at Tuesday 16:45 to a path ending 10% below the close: Wednesday's and Thursday's decisions
-  sell; Friday's does not.
-- **One departure from the card (F15-D1):** the window counts from when the re-forecast was made,
-  not from its date. The daily review dates its re-forecast the session it reviewed (the day
-  before it runs), so the card's "dated the review day or the session before" would never let a
-  daily-review shock fire. The fresh review should press on it.
-- **Tests:** 42 story tests; 4 mutants caught; PR-009's file unchanged; full suite passed on the
-  branch. Nothing in production was read or changed.
 
 ## 17 Nov, night (autopilot): PR-035's probe written and dry-run; the read waits for your word
 

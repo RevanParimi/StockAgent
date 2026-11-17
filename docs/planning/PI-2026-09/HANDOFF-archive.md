@@ -14,6 +14,37 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 18 Nov, night (autopilot): FIX-015 fresh review → ACCEPTED; merged into `main`
+
+- **Autopilot session `1118-0002-p4`**, a `continue` on the code-server from about 00:02 IST.
+  Fresh session. Receipt: [evidence/FIX-015-review.md](evidence/FIX-015-review.md).
+- **Input verified:** `b159073`, manifest `85ef1b57…`, 6 files, 0 mismatches.
+- **Checked:** every writer of a re-forecast to the advisor's decision under both exit rules; every
+  other reader of the field. Focused tests 213 passed; reviewer cases RV1-RV5 (a holiday inside the
+  window, a UTC time, two shocks in a day, a month's end) passed; five reviewer mutants caught.
+  F15-D1 to F15-D6 agreed.
+- **One low finding, R1:** a shock found in a month's last two sessions never reaches a decision
+  (the envelope is per month). BACKLOG B-10.
+- **Watch added:** `FIX-015-W1`, with `PR-014-D1`'s read from Tue 1 Dec.
+- **Merged** into `main` as `2e10c9c`. Production was not read.
+
+## 17-18 Nov, night (autopilot): FIX-015 implemented on `story/FIX-015`; awaiting its fresh review
+
+- **Autopilot session `1117-2344-p3`**, a `continue` on the code-server from about 23:44 IST.
+  Decision path (when a holding is sold), so the code is on `story/FIX-015` (`b159073`), not on
+  `main`. Receipt: [evidence/FIX-015-implementation.md](evidence/FIX-015-implementation.md).
+- **The change:** the advisor reads the re-forecast's `trigger` key, not its sentence.
+  `shock_reforecast` counts `external_shock` and `preopen_shock` only, never `thesis_break`, at the
+  first two closes after the re-forecast was made. Example: the review of Monday re-forecasts on a
+  shock at Tuesday 16:45 to a path ending 10% below the close: Wednesday's and Thursday's decisions
+  sell; Friday's does not.
+- **One departure from the card (F15-D1):** the window counts from when the re-forecast was made,
+  not from its date. The daily review dates its re-forecast the session it reviewed (the day
+  before it runs), so the card's "dated the review day or the session before" would never let a
+  daily-review shock fire. The fresh review should press on it.
+- **Tests:** 42 story tests; 4 mutants caught; PR-009's file unchanged; full suite passed on the
+  branch. Nothing in production was read or changed.
+
 # Current handoff - 2026-11-17 (PR-035's probe is ready and waits for your word to read production; CLEAN-002 next)
 
 ## 17 Nov, afternoon: your repository review → six decisions recorded, committed and pushed

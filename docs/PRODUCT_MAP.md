@@ -426,6 +426,7 @@ KT section 8.
 | Buy candidates | `core/discovery/candidates.py` | Per portfolio, per review: shelf ideas the analysis rates BUY, dived in the last 30 days and before the review session's 15:30 IST close (a dive keeps only its day, so Saturday's dives first from Tuesday's run, which reviews Monday) plus the user's own fresh, actionable watchlist BUYs, each from the newest analysis run before that close; never a stock sold since its idea was decided, and from the watchlist, after an autopilot sale, only an analysis from the Saturday after it (`shelf.resale_wait`, which a SWITCH leg and deployment read too) |
 | Paper lane | `core/discovery/paper_lane.py` | Real forecasts under an isolated store root, with no learning writes |
 | IPO tracker | `core/discovery/ipo_tracker.py` | Recent listings ranked on listing evidence, delivery, accumulation and subscription |
+| Missed risers (report) | `scripts/missed_risers.py` | Read-only, run by hand: the 50 stocks that rose most and the 50 that fell most inside the screen's floors over the last 60 sessions, each with the furthest funnel place it reached (floors, rank cut, dive budget, analyst or shelf, buy step, or the book), the date and the reason on record; totals by place in rupees of a 3.2% position |
 | Schemas | `src/backend/shared/schemas/discovery.py` | Screen, deep dive, shelf |
 
 **Pattern worth extracting: dark-signal renormalization.** A score is

@@ -222,6 +222,8 @@ StockAgent-main/
 │   ├── gen_vapid_keys.py          # One-time VAPID keypair generation (web-push)
 │   ├── clean_ledger_errors.py     # One-off ledger repair utility
 │   ├── seed_autopilot.py          # One-time Autopilot seed: equal-weight holdings + autopilot=True
+│   ├── missed_risers.py           # Read-only report: where the discovery funnel lost the stocks
+│   │                              #  that rose (and the ones that fell) over the last 60 sessions
 │   └── ci/check_broad_except.py   # CI guard: no new unlogged broad except; the
 │                                  #  grandfathered handlers are in broad_except_baseline.txt
 ├── tests/                         # Test suite (how to run: tests/TEST_DOCUMENTATION.md)

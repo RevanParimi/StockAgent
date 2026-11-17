@@ -2728,6 +2728,27 @@ SWITCH buys it as `automobile`. With MARUTI and M&M at 28% of ₹10 L, the
 30% sector cap then allows 4 shares at ₹5,000, not the 20 a `generic` label
 would let through (38%).
 
+**Where the funnel lost a stock** (`scripts/missed_risers.py`, a read-only
+report run by hand). For a window (the last 60 stored sessions, or from the
+first stored screen when the screens do not reach that far) it takes the
+stocks inside the screen's bhavcopy floors at the window's start, the 50 that
+rose most and the 50 that fell most, and names for each the furthest place it
+reached: 1 outside the floors (rejected by the guards, or outside the
+bhavcopy floors that week), 2 ranked below the cut, 3 a candidate the week's
+deep dives did not reach, 4 analysed and turned down, or rated BUY and turned
+away by the shelf, 5 on the shelf (or a watchlist BUY) and never bought, or in
+the book. The date is the first time it got there, the reason the one on
+record (the screen, the score history, the shelf's events, the digests'
+`deployment` records, the ledger). Totals by place carry the rupees one 3.2%
+position (of ₹1 crore by default) would have made or lost. A stock the guards
+rejected from the shortlist counts as further down the funnel than one
+ranked below the cut: its signals ranked it high enough. Moves are chained on
+NSE's previous close, so a bonus does not read as a fall. Example: a stock
+shelved on Saturday 17 Oct at 0.70 and refused at the buy step for its entry
+band on 20 Oct is "5, on the shelf from 2026-10-17; buy step, session
+2026-10-20: band". It is hindsight over one market period, and says so in its
+output.
+
 **Limits.**
 
 - Without a Surveillance Indicator report of the last 7 days, a stock under
@@ -3556,8 +3577,9 @@ learning to `observe`. SA-023 puts learned lessons on measurable probation.
   aimed for, 30 at most. PR-037 widens the supply of analysed ideas (the
   shelf, the weekly deep dives, the limit per sector) and leaves the 0.55
   floor where it is. PR-038 tests whether an idea that has risen past its
-  band should still be bought. PR-039 reports where the funnel lost the
-  stocks that rose.
+  band should still be bought. PR-039's report (section 8) says where the
+  funnel lost the stocks that rose, and where it kept the book out of those
+  that fell.
 
 ### Product results
 
@@ -3756,16 +3778,16 @@ section 10) are part of the current design.
 | [FIX-012](planning/PI-2026-09/stories/FIX-012.md) | CI is red since 13 Oct: make FIX-007's log-route guard work on any FastAPI | Done | 13 Validation | None |
 | [FIX-013](planning/PI-2026-09/stories/FIX-013.md) | Move the fast and reasoning LLM tiers to cheaper current models | Done | 3 Configuration | None |
 | [FIX-014](planning/PI-2026-09/stories/FIX-014.md) | Above the 75% cap, a promoter wash must not score as insider buying | Open | 8 Discovery | PR-011 |
-| [FIX-015](planning/PI-2026-09/stories/FIX-015.md) | The shock exit reads the re-forecast's trigger, not its sentence | Open | 6 Portfolio | PR-009 |
+| [FIX-015](planning/PI-2026-09/stories/FIX-015.md) | The shock exit reads the re-forecast's trigger, not its sentence | Done | 6 Portfolio | PR-009 |
 | [FIX-016](planning/PI-2026-09/stories/FIX-016.md) | Fix the evidence exit's inputs and its switch gate before the shadow starts | Done | 6 Portfolio; 7 Marksheets | PR-009 |
 | [PR-013](planning/PI-2026-09/stories/PR-013.md) | Show where losses come from and what waiting costs | Open | 7 Marksheets | PR-002, PR-009 |
 | [PR-014](planning/PI-2026-09/stories/PR-014.md) | Switch idle-cash deployment on, then read what it does | Done | 1 Production state; 6 Portfolio | FIX-030, FIX-031 |
 | [PR-015](planning/PI-2026-09/stories/PR-015.md) | The evidence exit rule acts | Open | 1 Production state; 6 Portfolio | FIX-015, PR-014 |
-| [PR-035](planning/PI-2026-09/stories/PR-035.md) | Read why the buy list offered 2 of 20 ideas, and what 25 to 30 holdings need | Open | 6 Portfolio; 8 Discovery | None |
+| [PR-035](planning/PI-2026-09/stories/PR-035.md) | Read why the buy list offered 2 of 20 ideas, and what 25 to 30 holdings need | Done | 6 Portfolio; 8 Discovery | None |
 | [PR-036](planning/PI-2026-09/stories/PR-036.md) | ₹1 crore of paper capital, 25 positions aimed for, 30 at most | Open | 1 Production state; 6 Portfolio | PR-035 |
 | [PR-037](planning/PI-2026-09/stories/PR-037.md) | Enough analysed ideas to hold 25 to 30 stocks | Open | 8 Discovery | PR-035, PR-036 |
 | [PR-038](planning/PI-2026-09/stories/PR-038.md) | A stock is not refused for having risen since its analysis | Open | 6 Portfolio | PR-035 |
-| [PR-039](planning/PI-2026-09/stories/PR-039.md) | Where the funnel lost the stocks that rose | Open | 7 Marksheets; 8 Discovery | None |
+| [PR-039](planning/PI-2026-09/stories/PR-039.md) | Where the funnel lost the stocks that rose | Done | 7 Marksheets; 8 Discovery | None |
 | [PR-040](planning/PI-2026-09/stories/PR-040.md) | Members see three screens and load no operator code | Open | 10 Interface | PR-001 |
 | [CLEAN-007](planning/PI-2026-09/stories/CLEAN-007.md) | The nightly backup stops emailing the archive | Done | 1 Production state; 10 Operations | None |
 | [FIX-017](planning/PI-2026-09/stories/FIX-017.md) | The holding sync reads every NSE corporate-action row it is given, under NSE's code | Open | 6 Portfolio | None |

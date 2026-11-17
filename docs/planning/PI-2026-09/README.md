@@ -2,7 +2,7 @@
 
 The [September 10 audit](../../audit/2026-09-10-repository-production-review.md) found real adaptation but no demonstrated benefit, compromised evaluation semantics and concrete operational/security defects. This PI repairs the decision/evaluation contract before adding intelligence complexity.
 
-**Start/resume:** [HANDOFF.md](HANDOFF.md) → [STATE.json](STATE.json) → selected story. On September 15 the user explicitly requested [DOC-001](stories/DOC-001.md), current-code KT plus a separate human testing guide, ahead of SA-001. After DOC-001 acceptance, the first remediation implementation is SA-039 (learning containment, promoted by the owner on 2026-09-23), then SA-001. No remediation is claimed complete by the documentation refresh.
+**Start/resume:** [HANDOFF.md](HANDOFF.md) → [STATE.json](STATE.json) → selected story. Older handoff entries and STATE history are in [HANDOFF-archive.md](HANDOFF-archive.md) and [STATE-history-archive.json](STATE-history-archive.json), read only when a card points there (CLEAN-002). On September 15 the user explicitly requested [DOC-001](stories/DOC-001.md), current-code KT plus a separate human testing guide, ahead of SA-001. After DOC-001 acceptance, the first remediation implementation is SA-039 (learning containment, promoted by the owner on 2026-09-23), then SA-001. No remediation is claimed complete by the documentation refresh.
 
 ## Scope and outcomes
 

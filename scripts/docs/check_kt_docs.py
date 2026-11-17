@@ -37,7 +37,8 @@ ROOT = Path(__file__).resolve().parents[2]
 DOCS = [
     "docs/TECHNICAL_DESIGN.md", "docs/ARCHITECTURE.md", "docs/TEAM_TESTING_GUIDE.md",
     "docs/README.md", "docs/archive/README.md", "docs/planning/PI-2026-09/README.md",
-    "docs/planning/PI-2026-09/HANDOFF.md", "docs/planning/PI-2026-09/REVIEW.md",
+    "docs/planning/PI-2026-09/HANDOFF.md", "docs/planning/PI-2026-09/HANDOFF-archive.md",
+    "docs/planning/PI-2026-09/REVIEW.md",
     "docs/planning/PI-2026-09/stories/DOC-001.md", "docs/planning/PI-2026-09/stories/SA-031.md",
     "docs/planning/PI-2026-09/evidence/README.md",
     "docs/planning/PI-2026-09/evidence/DOC-001-implementation.md",

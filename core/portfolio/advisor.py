@@ -56,7 +56,12 @@ class AdvisorSignals(BaseModel):
     # India VIX did not answer"); "" when it is. Holds ADD in either gate mode.
     regime_unavailable: str = ""
     thesis_intact: bool | None = None      # latest ThesisReview written before the close (FIX-031), None = none
-    reforecast_reason: str = ""            # latest reforecast event reason this cycle
+    # FIX-015: the trigger KEY (ReforecastEvent.trigger: "external_shock",
+    # "preopen_shock", "thesis_break", "regime_flip", "manual") of the latest
+    # re-forecast as the envelope stood at the close, when that re-forecast is
+    # recent (`recent_reforecast_trigger`); "" otherwise. Never the event's
+    # `reason`, which is a sentence for people.
+    reforecast_reason: str = ""
     envelope_direction: str = "FLAT"       # UP | DOWN | FLAT remaining-forecast drift
     # FIX-027: set when a re-forecast was made after the review session's close.
     # `envelope_direction` then reads the envelope as it stood at that close (the
@@ -226,12 +231,56 @@ def envelope_at_close(env, review_date: date, store: VerdictStore):
         return env, None
     first = late[0]
     when = first.at or first.date
-    why = (f"the {first.reason} re-forecast of {when} is after the close of "
+    # FIX-015 (FIX-027's review, L1): the trigger key and the time, not the
+    # event's reason sentence.
+    what = f"{first.trigger} " if first.trigger else ""
+    why = (f"the {what}re-forecast of {when} is after the close of "
            f"{review_date.isoformat()}")
     archived = store.load_archived_envelope(first.archived_file) if first.archived_file else None
     if archived is None:
         why += " and the envelope before it is not available"
     return archived, LateReforecast(why=why, current=env)
+
+
+# FIX-015: the re-forecast triggers that count for the EXIT trigger
+# `shock_reforecast`: a market or company event the forecast could not have
+# known (the daily review's miss classified external_shock, the pre-open
+# check's overnight shock). `thesis_break` is not one: it is the price-path
+# rule's own path, and counting it would bring the thesis-review exit back
+# into the evidence rule (PR-009). `regime_flip` has its own exit
+# (crisis_regime_bearish) and `manual` is an operator's.
+SHOCK_TRIGGERS = frozenset({"external_shock", "preopen_shock"})
+# A re-forecast counts at the first this-many session closes after it was made.
+SHOCK_REFORECAST_CLOSES = 2
+
+
+def recent_reforecast_trigger(env, review_date: date) -> str:
+    """FIX-015: the trigger key of `env`'s latest re-forecast when it was made
+    at or after the close of the session SHOCK_REFORECAST_CLOSES sessions
+    before `review_date`; "" otherwise. `env` is the envelope as it stood at
+    `review_date`'s close (`envelope_at_close`), so a re-forecast made at or
+    after that close is not in it: together, a re-forecast counts at the first
+    two closes after it was made, whatever day the decision runs.
+
+    The time is the re-forecast's own (`ReforecastEvent.at`), not its `date`:
+    the daily review that ran on Tuesday evening dates its re-forecast Monday
+    (the session it reviewed), and the first close after it is Wednesday's, so
+    a window on the date would never reach it. An event with no time (stored
+    before FIX-027) or one that cannot be read is not shown to be recent.
+
+    Example: the review of Monday re-forecasts on an external shock at Tuesday
+    16:45. Monday's and Tuesday's decisions do not read it (after their
+    closes); Wednesday's and Thursday's read "external_shock"; Friday's reads
+    "". A pre-open shock at Tuesday 08:45 counts at Tuesday's and Wednesday's."""
+    from core.intelligence.rl.nse_calendar import session_close_at, trading_days_ago
+    if env is None or not env.reforecast_history:
+        return ""
+    latest = env.reforecast_history[-1]
+    at = _ist_at(latest.at) if getattr(latest, "at", "") else None
+    if at is None:
+        return ""
+    since = session_close_at(trading_days_ago(review_date, SHOCK_REFORECAST_CLOSES))
+    return (latest.trigger or "") if at >= since else ""
 
 
 def _ist_at(stamp) -> datetime | None:
@@ -355,8 +404,7 @@ def build_signals(
                 sig.forecast_run_ids = sorted({f.source_run_id for f in remaining
                                                if f.source_run_id})
             sig.reversion_prior = env.conviction_streak.reversion_prior
-            if env.reforecast_history:
-                sig.reforecast_reason = env.reforecast_history[-1].reason
+            sig.reforecast_reason = recent_reforecast_trigger(env, review_date)   # FIX-015
     except Exception as exc:
         logger.warning("[advisor] envelope read failed for %s (non-fatal): %s",
                        holding.symbol, exc)
@@ -701,8 +749,9 @@ def decide(
             triggers.append("case_broken")
     elif signals.thesis_intact is False and signals.envelope_direction == "DOWN":
         triggers.append("thesis_break")
-    if signals.reforecast_reason in ("external_shock", "thesis_break", "preopen_shock") \
-            and signals.envelope_direction == "DOWN":
+    # FIX-015: a recent market or company shock re-forecast (never thesis_break)
+    # with a falling path; the same code under both exit rules.
+    if signals.reforecast_reason in SHOCK_TRIGGERS and signals.envelope_direction == "DOWN":
         triggers.append("shock_reforecast")
     if signals.regime_label == "MACRO_CRISIS" and signals.envelope_direction == "DOWN":
         triggers.append("crisis_regime_bearish")

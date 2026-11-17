@@ -192,14 +192,17 @@ def test_the_preopen_reforecast_is_after_the_previous_close(tmp_path, monkeypatc
 
 def test_old_envelopes_without_a_time_parse_and_count_as_before(tmp_path, monkeypatch):
     """Stored before the field: no `at`. The event parses, is not after any
-    close, and the path is read as today."""
-    event = ReforecastEvent.model_validate({"date": "2026-06-08", "reason": "external_shock"})
+    close, and the path is read as today. (FIX-015: with no time it is not
+    shown to be recent, so its trigger is not read for the shock exit.)"""
+    event = ReforecastEvent.model_validate({
+        "date": "2026-06-08", "reason": "External shock on 2026-06-08: ...",
+        "trigger": "external_shock"})
     assert event.at == ""
     ps = _store(tmp_path)
     ps.save_envelope(_envelope(1100.0, [event]))
     assert reforecasts_after_close(ps.load_envelope("MARUTI_2026-06"), MON) == []
     holding, sig = _signals(_verdicts(tmp_path, monkeypatch))
-    assert sig.envelope_direction == "UP" and sig.reforecast_reason == "external_shock"
+    assert sig.envelope_direction == "UP" and sig.reforecast_reason == ""
     assert _decide(holding, sig).verdict == "ADD"
 
 

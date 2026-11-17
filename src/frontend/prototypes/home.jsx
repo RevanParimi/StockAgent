@@ -756,12 +756,13 @@ function WatchlistPane({ onAnalyze }) {
     if (!allSyms.includes(sym)) { setAddError(`${sym} not in supported list: ${allSyms.join(', ')}`); return; }
     if (watchlist.includes(sym)) { setAddError(`${sym} already in watchlist`); return; }
     setAddBusy(true);
-    const newList = [...watchlist, sym];
+    // Send only the change (FIX-032): a whole list from this page would drop
+    // what was added elsewhere since it loaded. The answer is the whole list.
     try {
       const res = await fetch('/ui/watchlist', {
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ watchlist: newList }),
+        body: JSON.stringify({ add: [sym] }),
       });
       if (res.ok) {
         const d = await res.json();
@@ -778,15 +779,15 @@ function WatchlistPane({ onAnalyze }) {
   };
 
   const handleRemove = async (sym) => {
-    const newList = watchlist.filter(s => s !== sym);
     try {
       const res = await fetch('/ui/watchlist', {
         method: 'PUT',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ watchlist: newList }),
+        body: JSON.stringify({ remove: [sym] }),
       });
       if (res.ok) {
-        window.WATCHLIST = newList; setWatchlist(newList);
+        const d = await res.json();
+        window.WATCHLIST = d.watchlist; setWatchlist(d.watchlist);
         fetch('/ui/watchlist').then(r => r.ok ? r.json() : null).then(d2 => { if (d2?.tickers) setLiveTickers(d2.tickers); }).catch(()=>{});
       }
     } catch {}

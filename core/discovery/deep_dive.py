@@ -133,8 +133,10 @@ def run_deep_dives(
         if len(attempted) >= limit:
             break
         redive = "redive" in cand.flags
-        # FIX-025: a stock the autopilot bought stays managed after its sale,
-        # and a new dive is all that can bring it back.
+        # FIX-025: a stock the autopilot sold can still have an enabled
+        # managed entry: an original entry, one another portfolio still
+        # holds, or one a user's own watchlist keeps (FIX-028 releases the
+        # rest). A new dive is all that can bring it back to the shelf.
         sold = "sold" in cand.flags
         if (cand.symbol in managed and not sold) or (cand.symbol in shelved and not redive):
             logger.debug("[deep_dive] %s skipped (managed/shelved)", cand.symbol)

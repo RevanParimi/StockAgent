@@ -22,6 +22,11 @@ original universe, are never touched. A disabled entry keeps its sector, and
 `promote_symbol` re-enables it when the stock is bought again. Every
 read-modify-write here holds `managed_tickers_lock` (the owner's dashboard
 edits of the list do not).
+
+FIX-032: a removal by a user (`demote_symbol`) asks the same question, so it
+disables an entry only when no portfolio holds the stock and no user's own
+watchlist lists it. A quarantined portfolio not yet restored counts as one
+that cannot be read: nothing is released while it lasts.
 """
 from __future__ import annotations
 
@@ -155,18 +160,51 @@ def promote_symbol(symbol: str, sector: str, origin: str) -> dict:
 
 
 def demote_symbol(symbol: str) -> bool:
-    """Disable a portfolio-origin managed entry (holding/watchlist removed).
-    Manual entries — the original universe — are never touched."""
+    """A user stopped holding or watching `symbol`: the API's deletes and the
+    home page's removal call this. FIX-032 asks FIX-028's question first: the
+    stock's `held` or `watchlist` entry is disabled only when no portfolio
+    holds it and no user's own watchlist lists it. A `held` entry that only a
+    user's watch keeps becomes a weekly `watchlist` entry, as release_unheld
+    does. Manual entries, the original universe, never change, and nothing
+    changes when a portfolio cannot be read. True only when the entry was
+    disabled by this call."""
     symbol = symbol.strip().upper()
     with managed_tickers_lock():
         tickers = list(load_managed_tickers())
-        entry = next((t for t in tickers if t.get("sym") == symbol), None)
-        if not entry or entry.get("origin") not in _ORIGIN_CADENCE:
+        entry = next((t for t in tickers if isinstance(t, dict)
+                      and str(t.get("sym") or "").strip().upper() == symbol), None)
+        if not entry or entry.get("origin") not in _ORIGIN_CADENCE \
+                or not entry.get("enabled", True):
+            return False
+        try:
+            held, watched = _portfolios_now()
+        except Exception as exc:
+            logger.warning("[promotion] %s not demoted, portfolios unreadable: %s", symbol, exc)
+            return False
+        if symbol in held:
+            logger.info("[promotion] %s kept: a portfolio holds it", symbol)
+            return False
+        if symbol in watched:
+            if entry.get("origin") == "held":
+                entry["origin"], entry["cadence"] = "watchlist", _ORIGIN_CADENCE["watchlist"]
+                save_managed_tickers(tickers)
+                logger.info("[promotion] %s kept for a user's watchlist (weekly)", symbol)
             return False
         entry["enabled"] = False
         save_managed_tickers(tickers)
-    logger.info("[promotion] %s demoted (enabled=False)", symbol)
+    logger.info("[promotion] %s demoted (enabled=False): no portfolio holds it and no "
+                "user's own watchlist lists it", symbol)
     return True
+
+
+def _quarantined_users(root: Path) -> list[str]:
+    """Accounts whose portfolio.json PortfolioStore quarantined
+    (portfolio.json.corrupt-<time>) and no valid file has replaced."""
+    if not root.exists():
+        return []
+    return sorted(d.name for d in root.iterdir() if d.is_dir()
+                  and not (d / "portfolio.json").exists()
+                  and any(d.glob("portfolio.json.corrupt-*")))
 
 
 def _portfolios_now(current=None) -> tuple[set[str], set[str]]:
@@ -175,10 +213,15 @@ def _portfolios_now(current=None) -> tuple[set[str], set[str]]:
     caller has just saved (counted wherever it is stored). Read straight from
     each portfolio.json, so a corrupt one raises here rather than reading as
     empty (PortfolioStore.load would quarantine it and answer "holds
-    nothing")."""
+    nothing"). A quarantined account not yet restored raises too (FIX-032):
+    its holdings are unknown, not empty."""
     from backend.shared.schemas.portfolio import Portfolio
     from core.portfolio.store import list_user_ids
     root = Path(settings.PORTFOLIO_DATA_DIR)
+    quarantined = _quarantined_users(root)
+    if quarantined:
+        raise RuntimeError("portfolio.json quarantined and not restored for "
+                           + ", ".join(quarantined))
     portfolios = [Portfolio(**json.loads((root / user_id / "portfolio.json").read_text(
         encoding="utf-8"))) for user_id in list_user_ids()]
     held: set[str] = set()

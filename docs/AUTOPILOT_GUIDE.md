@@ -697,7 +697,7 @@ has holdings or transactions.
 | `GET /portfolio` | Holdings and watchlist with live marks |
 | `POST /portfolio/holdings` | Manual BUY at the buy date's close. It is fresh capital: `capital_in` rises by its cost and its buy charges, cash does not change, and a `manual` row is written with the charges. An identical same-day resubmit is deduped. The symbol is promoted as held. |
 | `DELETE /portfolio/holdings/{symbol}` | Manual SELL at today's close (cost if no close), cash credited net of the sale's charges, `manual` row written with its `cost_basis`, `pnl_pct` and charges, so the weekly scorecard counts its result. Unless the symbol is on the watchlist, its portfolio-origin managed entry is disabled |
-| `POST`, `DELETE /portfolio/watchlist…` | Watchlist changes; an added symbol is promoted as watchlist, a removed one demoted the same way |
+| `POST`, `DELETE /portfolio/watchlist…` | Watchlist changes; an added symbol is promoted as watchlist, a removed one demoted when no portfolio holds it and no user's own watchlist lists it (section 12) |
 | `POST /portfolio/import-csv` | Bulk import of holdings. Rows are priced first, then added in one locked section; with cash accounting on, each is fresh capital like a manual add: `capital_in` rises by its cost and its buy charges, and a `manual` BUY row is written with the charges and no cash moved |
 | `GET /portfolio/transactions?limit=N` | The ledger, newest first. A trade written before costs were charged shows them estimated (`estimated: true`); a `DIV` shows none |
 | `GET /portfolio/performance` | Cash, `capital_in`, market value, equity, the in-stocks and cash shares of equity (adding to 100), realised P/L before costs (`realized_pnl`) and split as `realized` (`gross`, `costs`, `net_of_costs`, `estimated_costs`), `costs` (`charged` from cash, `estimated` for old trades, `on_open_positions`, `rates_as_of`), `tax_estimate` (per financial year), unrealised P/L (the open holdings' price gain), total return, day change, the autopilot flag, the last 400 value points each with `nifty_value`, `vs_nifty` (the gap since the first deposit), `ranges` (each chart range's money-weighted return beside the Nifty's) and `closed_trades`. It reads every transaction and value point |
@@ -741,9 +741,10 @@ give it envelopes, reviews and a dossier.
   its sector and history kept. While a user's own watchlist lists the stock
   (added by the user or promoted from the shelf; the autopilot's own
   `autopilot_exit` entry does not count) it becomes a watchlist-origin entry
-  instead: weekly, and evictable at the cap. When the watch ends through
-  `DELETE /portfolio/watchlist/{symbol}` the entry is disabled; a removal on
-  the home page leaves it enabled (FIX-032). Original entries are never
+  instead: weekly, and evictable at the cap. When the watch ends, through
+  `DELETE /portfolio/watchlist/{symbol}` or on the home page, the entry is
+  disabled unless a portfolio holds the stock or another user's own
+  watchlist still lists it. Original entries are never
   touched, and a TRIM that leaves shares changes nothing. Then the positions
   the run opened are promoted, so a sale's room is free before the same run's
   buy asks for it, and so is each holding the list is waiting for: one with
@@ -760,16 +761,28 @@ give it envelopes, reviews and a dossier.
   review and named, until a sale or a disabled entry makes room.
 - **Never on a guess.** A portfolio file that cannot be read stops the
   release for that run (nothing is released, and the file is not
-  quarantined); an account whose file is already quarantined is not read,
-  so its stocks can be released (FIX-032); with no managed file nothing is
-  written. Promotion's reads
+  quarantined), and so does an account whose file was quarantined and not
+  yet restored: its holdings are unknown, not empty, and the log names it.
+  With no managed file nothing is written. Promotion's reads
   and writes of the list hold one lock (`managed_tickers_lock`); the owner's
   dashboard edits (`/ui/tickers/managed`) do not take it. Every save goes
   through a temporary file, so a write cut short leaves the old list.
-- Removing a holding or watchlist entry demotes the symbol: a held or
-  watchlist-origin entry is disabled, with its history kept. The original,
-  manually managed entries are never touched. These routes look only at the
-  user's own portfolio.
+- Removing a holding or a watchlist entry (the API's delete routes, the home
+  page) asks the release's question across every portfolio
+  (`demote_symbol`): the held or watchlist-origin entry is disabled, with its
+  history kept, only when no portfolio holds the stock and no user's own
+  watchlist lists it; a held entry that only a watch keeps turns weekly. The
+  original, manually managed entries are never touched, and a portfolio that
+  cannot be read, or a quarantined one, leaves the list as it is.
+- **The home page's watchlist save names only the change.** It sends
+  `PUT /ui/watchlist` with `add` or `remove` and one stock, so it never drops
+  a stock it did not name: a shelf idea promoted after the page loaded (a
+  watchlist buy candidate), a stock added through the API, the autopilot's
+  note of an exit. Example: the watchlist holds MARUTI, BACK (added through
+  the API), NEWCO (promoted from the shelf) and OLD (the autopilot's note).
+  Adding HEROMOTOCO keeps all four; removing MARUTI keeps the other four. The
+  whole-list form only adds, since a stock it omits may be one that page
+  never saw.
 - Promoting a symbol whose entry is disabled re-enables it, under the sector
   it had. Promotion does
   not consult the instrument registry, so buying or watching a retired

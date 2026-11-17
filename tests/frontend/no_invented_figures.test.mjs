@@ -29,7 +29,9 @@
  *  - the portfolio screen (SA-051) says "Capital added", "In stocks" and
  *    "Cash" with shares adding to 100, dates every share price it shows, and
  *    draws the same money in the Nifty only through values the server sent:
- *    a missing one breaks the line, and an unavailable Nifty reads so.
+ *    a missing one breaks the line, and an unavailable Nifty reads so;
+ *  - the watchlist (FIX-032) sends only the stock added or removed, never its
+ *    whole list, and then shows the list the server answers.
  */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -317,6 +319,52 @@ test('a bootstrap that lands after the watchlist opens still fills it; a missing
     const month = await visibleText(page);
     assert.match(month, /This month's market is unavailable right now/);
     assert.ok(!/Loading this month/.test(month), month);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test('the watchlist sends only the change and shows the list the server answers (FIX-032)', async () => {
+  // The server's list gains QNEWCO after the page read its own (a shelf idea
+  // promoted elsewhere). A whole list from the page would not carry it; the
+  // change does not need to. The page then shows the server's list.
+  const QNEWCO = { sym: 'QNEWCO', name: 'Qnewco Ltd', price: 0.0, change: 0.0, score: 0.5,
+                   verdict: 'NEUTRAL', trend: 'flat', hasData: false };
+  const rows = { QWATCHX: QWATCH, QNOPRICE: QUNPRICED, QNEWCO };
+  let server = ['QWATCHX', 'QNOPRICE'];
+  const puts = [];
+  const { context, page, errors } = await openApp(browser, {
+    user: MEMBER,
+    api: liveApi({
+      '/ui/watchlist': (u, req) => {
+        if (req.method() === 'PUT') {
+          const body = JSON.parse(req.postData() || '{}');
+          puts.push(body);
+          const add = body.add || [], remove = body.remove || [];
+          server = server.filter(s => !remove.includes(s)).concat(add.filter(s => !server.includes(s)));
+          return json({ watchlist: server });
+        }
+        return json({ watchlist: server, tickers: server.map(s => rows[s]) });
+      },
+    }),
+  });
+  const table = (sym) => page.locator('.ticker-table-wrap tbody tr', { hasText: sym });
+  try {
+    await settled(page);
+    await page.getByRole('button', { name: 'Watchlist' }).first().click();
+    await table('QNOPRICE').waitFor({ timeout: 10000 });
+    server = [...server, 'QNEWCO'];
+    await table('QNOPRICE').getByTitle('Remove from watchlist').click();
+    await table('QNEWCO').waitFor({ timeout: 10000 });
+    assert.deepEqual(puts, [{ remove: ['QNOPRICE'] }]);
+    assert.equal(await table('QNOPRICE').count(), 0);
+    assert.equal(await table('QWATCHX').count(), 1);
+
+    await page.getByRole('button', { name: 'Add ticker' }).click();
+    await page.getByPlaceholder('e.g. TVSMOTORS').fill('qnoprice');
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await table('QNOPRICE').waitFor({ timeout: 10000 });
+    assert.deepEqual(puts[1], { add: ['QNOPRICE'] });
+    for (const sym of ['QWATCHX', 'QNEWCO']) assert.equal(await table(sym).count(), 1, sym);
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });

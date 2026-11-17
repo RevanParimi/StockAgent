@@ -1798,19 +1798,31 @@ sold before this rule existed leaves on the next run. A holding the
 cap (`portfolio.max_managed_tickers`, 40) still keeps out gets no daily review
 or forecast; its digest row (`not_reviewed`), the digest's text and the
 morning brief say "no daily review or forecast: managed-ticker cap 40
-reached", and every run tries again. A portfolio file that cannot be read
-releases nothing that run. The auditor grades a sale from prices (section 7),
-so stopping a sold stock's reviews costs no grade. Not covered: a watchlist
-entry kept for a user's watch is not released when the watch ends on the home
-page (the API's delete route demotes it); a home-page save drops the
-watchlist stocks the home page does not list; and an account whose portfolio
-file is quarantined is not read, so its stocks can be released. **Planned:**
-FIX-032.
+reached", and every run tries again. A portfolio file that cannot be read,
+or one quarantined (`portfolio.json.corrupt-<time>`) and not yet restored,
+releases nothing that run, and the log names it: that account's holdings are
+unknown, not empty. A user's removal asks the same question across every
+portfolio (`demote_symbol`): when a holding is deleted, or a watch ends
+through the API or on the home page, the stock's held or watchlist entry is
+disabled only when no portfolio holds it and no user's own watchlist lists
+it, and a held entry that only a watch keeps turns weekly. The auditor grades
+a sale from prices (section 7), so stopping a sold stock's reviews costs no
+grade.
 
 Example: 25 original entries and 15 held stocks fill the 40. A SWITCH sells
 OLD for NEW: OLD's entry is disabled first, so NEW takes its place, and
-OLD's 16:30 review and monthly forecast stop. The manual delete routes
-demote too, looking only at the user's own portfolio.
+OLD's 16:30 review and monthly forecast stop. If another user's own
+watchlist lists OLD, its entry stays as a weekly one, and goes when that
+user removes OLD on the home page.
+
+**The home page's watchlist save names only the change.** The page sends
+`PUT /ui/watchlist` with `add` or `remove` and one stock, and shows the list
+the answer carries. A save never drops a stock it does not name: a shelf idea
+promoted after the page loaded, a stock added through the API, the
+autopilot's note of an exit. `add` takes the home page's own list of stocks;
+`remove` takes any stock on the watchlist, since the page shows every one. The
+older form, the whole list, only adds: a stock it omits may be one the page
+never saw, and nothing in the list tells that apart from a removal.
 
 ### Sizing every buy
 

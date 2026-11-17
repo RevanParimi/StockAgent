@@ -1158,7 +1158,17 @@ async def update_agent_tasks(body: _TaskFlagsBody,
 # ---------------------------------------------------------------------------
 
 class _WatchlistBody(BaseModel):
-    watchlist: list[str]
+    """The home page's save (FIX-032). `add` and `remove` name only what the
+    user changed. `watchlist`, the whole list as the page last read it, is the
+    older form a page loaded before FIX-032 still sends."""
+    watchlist: list[str] | None = None
+    add: list[str] | None = None
+    remove: list[str] | None = None
+
+
+def _clean_symbols(syms: list[str] | None) -> list[str]:
+    """Upper-case, stripped, without blanks or repeats, in the order given."""
+    return list(dict.fromkeys(s.strip().upper() for s in syms or [] if s.strip()))
 
 
 @router.get("/watchlist", summary="Get current user watchlist with live ticker prices")
@@ -1192,36 +1202,62 @@ async def get_watchlist(
     return {"watchlist": syms, "tickers": list(tickers)}
 
 
-@router.put("/watchlist", summary="Persist the current user's watchlist")
+@router.put("/watchlist", summary="Change the current user's watchlist")
 async def update_watchlist(body: _WatchlistBody,
                            user: dict = Depends(get_current_user)) -> dict:
+    """FIX-032: a save changes only what the user changed on the home page.
+
+    `add` adds stocks from the home page's own list (`_ALL_TICKERS`); `remove`
+    removes any stock the watchlist holds, since the page shows every one.
+    The older whole-list form only adds: a stock it omits may be one that
+    page never saw (a shelf idea promoted since it loaded, the autopilot's
+    note of an exit), and nothing in the list tells that apart from a
+    removal, so it never removes. Each removed stock then leaves the daily
+    review when no portfolio holds it and no user's own watchlist lists it
+    (`demote_symbol`). Returns the whole watchlist after the change."""
     valid_syms = {t["sym"] for t in _ALL_TICKERS}
-    sanitized = [s.strip().upper() for s in body.watchlist if s.strip().upper() in valid_syms]
-    sanitized = list(dict.fromkeys(sanitized))   # deduplicate preserving order
+    delta = body.add is not None or body.remove is not None
+    if not delta and body.watchlist is None:
+        raise HTTPException(status_code=422,
+                            detail="Send 'add' or 'remove', or the whole 'watchlist'.")
 
     # Atlas C5: when enabled, the watchlist is per-user (single SoT =
     # Portfolio.watchlist, projected into user_instruments by the C3 hooks); any
-    # authenticated user edits their own. Dormant path is unchanged: the legacy
-    # global watchlist.json, owner-only (mirrors require_owner's human path — the
+    # authenticated user edits their own. Dormant path: the legacy global
+    # watchlist.json, owner-only (mirrors require_owner's human path — the
     # machine-key path never applied to this UI route).
     if atlas_store.enabled():
+        from core.portfolio.promotion import demote_symbol
         from core.portfolio.store import PortfolioStore
         from backend.shared.schemas.portfolio import WatchlistItem
         from datetime import date
         store = PortfolioStore(user_id=user["user_id"])
-        current = {w.symbol for w in store.load().watchlist}
-        desired = set(sanitized)
-        today = date.today().isoformat()
-        for sym in desired - current:
-            store.add_watchlist(WatchlistItem(symbol=sym, added=today))
-        for sym in current - desired:
-            store.remove_watchlist(sym)
-        logger.info("[ui/watchlist] Saved per-user watchlist for %s: %s",
-                    user["user_id"], sanitized)
-        return {"watchlist": sanitized}
+        with store.locked():
+            current = [w.symbol for w in store.load().watchlist]
+            add = [s for s in _clean_symbols(body.add if delta else body.watchlist)
+                   if s in valid_syms and s not in current]
+            # Only `remove` removes; the whole-list form carries none.
+            remove = [s for s in _clean_symbols(body.remove) if s in current]
+            today = date.today().isoformat()
+            for sym in add:
+                store.add_watchlist(WatchlistItem(symbol=sym, added=today))
+            for sym in remove:
+                store.remove_watchlist(sym)
+            saved = [w.symbol for w in store.load().watchlist]
+        demoted = [s for s in remove if demote_symbol(s)]
+        logger.info("[ui/watchlist] %s: added %s, removed %s, managed entries disabled %s",
+                    user["user_id"], add or "none", remove or "none", demoted or "none")
+        return {"watchlist": saved}
 
     if user.get("role") != "owner":
         raise HTTPException(status_code=403, detail="Owner only.")
+    if delta:
+        current = _load_watchlist()
+        removed = set(_clean_symbols(body.remove))
+        sanitized = [s for s in current if s not in removed] + [
+            s for s in _clean_symbols(body.add) if s in valid_syms and s not in current]
+    else:
+        sanitized = [s for s in _clean_symbols(body.watchlist) if s in valid_syms]
     _WATCHLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
     _WATCHLIST_PATH.write_text(json.dumps(sanitized), encoding="utf-8")
     logger.info("[ui/watchlist] Saved watchlist: %s", sanitized)

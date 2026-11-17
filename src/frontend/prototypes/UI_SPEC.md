@@ -225,7 +225,7 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 | `Hero` | `openChat` | `saUser` (first name), `NIFTY50` ("Nifty 50 ±x.xx% on <date>", omitted when null), `MARKET_TODAY.oneLiner`, `__apiState` / `__apiFetchedAt` (badge). Greeting by the IST hour |
 | `TodayPane` | `data` (MARKET_TODAY) | `MarketUnavailable` when `data` is null; `NiftyBox` fetches `GET /ui/nifty-ranges?range=` (value, change, "as of <date>", or "Unavailable right now") |
 | `MonthPane` | `data` (MARKET_MONTH) | Votes card only when `agentVotes` is non-empty |
-| `WatchlistPane` | — | `WATCHLIST`, `TICKERS`, then `GET /ui/watchlist` (the account's list + prices). Price 0 → "—"; `hasData` false → "Not analysed" |
+| `WatchlistPane` | — | `WATCHLIST`, `TICKERS`, then `GET /ui/watchlist` (the account's list + prices). Price 0 → "—"; `hasData` false → "Not analysed". Add and remove send `PUT /ui/watchlist` with `{add: [sym]}` or `{remove: [sym]}` only, then show the list the answer carries |
 | `TrendingPane` | — | `GET /ui/trending`, `TRENDING` on a network error; unavailable when both are empty |
 | `CategoryCard` | `c` (one CATEGORIES item) | — |
 | `SuggestCard` | `s` (one SUGGESTIONS item) | `TICKERS` (by sym) |

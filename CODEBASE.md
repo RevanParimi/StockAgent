@@ -365,7 +365,7 @@ acts as owner (single-user passthrough).
 | GET | `/ui/market/summary` | None | Market pulse, driver cards, sector index changes, Nifty Auto sparkline. Built from shared stocks only. |
 | GET | `/ui/nifty-ranges?range=1M` | None | The Nifty 50 over a calendar span (`1W`, `1M`, `3M`, `6M`, `1Y`): closes, last `value`, its date `asOf`, and `change`; `value`/`asOf`/`change` are `null` when the fetch failed. |
 | GET | `/ui/watchlist` | None | User watchlist with live prices. When `ATLAS_ENABLED`, the session user's `Portfolio.watchlist` (per-user); else the global `data/watchlist.json` (Atlas C5). |
-| PUT | `/ui/watchlist` | None → owner | Persist watchlist. When `ATLAS_ENABLED`, writes the session user's `Portfolio.watchlist`; else owner-only global `data/watchlist.json` (Atlas C5). |
+| PUT | `/ui/watchlist` | None → owner | Change the watchlist: `add` (stocks from the home page's own list) and `remove` (any stock on it) name only the change; the whole-list form `watchlist` only adds. Answers the whole list after the change. When `ATLAS_ENABLED`, the session user's `Portfolio.watchlist`, and each removed stock is demoted when no portfolio holds it and no user's own watchlist lists it; else owner-only global `data/watchlist.json` (Atlas C5). |
 | GET | `/ui/search?q=<term>` | session optional | Ticker + thesis text search (falls back to yfinance lookup). A thesis match names only stocks the caller may see. |
 | GET | `/ui/categories` | None | Categories (EV, mass-market, etc.) with ticker lists. |
 | PUT | `/ui/categories/{key}/tickers` | owner or machine key | Add/remove tickers from a category (body: `{add: [], remove: []}`). |
@@ -426,9 +426,9 @@ All endpoints take an optional `user_id` query param (default `portfolio.default
 |--------|------|------|-------------|
 | GET | `/portfolio` | optional key | Holdings + watchlist marked to market at latest NSE close (per-holding `last_close`, `pnl_pct`). |
 | POST | `/portfolio/holdings` | optional key | Add virtual holding `{symbol, sector?, qty, buy_date, price?}` — `sector` omitted → resolved via `SectorRegistry`; `price` omitted → real NSE close on `buy_date`. 422 on unsupported sector / bad date / no price. Auto-promotes (origin=held, daily cadence). Wired to the prototype portfolio page's Add-holding modal (portfolio-live-wiring). |
-| DELETE | `/portfolio/holdings/{symbol}` | optional key | Remove holding; demotes from managed universe unless watchlisted. 404 if absent. |
+| DELETE | `/portfolio/holdings/{symbol}` | optional key | Remove holding; demotes it from the managed universe when no portfolio holds it and no user's own watchlist lists it (a held entry only a watch keeps turns weekly). 404 if absent. |
 | POST | `/portfolio/watchlist` | optional key | Add watchlist symbol `{symbol, sector?, reason?}` — `sector` omitted → resolved via `SectorRegistry`; promotes with weekly cadence. |
-| DELETE | `/portfolio/watchlist/{symbol}` | optional key | Remove watchlist symbol; demotes unless held. |
+| DELETE | `/portfolio/watchlist/{symbol}` | optional key | Remove watchlist symbol; demotes it when no portfolio holds it and no user's own watchlist lists it. |
 | POST | `/portfolio/import-csv` | optional key | Raw CSV body `symbol,sector,qty,avg_buy_price,buy_date`; blank price → real close on buy date; per-row errors reported. With cash accounting on, each row is fresh capital like a manual add: `capital_in` rises by its cost and a `manual` BUY ledger row is written with no cash moved. |
 | GET | `/portfolio/advice?limit=<1-500>` | optional key | Advice-ledger tail (append-only JSONL of every verdict). |
 | GET | `/portfolio/digest/latest` | optional key | Latest EOD digest (404 until the advisor has run). |

@@ -247,10 +247,9 @@ async def delete_holding(
     else:
         if not store.remove_holding(symbol):
             raise HTTPException(status_code=404, detail=f"No holding {symbol.upper()}")
-    demoted = False
-    p = store.load()
-    if not any(w.symbol == symbol.upper() for w in p.watchlist):
-        demoted = demote_symbol(symbol)
+    # FIX-032: demote_symbol asks every portfolio, this one included, whether
+    # the stock is still held or on a user's own watchlist.
+    demoted = demote_symbol(symbol)
     return {"removed": symbol.upper(), "demoted": demoted,
             "transaction": (txn.model_dump() if txn else None)}
 
@@ -287,11 +286,8 @@ async def delete_watchlist(
     store = _store(user["user_id"])
     if not store.remove_watchlist(symbol):
         raise HTTPException(status_code=404, detail=f"No watchlist entry {symbol.upper()}")
-    demoted = False
-    p = store.load()
-    if not any(h.symbol == symbol.upper() for h in p.holdings):
-        demoted = demote_symbol(symbol)
-    return {"removed": symbol.upper(), "demoted": demoted}
+    # FIX-032: demote_symbol asks every portfolio, this one included.
+    return {"removed": symbol.upper(), "demoted": demote_symbol(symbol)}
 
 
 @router.post("/import-csv", summary="Bulk import holdings from CSV text")

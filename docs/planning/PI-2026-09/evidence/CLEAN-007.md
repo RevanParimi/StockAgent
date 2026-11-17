@@ -88,7 +88,33 @@ is an edit to `config/milestones.yaml`, which the owner approves separately.
 - `CODEBASE.md`: the file tree's line for `backup.py`.
 - `docs/planning/PI-2026-09/BACKLOG.md`: B-7 closed.
 
-## For the commit and the deploy (the owner's word)
+## Committed and deployed, 17 Nov 08:05 IST
+
+Asked when to commit and push, the owner answered "Commit and push now" at about 08:03 IST.
+
+- **Commits:** `73e0c29`, the 8 code and test files; each committed file's sha256 equals the
+  bytes the full suite ran on. `7603e81`, documents only: this story's, the investment track's
+  cards, and the earlier conversation's records of the FIX-032 deploy and PR-014's acceptance. The
+  KT header names `73e0c29`; PDF 73 pages, source `a08f270e`; `check_kt_docs` `errors: []`.
+- **Suite evidence for the push:** the 07:12-07:38 run above, on the same code bytes. No test
+  reads the documents, so the suite was not run a second time on the committed tree; a second
+  run would have ended after the 08:30 analysis job began.
+- **Push:** `62d36ce..7603e81` at 08:05:11 IST. Railway deployment `6ea566ab` (commit `7603e81`)
+  created 08:05:15, SUCCESS by 08:07:44; the previous `43790aa6` REMOVED; `/health` 200 at
+  08:07:48 (one read of the deployment list and one request to `/health`).
+- **Not read:** whether the 08:00 IPO refresh had finished before the restart; its second pass
+  runs at 17:00.
+- **Dated watch `CLEAN-007-W1`** (STATE `pending_production_checks`), from Wed 18 Nov: no
+  "StockAgent nightly backup" mail for the night of 17 Nov; the status file names that night's
+  archive with its drill passed and no `emailed` field.
+- **The push record** (this section, STATE and HANDOFF, KT section 1 with "production runs
+  `73e0c29`" and the Backups row, guide 12-L deployed, PDF 73 pages source `6b446816`) is one
+  docs-only commit on `7603e81`, made at the owner's word ("go ahead commit and push", about
+  08:14 IST). Its push is held to about 09:20 IST, after the morning jobs (08:15 to 09:00): it
+  restarts the app and carries nothing production needs. If `origin/main` is still `7603e81`, it
+  was not pushed.
+
+## The steps as planned before the owner's word
 
 1. **Commit:** the 8 code and test files; then the documents, with the KT header's "Code
    inspected" set to the new commit.

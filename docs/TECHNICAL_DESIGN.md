@@ -35,9 +35,10 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs `28ec4c9`. The inspected code, `73e0c29`, adds CLEAN-007,
-committed and not yet deployed: the nightly backup sends no email.
-`28ec4c9` was pushed at about 07:01
+Production runs the inspected code, `73e0c29`. It was pushed at about 08:05
+IST on 17 November 2026 (the deployment list showed it SUCCESS at 08:07;
+`/health` answered 200) and adds CLEAN-007: the nightly backup sends no email.
+Before it, `28ec4c9` was pushed at about 07:01
 IST on 17 November 2026 (the deployment list showed it SUCCESS at 07:03;
 `/health` answered 200). It adds FIX-032 to `1913017`, which was pushed on 15
 November: the home page's watchlist save changes only the stock it names, and
@@ -66,7 +67,7 @@ operational control.
 | Chat brief scope | Chat's brief tool reads only the caller's portfolio. The owner gets the owner's brief; a member account with no holdings is told there is no brief yet and sees none of the owner's. | Verified 2026-10-11, the owner's check with a member account |
 | Score history | Nothing wrote it from 21 Apr 2026 (`ce1eeb5`) to 15 Oct, while 1,082 analyses with a verdict were logged in `run_summaries`. On 2026-10-16 at 08:24 IST the owner ran the backfill: 1,082 rows, 83 stocks, runs 26 Aug to 15 Oct, each marked as copied and removable, with a backup next to `scores.db`. No live row existed then. Rows written by live analyses await the probe after the 16 Oct 16:30 review. | Owner's backfill run, 2026-10-16 (counts only); read-only probe, 2026-10-15 ([PR-001 review](planning/PI-2026-09/evidence/PR-001-review.md)) |
 | Delivery | Outbound SMTP has worked since a plan upgrade on 2026-09-21. The outbox records transport acceptance; user receipt is not observable. Whether `RESEND_API_KEY` is set was not inspected. | Section 10 |
-| Backups | The nightly archive and restore drill run. No off-site target is configured, because the owner deferred it to the end of the PI, so the watchdog sends a weekly reminder. Production still tries the email copy each night (the 16 Nov archive, 19.5 MB, was not emailed); the inspected code sends none and is not yet deployed. | Watchdog mail, 2026-10-07; the owner's read-only probe, 2026-11-17 |
+| Backups | The nightly archive and restore drill run. No off-site target is configured, because the owner deferred it to the end of the PI, so the watchdog sends a weekly reminder. Since the 17 Nov 2026 deploy the archive is not emailed, so no copy exists outside the volume; the first night on that code is 17 Nov (not yet read). The 16 Nov archive was 19.5 MB. | Watchdog mail, 2026-10-07; the owner's read-only probe and the deploy, 2026-11-17 |
 | Watchdog milestones | The milestones that lapsed in August and September were judged and retired on 2026-10-06. The next morning's run sent no LAPSED notice. | Watchdog mail, 2026-10-07 |
 | CI | Three GitHub Actions jobs run on every push. The first run, on 2026-09-28, passed. | Section 13 |
 

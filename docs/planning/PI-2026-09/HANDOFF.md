@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-17 (the owner's investment track goes first: PR-035 next; the backup email is removed, not yet deployed)
+# Current handoff - 2026-11-17 (the owner's investment track goes first: PR-035 next; the backup email is removed and deployed)
 
 ## 17 Nov: ₹1 crore in 20 to 30 holdings becomes the plan; the backup email is removed
 
@@ -10,7 +10,27 @@
   30 holdings, each with its analysis, with up to ten tasks for the research and the features.
   You called the under-invested book the biggest failure so far.
 
-### CLEAN-007: the nightly backup sends no email (done, accepted, not deployed)
+### CLEAN-007: the nightly backup sends no email (done, accepted, deployed at 08:05 IST)
+
+- **Pushed and deployed at your word** ("Commit and push now"): `62d36ce..7603e81` at 08:05:11
+  IST; Railway `6ea566ab` SUCCESS by 08:07:44, the previous deployment REMOVED, `/health` 200 at
+  08:07:48. The push carried CLEAN-007's code (`73e0c29`) and documents only. **Tonight's 23:30
+  backup is the first that sends no mail.**
+- **Dated watch `CLEAN-007-W1`, from Wed 18 Nov:** tell the next conversation whether a
+  "StockAgent nightly backup" mail arrived for the night of 17 Nov. None should. The status file
+  on the volume is read with PR-035's probe.
+- **Not read:** whether the 08:00 IPO refresh had finished before the restart at about 08:05; its
+  second pass runs at 17:00.
+- **The push record is committed** at your word ("go ahead commit and push", about 08:14 IST),
+  as one docs-only commit on `7603e81`: STATE, this section, the receipt, KT section 1
+  (production runs `73e0c29`; the Backups row), guide 12-L (deployed) and the PDF (73 pages,
+  source `6b446816`; `check_kt_docs` `errors: []`).
+- **Its push is held to about 09:20 IST.** At 08:15 the morning jobs were starting (company
+  events 08:15, analysis 08:30, pre-open check 08:45, brief 08:50, macro news 09:00). A docs-only
+  push restarts the app under them and carries nothing production needs. A guarded script pushes
+  between 09:20 and 11:30 only if nothing else was committed meanwhile. **If `origin/main` is
+  still `7603e81`, that push did not happen:** push in a job-free gap; production already runs
+  the same code.
 
 - **What changed:** the 23:30 job no longer mails its archive (19.5 MB on 16 Nov). The archive,
   its restore drill and the seven copies on the volume stay, and cost nothing.
@@ -71,7 +91,7 @@
   PR-037's wider supply is felt from its catch-up run or the first Saturday after its deploy.
 - **Nothing in production changed** in this conversation: no setting, ledger, job or variable.
   No production data was read.
-- **STATE:** CLEAN-007 `done`, production `pending_deployment`; PR-035 to PR-039 added; PR-005,
+- **STATE:** CLEAN-007 `done`, production `pending_observation`; PR-035 to PR-039 added; PR-005,
   PR-033 and PR-034 moved; `active_task` null, `next_task` PR-035. Spliced by
   `analysis_data/clean007/bookkeep.py`.
 - **Next `continue`: PR-035.**

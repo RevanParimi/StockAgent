@@ -27,8 +27,15 @@ and PR-021 to PR-031 as paused cards, each with a start condition. The owner's k
 decisions of that evening add CLEAN-004 and CLEAN-005 (after CLEAN-002), PR-032 (after PR-018) and
 the paused CLEAN-006; the decision table is in [CLEAN-003](stories/CLEAN-003.md). **Since 16 Nov 2026**, at the
 owner's request, [PR-033](stories/PR-033.md) (read every deployed story's production watch once)
-and [PR-034](stories/PR-034.md) (a Sunday watch report and a guard) follow FIX-032. The tables
-below show the plan as it was first drawn.
+and [PR-034](stories/PR-034.md) (a Sunday watch report and a guard) follow FIX-032. **Since
+17 Nov 2026**, at the owner's request (₹1 crore of paper capital in 20 to 30 analysed holdings),
+the investment track goes first: [PR-035](stories/PR-035.md) (read why the buy list offered 2 of
+20 ideas), [PR-036](stories/PR-036.md) (the capital and the holdings settings),
+[PR-037](stories/PR-037.md) (enough analysed ideas), FIX-015 and PR-015 (the exit rule),
+[PR-038](stories/PR-038.md) (a stock is not refused for having risen),
+[PR-039](stories/PR-039.md) (where the funnel lost the stocks that rose) and PR-005; PR-033 and
+PR-034 follow them. [CLEAN-007](stories/CLEAN-007.md) removed the backup email the same day. The
+tables below show the plan as it was first drawn.
 
 Planning assumption: six two-week sprints, one story implementation and a separate review conversation at a time. Start dates and team capacity are not known; these are relative sprints, not promised calendar deadlines. Estimates are relative, provisional points; re-estimate after Sprint 1. Do not expand a story just to meet a point budget.
 

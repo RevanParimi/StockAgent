@@ -73,8 +73,8 @@ position-sized personal instructions.
   - A working "delete my account and data" path (the per-user data layout makes this
     genuinely easy — one user_id scope to erase).
   - Backups containing user data are access-controlled; know where they live
-    (currently: nightly volume backup email — that becomes multi-user PII the moment
-    user #2 exists, so the backup channel and storage need the same care as the DB).
+    (currently: seven nightly archives on the Railway volume, never emailed; an off-site
+    bucket, once configured, holds multi-user PII and needs the same care as the DB).
   - Push subscription endpoints and email addresses are PII too — prune on logout/delete.
 - **Status — mostly built (Atlas):**
   - ✅ **Consent gate:** M0 signup requires an explicit `consent` (422 without it).
@@ -92,7 +92,7 @@ position-sized personal instructions.
     `atlas.db` cascade but already erases the live `users.db`/portfolio/chat/telemetry paths.
     The nightly backup encrypts its off-site copy client-side
     (AES-256-GCM; the key stays with the owner) and needs a private bucket with a key scoped
-    to it; none is configured yet. Two gaps remain: the emailed copy is still unencrypted, and an erased account
+    to it; none is configured yet. The archive is not emailed. One gap remains: an erased account
     survives in off-site copies until retention removes them (30 nightly copies by default).
 
 ---

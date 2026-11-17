@@ -1,27 +1,133 @@
-# Current handoff - 2026-11-17 (FIX-032 committed, pushed after the suite; PR-014 step 7 waits for your paste)
+# Current handoff - 2026-11-17 (the owner's investment track goes first: PR-035 next; the backup email is removed, not yet deployed)
 
-## 17 Nov: FIX-032 committed; the push follows the suite; step 7 is your read
+## 17 Nov: ₹1 crore in 20 to 30 holdings becomes the plan; the backup email is removed
+
+- **Session `stockagent-main-bf`** [8282a6], a new conversation you opened with two requests,
+  Tuesday from about 06:59 IST. `origin/main` and `main` `62d36ce` after a pull. The peer `-35`
+  pushed FIX-032 at 07:01 and was idle from about 07:06; its uncommitted records (the section
+  below, STATE, the PR-014 receipt, KT section 1, guide 07-R, the PDF) were kept and built on.
+- **Your requests:** remove the backup email completely; and ₹1 crore of paper capital in 20 to
+  30 holdings, each with its analysis, with up to ten tasks for the research and the features.
+  You called the under-invested book the biggest failure so far.
+
+### CLEAN-007: the nightly backup sends no email (done, accepted, not deployed)
+
+- **What changed:** the 23:30 job no longer mails its archive (19.5 MB on 16 Nov). The archive,
+  its restore drill and the seven copies on the volume stay, and cost nothing.
+- **What you gave up, as you chose:** with the off-site bucket not set up, no copy of the paper
+  book exists outside the Railway volume. If the volume were deleted, the ledger and its seven
+  archives would go together. The weekly watchdog line "No off-site copy has ever been confirmed"
+  still arrives because it is true; removing it is a registry edit you approve separately.
+- **Lane: light, accepted without a fresh-session review.** Receipt:
+  [evidence/CLEAN-007.md](evidence/CLEAN-007.md). The job opens no SMTP connection and posts
+  nothing to Resend with email fully working (both transports; the test fails on `62d36ce`).
+  Full suite: 6,749 passed / 12 skipped / 1 xfailed / 0 failed, return code 0, 26m17s
+  (07:12-07:38 IST). `check_kt_docs` `errors: []`; PDF 73 pages, source `a08f270e`. BACKLOG B-7 is closed.
+- **Committed at your word** ("Commit and push now", answered at about 08:03 IST): code
+  `73e0c29`, the 8 tested files byte for byte, then the docs commit with the KT header set to it.
+  The push follows these commits; its record is added after it. A push before 23:30 stops the
+  mail the same night.
+- **The mails you already have** are not touched by code. In the mailbox that receives them,
+  search `subject:"StockAgent nightly backup"` and delete. The Gmail account connected to the
+  assistant holds none.
+
+### The investment track
+
+- **Why the book is not invested** (code inspection, and your 06:38 read in the section below):
+  - Until 15 Nov the autopilot could open a position only as a SWITCH out of a holding. Buying
+    with idle cash was built and stayed off.
+  - The first run with it on (Mon 16 Nov) bought one stock and stopped for lack of ideas: the buy
+    list offered 2 of the shelf's 20 active ideas. No record says which rule left the other 18
+    out.
+  - The settings are sized for ₹10 L in 12 to 15 stocks: a position is 6.7% of equity, 15 stocks
+    at most, 2 new positions a day, 20 active ideas, 3 a sector, 20 companies analysed a week
+    with re-dives served first, 40 stocks in the daily review.
+  - An idea is bought only within 97% to 102% of the close its analysis read, for up to 30 days.
+    A stock that rises 3% after its analysis is refused until its re-dive (BACKLOG B-3, never
+    measured).
+- **Five cards, and the order** (my call; you may change it):
+  1. **[PR-035](stories/PR-035.md)** (light, 2 points): one read-only probe. Which rule left each
+     idea out, how many sat above their entry band, how many BUYs a week's deep dives produce,
+     and what a deep dive and a daily review cost. Its numbers replace the provisional ones below.
+  2. **[PR-036](stories/PR-036.md)** (3 points): a ₹90 L deposit, so ₹1 crore is paid in; a
+     position becomes 3.2% of equity (about ₹3.2 L); 25 positions aimed for, 30 at most, 20 the
+     soft minimum; provisionally 5 new positions a day and 60 stocks in the daily review. Settings
+     first, the deposit second.
+  3. **[PR-037](stories/PR-037.md)** (decision path, 5 points): 45 active ideas, 6 a sector, 45
+     companies analysed a week with a share kept for new ones, and one catch-up run. The 0.55 BUY
+     bar does not move: more holdings come from analysing more companies.
+  4. FIX-015, then PR-015 (the evidence exit rule acts), before the bigger book meets the old
+     exit rule.
+  5. **[PR-038](stories/PR-038.md)** (decision path, 3 points): a stock is not refused for having
+     risen; measured first on the paper lane, with the rule set beforehand.
+  6. **[PR-039](stories/PR-039.md)** (light, 3 points): for the 50 stocks that rose most and the
+     50 that fell most, the place the funnel lost each.
+  7. PR-005 (an investment case for every position), then PR-033 and PR-034, then the queue as
+     it was.
+- **Dates, as estimates:** today's 16:30 run is the second with the switch on, still at 2 new
+  positions a day and about ₹65,000 each. PR-035 needs one probe. PR-036 is one conversation
+  and a push; from the next run after its deposit, up to 5 positions a day of about ₹3.2 L. How
+  fast that reaches 20 holdings depends on how many ideas qualify a day, which PR-035 measures;
+  PR-037's wider supply is felt from its catch-up run or the first Saturday after its deploy.
+- **Nothing in production changed** in this conversation: no setting, ledger, job or variable.
+  No production data was read.
+- **STATE:** CLEAN-007 `done`, production `pending_deployment`; PR-035 to PR-039 added; PR-005,
+  PR-033 and PR-034 moved; `active_task` null, `next_task` PR-035. Spliced by
+  `analysis_data/clean007/bookkeep.py`.
+- **Next `continue`: PR-035.**
+
+## 17 Nov: FIX-032 committed and deployed; PR-014 step 7 read and accepted
 
 - **Session `stockagent-main-35`** [341d05], a new conversation opened with "continue", Tuesday
   from about 06:24 IST. `origin/main` `1913017` after a fetch; `main` `2f0c777`, 1 ahead. Peers
   `-1a`, `-6d`, `-31` and `-17` were idle.
-- **Your two answers:** you run PR-014's step 7 probe yourself and paste the output; FIX-032:
+- **Your two answers:** you ran PR-014's step 7 probe yourself and pasted the output; FIX-032:
   "commit and push now".
 - **Committed:** `28ec4c9`, FIX-032's 13 reviewed files byte for byte (manifest `7f30781e`
-  verified against the working tree and against the commit). Then a docs commit: FIX-032's
+  verified against the working tree and against the commit); `62d36ce`, the docs commit: FIX-032's
   receipts and manifest, the five commit-time edits (KT header `28ec4c9`, edition 2026-11-17; KT
-  section 1, FIX-032 committed and not yet deployed; KT section 12 Done; guide 07-R accepted; PDF
-  72 pages, source `87ad3798`; `check_kt_docs` `errors: []`), BACKLOG B-6, SA-026's note, and the
-  peer `-6d`'s PR-033, PR-034, README and SA-041.
-- **The push** of `2f0c777` and both FIX-032 commits follows the full suite on the committed tree.
-  After the deploy: reload any open home page, and the dated watch `FIX-032-W1` goes into STATE.
-- **PR-014 step 7:** from Git Bash in the repository:
-
-  ```text
-  railway ssh "cd /app && echo $(gzip -9c analysis_data/pr014/step7_probe.py | base64 -w0) | base64 -d | python -c 'import sys,zlib;exec(zlib.decompress(sys.stdin.buffer.read(),31))'"
-  ```
-
-  Then PR-014 is accepted in the light lane; its three dated checks stay pending.
+  sections 1 and 12; guide 07-R; PDF), BACKLOG B-6, SA-026's note, and the peer `-6d`'s PR-033,
+  PR-034, README and SA-041.
+- **Full suite on `62d36ce`:** 6,748 passed / 12 skipped / 1 xfailed / 1 failed, return code 1,
+  25m10s (06:32-06:57 IST). The one failure is the Windows file-lock flake (WinError 5 on
+  `os.replace` in the test's own temp folder) in
+  `test_store_migration_sa009.py::test_a_refused_store_is_retried_and_the_status_never_overstates`;
+  its file passed 5 of 5 alone, and nothing it covers changed since `2f0c777`. Pushed on that
+  evidence, because a second 25-minute run would have ended at the 07:30 job.
+- **Pushed and deployed:** `1913017..62d36ce` at 07:01:28 IST; Railway `43790aa6` SUCCESS by
+  07:03:30, the previous deployment REMOVED, `/health` 200 at 07:03:35. Production runs FIX-032.
+  **Reload any home page you had open before 07:03** (an old tab's removal does nothing).
+- **New dated watch `FIX-032-W1`, from Tue 24 Nov:** you re-run `analysis_data/fix032/prod_probe.py`
+  (the command is in STATE). Pass: no quarantined account left unrestored, no review entry for a
+  stock nobody holds or watches, no user-added or shelf-promoted watchlist item lost.
+- **PR-014 step 7, your read at 06:38 IST.** Monday's 16:30 run reviewed Friday 13 Nov (18 of 18
+  stocks, nothing failed) and made the first `deployment` record:
+  - it bought one stock, **COFORGE, ₹64,896**, the size the rule asks for (80% of equity over 12
+    holdings), booked at the 13 Nov close;
+  - holdings 2 → 3, invested 15.7% → 22.3%, cash ₹7,63,937, equity ₹9,82,897 (−1.7% on ₹10 L);
+  - **it stopped for lack of ideas:** 2 were offered (COFORGE, and UNIONBANK, already held),
+    though the shelf had 20 active ideas on 15 Nov.
+- **`PR-014-D1` amended (my call, recorded):** the record counts only ideas that reached the buy
+  step, so the 1 Dec read also counts the shelf's active ideas the buy list left out, by reason
+  (old deep dive, dive after the close, not a BUY, no sector named, sold since), and names the
+  door that kept the most out. If one door keeps out more than half on most days, it becomes a card
+  with the idle cash in rupees.
+- **Backup (BACKLOG B-7):** last night's archive (19.5 MB) was not emailed. base64 makes it about
+  26 MB, over Gmail's 25 MB limit (inferred from the code). With the off-site bucket deferred, that
+  mail was the only copy off Railway. It becomes a card if you ask, if a restore is needed, or at
+  `PR-014-R1` if the bucket is still not set up.
+- **PR-014 accepted** in the light lane without a fresh-session review (receipt
+  [evidence/PR-014-rollout.md](evidence/PR-014-rollout.md), "Conversation 3"). Its checks `D1`
+  (from 1 Dec), `R1` (14 Dec) and `R2` (11 Jan) stay pending.
+- **Railway's agent tooling** (you asked): `railway setup agent` would add Railway's skills and an
+  MCP server of 46 tools, none marked read-only. New to us: CPU, memory and HTTP error figures. Not
+  given: reading production's data files (probes still need `railway ssh`). Risky: `deploy` from
+  the local folder, `remove_volume`, `set_variables`, and `list_variables` printing secrets. My
+  advice: not now; if wanted, install it with only the read tools allowed, next to PR-034.
+- **Uncommitted:** this section, STATE, the PR-014 receipt, KT section 1 (production runs
+  `28ec4c9`; the first run's result in the "Idle cash" row) and the PDF (72 pages, source
+  `33e8e136`), guide 07-R (deployed), BACKLOG B-7. Commit at your word; a docs-only push redeploys.
+- **Next `continue`:** PR-033 (light: one read of every open production watch).
 
 ## 16 Nov: FIX-032 fresh review → ACCEPTED
 

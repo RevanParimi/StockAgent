@@ -31,4 +31,8 @@ paused or removed, they wait with it:
 
 ## Closed
 
-None yet.
+- **B-7** (17 Nov 2026): the owner asked for the backup email to be removed completely, because
+  the nightly archive (19.5 MB on 16 Nov) was filling the mailbox. [CLEAN-007](stories/CLEAN-007.md)
+  removed the send, so the failed 16 Nov mail has nothing left to repair. What B-7 warned of
+  stands and the owner accepted it: with SA-007's bucket not set up, no copy of the paper book
+  exists outside the Railway volume.

@@ -312,3 +312,90 @@ run, and the nightly jobs of 15 Nov. It was dry-run on a made-up fixture and wri
 After step 7 is recorded, PR-014 is accepted in the light lane and becomes `done`; its three
 checks stay pending.
 
+## Conversation 3: Tuesday 17 Nov, from about 06:24 IST
+
+Session `stockagent-main-35` [341d05], a new conversation opened with "continue". `origin/main`
+was `1913017` after a fetch; `main` was `2f0c777`, 1 ahead. Peers `-1a`, `-6d`, `-31` and `-17`
+were idle. Lane: light (rollout). The owner chose to run step 7's probe and paste the output,
+and asked in the same conversation for FIX-032 to be committed and pushed ("commit and
+push now"); that push is recorded in STATE and HANDOFF, not here.
+
+### Step 7: the first run with deployment on
+
+The owner ran `analysis_data/pr014/step7_probe.py` through `railway ssh` at 06:38 IST (the form in
+"Next: step 7" above) and pasted its output. It opens files read-only and writes nothing; it
+printed counts, symbols and the book's own paper figures. The output is kept under the ignored
+`analysis_data/pr014/step7/`.
+
+Monday 16 Nov's 16:30 job reviewed the session of Friday 13 Nov and finished at 17:01 IST:
+18 stocks required, 18 completed, none degraded, gated, skipped or failed; news for all 18; the
+pipeline completed. Its digest (`2026-11-13.json`) carries the first `deployment` record:
+
+| | Before | After |
+| --- | --- | --- |
+| Holdings | 2 | 3 |
+| Invested | 15.7% | 22.3% |
+| Cash | | ₹7,63,937 |
+
+- **Regime RISK_ON, so the target was 80% of equity** (₹7,86,379 of ₹9,82,974). One position asks
+  for the NORMAL share over the 12 holdings aimed for: ₹65,532.
+- **Bought one stock: COFORGE, ₹64,896**, booked at Friday 13 Nov's close as the design books every
+  run's trades (the reviewed session's close). The ledger has this one `BUY` (`DEPLOY`) since the
+  switch, and no sale.
+- **Why it stopped:** "no further qualifying idea"; "3 holdings, below the 10 aimed for: only 1
+  qualifying idea"; "1 idea already held". Two ideas were offered: COFORGE (bought) and UNIONBANK
+  (already held).
+- **The book after the run:** equity ₹9,82,897 at the 13 Nov point, against ₹10,00,000 put in
+  (−1.7%); 3 holdings; 22.3% invested.
+
+**In plain words:** the switch works. It bought the one idea that qualified, at the size the rule
+asks for, and said why it stopped. What held it back is the supply of ideas: of the 20 active
+shelf ideas counted on 15 Nov, only 2 reached the buy step, so ₹7.64 L stays in cash while the
+target asks for about ₹7.86 L invested.
+
+**The door upstream of the record.** The `deployment` record lists only the ideas the day's buy
+list offered (`core/discovery/candidates.py`). An idea the list leaves out (a deep dive older
+than the re-dive age, a dive after the session's close, a verdict that is not a BUY, no sector
+key named, a stock sold since) is in no count. `PR-014-D1` as written counts only offered ideas,
+so it could not see this door. Delegated call, recorded: D1 also counts the shelf's active ideas
+that were not offered, by the reason the list left them out, and names the door that kept the most
+money in cash. `step7_probe.py` does not read this; the D1 conversation extends it (the shelf
+file and the list's own rules, read-only).
+
+### The nightly jobs of 16 Nov
+
+- **Audit (23:45):** 37 rows graded, 2,415 already present, none unpriceable, 2,394 pending.
+- **Backup (23:30):** 3,619 files, 19,549,981 bytes, `emailed: false`. The code tries the email
+  copy for an archive up to 20 MiB (`services/data/backup.py`, `EMAIL_MAX_BYTES`), but base64 makes
+  a 19.5 MB attachment about 26 MB, over Gmail's 25 MB limit, so the send most likely failed
+  (inference from the code; the send's error was not read). The archive grows each night; above
+  20 MiB the email is not tried. With SA-007's off-site bucket deferred, that mail was the only
+  copy off the Railway volume. Recorded as [BACKLOG](../BACKLOG.md) B-7.
+- **Not read:** Atlas's 23:00 to 23:20 jobs, and whether the weekly review's mail was delivered.
+
+### Accepted
+
+PR-014 is accepted in the light lane, **without a fresh-session review** (AGENTS.md step 4: a
+rollout story that changes one setting the owner authorized). Its steps:
+
+| Step | Done |
+| --- | --- |
+| 1. FIX-030-M1 | Passed, the owner's read, 15 Nov |
+| 2. Commit FIX-031 | `899526a` and `7487104`, 15 Nov |
+| 3. Full suite | 6,456 passed / 0 failed, 15 Nov |
+| 4. Push | `1913017`, 15 Nov 07:16 IST; the first jobs ran on it |
+| 5. The paper lane's record | Conversation 2 |
+| 6. The switch | `portfolio.overrides.primary.deploy_idle_cash: true`, in step 4's push |
+| 7. The first run's record | This section |
+| 8. Dated checks | `PR-014-D1` (amended above), `R1`, `R2` in STATE |
+| 9. Deferred setup reminded | Conversation 2 |
+
+The full suite in this conversation ran once, on the committed tree `62d36ce` before the FIX-032
+push, which holds the switch's configuration unchanged: **6,748 passed / 12 skipped / 1 xfailed /
+1 failed, return code 1, 25m10s (06:32-06:57 IST)**. The one failure is the Windows file-lock flake
+(`PermissionError: [WinError 5]` on `os.replace` in the test's own temp folder) in
+`tests/unit/intelligence/rl/test_store_migration_sa009.py::test_a_refused_store_is_retried_and_the_status_never_overstates`.
+Its file passed 5 of 5 alone (22 tests each), and nothing under `core/intelligence/rl/stores/` or
+its tests changed since `2f0c777`. `git status` was the same before and after. The project guards
+ran in it, and `check_kt_docs` gives `errors: []` after this record's KT edit. STATE: PR-014 `done`;
+production `pending_observation` until `PR-014-D1`, `R1` and `R2` are read. Next: PR-033.

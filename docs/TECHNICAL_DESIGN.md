@@ -2,7 +2,7 @@
 
 **Edition:** 2026-11-17 · **Audience:** engineers and teammates learning the product
 
-**Code inspected:** `28ec4c9d7081a900980db6d9d91dac40e10648d0`
+**Code inspected:** `73e0c293d692b6ae5f3c420954e79ac75e4c4242`
 
 **PDF:** [StockAgent-Three-Loops.pdf](StockAgent-Three-Loops.pdf), generated from this Markdown.
 
@@ -35,28 +35,28 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs `1913017`. It was pushed at about 07:16
-IST on 15 November 2026 (the deployment list showed it SUCCESS at 07:19;
-`/health` answered 200; that day's 17:45 IPO refresh, 18:00 weekly review and
-19:00 IPO deep dive ran on it). Against what ran before, it adds FIX-030 (a
+Production runs `28ec4c9`. The inspected code, `73e0c29`, adds CLEAN-007,
+committed and not yet deployed: the nightly backup sends no email.
+`28ec4c9` was pushed at about 07:01
+IST on 17 November 2026 (the deployment list showed it SUCCESS at 07:03;
+`/health` answered 200). It adds FIX-032 to `1913017`, which was pushed on 15
+November: the home page's watchlist save changes only the stock it names, and
+a removal takes a stock out of the daily review only when no portfolio holds
+it and no user watches it. Against what ran before it, `1913017` added FIX-030 (a
 generic-graph analysis reads no other sector's funds; a key no analysis named
 is re-examined; an unnamed idea stops taking a weekly re-dive; the peer cache
 keeps only answers) and FIX-031 (a decision at a session's close reads the
 thesis, the confidence, the events and the research verdicts as they stood at
-that close). It drops code that nothing ran: the RAG pipeline, the C#
+that close). It dropped code that nothing ran: the RAG pipeline, the C#
 scheduler and score proxy, and the early single-sector CLI. Its configuration
-switches idle-cash deployment on for the owner's portfolio. The inspected
-code, `28ec4c9`, adds FIX-032, committed and not yet deployed: the home
-page's watchlist save changes only the stock it names, and a removal takes a
-stock out of the daily review only when no portfolio holds it and no user
-watches it. The table gives
+switches idle-cash deployment on for the owner's portfolio. The table gives
 the configuration that differs from the repository and the state of each
 operational control.
 
 | Area | State in production | Evidence |
 |---|---|---|
 | Learning mode | `observe` since 2026-09-26, set by the Railway variable `RL_LEARNING_MODE`; the repository default is `adapt`. Weight versions stay unchanged across reviews, and every review records its proposal. Every envelope since the 2026-10-01 monthly forecast was issued in `observe`. | Verified 2026-10-01 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)) |
-| Idle cash | Idle-cash deployment is on for the primary portfolio since the 15 Nov 2026 deploy, as the repository configures it (`portfolio.overrides.primary.deploy_idle_cash: true`; the global switch off). It acts in the pipeline after each weekday 16:30 review, first on Monday 16 Nov. Before it: 2 holdings, 15.6% invested, equity ₹9,82,408 at the 12 Nov point against ₹10,00,000 put in. | Deploy 15 Nov; read-only probe 15 Nov 21:10 IST ([PR-014 receipt](planning/PI-2026-09/evidence/PR-014-rollout.md)) |
+| Idle cash | Idle-cash deployment is on for the primary portfolio since the 15 Nov 2026 deploy, as the repository configures it (`portfolio.overrides.primary.deploy_idle_cash: true`; the global switch off). It acts in the pipeline after each weekday 16:30 review, first on Monday 16 Nov. Before it: 2 holdings, 15.6% invested, equity ₹9,82,408 at the 12 Nov point against ₹10,00,000 put in. The first run, Monday's review of the 13 Nov session (regime RISK_ON, target 80%), bought one stock, COFORGE for ₹64,896 at that session's close: 3 holdings, 22.3% invested, cash ₹7,63,937, equity ₹9,82,897. It stopped because only 1 idea qualified: 2 were offered, and the other was already held. | Deploy 15 Nov; read-only probes 15 Nov 21:10 and 17 Nov 06:38 IST ([PR-014 receipt](planning/PI-2026-09/evidence/PR-014-rollout.md)) |
 | Decision gate | `record`, the repository default: computed and logged everywhere, nothing withheld. The 2026-10-01 decision kept `record`, because 25 of 78 analyses (32%) would have abstained, most for reasons since fixed. | [Enforce decision](planning/PI-2026-09/evidence/SA-003-enforce-decision-2026-10-01.md) |
 | Instrument identity | Since 2026-10-01, TATAMOTORS is disabled in the managed list, with its history kept, and TMPV is managed as its own automobile ticker. The registry lists TATAMOTORS and HEXAWARE as unresolved. | Owner's dashboard change, 2026-10-01 |
 | Prediction stores | The ownership quarantine was applied on 2026-10-01. It moved 16 stray `automobile/<TICKER>` copies, byte-identical, into `data/prediction_quarantine/20260930T184031Z-ce3556d023d3/`. Rollback remains available. | Apply record in [STATE.json](planning/PI-2026-09/STATE.json) |
@@ -66,7 +66,7 @@ operational control.
 | Chat brief scope | Chat's brief tool reads only the caller's portfolio. The owner gets the owner's brief; a member account with no holdings is told there is no brief yet and sees none of the owner's. | Verified 2026-10-11, the owner's check with a member account |
 | Score history | Nothing wrote it from 21 Apr 2026 (`ce1eeb5`) to 15 Oct, while 1,082 analyses with a verdict were logged in `run_summaries`. On 2026-10-16 at 08:24 IST the owner ran the backfill: 1,082 rows, 83 stocks, runs 26 Aug to 15 Oct, each marked as copied and removable, with a backup next to `scores.db`. No live row existed then. Rows written by live analyses await the probe after the 16 Oct 16:30 review. | Owner's backfill run, 2026-10-16 (counts only); read-only probe, 2026-10-15 ([PR-001 review](planning/PI-2026-09/evidence/PR-001-review.md)) |
 | Delivery | Outbound SMTP has worked since a plan upgrade on 2026-09-21. The outbox records transport acceptance; user receipt is not observable. Whether `RESEND_API_KEY` is set was not inspected. | Section 10 |
-| Backups | The nightly archive and restore drill run. No off-site target is configured, because the owner deferred it to the end of the PI, so the watchdog sends a weekly reminder. | Watchdog mail, 2026-10-07 |
+| Backups | The nightly archive and restore drill run. No off-site target is configured, because the owner deferred it to the end of the PI, so the watchdog sends a weekly reminder. Production still tries the email copy each night (the 16 Nov archive, 19.5 MB, was not emailed); the inspected code sends none and is not yet deployed. | Watchdog mail, 2026-10-07; the owner's read-only probe, 2026-11-17 |
 | Watchdog milestones | The milestones that lapsed in August and September were judged and retired on 2026-10-06. The next morning's run sent no LAPSED notice. | Watchdog mail, 2026-10-07 |
 | CI | Three GitHub Actions jobs run on every push. The first run, on 2026-09-28, passed. | Section 13 |
 
@@ -2833,7 +2833,7 @@ All times are **Asia/Kolkata (IST)** defaults.
 | `atlas_universe_recompute` | Daily 23:00 | Demand/cadence; no-op if Atlas disabled. |
 | `atlas_cost_rollup` | Daily 23:15 | Cost aggregation; Atlas gate in handler. |
 | `atlas_retention` | Daily 23:20 | Retention; Atlas gate in handler. |
-| `data_backup_nightly` | Daily 23:30 | Archive with manifest, restore drill, local rotation, encrypted off-site copy when configured, email copy; the status feeds the watchdog (section 10). |
+| `data_backup_nightly` | Daily 23:30 | Archive with manifest, restore drill, local rotation, encrypted off-site copy when configured; nothing is emailed; the status feeds the watchdog (section 10). |
 | `audit_nightly` | Daily 23:45 | Matured outcome grading/breach reports; audit gate. |
 | `ledger_cleanup_weekly` | Monday 03:30 | Stale-lesson cleanup. |
 | `event_ingest_weekly` | Saturday 10:00 | Dossier events; event-ingest gate. |
@@ -3065,10 +3065,10 @@ acts on it:
 - **History.** Nightly retention deletes accepted rows after 30 days. Dead
   letters stay for 180 days; after 30 days only their payload is cleared.
 
-The monthly Learning Evidence email, the watchdog heartbeat and the backup
-email are sent directly, not through the outbox, so they get no retry and no
-dead letter; a failure is logged with its reason. The backup email is not the
-off-site copy (below). **Planned:** a witness outside the app for missed jobs
+The monthly Learning Evidence email and the watchdog heartbeat are sent
+directly, not through the outbox, so they get no retry and no dead letter; a
+failure is logged with its reason. **Planned:** a witness outside the app for
+missed jobs
 ([SA-042](planning/PI-2026-09/stories/SA-042.md)).
 
 **Dated production observation.** The September audit recorded email
@@ -3137,10 +3137,16 @@ steps:
    keeps the newest `BACKUP_OFFSITE_KEEP` confirmed copies (30 by default; 0
    or less keeps all). It never touches objects not named like a backup, and
    it deletes a copy's manifest before its ciphertext.
-5. **Email** the plaintext zip when it is under 20 MB. This is a direct send;
-   it does not count as off-site.
-6. **Record** `data/backups/backup_status.json`. A failed drill then raises,
+5. **Record** `data/backups/backup_status.json`. A failed drill then raises,
    so the scheduler's job-error alert fires.
+
+The archive is never emailed. At about 20 MB a night the mail filled the
+owner's mailbox, and the owner chose on 17 November 2026 to go without it.
+While no off-site target is configured, the seven local copies are therefore
+the only copies, and they sit on the volume they protect: they recover a bad
+write or a rewritten ledger, not a lost volume. For example, if the Railway
+volume were deleted today, the paper book's ledger and its seven archives
+would go together.
 
 **Visibility.** The watchdog invariant `backup_recoverable` reads that status
 every morning. It warns when the job has not run for 36 hours, when the drill
@@ -3199,7 +3205,8 @@ deployment is a deliberate human step.
   written until the database is repaired, so the ledgers are not backed up in
   the meantime; earlier archives and off-site copies are kept. **Planned:**
   SA-036.
-- The email copy is an unencrypted direct send.
+- With no off-site target configured, no copy exists outside the Railway
+  volume.
 - Credentials live in Railway variables and are not backed up.
 - A deleted account's data survives in off-site copies until retention
   removes them (30 nightly copies by default).
@@ -3515,6 +3522,17 @@ learning to `observe`. SA-023 puts learned lessons on measurable probation.
   the band gets its own fix. At four and eight weeks the owner reads the
   results: the share invested, the holdings, the book against the Nifty
   (section 7), closed trades by exit reason and the refusal counts.
+- **Planned:** ₹1 crore of paper capital in 20 to 30 holdings, each bought
+  from its own deep dive (the owner's request of 17 November 2026). The first
+  run with deployment on was offered 2 of the shelf's 20 active ideas, and no
+  record says which rule left the other 18 out. PR-035 reads that, with how
+  many ideas sat above their entry band and how many BUYs a week's deep dives
+  produce. PR-036 adds the capital and makes a position 3.2% of equity: 25
+  aimed for, 30 at most. PR-037 widens the supply of analysed ideas (the
+  shelf, the weekly deep dives, the limit per sector) and leaves the 0.55
+  floor where it is. PR-038 tests whether an idea that has risen past its
+  band should still be bought. PR-039 reports where the funnel lost the
+  stocks that rose.
 
 ### Product results
 
@@ -3717,8 +3735,14 @@ section 10) are part of the current design.
 | [FIX-015](planning/PI-2026-09/stories/FIX-015.md) | The shock exit reads the re-forecast's trigger, not its sentence | Open | 6 Portfolio | PR-009 |
 | [FIX-016](planning/PI-2026-09/stories/FIX-016.md) | Fix the evidence exit's inputs and its switch gate before the shadow starts | Done | 6 Portfolio; 7 Marksheets | PR-009 |
 | [PR-013](planning/PI-2026-09/stories/PR-013.md) | Show where losses come from and what waiting costs | Open | 7 Marksheets | PR-002, PR-009 |
-| [PR-014](planning/PI-2026-09/stories/PR-014.md) | Switch idle-cash deployment on, then read what it does | Open | 1 Production state; 6 Portfolio | FIX-030, FIX-031 |
+| [PR-014](planning/PI-2026-09/stories/PR-014.md) | Switch idle-cash deployment on, then read what it does | Done | 1 Production state; 6 Portfolio | FIX-030, FIX-031 |
 | [PR-015](planning/PI-2026-09/stories/PR-015.md) | The evidence exit rule acts | Open | 1 Production state; 6 Portfolio | FIX-015, PR-014 |
+| [PR-035](planning/PI-2026-09/stories/PR-035.md) | Read why the buy list offered 2 of 20 ideas, and what 25 to 30 holdings need | Open | 6 Portfolio; 8 Discovery | None |
+| [PR-036](planning/PI-2026-09/stories/PR-036.md) | ₹1 crore of paper capital, 25 positions aimed for, 30 at most | Open | 1 Production state; 6 Portfolio | PR-035 |
+| [PR-037](planning/PI-2026-09/stories/PR-037.md) | Enough analysed ideas to hold 25 to 30 stocks | Open | 8 Discovery | PR-035, PR-036 |
+| [PR-038](planning/PI-2026-09/stories/PR-038.md) | A stock is not refused for having risen since its analysis | Open | 6 Portfolio | PR-035 |
+| [PR-039](planning/PI-2026-09/stories/PR-039.md) | Where the funnel lost the stocks that rose | Open | 7 Marksheets; 8 Discovery | None |
+| [CLEAN-007](planning/PI-2026-09/stories/CLEAN-007.md) | The nightly backup stops emailing the archive | Done | 1 Production state; 10 Operations | None |
 | [FIX-017](planning/PI-2026-09/stories/FIX-017.md) | The holding sync reads every NSE corporate-action row it is given, under NSE's code | Open | 6 Portfolio | None |
 | [FIX-018](planning/PI-2026-09/stories/FIX-018.md) | The switch gate sets aside a decision whose result can never be known: named, and within a cap | Done | 6 Portfolio; 7 Marksheets | FIX-016 |
 | [FIX-019](planning/PI-2026-09/stories/FIX-019.md) | Find out why NSE lists no corporate action for 14 configured codes, and map the stale ones | Done | 4 Research; 6 Portfolio | None |

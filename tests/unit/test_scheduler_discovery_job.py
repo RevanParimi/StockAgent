@@ -28,7 +28,7 @@ def test_run_discovery_cycle_happy_path(monkeypatch):
             return {}
     monkeypatch.setattr(disc, "run_screen", lambda on=None: calls.append("screen") or _Screen())
     monkeypatch.setattr(disc, "run_deep_dives",
-                        lambda cands, on, max_n=None: calls.append("dives") or ["d1"])
+                        lambda cands, on, max_n=None, **kw: calls.append("dives") or ["d1"])
 
     class _FakeShelf:
         def apply_deep_dives(self, dives, on):
@@ -67,7 +67,7 @@ def test_run_discovery_cycle_stage_failure_is_contained(monkeypatch):
         def model_dump(self):
             return {}
     monkeypatch.setattr(disc, "run_screen", lambda on=None: _Empty())
-    monkeypatch.setattr(disc, "run_deep_dives", lambda cands, on, max_n=None: [])
+    monkeypatch.setattr(disc, "run_deep_dives", lambda cands, on, max_n=None, **kw: [])
 
     class _FakeShelf:
         def apply_deep_dives(self, dives, on):

@@ -13,11 +13,12 @@ def test_discovery_settings_present():
     assert settings.DISCOVERY_MIN_PRICE == 20.0
     assert settings.DISCOVERY_MAX_PLEDGE_PCT == 25.0
     assert settings.DISCOVERY_CIRCUIT_STREAK_MAX == 3
-    assert settings.DISCOVERY_SHORTLIST_SIZE == 80
-    assert settings.DISCOVERY_MAX_CANDIDATES == 40
-    assert settings.DISCOVERY_DEEP_DIVE_COUNT == 20         # PR-004: 10 -> 20
-    assert settings.DISCOVERY_SHELF_SIZE == 20              # PR-004: 10 -> 20
-    assert settings.DISCOVERY_MAX_IDEAS_PER_SECTOR == 3
+    assert settings.DISCOVERY_SHORTLIST_SIZE == 120         # PR-037: 80 -> 120
+    assert settings.DISCOVERY_MAX_CANDIDATES == 60          # PR-037: 40 -> 60
+    assert settings.DISCOVERY_DEEP_DIVE_COUNT == 45         # PR-004: 10 -> 20; PR-037: 45
+    assert settings.DISCOVERY_NEW_DIVE_FLOOR == 15          # PR-037: a third of the budget
+    assert settings.DISCOVERY_SHELF_SIZE == 45              # PR-004: 10 -> 20; PR-037: 45
+    assert settings.DISCOVERY_MAX_IDEAS_PER_SECTOR == 6     # PR-037: 3 -> 6
     assert settings.DISCOVERY_REDIVE_AFTER_DAYS == 30
     assert settings.DISCOVERY_WATCHLIST_BUYS is True
     assert settings.DISCOVERY_STALE_DAYS == 60

@@ -707,7 +707,7 @@ def test_old_values_send_the_cycle_exactly_the_ipo_and_screen_candidates(
     shelf_mod.ShelfStore().save(Shelf(ideas=[
         ShelfIdea(symbol="PREGATE", sector="generic", added="2026-06-01", conviction=0.7)]))
     passed = []
-    monkeypatch.setattr(disc, "run_deep_dives", lambda cs, on: passed.extend(cs) or [])
+    monkeypatch.setattr(disc, "run_deep_dives", lambda cs, on, **kw: passed.extend(cs) or [])
     disc.run_discovery_cycle(on=date(2026, 7, 4))
     assert [c.symbol for c in passed] == ["IPO0", "SCR0", "SCR1"]
     assert env["listing_refreshed"] == [date(2026, 7, 4)]
@@ -855,6 +855,10 @@ def _cycle_env(tmp_path, monkeypatch, *, screen, ipo=(), listing=None, sector_of
     monkeypatch.setattr(settings, "DISCOVERY_DATA_DIR", str(tmp_path / "disc"))
     monkeypatch.setattr(settings, "DISCOVERY_IPO_ENABLED", bool(ipo))
     monkeypatch.setattr(settings, "DISCOVERY_IPO_MAX_DEEP_DIVES", 2)
+    # PR-004's split, re-dives first up to the IPO slots: these tests' budgets
+    # (2 to 20) predate PR-037's floor for new companies, which
+    # test_idea_supply_pr037.py sets itself.
+    monkeypatch.setattr(settings, "DISCOVERY_NEW_DIVE_FLOOR", 0)
     env = {"listing_refreshed": [], "alerts": []}
     symbols = [c.symbol for c in list(screen) + list(ipo)] + list(window_symbols)
     listing = listing if listing is not None else companies(*symbols)

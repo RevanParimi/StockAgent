@@ -582,11 +582,19 @@ discovery:
   max_promoter_pledge_pct: 25.0  # promoter shares pledged, % of the promoter holding (NSE pledge data)
   pledge_guard: true             # base.py fallback false; rollback = false (the check is then degraded)
   circuit_streak_max: 3          # > N trailing upper-circuit days = operator pattern
-  shortlist_size: 80             # bhavcopy-ranked names that get per-symbol guard checks
-  max_candidates: 40             # ScreenResult size after guards
-  deep_dive_count: 20            # weekly analyst calls, re-dives and IPO slots included (LLM cost cap)
-  shelf_size: 20                 # max active shelf ideas: 12 holdings plus rotation
-  max_ideas_per_sector: 3        # active ideas per market sector; 0 = no cap
+  # Enough analysed ideas to hold 25 to 30 stocks (PR-037, 18 Nov 2026): a
+  # stock still needs its own deep dive and a BUY at min_conviction. Re-dives
+  # go first but leave the IPO slots and new_dive_floor calls for the screen's
+  # new companies: of 45, at most 28 re-dives with 2 IPO candidates. A deep
+  # dive costs a mean $0.0108 (PR-035's read), about $2 a month at 45 a week.
+  # Rollback: 80, 40, 20, 0, 20 and 3; nothing is sold, and a shelf above
+  # 20 ideas keeps them until they rotate or are displaced.
+  shortlist_size: 120            # bhavcopy-ranked names that get per-symbol guard checks (provisional)
+  max_candidates: 60             # ScreenResult size after guards (provisional)
+  deep_dive_count: 45            # weekly analyst calls, re-dives and IPO slots included (LLM cost cap)
+  new_dive_floor: 15             # calls re-dives leave for the screen's new companies (a third, provisional); 0 = off
+  shelf_size: 45                 # max active shelf ideas: 30 holdings plus 15 waiting
+  max_ideas_per_sector: 6        # active ideas per sector key; 0 = no cap (6 x 3.2% within the 30% sector cap)
   redive_after_days: 30          # an idea's deep dive older than this is re-dived before it can be bought; 0 = off
   max_unnamed_redives: 2         # FIX-030: an idea still without a sector key after this many re-dives in a row is dropped; 0 = no limit
   watchlist_buys: true           # a user's watchlist BUY (actionable, fresh) is a buy candidate too

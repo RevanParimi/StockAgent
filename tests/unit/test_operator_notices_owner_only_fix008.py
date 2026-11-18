@@ -273,7 +273,7 @@ def _discovery_shelf_add(tmp_path, monkeypatch):
     monkeypatch.setattr(disc, "refresh_listing", lambda **kw: {})
     monkeypatch.setattr(disc, "run_screen", lambda on: ScreenResult(
         screen_date="2026-10-10", universe_size=1, shortlist_size=1, candidates=[]))
-    monkeypatch.setattr(disc, "run_deep_dives", lambda cands, on: [Dive()])
+    monkeypatch.setattr(disc, "run_deep_dives", lambda cands, on, **kw: [Dive()])
     monkeypatch.setattr(disc, "ShelfStore", Shelf)
     monkeypatch.setattr(disc, "run_paper_reviews",
                         lambda on: {"reviewed": [], "failed": [], "skipped": []})

@@ -14,6 +14,23 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 18 Nov, morning (autopilot): PR-039 → ACCEPTED; the report is on `main`, its run waits for your word
+
+- **Autopilot session `1118-0729-p1`**, a `continue` on the code-server from about 07:29 IST,
+  outside a push window. `main` = `a16e214`, two docs commits ahead of `origin/main` `6e1962f`.
+- **Resumed PR-039** from its local branch: `ac86ec3` rebased onto `main` as `8d32141` (no file
+  in common). Self-review against the screen file, the scheduler's job times and the deployment
+  record found nothing to fix in the logic; one line of output changed: place 5's card line named
+  PR-035, a finished read, and now names PR-038, PR-036 and BACKLOG B-13, the doors PR-035 found.
+  The code commit is `a07e551`, merged to `main` by fast-forward.
+- **KT:** section 11 names the report; section 12's rows for PR-039, PR-035 and FIX-015 read
+  Done (the last two were stale).
+- **Accepted in the light lane** without a fresh-session review: full suite on `a07e551` 6,804 passed /
+  12 skipped / 1 xfailed / 0 failed (5m52s); `check_kt_docs` errors []; `check_broad_except` OK (148).
+- **Not done here:** the card's tables. The report reaches production with the next push; its
+  one read-only run waits for your word ("run the PR-039 report"). Push pending to Thu 19 Nov
+  00:10 IST, behind PR-015's switch.
+
 ## 18 Nov, morning (a manual session): PR-035's production read → ACCEPTED; your three answers
 
 - **A manual session on the code-server**, opened for "start autopilot", from about 07:05 IST

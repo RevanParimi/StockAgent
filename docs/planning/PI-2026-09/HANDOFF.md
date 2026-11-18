@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-18 (PR-035 accepted; PR-015 has your word and switches in the next push window; PR-039 resumes)
+# Current handoff - 2026-11-18 (PR-039 accepted; PR-015 switches in the next push window; PR-036 next)
 
 **Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
 
@@ -18,41 +18,43 @@
 ## Now
 
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
-  Mondays): **PR-015's switch first.** You gave the word on 18 Nov at about 07:05 IST ("do as
-  per recommendation", that is "switch PR-015"). The session merges `story/PR-015` (`12b7901`)
+  Mondays): **PR-015's switch first.** You gave the word on 18 Nov at about 07:05 IST ("do as per
+  recommendation", that is "switch PR-015"). The session merges `story/PR-015` (`12b7901`)
   into `main`, runs the full suite on the exact commit, pushes, checks the deploy and `/health`,
   and adds `PR-015-W1`, as the receipt's "What the owner's word starts" says
-  ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md)).
-- **Outside a window: resume PR-039** (`active_task`). It is on the local branch `story/PR-039`
-  (`ac86ec3`, code-server only): `scripts/missed_risers.py`, 13 focused tests, PRODUCT_MAP, KT
-  section 8, CODEBASE and guide 06-P. Autopilot `1118-0052-p6` stopped at a usage limit before the
-  full suite (run it without `-n`), the receipt `evidence/PR-039.md`, STATE and HANDOFF. Then
-  merge to `main`. Its production report waits for your word after the deploy.
-- **Then PR-036** (₹1 crore, 25 aimed for), the next ready story in STATE's order. **You gave
-  the word for its push and the ₹90 L deposit** (18 Nov, about 07:25 IST; STATE `owner_word`), in
-  the card's order: settings first, pushed in a window (it may go with PR-015's push); the deposit
-  only after that deploy is confirmed, from inside the container through `railway ssh`, the key
-  never printed.
+  ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md)). That push also carries the four
+  commits waiting on `main` (below), PR-039's report among them.
+- **Outside a window: PR-036** (`next_task`; ₹1 crore, 25 aimed for), the next ready story in
+  STATE's order. **You gave the word for its push and the ₹90 L deposit** (18 Nov, about 07:25
+  IST; STATE `owner_word`), in the card's order: settings first, pushed in a window (it may go
+  with PR-015's push); the deposit only after that deploy is confirmed, from inside the container
+  through `railway ssh`, the key never printed. Its first phase names the lane.
+- **PR-039 is accepted** (18 Nov, autopilot `1118-0729-p1`, light lane;
+  [evidence/PR-039.md](evidence/PR-039.md)). `scripts/missed_risers.py` is on `main`: for the
+  last 60 sessions, the 50 stocks that rose most and the 50 that fell most inside the screen's
+  floors, each with the furthest funnel place it reached and the reason on record, totals by
+  place in rupees of a 3.2% position. It reaches production with the next push; the card's
+  tables wait for its one read-only run at your word.
 - **PR-035 is accepted** (18 Nov, a manual session; [evidence/PR-035.md](evidence/PR-035.md),
   phase 2). The biggest door was "dived after the session's close" (₹7,86,379 over two
   sessions; one run a week, it clears by itself). The door that stays is "no sector key named":
   five ideas, IGIL (0.70) first; FIX-030 re-dives them first on Saturday 21 Nov (BACKLOG B-13).
   The entry band kept ₹1,96,260, so PR-038 stays after PR-037. At today's ₹10 L, buying stops at
   about 11 holdings (the 80% target). PR-036 and PR-037 now carry the measured values.
-- **`CLEAN-007-W1` passed** (no mail; the archive of 17 Nov, drill ok, no `emailed` field). It
-  moved to the archive.
-- **New:** the code-server's Railway SSH key is registered (START HERE, "The code-server").
-  BACKLOG B-13 and B-14 come from PR-035's read.
-- **FIX-015 is live** since 18 Nov 00:28 IST (`8422a23`).
-- **Git:** this session's records are one docs commit on `main` after `6e1962f`, push pending
-  until the next window (Thu 19 Nov 00:10 IST). `story/PR-015` and `story/PR-039` are local only;
-  `story/FIX-015` is merged.
+- **FIX-015 is live** since 18 Nov 00:28 IST (`8422a23`). The code-server's Railway SSH key is
+  registered (START HERE, "The code-server").
+- **Git:** `main` is four commits ahead of `origin/main` (`6e1962f`): the 18 Nov morning
+  records (`2e415e4`, `a16e214`) and PR-039 (`a07e551` code, the records commit after it). Push
+  pending until the next window (Thu 19 Nov 00:10 IST). `story/PR-015` is local only;
+  `story/PR-039` and `story/FIX-015` are merged.
 - **The investment track** in STATE's order: PR-035 (done), PR-036, PR-037, FIX-015 (done),
-  PR-015, PR-038, PR-039, PR-005, then PR-033 and PR-034.
+  PR-015, PR-038, PR-039 (done), PR-005, then PR-033 and PR-034.
 
 ## Waits for you
 
-- **PR-039's report, later:** say "run the PR-039 report" once it is deployed (read-only).
+- **PR-039's report, after the next push:** say "run the PR-039 report" (read-only; the
+  command is in its receipt). If place 1 or 2 loses more than a quarter of the risers, that
+  session writes the card, with a money example.
 - **Optional:** the weekly watchdog line "No off-site copy has ever been confirmed" stays while it
   is true; removing it is a registry edit you approve separately.
 

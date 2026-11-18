@@ -224,7 +224,7 @@ evidence.
 | `data/managed_tickers.json` | The managed list: each scheduled ticker's sector and enabled flag. Disabling a ticker keeps its history; removing it deletes the history. |
 | `data/peer_profiles.json` | Yahoo industry and market cap per listing, with its date, for the valuation peers (section 4). Both workers write it: each save takes `peer_profiles.json.lock`, merges with the file and replaces it atomically. A cache: deleting it costs only lookups. |
 | `data/prediction_quarantine/<migration>/` | Stores moved out of the live tree by the ownership quarantine, with their `lineage.json`. Inside `data/`, so the nightly backup keeps them; outside the tree the evaluators walk. |
-| `data/portfolio/<user>/` | PortfolioStore: holdings/cash, advice and transaction JSONL, value history, dated digests, briefs and weekly reviews, `weekly_scorecard.jsonl` (one results row per ISO week, written once; section 7) and `exit_shadow.jsonl` (both exit rules' verdicts, one row per holding per review day, written once; section 6). The nightly auditor's `advice_outcomes.jsonl` sits beside them. |
+| `data/portfolio/<user>/` | PortfolioStore: holdings/cash, advice and transaction JSONL, value history, dated digests, briefs and weekly reviews, `weekly_scorecard.jsonl` (one results row per ISO week, written once; section 7) and `exit_shadow.jsonl` (both exit rules' verdicts, one row per holding per review day, written once; section 6) and `cases/<SYMBOL>.jsonl` (each holding's investment case, every version appended, never edited; section 6). The nightly auditor's `advice_outcomes.jsonl` sits beside them. |
 | `data/ipo/` | Historical issue facts and captured demand snapshots; reports derive from these records. |
 | `data/market_cache/ipo.json` and EOD parquet | Cached IPO information and exchange price history; date, source and stale state matter. |
 | `data/events/` | The company-event feed (section 4): `<SYMBOL>.jsonl`, one event per source item, append-only; `state.json`, the day's news-search count and the items judged not about their company; `runs.jsonl`, one line per run; `ownership/<SYMBOL>.json`, each quarter's FII, DII and mutual-fund share read from its shareholding XBRL. Market facts only, with no user in them. The feed writes; `GET /events/{symbol}` reads. |
@@ -722,8 +722,9 @@ Each event is typed, dated and cites the item it came from. Two jobs run it on
 trading days, at 08:15 and 18:30 IST
 (section 9). The evidence exit rule reads its high-materiality negative
 events (section 6); with `advisor.exit_rule: shadow` it only records what it
-would do. The investment case, the explanations and the brief's company lane
-are to read it (**Planned:** PR-005, PR-007, PR-008).
+would do. The investment case reads it to challenge a holding's pillars
+(section 6). The explanations and the brief's company lane are to read it
+(**Planned:** PR-007, PR-008).
 
 A run:
 
@@ -1183,9 +1184,9 @@ evaluates held positions, records advice and optionally executes it.
 The LLM narrates the rule-driven decision; triggers remain available when
 narration fails. The [narrator](../core/portfolio/narrator.py) is given the
 verdict, symbol, close, regime label and rule codes only, on the bulk tier,
-so its text can restate the rule but not the company's facts. **Planned:** an
-investment case recorded per holding (PR-005) and explanations grounded in it
-and in the company events of section 4 (PR-007).
+so its text can restate the rule but not the company's facts. Each holding
+bought from now on carries an investment case (below); **Planned:**
+explanations grounded in it and in the company events of section 4 (PR-007).
 
 | Research verdict | Portfolio action |
 |---|---|
@@ -1332,10 +1333,13 @@ included, is the same code under both
      gate says SELL or STRONG SELL, run before the close, on a later IST day
      than the buy and at most 22 sessions before the review day. The daily
      review's own analysis, run that evening, counts from the next close;
-  3. the close is at or below the invalidation level of the stock's latest
-     shelf idea decided before the close (a deep dive keeps only its day and
-     counts as made at that day's close), where the entry rule refuses to
-     buy, compared in the close's own price basis (below).
+  3. the close is at or below the invalidation price. With an investment
+     case (below), the case's own price, set in the buy day's rupees and
+     used only inside its window. Without one, the invalidation level of the
+     stock's latest shelf idea decided before the close (a deep dive keeps
+     only its day and counts as made at that day's close), where the entry
+     rule refuses to buy, compared in the close's own price basis (below). A
+     case that has no price is not replaced by the shelf's level.
 
   It fires only once the holding has been held `advisor.min_hold_sessions`
   (10) exchange sessions; the stops never wait. An event published at or after
@@ -1348,11 +1352,12 @@ included, is the same code under both
   and materiality are the same bulk-tier model's reading (section 4); only the
   disclosures are typed by fixed rules. A filing may sell because it is the
   company's own primary disclosure, so a routine filing the model labels high
-  negative still sells. **Planned:** PR-012's label-accuracy bench measures
-  that reading (no routine filing may read as high negative); with an
-  investment case, only an event that
-  contradicts one of its pillars, and the case's own invalidation price; a
-  news event can then mark a pillar challenged, never sell (PR-005).
+  negative still sells, whether or not it contradicts a pillar of the
+  holding's investment case: a challenged pillar is recorded, and narrowing
+  the rule to the filings that contradict one waits for PR-013's losses by
+  exit reason. A news event can mark a pillar challenged, never sell.
+  **Planned:** PR-012's label-accuracy bench measures that reading (no
+  routine filing may read as high negative).
 
 **Example: a fresh verdict.** A stock is added by hand on 8 October although
 its analysis of 24 September said SELL. On 23 October, ten sessions later, the
@@ -1394,8 +1399,16 @@ or bonus row from the dive day on that is not read as a ratio of equity shares
 (One price basis, below): one that cannot be parsed, a bonus of other
 securities, a split in short words, or one row naming both a bonus and a split
 (read as its bonus alone, a 1:1 bonus with a ₹10-to-₹2 split would halve the
-level where the price fell to a tenth). The row keeps the level as dived
-(`invalidation_level_at_dive`) beside the one used.
+level where the price fell to a tenth). It is also not used when, from the
+dive day to the review day, NSE lists a row that changes the basis by an
+amount it does not give (a demerger, a scheme, a consolidation, a capital
+reduction, a rights issue: `ActionRecord.basis_changes`), the holding's record
+holds a demerger or relisting applied after the buy, or the instrument
+registry puts the two days on different bases. Such a change lowers the price
+but not the level: dived at ₹500 with the level ₹455, a demerger takes the
+price to ₹470, and a 3.2% fall would fire the rule with the stop far away. The
+row keeps the level as dived (`invalidation_level_at_dive`) beside the one
+used.
 
 **Example.** A stock is dived at about ₹500, with the level ₹455, and bought at
 ₹500. A 1:1 bonus then goes ex. The sync makes the holding 20 shares at ₹250,
@@ -1622,21 +1635,19 @@ through and the decision pace to the scorecard.
 
 **Limits.**
 
-- A holding bought from a watchlist BUY has no stored shelf idea, so the
-  invalidation test cannot fire for it.
+- A holding bought from a watchlist BUY has no stored shelf idea, so without
+  an investment case the invalidation test cannot fire for it. A case written
+  at its purchase takes the watchlist idea's level.
 - For a holding dived before its buy, the invalidation test needs NSE's list to
   reach back to the dive day. The sync asks NSE for the symbol's actions
   without dates, and NSE returns its latest 20 actions of any kind, which for
   a large company reaches back years (12 symbols read in October 2026). The
   level is unused when the stock's earliest listed action is after the dive,
   or it has none, and each row's `gaps` says so.
-- The level follows bonuses and splits only. A demerger, a capital reduction,
-  a rights issue or a row of no known kind that goes ex between the dive and
-  the buy lowers the price but not the level, so the test fires early: dived
-  at ₹500 with the level ₹455, a demerger takes the price to ₹470, the stock is
-  bought there, and a 3.2% fall to ₹455 is at the level. The entry rule reads
-  the same unadjusted level; after the buy, the identity hold covers a
-  registered demerger. **Planned:** PR-005.
+- The level follows bonuses and splits only; a change no ratio converts
+  leaves it unused (above). The entry rule still reads the shelf idea's
+  unadjusted level, so a stock whose price a demerger lowered after its dive
+  can be refused a buy it would have passed.
 - Under `evidence`, a sale's alert and narrative name the three kinds of reason,
   not the one that fired; `exit_shadow.jsonl` has it. **Planned:** PR-007.
 - The TRIM-to-HOLD tax softening still reads the thesis review under both
@@ -1691,6 +1702,74 @@ through and the decision pace to the scorecard.
   note names the skip.
 - A holding whose monthly re-analysis did not run has no research verdict
   after 22 sessions; events, the invalidation level and the stops still apply.
+
+### The investment case
+
+Every holding bought from now on carries a short written case
+(`core/portfolio/cases.py`): why we own it (two
+to four pillars, each citing the input it rests on), what we expect, what
+would prove us wrong, and what to watch next. A SWITCH buy and an idle-cash
+deployment buy that open a position get one after `execute_advice` saves the
+trades; a manual add, after the response, when the stock has an analysis or a
+shelf idea. A top-up never does. A case is never a reason to trade: one that
+cannot be written costs nothing but the case.
+
+**Inputs, each known before the case's clock** (FIX-004): for a SWITCH or
+deployment buy, the 15:30 close of the session it was bought at, the clock the
+buy was decided on; for a manual add or a backfill, the time it is written.
+They are the newest actionable analysis (thesis, drivers, risks, price target
+and its fundamentals reading, `A1`/`F1`), the shelf idea (band, level,
+conviction, `S1`), the dossier's dated guidance (`D1`..; its undated parts only
+when the whole dossier was last updated before that day) and the company's
+events of the last 60 days, medium or high materiality (`E1`..).
+
+**One reasoning-tier call writes the words; code checks every figure**
+(`check_model_case`). A figure an evidence fact cites must be a figure of
+that input, with the same unit; any other figure must be one of the inputs'.
+"18%" is not "18.4%", and "₹1,200" is not "Rs 1,200 Cr". A broken rule, a
+malformed answer or a failed call stores the deterministic case instead: the
+shelf idea's thesis (else the analysis's) copied word for word, its deep
+dive's conviction and verdict as the evidence, the analysis's risks as what
+would prove it wrong, and the rule it broke. An idea with no thesis says
+none was written. `advisor.case_model: false` writes only the deterministic
+case; `advisor.case_write: false` writes none (rollback; stored cases stay).
+
+**Code sets every price and date.** The analysis's price target and the shelf
+idea's invalidation level are put into the buy day's price basis by the
+dive-to-buy part of `level_in_basis` (above), with its refusals. The level
+becomes the case's **invalidation price** only inside a window: above the
+holding's stop price on the purchase day (else the stop already covers it)
+and at least `advisor.case_noise_atr_mult` (1.5) × ATR% below the entry (else
+one ordinary day fires it), with the advisor's own ATR and stop over the
+price history up to the buy day. **Example:** entry ₹500, ATR 2%, a stop of 8%:
+the stop is ₹460 and the noise line ₹485. A level of ₹470 is used; ₹455 (below
+the stop) and ₹490 (noise) are not, and the case says which side. When the
+basis cannot be established the case has no price and names why; it never
+stores the dive's raw level. From then on only the holding's own applied
+bonuses and splits adjust it (`level_after_buy`), so NSE's reach back to the
+dive no longer matters; a change no ratio converts after the buy, or a
+registry basis change, leaves it unused.
+
+**Immutable history.** `data/portfolio/<user>/cases/<SYMBOL>.jsonl` holds every
+version of every case of that symbol; one holding (its buy date) has one case.
+A change appends a version; nothing is edited. A second write for the same
+holding writes nothing, so a re-run writes none. `written` is `at_purchase`
+only for a buy path writing on the buy's own day; a later write, and every
+backfill, is `after_purchase`.
+
+**Pillar status** (`review_pillars`, after each review's trades). A negative
+company event of medium or high materiality, published after the case's
+clock and before the review session's close, in a category a pillar watches,
+marks that pillar `challenged` and cites the event. A results event re-checks
+every pillar: negative, it challenges all of them; otherwise each records the
+day. Each event is read once. The exit evidence records the challenged
+pillars and the case version read; a challenge is never a sale.
+
+`GET /portfolio/cases` returns the signed-in user's newest version of each
+case; `?symbol=` returns every version of that symbol's. A member reads only
+their own. `scripts/backfill_cases.py` writes a case, `after_purchase`, for
+each holding without one: a dry run by default, `--apply` once at the owner's
+word.
 
 ### Data and identity checks on advice
 
@@ -3601,10 +3680,10 @@ The planned changes connect the research to the money:
 - **Know each company daily.** The company-event feed (section 4) records what
   happened to each held, watched and shelf stock, and the changes below read
   it, including insider trades, deals, pledges and shareholding changes.
-- **Own a stock for a reason.** Each holding gets a written investment case:
-  pillars with evidence, an expected range, an invalidation price and business
-  triggers, and the next check. Every number in it is checked against its
-  inputs (PR-005).
+- **Own a stock for a reason.** Each holding bought gets a written investment
+  case: pillars with evidence, the analysis's target, an invalidation price
+  and business triggers, and the next check. Every number in it is checked
+  against its inputs (section 6).
 - **Sell on evidence.** Both exit rules run, the price-path rule acting and
   the evidence rule recorded beside it (section 6). **Planned:** the evidence
   rule acts (PR-015). The price-path rule's verdict is still

@@ -1114,3 +1114,22 @@ def test_a_carried_forward_close_is_graded_from_its_own_session():
     assert {g["priced"] for g in xs.grade_disagreements(
         odd, as_of=d30, stock_quote_on=_nse(95.0), bench_close_on=bench,
         corp_actions=_no_actions)} == {"2026-09-02"}
+
+
+def test_t1_a_split_that_goes_ex_on_the_buy_day_still_divides_the_level():
+    """PR-005's routed T1. Dived 1 Sep with the level ₹900; a 10→2 split (×5) goes ex on
+    15 Sep, the buy day. The buy is at the post-split close, so the sync never applies the
+    split to the holding, and the level must still be divided: 900 / 5 = ₹180.00. A mutant
+    that reads only `dive < ex < buy` leaves ₹900, five times too high, so an ordinary
+    close would fire `case_broken`."""
+    from core.portfolio.corp_actions import action_record
+    on_buy_day = dict(SPLIT_SEP, exDate="15-Sep-2026")
+    nse = action_record([DIVIDEND_AUG, on_buy_day], "AAA")
+    holding = _held("2026-09-15")
+    level, note, gap = xs.level_in_basis(900.0, date(2026, 9, 1), holding, D, nse)
+    assert (round(level, 6), gap) == (180.0, "")
+    assert note == "900.00 at the dive, adjusted for the split ex 2026-09-15 (÷5)"
+    ev = xs.exit_evidence(holding, D, ideas=[_idea(level=900.0, dived="2026-09-01")],
+                          actions=nse)
+    assert ev.invalidation_level == 180.0
+    assert case_broken_reasons(ev, 181.0) == []

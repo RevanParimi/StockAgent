@@ -652,6 +652,7 @@ def execute_advice(store: PortfolioStore, portfolio: Portfolio,
                    candidate_quotes: dict | None = None,
                    surveillance: Callable[[], Report] | None = None,
                    report: dict | None = None,
+                   cases: dict | None = None,
                    ) -> list[TransactionRecord]:
     """Execute one review-day's verdicts. Appends transactions FIRST, then
     saves the portfolio — a crash between the two cannot double-execute
@@ -678,7 +679,13 @@ def execute_advice(store: PortfolioStore, portfolio: Portfolio,
     "not_reviewed" (FIX-028, `_follow_holdings`).
     FIX-028: after the save, the managed list follows the holdings: a stock
     no portfolio holds any more leaves the daily review, and a stock bought
-    joins it."""
+    joins it.
+    PR-005: then, outside the lock, each SWITCH or deployment buy that opened
+    a position gets its investment case (core/portfolio/cases.py
+    `write_for_trades`), from the inputs known at the review session's close;
+    `cases` passes its keyword arguments (default: the shelf index's ideas).
+    `report` receives what was written under "cases". A case that is not
+    written never undoes a trade."""
     if not settings.AUTOPILOT_ENABLED:
         return []
     day = review_date.isoformat()
@@ -755,6 +762,19 @@ def execute_advice(store: PortfolioStore, portfolio: Portfolio,
         report["not_reviewed"] = managed["not_reviewed"]
     if not txns:
         return []
+    try:
+        from core.portfolio import cases as case_writer
+        kw = dict(cases or {})
+        kw.setdefault("ideas", list((shelf_index or {}).values()))
+        kw.setdefault("base_dir", str(store._dir.parent))   # beside portfolio.json
+        written = case_writer.write_for_trades(portfolio.user_id, portfolio, txns, review_date,
+                                               **kw)
+    except Exception as exc:
+        logger.error("[autopilot] investment cases not written for %s: %s",
+                     portfolio.user_id, exc)
+        written = [{"symbol": "", "written": False, "why": f"failed: {exc}"}]
+    if report is not None and written:
+        report["cases"] = written
     logger.info("[autopilot] %s executed %d trade(s) for %s",
                 day, len(txns), portfolio.user_id)
     return txns

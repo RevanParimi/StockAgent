@@ -282,7 +282,10 @@ def run_post_review_pipeline(review_date: date) -> dict:
 
         # Step 3 — advise each holding.
         advice, closes = [], {}
-        evidence_reader = (exit_shadow.EvidenceReader(all_ideas, corp_actions=corp_records)
+        from core.portfolio.cases import CaseStore
+        case_store = CaseStore(user_id, str(store._dir.parent))
+        evidence_reader = (exit_shadow.EvidenceReader(all_ideas, corp_actions=corp_records,
+                                                      cases=case_store)
                            if exit_mode != "legacy" else None)
         shadow_rows: list = []
         shelf_index = {i.symbol: i for i in shelf_ideas}
@@ -416,13 +419,30 @@ def run_post_review_pipeline(review_date: date) -> dict:
                 shelf_index=shelf_index,
                 candidate_quotes=candidate_quotes,
                 surveillance=surveillance,
-                report=run_report)
+                report=run_report,
+                cases={"ideas": [*all_ideas, *shelf_index.values()]})
             if txns:
                 portfolio = store.load()          # digest sees post-trade state
                 logger.info("[portfolio_pipeline] autopilot executed %d trade(s) for %s",
                             len(txns), user_id)
         except Exception as exc:
             logger.warning("[portfolio_pipeline] autopilot failed for %s (non-fatal): %s",
+                           user_id, exc)
+        # PR-005: the company events published since each case was written
+        # challenge the pillars they contradict (a record, never a sale).
+        try:
+            from core.events.store import EventStore
+            from core.portfolio.cases import review_pillars
+            events = EventStore()
+            for holding in store.load().holdings:
+                try:
+                    review_pillars(case_store, holding, events.load(holding.symbol),
+                                   review_date)
+                except Exception as exc:
+                    logger.warning("[portfolio_pipeline] pillar review failed for %s/%s "
+                                   "(non-fatal): %s", user_id, holding.symbol, exc)
+        except Exception as exc:
+            logger.warning("[portfolio_pipeline] pillar review skipped for %s (non-fatal): %s",
                            user_id, exc)
         # SA-051 R1: a holding added while this run was under way has no close
         # in `closes`. Fetch one now, outside the lock, so the point marks it at

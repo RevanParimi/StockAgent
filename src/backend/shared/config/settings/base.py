@@ -900,6 +900,14 @@ ADVISOR_EARNINGS_GAP_DAYS: int = cfg("advisor.earnings_gap_days", fallback=3)
 # sessions after the buy; stops never wait. The rule's mode, advisor.exit_rule,
 # is read per run (core/portfolio/exit_shadow.py).
 ADVISOR_MIN_HOLD_SESSIONS: int = int(cfg("advisor.min_hold_sessions", fallback=10))
+# PR-005: the investment case written for each buy that opens a position
+# (core/portfolio/cases.py). case_write off writes none (rollback; stored cases
+# stay as history); case_model off writes the deterministic case without the
+# reasoning-tier call. The case's invalidation price is used only at least
+# case_noise_atr_mult x ATR% below the entry (and above the stop).
+ADVISOR_CASE_WRITE: bool = bool(cfg("advisor.case_write", fallback=True))
+ADVISOR_CASE_MODEL: bool = bool(cfg("advisor.case_model", fallback=True))
+ADVISOR_CASE_NOISE_ATR_MULT: float = float(cfg("advisor.case_noise_atr_mult", fallback=1.5))
 
 # ---------------------------------------------------------------------------
 # M0 — Multi-user foundation (spec 2026-07-26)

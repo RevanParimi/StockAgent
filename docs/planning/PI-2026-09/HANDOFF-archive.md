@@ -14,6 +14,45 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 18 Nov, morning (a manual session): PR-035's production read → ACCEPTED; your three answers
+
+- **A manual session on the code-server**, opened for "start autopilot", from about 07:05 IST
+  after the six night phases. `main` = `origin/main` = `6e1962f`.
+- **Your answers, about 07:05 IST:** `CLEAN-007-W1`, "didn't receive mail"; PR-015, "do as per
+  recommendation" (the switch); PR-035, "its okay go ahead".
+- **Railway SSH:** the first try was refused (no key of this machine registered). At your word,
+  the code-server's key `railway-devbox` was registered and `ssh.railway.com`'s host key
+  accepted on first use; `railway ssh` now works from the code-server.
+- **PR-035's read** at 07:10 IST, read-only, through the receipt's command. The results and what
+  they mean are in [evidence/PR-035.md](evidence/PR-035.md), phase 2: the door per session, the
+  band, 8 Saturdays' yield, the load and the unit costs, and the dates to 20 and 25 holdings.
+  PR-036 and PR-037 carry the measured values; BACKLOG B-13 and B-14 are new; PR-038 keeps its
+  place after PR-037.
+- **`CLEAN-007-W1` passed:** no mail, and the status file names the 23:30 IST archive of 17 Nov,
+  drill ok, no `emailed` field, 7 archives ([evidence/CLEAN-007.md](evidence/CLEAN-007.md)).
+- **Accepted in the light lane** without a fresh-session review. `check_kt_docs` errors [];
+  `check_broad_except` OK (148). No application code changed; the full suite was not required.
+- **Recorded, not done here:** PR-015's switch waits for a push window; PR-039 (in progress on
+  `story/PR-039`) is `active_task`. One docs commit on `main`, push pending to the next window.
+
+## 17 Nov, night (autopilot): PR-035's probe written and dry-run; the read waits for your word
+
+- **Autopilot session `1117-2304-p1`**, a `continue` on the code-server from about 23:04 IST.
+  `main` = `origin/main` = `d2f45cd`. This machine has no `analysis_data/` from the laptop, so the
+  probe was written again from the card.
+- **The probe** (`analysis_data/pr035/invest_probe.py`, on the code-server): the door per review
+  session since 13 Nov, using the buy list's own code on the shelf as it stood at each run; the
+  entry band (B-3); the last 8 Saturdays' yield; the load and the unit costs. Read-only, counts
+  and symbols only. Receipt: [evidence/PR-035.md](evidence/PR-035.md).
+- **Dry run:** on a made-up fixture with one idea per door, through the exact production command
+  form, every row printed as expected and nothing in the fixture changed.
+- **Needs you:** say "run the PR-035 probe" in a session on the code-server, or run the command in
+  the receipt and paste the output. Best before Saturday 21 Nov 12:00 IST; not 16:30-17:10.
+- **STATE:** PR-035 `blocked` on that word; `active_task` null; `next_task` CLEAN-002 (the next
+  ready story). `next_phase` is now short; its old text repeated this file.
+- **Nothing in production was read or changed.** Docs only; the full suite was not run.
+- **Next `continue`:** CLEAN-002, unless you have given the word, then PR-035 first.
+
 ## 18 Nov, night (autopilot): FIX-015 fresh review → ACCEPTED; merged into `main`
 
 - **Autopilot session `1118-0002-p4`**, a `continue` on the code-server from about 00:02 IST.

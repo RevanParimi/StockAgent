@@ -114,6 +114,19 @@ Asked when to commit and push, the owner answered "Commit and push now" at about
   restarts the app and carries nothing production needs. If `origin/main` is still `7603e81`, it
   was not pushed.
 
+## `CLEAN-007-W1` passed, Wed 18 Nov
+
+- **The owner, about 07:05 IST:** no "StockAgent nightly backup" mail arrived for the night of
+  17 Nov ("didn't receive mail").
+- **Read-only, through `railway ssh` at about 07:15 IST** (the session that ran PR-035's probe;
+  field names and counts only): `data/backups/backup_status.json` names
+  `stockagent-backup-20261117-180000.zip` (18:00 UTC, the 23:30 IST run of 17 Nov), written at
+  that time; its drill `ok` true with no errors and no warnings, continuity checked against the
+  archive of 16 Nov; no `emailed` field. `data/backups` holds 7 archives, the newest those of
+  15, 16 and 17 Nov.
+- **Pass: both.** The row moved word for word, with its result, to
+  `STATE-history-archive.json` (`pending_production_checks_passed`).
+
 ## The steps as planned before the owner's word
 
 1. **Commit:** the 8 code and test files; then the documents, with the KT header's "Code

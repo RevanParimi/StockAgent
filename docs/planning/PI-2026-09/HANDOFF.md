@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-18 (PR-036 accepted; in the next push window PR-015 switches, PR-036 ships, then the ₹90 L deposit; PR-037 next)
+# Current handoff - 2026-11-18 (PR-037 built on its branch, its fresh review next; in the next push window PR-015 switches, PR-036 ships, then the ₹90 L deposit)
 
 **Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
 
@@ -23,8 +23,8 @@
      `story/PR-015` (`12b7901`) into `main`, runs the full suite on the exact commit, pushes,
      checks the deploy and `/health`, and adds `PR-015-W1`
      ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md), "What the owner's word
-     starts"). That push carries the six commits waiting on `main` (below): PR-039's report and
-     **PR-036's settings**.
+     starts"). That push carries the commits waiting on `main` (below): PR-039's report and
+     **PR-036's settings**; not PR-037, which stays on its branch until your word.
   2. **PR-036's deposit**, once that deploy is SUCCESS and `/health` is 200. Your word is given
      (18 Nov about 07:25 IST; STATE `owner_word`). The receipt's rollout steps 2 and 3
      ([evidence/PR-036.md](evidence/PR-036.md)): read the settings in force through `railway ssh`
@@ -32,34 +32,33 @@
      `DEPOSIT`, the machine key read inside the container and never printed. A retry writes
      nothing. Record it in the receipt, STATE and here; the deposit's date fixes
      `PR-036-W5` and `-W10`.
-- **Outside a window: PR-037** (`next_task`; enough analysed ideas to hold 25 to 30 stocks), the
-  next ready story in STATE's order. Its first phase names the lane.
-- **PR-036 is accepted** (18 Nov, autopilot `1118-0744-p2`, light lane;
-  [evidence/PR-036.md](evidence/PR-036.md)). `671706b` on `main`: `portfolio.target_holdings`
-  25 (a position is 80% ÷ 25 = 3.2% of equity, ₹3,20,000 of ₹1 crore), `min_holdings` 20,
-  `max_holdings` 30, `autopilot.deploy_max_new_per_day` 5, `max_managed_tickers` 60,
-  `events.max_symbols` 90 (provisional). No code path changed. A new test runs the real
-  executor on these settings: five a day to 25, a 26th at ₹1,100 a share, RISK_OFF stopping at
-  16, and a property test over 120 books of ₹1 crore. Not deployed: production still runs 12,
-  10, 15, 2, 40 and 60, and the deposit waits for the deploy.
-- **PR-039 is accepted** (18 Nov, autopilot `1118-0729-p1`; [evidence/PR-039.md](evidence/PR-039.md)).
-  `scripts/missed_risers.py` reaches production with the next push; its tables wait for your
-  word.
-- **PR-035's read** (accepted 18 Nov; [evidence/PR-035.md](evidence/PR-035.md), phase 2): the
-  door that stays is "no sector key named" (five ideas, IGIL 0.70 first; FIX-030 re-dives them
-  on Saturday 21 Nov; BACKLOG B-13). The entry band kept ₹1,96,260, so PR-038 stays after
-  PR-037.
-- **FIX-015 is live** since 18 Nov 00:28 IST (`8422a23`). The code-server's Railway SSH key is
-  registered (START HERE, "The code-server").
-- **Git:** `main` is six commits ahead of `origin/main` (`6e1962f`): the 18 Nov morning records
+- **Outside a window: PR-037's fresh review** (`active_task`; decision path; `REVIEW.md`) of
+  `story/PR-037` (`d6e5777`) in a detached worktree, from
+  [evidence/PR-037-implementation.md](evidence/PR-037-implementation.md). On acceptance it
+  stays on its branch until your word for its rollout (below), as PR-015's did.
+- **PR-036 is accepted** (18 Nov, light lane; [evidence/PR-036.md](evidence/PR-036.md)).
+  `671706b` on `main`: 25 aimed for (3.2% of equity a position), 20 to 30 holdings, 5 new a
+  day, 60 managed, 90 event symbols (provisional). Not deployed: production still runs 12, 10,
+  15, 2, 40 and 60, and the deposit waits for the deploy.
+- **PR-039 is accepted** ([evidence/PR-039.md](evidence/PR-039.md)); its report ships with the
+  next push and runs at your word.
+- **PR-035's read** ([evidence/PR-035.md](evidence/PR-035.md)): the door that stays is "no
+  sector key named" (five ideas; Saturday 21 Nov re-dives them; B-13); PR-038 stays after PR-037.
+- **FIX-015 is live** since 18 Nov 00:28 IST (`8422a23`).
+- **Git:** `main` is seven commits ahead of `origin/main` (`6e1962f`): the 18 Nov morning records
   (`2e415e4`, `a16e214`), PR-039 (`a07e551` and its records), PR-036 (`671706b` and its
-  records). Push pending until the next window (Thu 19 Nov 00:10 IST). `story/PR-015` is local
-  only; `story/PR-039` and `story/FIX-015` are merged.
-- **The investment track** in STATE's order: PR-035, PR-036 (done), PR-037, FIX-015 (done),
+  records), PR-037's records. Push pending until the next window (Thu 19 Nov 00:10 IST).
+  `story/PR-015` and `story/PR-037` are local only; `story/PR-039` and `story/FIX-015` are merged.
+- **The investment track** in STATE's order: PR-035, PR-036 (done), PR-037 (review), FIX-015 (done),
   PR-015, PR-038, PR-039 (done), PR-005, then PR-033 and PR-034.
 
 ## Waits for you
 
+- **PR-037's rollout** (the card: "at the owner's word"): may it ship with a push in a job-free
+  window once its fresh review accepts it, and may that session then make the one catch-up
+  discovery run (`POST /discovery/run`, a weekday 09:30-14:00 IST, so the shelf fills that week
+  instead of over three Saturdays)? It is a 45-idea shelf, 6 a sector, 45 deep dives a week (15
+  kept for new companies); the 0.55 bar does not move; about $2.6 a month more model cost.
 - **PR-039's report, after the next push:** say "run the PR-039 report" (read-only; the
   command is in its receipt). If place 1 or 2 loses more than a quarter of the risers, that
   session writes the card, with a money example.
@@ -78,13 +77,29 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Tue 1 Dec | `PR-014-D1` | the door read: what the buy list offered and refused (and BACKLOG B-13) |
 | Tue 1 Dec | `FIX-015-W1` | every shock sale since the deploy, read with `PR-014-D1` |
 | Thu 3 Dec* | `PR-036-W10` | share invested and holdings, 10 sessions after the deposit |
+| Tue 1 Dec† | `PR-037-W2` | the shelf, ideas offered a day and holdings after two Saturdays; BACKLOG B-14 |
 | Mon 14 Dec | `PR-014-R1` | results at 4 weeks; which paused cards to promote |
 | Mon 11 Jan 2027 | `PR-014-R2` | results at 8 weeks; whether to promote CLEAN-006 |
 
-\* If the deposit is recorded on Thu 19 Nov; a later deposit moves both. `PR-014-D1`, `R1` and
+\* If the deposit is recorded on Thu 19 Nov; a later deposit moves both. † If PR-037 is deployed
+and its catch-up run made by Fri 20 Nov; a later deploy moves it by as many weeks. `PR-014-D1`, `R1` and
 `R2` keep their dates; their baseline note says capital changes on the deposit day.
 
 Deployed stories still `pending_observation` without a dated row get one from PR-033.
+
+## 18 Nov, morning (autopilot): PR-037 built on `story/PR-037`; its fresh review next
+
+- **Autopilot session `1118-0807-p3`**, from about 08:07 IST, outside a push window. Decision
+  path. `d6e5777` on `story/PR-037`; records on `main`.
+- **Settings:** shelf 45, 6 a sector key, 45 deep dives a week, `new_dive_floor` 15 (new),
+  screen 60 of a shortlist of 120 (provisional); 0.55 unchanged. Re-dives take at most 28 of 45
+  calls (less the IPO candidates and the floor), counted in calls made, so a held stock's idea
+  takes no room; one past the room waits behind the screen and is named in
+  `hygiene.redive_deferred`.
+- **B-14 explained by code:** the Saturday job's paper reviews re-run the analysis per active
+  idea; the deep dives keep their budget. `PR-037-W2` confirms it.
+- **Checks:** 11 new tests (8 of 8 mutants caught); full suite 6,820 passed / 0 failed; guards
+  pass. The receipt states the cost and the shelf after two Saturdays (about 40 to 45, inferred).
 
 ## 18 Nov, night (autopilot): PR-015 prepared on `story/PR-015`; the switch waits for your word
 

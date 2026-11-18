@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-18 (PR-038's rule predeclared, its read waits for your word; in the next push window PR-015 switches, PR-036 ships, then the ₹90 L deposit; PR-005 next outside a window)
+# Current handoff - 2026-11-19 (PR-005 implemented on `story/PR-005`, its fresh review next outside a window; in a push window PR-015 switches, PR-036 ships, then the ₹90 L deposit)
 
 **Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
 
@@ -18,42 +18,34 @@
 ## Now
 
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
-  Mondays), in this order:
-  1. **PR-015's switch.** You gave the word on 18 Nov at about 07:05 IST. The session merges
-     `story/PR-015` (`12b7901`) into `main` (one conflict since this morning's docs commits:
-     `docs/TECHNICAL_DESIGN.md`, section 11's table, where `main` rewrote the "Idle cash" row and
-     PR-015 adds an "Exit rule" row under it; keep both), runs the full suite on the exact
-     commit, pushes, checks the deploy and `/health`, and adds `PR-015-W1`
-     ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md), "What the owner's word
-     starts"). That push carries the commits waiting on `main` (below): PR-039's report and
-     **PR-036's settings**; not PR-037, which stays on its branch until your word.
-  2. **PR-036's deposit**, once that deploy is SUCCESS and `/health` is 200. Your word is given
-     (18 Nov about 07:25 IST; STATE `owner_word`). The receipt's rollout steps 2 and 3
-     ([evidence/PR-036.md](evidence/PR-036.md)): read the settings in force through `railway ssh`
-     (`analysis_data/pr036/deposit.py --check`); only on `"new_settings_live": true`, the ₹90 L
-     `DEPOSIT`, the machine key read inside the container and never printed. A retry writes
-     nothing. Record it in the receipt, STATE and here; the deposit's date fixes
-     `PR-036-W5` and `-W10`.
-- **Outside a window: PR-005** (`next_task`: the investment track of 17 Nov lists it next,
-  though PR-013's card of 14 Nov puts FIX-017 and PR-013 before it).
+  Mondays; this one closes at 06:20 on Thu 19 Nov, the next opens Fri 20 Nov 00:10), in order:
+  1. **PR-015's switch** (your word, 18 Nov about 07:05 IST): merge `story/PR-015` (`12b7901`)
+     into `main` (one conflict: KT section 11's table, "Idle cash" rewritten on `main`, "Exit
+     rule" added by PR-015; keep both), the full suite on the exact commit, push, check the
+     deploy and `/health`, add `PR-015-W1` ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md)).
+     The push carries PR-039 and **PR-036's settings**; not PR-037 or PR-005.
+  2. **PR-036's deposit** once that deploy is SUCCESS and `/health` is 200 (your word, 18 Nov
+     about 07:25 IST): the receipt's rollout steps 2 and 3 ([evidence/PR-036.md](evidence/PR-036.md)):
+     `analysis_data/pr036/deposit.py --check` through `railway ssh`; only on
+     `"new_settings_live": true`, the ₹90 L `DEPOSIT` (the machine key read inside the
+     container, never printed; a retry writes nothing). Its date fixes `PR-036-W5` and `-W10`.
+- **Outside a window: PR-005's fresh review** ([REVIEW.md](REVIEW.md)) of `4407b13` on
+  `story/PR-005` ([evidence/PR-005-implementation.md](evidence/PR-005-implementation.md)). It
+  merges into `main` only on acceptance; its backfill runs only at your word.
 - **PR-038 is blocked on your word for its read** ([evidence/PR-038.md](evidence/PR-038.md));
   its rule is fixed there. If the limit ships, it is built on `story/PR-038` after PR-015.
-- **PR-037 is accepted** (18 Nov, fresh review;
-  [evidence/PR-037-review.md](evidence/PR-037-review.md)): `d6e5777` on `story/PR-037`, not
-  merged, so tonight's push does not carry it; it merges at your word (below), cleanly with or
-  without PR-015.
-- **PR-036 is accepted** (18 Nov, light lane; [evidence/PR-036.md](evidence/PR-036.md)).
-  `671706b` on `main`: 25 aimed for (3.2% of equity a position), 20 to 30 holdings, 5 new a
-  day, 60 managed, 90 event symbols (provisional). Not deployed: production still runs 12, 10,
-  15, 2, 40 and 60, and the deposit waits for the deploy.
+- **PR-037 is accepted** (18 Nov, fresh review): `d6e5777` on `story/PR-037`, not merged; it
+  merges at your word (below), cleanly with or without PR-015.
+- **PR-036 is accepted** (18 Nov, light lane): `671706b` on `main`, not deployed (production
+  still runs 12, 10, 15, 2, 40 and 60); the deposit waits for the deploy.
 - **PR-039 is accepted**; its report ships with the next push and runs at your word.
 - **PR-035's read:** the door that stays is "no sector key named" (five ideas re-dived Sat
   21 Nov; B-13). **FIX-015 is live** since 18 Nov 00:28 IST.
-- **Git:** `main` is nine commits ahead of `origin/main` (`6e1962f`): records, PR-039
-  (`a07e551`), PR-036 (`671706b`), PR-037's and PR-038's records (none of PR-037's code). Push
-  pending until Thu 19 Nov 00:10 IST. `story/PR-015` and `story/PR-037` are local only.
-- **The investment track** in STATE's order: PR-035, PR-036 (done), PR-037 (done, held), FIX-015 (done),
-  PR-015, PR-038 (blocked: the read), PR-039 (done), PR-005, then PR-033 and PR-034.
+- **Git:** `main` is ten commits ahead of `origin/main` (`6e1962f`): records, PR-039
+  (`a07e551`), PR-036 (`671706b`), and the records of PR-037, PR-038 and PR-005 (none of their
+  code). Push pending. `story/PR-015`, `story/PR-037` and `story/PR-005` are local only.
+- **The investment track** in STATE's order: PR-035, PR-036, PR-037 (held), FIX-015, PR-015,
+  PR-038 (blocked: the read), PR-039, PR-005 (review), then PR-033 and PR-034.
 
 ## Waits for you
 
@@ -68,6 +60,8 @@
 - **PR-039's report, after the next push:** say "run the PR-039 report" (read-only; the
   command is in its receipt). If place 1 or 2 loses more than a quarter of the risers, that
   session writes the card, with a money example.
+- **PR-005's backfill**, after its acceptance and deploy: say "run the PR-005 backfill" (a dry
+  run, then `--apply`: one model call per holding; the command is in its receipt).
 - **Optional:** the weekly watchdog line "No off-site copy has ever been confirmed" stays while it
   is true; removing it is a registry edit you approve separately.
 
@@ -95,25 +89,29 @@ Deployed stories still `pending_observation` without a dated row get one from PR
 
 ## 18 Nov, night (autopilot): PR-015 prepared on `story/PR-015`; the switch waits for your word
 
-- **Autopilot session `1118-0029-p5`**, a `continue` on the code-server from about 00:29 IST.
-  `main` = `origin/main` = `8422a23`.
-- **Step 1 confirmed from the code:** under `evidence` the pipeline still decides with the
-  price-path rule too and records both verdicts in `exit_shadow.jsonl`; the thesis review still
-  runs; the scorecard reads every row whatever its mode. PR-009's pipeline test covers all three
-  modes.
+- **Autopilot `1118-0029-p5`**, code-server, from about 00:29 IST; `main` = `8422a23`.
+- **Step 1 confirmed from the code:** under `evidence` both verdicts are still recorded in
+  `exit_shadow.jsonl`; the thesis review still runs; the scorecard reads every row.
 - **`12b7901` on `story/PR-015`:** the setting and the living documents (KT sections 1, 3, 4, 6,
-  11, 12; AUTOPILOT_GUIDE; README; guide case 07-L). Held: the card says "at a time the owner
-  agrees". On the word, the merging session follows the receipt's "What the owner's word starts".
-- **STATE:** PR-015 `blocked` on that word; `next_task` PR-039.
+  11, 12; AUTOPILOT_GUIDE; README; guide case 07-L). On the word, the merging session follows
+  the receipt's "What the owner's word starts".
 
 ## 18 Nov, morning (autopilot): PR-038's rule predeclared; its read waits for your word
 
-- **Autopilot `1118-0848-p5`**, code-server, from about 08:48 IST, outside a push window;
-  `main` = `93f6d8b`. No application code changed; production not read.
+- **Autopilot `1118-0848-p5`**, code-server, from about 08:48 IST; no code changed.
 - **The receipt** fixes the rule before any data (above the band to 10% against inside it, mean
-  30-session return against the Nifty, 15 a side; too few, a 10-session read decides
-  provisionally) and holds the read (`analysis_data/pr038/`), dry-run on a fixture.
-- **STATE:** PR-038 `blocked` on the owner's word for the read; `next_task` PR-005.
+  30-session return against the Nifty, 15 a side) and holds the read, dry-run on a fixture.
+
+## 19 Nov, early morning (autopilot): PR-005 implemented on `story/PR-005`; its fresh review next
+
+- **Autopilot `1118-0904-p6`**, code-server: started 18 Nov 09:04 IST, finished 19 Nov from
+  about 04:58 IST (in a window, but its planned work is a phase of its own). Decision path.
+- **`4407b13` on `story/PR-005`:** each opening buy (SWITCH, deployment, manual add) writes an
+  append-only case; code checks every figure; the case's invalidation price is in the buy day's
+  rupees and used only between the stop and 1.5 ATR below the entry; RR-L1 and T1; pillars
+  challenged by events, never a sale; `GET /portfolio/cases`; a backfill script.
+- **Decisions to check in review:** the filing leg of `case_broken` is not narrowed to pillars
+  (waits for PR-013); a case with no price is not replaced by the shelf's level.
 
 # START HERE — standing rules
 

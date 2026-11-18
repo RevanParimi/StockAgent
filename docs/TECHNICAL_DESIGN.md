@@ -62,7 +62,7 @@ operational control.
 | Area | State in production | Evidence |
 |---|---|---|
 | Learning mode | `observe` since 2026-09-26, set by the Railway variable `RL_LEARNING_MODE`; the repository default is `adapt`. Weight versions stay unchanged across reviews, and every review records its proposal. Every envelope since the 2026-10-01 monthly forecast was issued in `observe`. | Verified 2026-10-01 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)) |
-| Idle cash | Idle-cash deployment is on for the primary portfolio since the 15 Nov 2026 deploy, as the repository configures it (`portfolio.overrides.primary.deploy_idle_cash: true`; the global switch off). It acts in the pipeline after each weekday 16:30 review, first on Monday 16 Nov. Before it: 2 holdings, 15.6% invested, equity ₹9,82,408 at the 12 Nov point against ₹10,00,000 put in. The first run, Monday's review of the 13 Nov session (regime RISK_ON, target 80%), bought one stock, COFORGE for ₹64,896 at that session's close: 3 holdings, 22.3% invested, cash ₹7,63,937, equity ₹9,82,897. It stopped because only 1 idea qualified: 2 were offered, and the other was already held. | Deploy 15 Nov; read-only probes 15 Nov 21:10 and 17 Nov 06:38 IST ([PR-014 receipt](planning/PI-2026-09/evidence/PR-014-rollout.md)) |
+| Idle cash | Idle-cash deployment is on for the primary portfolio since the 15 Nov 2026 deploy, as the repository configures it (`portfolio.overrides.primary.deploy_idle_cash: true`; the global switch off). It acts in the pipeline after each weekday 16:30 review, first on Monday 16 Nov. Before it: 2 holdings, 15.6% invested, equity ₹9,82,408 at the 12 Nov point against ₹10,00,000 put in. The first run, Monday's review of the 13 Nov session (regime RISK_ON, target 80%), bought one stock, COFORGE for ₹64,896 at that session's close: 3 holdings, 22.3% invested, cash ₹7,63,937, equity ₹9,82,897. It stopped because only 1 idea qualified: 2 were offered, and the other was already held. The repository now configures the ₹1 crore book (section 6): 25 holdings to size a position by, 20 aimed for, 30 at most, 5 new positions a day, 60 managed tickers and 90 event-feed stocks; production runs 12, 10, 15, 2, 40 and 60 until the next deploy, and the ₹90 L deposit follows that deploy. | Deploy 15 Nov; read-only probes 15 Nov 21:10 and 17 Nov 06:38 IST ([PR-014 receipt](planning/PI-2026-09/evidence/PR-014-rollout.md)) |
 | Decision gate | `record`, the repository default: computed and logged everywhere, nothing withheld. The 2026-10-01 decision kept `record`, because 25 of 78 analyses (32%) would have abstained, most for reasons since fixed. | [Enforce decision](planning/PI-2026-09/evidence/SA-003-enforce-decision-2026-10-01.md) |
 | Instrument identity | Since 2026-10-01, TATAMOTORS is disabled in the managed list, with its history kept, and TMPV is managed as its own automobile ticker. The registry lists TATAMOTORS and HEXAWARE as unresolved. | Owner's dashboard change, 2026-10-01 |
 | Prediction stores | The ownership quarantine was applied on 2026-10-01. It moved 16 stray `automobile/<TICKER>` copies, byte-identical, into `data/prediction_quarantine/20260930T184031Z-ce3556d023d3/`. Rollback remains available. | Apply record in [STATE.json](planning/PI-2026-09/STATE.json) |
@@ -728,7 +728,7 @@ are to read it (**Planned:** PR-005, PR-007, PR-008).
 A run:
 
 1. **Stocks.** Holdings first, then watchlists, then shelf ideas, each stock
-   once, at most `events.max_symbols` (60). A stock whose identity the registry
+   once, at most `events.max_symbols` (90). A stock whose identity the registry
    does not resolve that day (above) is skipped and named in the run record.
    NSE is asked for the registry's NSE code, so TVSMOTORS is fetched as
    TVSMOTOR, and its events are stored under TVSMOTORS.
@@ -1823,10 +1823,11 @@ disabled held entry or a watchlist entry. An original entry the owner
 disabled by hand stays disabled unless the run bought the stock. A sale's
 room is therefore free before the same run's buy asks for it, and a stock
 sold before this rule existed leaves on the next run. A holding the
-cap (`portfolio.max_managed_tickers`, 40) still keeps out gets no daily review
-or forecast; its digest row (`not_reviewed`), the digest's text and the
-morning brief say "no daily review or forecast: managed-ticker cap 40
-reached", and every run tries again. A portfolio file that cannot be read,
+cap (`portfolio.max_managed_tickers`, 60: 30 holdings and the 16 original
+entries need 46) still keeps out gets no daily review or forecast; its digest
+row (`not_reviewed`), the digest's text and the morning brief say "no daily
+review or forecast: managed-ticker cap 60 reached", and every run tries
+again. A portfolio file that cannot be read,
 or one quarantined (`portfolio.json.corrupt-<time>`) and not yet restored,
 releases nothing that run, and the log names it: that account's holdings are
 unknown, not empty. A user's removal asks the same question across every
@@ -1866,7 +1867,8 @@ A buy takes the smallest of four amounts:
 
 - the amount asked for: the ADD tranche (25% of the position), the SWITCH
   sale's proceeds net of the sale's costs, or a new idle-cash position's
-  budget (80% of total equity ÷ `portfolio.target_holdings`: ₹80,000 of ₹12 L);
+  budget (80% of total equity ÷ `portfolio.target_holdings`: ₹3,20,000 of
+  ₹1 crore);
 - the position's room under `advisor.max_position_pct` (10%);
 - its sector's room under `advisor.max_sector_pct` (30%), summed across
   holdings with the same sector label;
@@ -1976,37 +1978,42 @@ reading. Two limits:
 
 **The ideas decide how many; the rules decide how much.** The analysis's BUY
 ideas that pass the checks below decide how many stocks are held, up to
-`portfolio.max_holdings` (15). The regime's share of total equity decides how
+`portfolio.max_holdings` (30). The regime's share of total equity decides how
 much is invested, so a portfolio that receives more money invests more. A new
 position asks for a share of equity, the NORMAL share over
-`portfolio.target_holdings` (80% ÷ 12 ≈ 6.7%), and is sized by the rule above.
+`portfolio.target_holdings` (80% ÷ 25 = 3.2%), and is sized by the rule above.
 It is the same size in RISK_OFF, which only stops sooner. Sizing by conviction
-waits until the weekly scorecard shows that conviction predicts returns.
+waits until the weekly scorecard shows that conviction predicts returns. The
+book is ₹1 crore of paper capital in 20 to 30 holdings, the owner's figures
+of 17 November 2026.
 
-At most `autopilot.deploy_max_new_per_day` (2) open a day, so cash goes in over
-days. Another position opens while invested is below the target and the
-maximum is not held, so a buy passes the target by at most one position.
-`portfolio.min_holdings` (10) is a soft minimum in calm regimes: the run says
-when it is not met and why, and it never forces a buy. Whole shares usually
-leave the twelfth position a little short of the target, so a thirteenth
-usually opens: 12 × 333 shares at ₹1,000 is ₹39.96 L against ₹40 L, and the
-thirteenth takes ₹50 L to 86.6% invested. A position stays whole rather than
-filling the last few rupees.
+At most `autopilot.deploy_max_new_per_day` (5) open a day, so cash goes in over
+days: 25 positions take five review sessions at the earliest. Another position
+opens while invested is below the target and the maximum is not held, so a buy
+passes the target by at most one position. `portfolio.min_holdings` (20) is a
+soft minimum in calm regimes: the run says when it is not met and why, and it
+never forces a buy. Whole shares often leave the twenty-fifth position a
+little short of the target, so a twenty-sixth opens: 25 × 290 shares at ₹1,100
+is ₹79.75 L against ₹80 L, and the twenty-sixth takes ₹1 crore to 82.9%
+invested. A position stays whole rather than filling the last few rupees. At
+3.2% a position, the 10% position cap does not bind, and the 30% sector cap
+binds at the tenth position in one sector.
 
 **Examples.** All figures are hand-derived, before trading costs, and the stock
-prices are ₹1,000.
+prices are ₹1,000 unless stated.
 
-- **₹10 L:** ₹1.9 L in two holdings, ₹8.1 L cash, 12 qualifying ideas. The
-  target is ₹8 L. Each buy is 66 shares (₹66,000); two a day make 4, 6, 8, 10
-  and 12 holdings in five review days, ₹8.5 L (85%) invested, then "target
-  reached". In RISK_OFF the same portfolio stops opening positions at 50%
-  (₹5 L) and never sells to get there.
-- **The user adds money: ₹50 L, all cash, 15 ideas.** Each buy is 333 shares
-  (₹3,33,000, inside the 10% cap), and buying stops at 13 holdings, past ₹40 L.
-- **A fall: ₹10.2 L in 9 holdings at 86%.** The target is ₹8.16 L, so nothing is
-  bought: "9 holdings, below the 10 aimed for: target reached".
-- **Few ideas: 6 qualify.** All 6 are bought: "6 holdings, below the 10 aimed
-  for: only 6 qualifying ideas".
+- **₹1 crore, all cash, 30 qualifying ideas.** The target is ₹80 L. Each buy is
+  320 shares (₹3,20,000); five a day make 5, 10, 15, 20 and 25 holdings in five
+  review days, exactly ₹80 L, then "target reached". At ₹1,100 a share each buy
+  is 290 shares and a 26th opens on the sixth day (₹82.94 L). In RISK_OFF the
+  same book stops at 16 holdings, ₹51.2 L past the ₹50 L target, and never
+  sells to get there.
+- **A fall: 18 holdings at 86%.** The target is 80% of the lower equity, so
+  nothing is bought: "18 holdings, below the 20 aimed for: target reached".
+- **Few ideas: 6 qualify on a ₹1 crore book with 8 holdings.** Five are bought,
+  the daily limit, and the sixth waits for the next session: "5 new positions
+  today, the daily limit of 5"; "13 holdings, below the 20 aimed for: only 6
+  qualifying ideas".
 
 **Which ideas.** The day's buy candidates (section 8: fresh shelf ideas the
 analysis rates BUY and the user's own watchlist BUYs), highest conviction
@@ -2081,9 +2088,9 @@ session the same way. Each must:
 NORMAL, target 80.0% invested (₹9,60,000); invested 15.8% before, 22.5%
 after". The run's record goes into the day's digest (`deployment`): the
 regime, the target, the invested share before and after, what was bought, each
-other idea's outcome and why, and why buying stopped ("2 new positions today,
-the daily limit of 2"; "regime RISK_OFF, target reached: 55.3% invested
-against a target of 50.0% (₹6,00,000)"; "6 holdings, below the 10 aimed for:
+other idea's outcome and why, and why buying stopped ("5 new positions today,
+the daily limit of 5"; "regime RISK_OFF, target reached: 51.2% invested
+against a target of 50.0% (₹50,00,000)"; "13 holdings, below the 20 aimed for:
 only 6 qualifying ideas"; "3 ideas above entry band"). The digest's text names
 the buys and the reasons. A portfolio with no
 holdings is reviewed when it deploys. The step runs on a copy of the
@@ -3568,13 +3575,12 @@ learning to `observe`. SA-023 puts learned lessons on measurable probation.
   the band gets its own fix. At four and eight weeks the owner reads the
   results: the share invested, the holdings, the book against the Nifty
   (section 7), closed trades by exit reason and the refusal counts.
-- **Planned:** ₹1 crore of paper capital in 20 to 30 holdings, each bought
-  from its own deep dive (the owner's request of 17 November 2026). The first
-  run with deployment on was offered 2 of the shelf's 20 active ideas, and no
-  record says which rule left the other 18 out. PR-035 reads that, with how
-  many ideas sat above their entry band and how many BUYs a week's deep dives
-  produce. PR-036 adds the capital and makes a position 3.2% of equity: 25
-  aimed for, 30 at most. PR-037 widens the supply of analysed ideas (the
+- ₹1 crore of paper capital in 20 to 30 holdings, each bought from its own
+  deep dive (the owner's request of 17 November 2026). The settings are in the
+  repository (section 6): a position is 3.2% of equity, 25 aimed for, 30 at
+  most, 5 new a day. **Planned:** the ₹90 L deposit, after they are deployed
+  (section 1). PR-035 read why the first run was offered 2 of the shelf's 20
+  active ideas. **Planned:** PR-037 widens the supply of analysed ideas (the
   shelf, the weekly deep dives, the limit per sector) and leaves the 0.55
   floor where it is. PR-038 tests whether an idea that has risen past its
   band should still be bought. PR-039's report (section 8) says where the
@@ -3784,7 +3790,7 @@ section 10) are part of the current design.
 | [PR-014](planning/PI-2026-09/stories/PR-014.md) | Switch idle-cash deployment on, then read what it does | Done | 1 Production state; 6 Portfolio | FIX-030, FIX-031 |
 | [PR-015](planning/PI-2026-09/stories/PR-015.md) | The evidence exit rule acts | Open | 1 Production state; 6 Portfolio | FIX-015, PR-014 |
 | [PR-035](planning/PI-2026-09/stories/PR-035.md) | Read why the buy list offered 2 of 20 ideas, and what 25 to 30 holdings need | Done | 6 Portfolio; 8 Discovery | None |
-| [PR-036](planning/PI-2026-09/stories/PR-036.md) | ₹1 crore of paper capital, 25 positions aimed for, 30 at most | Open | 1 Production state; 6 Portfolio | PR-035 |
+| [PR-036](planning/PI-2026-09/stories/PR-036.md) | ₹1 crore of paper capital, 25 positions aimed for, 30 at most | Done | 1 Production state; 6 Portfolio | PR-035 |
 | [PR-037](planning/PI-2026-09/stories/PR-037.md) | Enough analysed ideas to hold 25 to 30 stocks | Open | 8 Discovery | PR-035, PR-036 |
 | [PR-038](planning/PI-2026-09/stories/PR-038.md) | A stock is not refused for having risen since its analysis | Open | 6 Portfolio | PR-035 |
 | [PR-039](planning/PI-2026-09/stories/PR-039.md) | Where the funnel lost the stocks that rose | Done | 7 Marksheets; 8 Discovery | None |

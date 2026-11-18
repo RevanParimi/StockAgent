@@ -439,14 +439,17 @@ def test_an_unreadable_surveillance_report_means_no_report(monkeypatch):
 def test_the_shipped_config_switches_on_only_the_primary_portfolio():
     """The global switch ships off; the owner switched it on for the primary
     portfolio alone (PR-014, 15 Nov 2026). Any other portfolio, or a global
-    switch-on, fails here."""
+    switch-on, fails here. The breadth ships at the owner's ₹1 crore figures
+    (PR-036, 17 Nov 2026): 5 new positions a day, at least 20 holdings aimed
+    for, 25 to size a position by, at most 30. This file's examples keep the
+    earlier values, pinned by its own fixture."""
     from backend.shared.config.settings.loader import cfg
     assert cfg("autopilot.deploy_idle_cash") is False
     assert cfg("portfolio.overrides") == {"primary": {"deploy_idle_cash": True}}
     assert {k: float(v) for k, v in cfg("autopilot.deploy_target_invested_pct").items()} \
         == TARGETS
     assert (cfg("autopilot.deploy_max_new_per_day"), cfg("portfolio.min_holdings"),
-            cfg("portfolio.target_holdings"), cfg("portfolio.max_holdings")) == (2, 10, 12, 15)
+            cfg("portfolio.target_holdings"), cfg("portfolio.max_holdings")) == (5, 20, 25, 30)
     assert cfg("portfolio.min_invested_inr", fallback=None) is None
 
 

@@ -439,7 +439,11 @@ peers:
 portfolio:
   data_dir: "data/portfolio"     # per-user roots: data/portfolio/<user_id>/
   default_user_id: "primary"     # single-user launch; per-user layout from day one
-  max_managed_tickers: 40        # auto-promotion cap — guards LLM spend (~$19/mo at 40)
+  # Auto-promotion cap: every holding needs its daily review, and a holding
+  # beyond the cap has none, so no sale. 30 holdings and the 16 original
+  # entries make 46 (PR-036, 18 Nov 2026). Guards LLM spend: a review costs a
+  # median $0.0189, about $20 a month at 60 a day (PR-035's read, 18 Nov 2026).
+  max_managed_tickers: 60
   weekly_review_weekday: 4       # Friday: watchlist-cadence names review this weekday only
   # Charges on every paper BUY and SELL, taken from cash with the trade
   # (core/portfolio/costs.py): an NSE equity delivery trade at a zero-brokerage
@@ -474,12 +478,15 @@ portfolio:
   # core/portfolio/deployment.py). The analysis's BUY ideas that pass the checks
   # decide how many stocks are held, up to max_holdings; the regime's share of
   # equity decides how much is invested. A new position asks for the NORMAL
-  # share of equity over target_holdings (80% ÷ 12 ≈ 6.7%: ₹80,000 of ₹12 L,
-  # ₹3,33,333 of ₹50 L), in every regime, always within advisor.max_position_pct,
-  # the sector cap and the cash floor.
-  min_holdings: 10               # a soft minimum in calm regimes: reported when not met, never forces a buy
-  target_holdings: 12            # sets a position's size (owner, 12 Oct 2026); not a limit on holdings
-  max_holdings: 15               # stops over-dilution
+  # share of equity over target_holdings (80% ÷ 25 = 3.2%: ₹3,20,000 of
+  # ₹1 crore, 320 shares of a ₹1,000 stock), in every regime, always within
+  # advisor.max_position_pct, the sector cap and the cash floor. ₹1 crore in
+  # NORMAL: 25 positions reach the ₹80 L target; in RISK_OFF (₹50 L) buying
+  # stops at about 16. The owner's figures: ₹1 crore in 20 to 30 stocks
+  # (17 Nov 2026; PR-036). Rollback: 10, 12 and 15; nothing is sold.
+  min_holdings: 20               # a soft minimum in calm regimes: reported when not met, never forces a buy (owner, 17 Nov 2026)
+  target_holdings: 25            # sets a position's size, 80% ÷ 25 = 3.2% of equity (owner, 17 Nov 2026); not a limit on holdings
+  max_holdings: 30               # stops over-dilution (owner, 17 Nov 2026)
   # Per portfolio (user id): any of the three keys above, deploy_idle_cash, and
   # deploy_target_invested_pct, whose regimes replace those it names.
   # Example: {primary: {deploy_idle_cash: true}} switches deployment on for
@@ -503,7 +510,12 @@ autopilot:
   # market regime's target (the daily review's label). Off until the owner
   # switches it on; portfolio.overrides can switch it per portfolio.
   deploy_idle_cash: false
-  deploy_max_new_per_day: 2      # new positions a day, so cash goes in over days
+  # New positions a day, so cash goes in over days: 25 positions take 5
+  # sessions at the earliest, a week of prices, not one day's. On 16 Nov 8
+  # ideas qualified and 2 were bought; a Saturday places about 7 new ideas,
+  # which 5 a day buys in 2 sessions (PR-035's read; PR-036, 18 Nov 2026).
+  # Rollback: 2.
+  deploy_max_new_per_day: 5
   deploy_target_invested_pct:    # % of total equity in stocks (owner, 1 Nov 2026)
     NORMAL: 80
     RISK_ON: 80
@@ -610,7 +622,7 @@ events:
   data_dir: "data/events"
   morning: "08:15"               # IST, before the 08:45 pre-open check
   evening: "18:30"               # IST, after the close and the 16:30 review
-  max_symbols: 60                # held first, then watched, then shelf
+  max_symbols: 90                # held first, then watched, then shelf: 30 holdings plus the watched stocks and the shelf's ideas (PR-036, 18 Nov 2026; provisional, not yet read in production; rollback 60)
   news_queries_per_day: 60       # Serper /news; each run may use half
   news_articles_per_query: 5
   news_recency: "qdr:d"          # past 24 hours; NSE filings cover longer gaps

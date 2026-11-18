@@ -27,18 +27,20 @@ regime.
 **The rules decide how much; the ideas decide how many (owner, 4 Nov 2026).**
 The target is the regime's share and nothing else, so it grows when the user
 adds money. A new position asks for a share of equity, the NORMAL share over
-`portfolio.target_holdings` (80% ÷ 12 ≈ 6.7%), in every regime: RISK_OFF only
-stops sooner. SA-050's sizing rule keeps it within the position cap, its
-sector's cap and the cash floor. Holdings are as many as the ideas that pass
+`portfolio.target_holdings` (80% ÷ 25 = 3.2%; the owner's ₹1 crore in 20 to 30
+stocks, 17 Nov 2026), in every regime: RISK_OFF only stops sooner. SA-050's
+sizing rule keeps it within the position cap, its sector's cap and the cash
+floor. Holdings are as many as the ideas that pass
 the checks, up to `portfolio.max_holdings`. `portfolio.overrides` gives one
 portfolio its own values, its own regime shares and its own switch.
 
-**Examples.** ₹12 L in NORMAL: the target is ₹9.6 L and a position asks for
-₹80,000, so 12 ideas at ₹1,000 end at 80 shares each and exactly the target.
-₹50 L in NORMAL: a position asks for ₹3,33,333, or 333 shares at ₹1,000; twelve
-come to ₹39.96 L, ₹4,000 short of the ₹40 L target, so a thirteenth opens and
-₹43.29 L is invested. In RISK_OFF ₹12 L stops at ₹6 L, and nothing is ever sold
-to get there.
+**Examples.** ₹1 crore in NORMAL: the target is ₹80 L and a position asks for
+₹3,20,000. At ₹1,000 that is 320 shares, and 25 ideas end at exactly the
+target. At ₹1,100 it is 290 shares, ₹3,19,000; twenty-five come to ₹79.75 L,
+₹25,000 short, so a 26th opens and ₹82.94 L is invested. In RISK_OFF the same
+₹1 crore stops at ₹50 L: fifteen positions of ₹3.2 L are ₹48 L, so a 16th opens
+(₹51.2 L), and nothing is ever sold to get there. At 5 new positions a day
+(`autopilot.deploy_max_new_per_day`) the 25 take five sessions.
 
 **When to open another position** (`stop_reason`): never at `max_holdings` or
 past the day's limit; otherwise while invested is below the target. A buy

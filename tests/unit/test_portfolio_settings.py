@@ -5,7 +5,8 @@ from core.config import settings
 def test_portfolio_settings_present():
     assert settings.PORTFOLIO_DATA_DIR == "data/portfolio"
     assert settings.PORTFOLIO_DEFAULT_USER_ID == "primary"
-    assert settings.PORTFOLIO_MAX_MANAGED_TICKERS == 40
+    # PR-036: 30 holdings and the 16 original entries need 46 daily reviews.
+    assert settings.PORTFOLIO_MAX_MANAGED_TICKERS == 60
     assert settings.PORTFOLIO_WEEKLY_REVIEW_WEEKDAY == 4
 
 

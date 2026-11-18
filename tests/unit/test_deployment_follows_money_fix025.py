@@ -461,10 +461,12 @@ def test_one_portfolio_can_have_its_own_shares_and_its_own_aim(tmp_path, monkeyp
 
 
 def test_the_shipped_config_names_the_owners_values():
+    """₹1 crore in 20 to 30 stocks (owner, 17 Nov 2026; PR-036): at least 20
+    aimed for, 25 to size a position by (80% ÷ 25 = 3.2%), at most 30."""
     from backend.shared.config.settings.loader import cfg
     assert cfg("portfolio.min_invested_inr", fallback=None) is None
     assert (cfg("portfolio.min_holdings"), cfg("portfolio.target_holdings"),
-            cfg("portfolio.max_holdings")) == (10, 12, 15)
+            cfg("portfolio.max_holdings")) == (20, 25, 30)
 
 
 # ---------------------------------------------------------------------------

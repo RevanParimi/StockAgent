@@ -14,6 +14,36 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 18 Nov, morning (autopilot): PR-037 → ACCEPTED (fresh review); held on `story/PR-037` for your word
+
+- **Autopilot session `1118-0834-p4`**, a `continue` on the code-server from about 08:34 IST,
+  outside a push window. `main` = `34aa51d`, seven commits ahead of `origin/main` `6e1962f`.
+- **Input verified:** `story/PR-037` = `d6e5777`, one commit on `3a59155`; diff digest
+  `d24636e5…` = the implementation receipt. Reviewed in a detached worktree of `d6e5777`.
+- **Checks:** focused 363 passed; reviewer cases 6 passed
+  (`analysis_data/pr037_review/test_rv_pr037.py`); reviewer mutants 9 of 9 caught; full suite
+  on `d6e5777` 6,820 passed / 12 skipped / 1 xfailed / 0 failed (6m12s); `check_kt_docs` errors []; `check_broad_except` OK (148).
+- **Findings:** none critical, high or medium. R1, low: an IPO candidate removed by the 30-day
+  memo still narrows the re-dives' room (BACKLOG B-15).
+- **Held:** not merged into `main`, so tonight's push does not carry it; it merges at your word
+  for its rollout ([evidence/PR-037-review.md](evidence/PR-037-review.md), "Decision").
+- **Found for tonight:** `story/PR-015` now conflicts with `main` in `docs/TECHNICAL_DESIGN.md`
+  (section 11's table: keep `main`'s "Idle cash" row and PR-015's new "Exit rule" row).
+
+## 18 Nov, morning (autopilot): PR-037 built on `story/PR-037`; its fresh review next
+
+- **Autopilot session `1118-0807-p3`**, from about 08:07 IST, outside a push window. Decision
+  path. `d6e5777` on `story/PR-037`; records on `main`.
+- **Settings:** shelf 45, 6 a sector key, 45 deep dives a week, `new_dive_floor` 15 (new),
+  screen 60 of a shortlist of 120 (provisional); 0.55 unchanged. Re-dives take at most 28 of 45
+  calls (less the IPO candidates and the floor), counted in calls made, so a held stock's idea
+  takes no room; one past the room waits behind the screen and is named in
+  `hygiene.redive_deferred`.
+- **B-14 explained by code:** the Saturday job's paper reviews re-run the analysis per active
+  idea; the deep dives keep their budget. `PR-037-W2` confirms it.
+- **Checks:** 11 new tests (8 of 8 mutants caught); full suite 6,820 passed / 0 failed; guards
+  pass. The receipt states the cost and the shelf after two Saturdays (about 40 to 45, inferred).
+
 ## 18 Nov, morning (autopilot): PR-039 → ACCEPTED; the report is on `main`, its run waits for your word
 
 - **Autopilot session `1118-0729-p1`**, a `continue` on the code-server from about 07:29 IST,

@@ -196,7 +196,7 @@ no `.env` read.
 | Criterion | State |
 |---|---|
 | Settings and the budget split in place with tests as above; full suite and guards pass | Met (above) |
-| A fresh-session review accepts it | **Pending: the next fresh conversation** |
+| A fresh-session review accepts it | **Met:** accepted 18 Nov 2026, [PR-037-review.md](PR-037-review.md) |
 | The receipt states the weekly and monthly cost at the new settings, measured unit cost × count | Met (above) |
 | The shelf's expected size after two Saturdays from the measured yield | Met (above, an inference with its assumptions) |
 | KT section 8, PRODUCT_MAP and the testing guide describe the wider path | Met; the PDF is not regenerated with a story (AGENTS.md, owner's rule of 17 Nov) |

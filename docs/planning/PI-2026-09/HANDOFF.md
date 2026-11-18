@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-18 (PR-037 built on its branch, its fresh review next; in the next push window PR-015 switches, PR-036 ships, then the ₹90 L deposit)
+# Current handoff - 2026-11-18 (PR-037 accepted, held on its branch for your word; in the next push window PR-015 switches, PR-036 ships, then the ₹90 L deposit; PR-038 next outside a window)
 
 **Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
 
@@ -20,7 +20,10 @@
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
   Mondays), in this order:
   1. **PR-015's switch.** You gave the word on 18 Nov at about 07:05 IST. The session merges
-     `story/PR-015` (`12b7901`) into `main`, runs the full suite on the exact commit, pushes,
+     `story/PR-015` (`12b7901`) into `main` (one conflict since this morning's docs commits:
+     `docs/TECHNICAL_DESIGN.md`, section 11's table, where `main` rewrote the "Idle cash" row and
+     PR-015 adds an "Exit rule" row under it; keep both, as PR-037's review dry-ran), runs the
+     full suite on the exact commit, pushes,
      checks the deploy and `/health`, and adds `PR-015-W1`
      ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md), "What the owner's word
      starts"). That push carries the commits waiting on `main` (below): PR-039's report and
@@ -32,10 +35,12 @@
      `DEPOSIT`, the machine key read inside the container and never printed. A retry writes
      nothing. Record it in the receipt, STATE and here; the deposit's date fixes
      `PR-036-W5` and `-W10`.
-- **Outside a window: PR-037's fresh review** (`active_task`; decision path; `REVIEW.md`) of
-  `story/PR-037` (`d6e5777`) in a detached worktree, from
-  [evidence/PR-037-implementation.md](evidence/PR-037-implementation.md). On acceptance it
-  stays on its branch until your word for its rollout (below), as PR-015's did.
+- **Outside a window: PR-038** (`next_task`; decision path; its card's order puts it after
+  PR-015, so it is built on `story/PR-038` and ships after PR-015's switch).
+- **PR-037 is accepted** (18 Nov, fresh review;
+  [evidence/PR-037-review.md](evidence/PR-037-review.md)): `d6e5777` on `story/PR-037`, not
+  merged, so tonight's push does not carry it; it merges on your word for its rollout (below).
+  One low finding, BACKLOG B-15. It merges cleanly on `main`, with or without PR-015.
 - **PR-036 is accepted** (18 Nov, light lane; [evidence/PR-036.md](evidence/PR-036.md)).
   `671706b` on `main`: 25 aimed for (3.2% of equity a position), 20 to 30 holdings, 5 new a
   day, 60 managed, 90 event symbols (provisional). Not deployed: production still runs 12, 10,
@@ -43,22 +48,24 @@
 - **PR-039 is accepted** ([evidence/PR-039.md](evidence/PR-039.md)); its report ships with the
   next push and runs at your word.
 - **PR-035's read** ([evidence/PR-035.md](evidence/PR-035.md)): the door that stays is "no
-  sector key named" (five ideas; Saturday 21 Nov re-dives them; B-13); PR-038 stays after PR-037.
+  sector key named" (five ideas; Saturday 21 Nov re-dives them; B-13); PR-038 follows PR-037.
 - **FIX-015 is live** since 18 Nov 00:28 IST (`8422a23`).
-- **Git:** `main` is seven commits ahead of `origin/main` (`6e1962f`): the 18 Nov morning records
+- **Git:** `main` is eight commits ahead of `origin/main` (`6e1962f`): the 18 Nov morning records
   (`2e415e4`, `a16e214`), PR-039 (`a07e551` and its records), PR-036 (`671706b` and its
-  records), PR-037's records. Push pending until the next window (Thu 19 Nov 00:10 IST).
-  `story/PR-015` and `story/PR-037` are local only; `story/PR-039` and `story/FIX-015` are merged.
-- **The investment track** in STATE's order: PR-035, PR-036 (done), PR-037 (review), FIX-015 (done),
+  records), PR-037's two records commits (none of its code). Push pending until the next window
+  (Thu 19 Nov 00:10 IST). `story/PR-015` and `story/PR-037` are local only; `story/PR-039` and
+  `story/FIX-015` are merged.
+- **The investment track** in STATE's order: PR-035, PR-036 (done), PR-037 (done, held), FIX-015 (done),
   PR-015, PR-038, PR-039 (done), PR-005, then PR-033 and PR-034.
 
 ## Waits for you
 
-- **PR-037's rollout** (the card: "at the owner's word"): may it ship with a push in a job-free
-  window once its fresh review accepts it, and may that session then make the one catch-up
+- **PR-037's rollout** (the card: "at the owner's word"; its review accepted it on 18 Nov): may
+  it ship with a push in a job-free window, and may a session then make the one catch-up
   discovery run (`POST /discovery/run`, a weekday 09:30-14:00 IST, so the shelf fills that week
   instead of over three Saturdays)? It is a 45-idea shelf, 6 a sector, 45 deep dives a week (15
-  kept for new companies); the 0.55 bar does not move; about $2.6 a month more model cost.
+  kept for new companies); the 0.55 bar does not move; about $2.6 a month more model cost. A
+  catch-up run on Monday to Wednesday is first bought a session sooner than one on Thursday.
 - **PR-039's report, after the next push:** say "run the PR-039 report" (read-only; the
   command is in its receipt). If place 1 or 2 loses more than a quarter of the risers, that
   session writes the card, with a money example.
@@ -86,20 +93,6 @@ and its catch-up run made by Fri 20 Nov; a later deploy moves it by as many week
 `R2` keep their dates; their baseline note says capital changes on the deposit day.
 
 Deployed stories still `pending_observation` without a dated row get one from PR-033.
-
-## 18 Nov, morning (autopilot): PR-037 built on `story/PR-037`; its fresh review next
-
-- **Autopilot session `1118-0807-p3`**, from about 08:07 IST, outside a push window. Decision
-  path. `d6e5777` on `story/PR-037`; records on `main`.
-- **Settings:** shelf 45, 6 a sector key, 45 deep dives a week, `new_dive_floor` 15 (new),
-  screen 60 of a shortlist of 120 (provisional); 0.55 unchanged. Re-dives take at most 28 of 45
-  calls (less the IPO candidates and the floor), counted in calls made, so a held stock's idea
-  takes no room; one past the room waits behind the screen and is named in
-  `hygiene.redive_deferred`.
-- **B-14 explained by code:** the Saturday job's paper reviews re-run the analysis per active
-  idea; the deep dives keep their budget. `PR-037-W2` confirms it.
-- **Checks:** 11 new tests (8 of 8 mutants caught); full suite 6,820 passed / 0 failed; guards
-  pass. The receipt states the cost and the shelf after two Saturdays (about 40 to 45, inferred).
 
 ## 18 Nov, night (autopilot): PR-015 prepared on `story/PR-015`; the switch waits for your word
 

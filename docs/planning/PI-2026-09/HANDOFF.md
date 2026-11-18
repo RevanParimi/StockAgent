@@ -28,8 +28,11 @@
   section 8, CODEBASE and guide 06-P. Autopilot `1118-0052-p6` stopped at a usage limit before the
   full suite (run it without `-n`), the receipt `evidence/PR-039.md`, STATE and HANDOFF. Then
   merge to `main`. Its production report waits for your word after the deploy.
-- **Then PR-036** (₹1 crore, 25 aimed for), the next ready story in STATE's order. Its push and
-  the ₹90 L deposit each wait for your word.
+- **Then PR-036** (₹1 crore, 25 aimed for), the next ready story in STATE's order. **You gave
+  the word for its push and the ₹90 L deposit** (18 Nov, about 07:25 IST; STATE `owner_word`), in
+  the card's order: settings first, pushed in a window (it may go with PR-015's push); the deposit
+  only after that deploy is confirmed, from inside the container through `railway ssh`, the key
+  never printed.
 - **PR-035 is accepted** (18 Nov, a manual session; [evidence/PR-035.md](evidence/PR-035.md),
   phase 2). The biggest door was "dived after the session's close" (₹7,86,379 over two
   sessions; one run a week, it clears by itself). The door that stays is "no sector key named":
@@ -49,7 +52,6 @@
 
 ## Waits for you
 
-- **PR-036's rollout, later:** its push and the deposit, each at your word (the card).
 - **PR-039's report, later:** say "run the PR-039 report" once it is deployed (read-only).
 - **Optional:** the weekly watchdog line "No off-site copy has ever been confirmed" stays while it
   is true; removing it is a registry edit you approve separately.

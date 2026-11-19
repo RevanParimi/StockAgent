@@ -2421,8 +2421,9 @@ decision gate, including the identity check, is the shelf idea's `data_gate`.
 In `enforce` a candidate with an unresolved identity is never shelved, nor
 used as a SWITCH destination.
 
-The shelf exists to supply enough checked, varied ideas to fill and keep about
-12 holdings. The weekly run, in order:
+The shelf exists to supply enough checked, varied ideas to fill and keep 25 to
+30 holdings (section 6), each bought from its own deep dive rated a BUY at 0.55
+or more. The weekly run, in order:
 
 1. **Instrument listing.** [bhavcopy.py](../services/data/fetchers/bhavcopy.py)
    reads the latest UDiFF bhavcopy from NSE's archive and caches each symbol's
@@ -2448,7 +2449,8 @@ The shelf exists to supply enough checked, varied ideas to fill and keep about
    `discovery.redive_after_days` (30), each group oldest first. A stock analysed on 24 Oct and sold on 27 Oct is
    re-dived on Sat 31 Oct, not Sat 28 Nov. A sale the user made by hand and a
    TRIM that leaves shares do not count. Re-dives take the budget
-   first but leave the IPO slots free. A re-dive refreshes the idea in place:
+   first but leave the IPO slots and the new companies' floor free (step 5).
+   A re-dive refreshes the idea in place:
    conviction, verdict, thesis, entry band, invalidation, gate and `dived`
    date. `added` and `close_at_add` stay, so the auditor's shelf grades keep
    their start. A re-dive whose analysis is not actionable, whose conviction
@@ -2463,9 +2465,25 @@ The shelf exists to supply enough checked, varied ideas to fill and keep about
    re-dive that names its key resets the count. A new dive that is not a BUY is not shelved either
    (`not_buy` in the run's summary): the shelf holds the ideas the analysis
    rates BUY, and the conviction floor reads a separate number.
-5. **Deep dives.** `discovery.deep_dive_count` (20) bounds the analyst calls
+5. **Deep dives.** `discovery.deep_dive_count` (45) bounds the analyst calls
    a week: re-dives, IPO slots and screen ranks together, a failed call
-   included. A screen or IPO candidate dived in the last 30 days and not on
+   included. The re-dives may take the calls less this week's IPO candidates
+   (at most `discovery.ipo_max_deep_dives`, 2) less
+   `discovery.new_dive_floor` (15), which stay for the screen's new
+   companies: 28 of 45 with two IPO candidates. The room counts calls made,
+   so the idea of a stock still held, which takes no re-dive, uses none of
+   it. A re-dive past the room waits behind the screen's ranks and takes only
+   the calls they leave (`hygiene.redive_late`); one that gets none is named
+   in `hygiene.redive_deferred` and is due again the next Saturday, oldest
+   first, unbuyable until then if its dive is older than 30 days. The run's
+   `budget` says how the calls were shared. Example: 45 ideas, 12 of them
+   dived more than 30 days ago and 1 sold since its dive: 13 re-dives, 2 IPO
+   candidates and 30 new companies. With 35 due instead, 28 are re-dived, 15
+   new companies are dived and the 7 least overdue wait a week. When fewer
+   re-dives are due, the new companies take the rest. A dive costs a mean
+   $0.0108 (18 Nov 2026), about $2 a month at 45 a week. The same Saturday
+   job's paper reviews (step 7) run one more analysis per active idea outside
+   this budget. A screen or IPO candidate dived in the last 30 days and not on
    the shelf already has its answer (below the floor, abstained or
    outranked), so the dive memo (`dives.json`) keeps it from taking the
    budget again. The memo keeps every answered dive, an abstained one too,
@@ -2483,10 +2501,10 @@ The shelf exists to supply enough checked, varied ideas to fill and keep about
    the screen ranks it on Sat 17 Oct it is analysed, and at 0.55 or more it is a
    new idea, first offered by Tuesday's run. Below the floor it stays out, and
    the memo holds a repeat for 30 days.
-6. **Shelf.** Up to `discovery.shelf_size` (20) active ideas at conviction
+6. **Shelf.** Up to `discovery.shelf_size` (45) active ideas at conviction
    0.55 or more, strongest first. Under the enforced data gate only an
    actionable or degraded dive becomes an idea; in `record` mode an abstained
-   one is shelved, as the mode's "nothing withheld" says. At most `discovery.max_ideas_per_sector` (3)
+   one is shelved, as the mode's "nothing withheld" says. At most `discovery.max_ideas_per_sector` (6)
    share a sector key (below). A newcomer to a full sector replaces that sector's
    weakest idea only if it is stronger, and the drop event says so. Otherwise,
    when the shelf is full, a stronger newcomer displaces the weakest idea.
@@ -2496,6 +2514,14 @@ The shelf exists to supply enough checked, varied ideas to fill and keep about
    re-dived ages out. Example: an idea shelved on 5 Sep and re-dived on
    24 Oct stays past 4 Nov; without passing another re-dive it rotates out
    after 23 Dec.
+7. **Paper reviews.** Every active idea has a paper envelope and a weekly
+   paper review ([paper_lane.py](../core/discovery/paper_lane.py)): the daily
+   review in the paper lane (section 5), which runs the analysis again unless
+   the forecast's direction was right and its error under
+   `rl.agent_rerun_threshold_pct` (0.5%); a new month's envelope is one more
+   analysis per idea. These analyses are outside the deep-dive budget, so a
+   Saturday's analyses number up to the budget plus the active ideas, 90 at
+   45 and 45, and up to 45 more for a month's new envelopes.
 
 **Screen signals.** The screen ([screen.py](../core/discovery/screen.py))
 ranks every company on six signals by percentile and blends the ranks by
@@ -2504,7 +2530,10 @@ breakout 0.15, bulk and block buying 0.15, nearness to the 52-week high with
 relative strength 0.10, and insider buying 0.10. The weights are relative:
 the blend is renormalised over the signals available that week. An
 unavailable signal is left out and named in the screen's `dark_signals`, with
-its reason in `degraded_checks`; it is never scored neutral. There is no
+its reason in `degraded_checks`; it is never scored neutral. The
+`discovery.shortlist_size` (120) best-ranked companies take the per-symbol
+checks below, and the `discovery.max_candidates` (60) best-ranked that pass
+are the week's candidates. There is no
 mutual-fund signal, because no source for it (monthly scheme portfolios) is
 built, so it has no weight either.
 
@@ -2549,7 +2578,7 @@ with no filing scores 0. A first run reads up to 600 documents, a few minutes
 of NSE calls; later runs read only the new filings, and the promoter shares
 again.
 
-**Promoter pledge.** For each of the 80 shortlisted stocks, NSE's pledge data
+**Promoter pledge.** For each of the 120 shortlisted stocks, NSE's pledge data
 gives the promoter shares pledged as a % of the promoter holding, at the
 latest quarter filed. More than `discovery.max_promoter_pledge_pct` (25%)
 rejects the stock (`promoter_pledge_high`): when the price falls, a lender
@@ -3585,9 +3614,11 @@ learning to `observe`. SA-023 puts learned lessons on measurable probation.
   repository (section 6): a position is 3.2% of equity, 25 aimed for, 30 at
   most, 5 new a day. **Planned:** the ₹90 L deposit, after they are deployed
   (section 1). PR-035 read why the first run was offered 2 of the shelf's 20
-  active ideas. **Planned:** PR-037 widens the supply of analysed ideas (the
-  shelf, the weekly deep dives, the limit per sector) and leaves the 0.55
-  floor where it is. PR-038 tests whether an idea that has risen past its
+  active ideas. The wider supply of analysed ideas is in the repository too
+  (section 8): a shelf of 45, 6 a sector, 45 deep dives a week with 15 kept
+  for new companies, and the 0.55 floor where it was. **Planned:** its
+  deploy, then one discovery run at the owner's word so the shelf fills that
+  week. PR-038 tests whether an idea that has risen past its
   band should still be bought. PR-039's report (section 8) says where the
   funnel lost the stocks that rose, and where it kept the book out of those
   that fell.

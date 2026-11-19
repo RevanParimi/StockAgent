@@ -9,6 +9,14 @@ PR-004: the week's analyst budget (DISCOVERY_DEEP_DIVE_COUNT calls) goes
 first to re-dives of shelf ideas the autopilot sold since their latest dive,
 that are unverified or that are older than DISCOVERY_REDIVE_AFTER_DAYS,
 leaving the IPO slots free, then to IPO candidates, then to the screen's ranks.
+
+PR-037: re-dives also leave DISCOVERY_NEW_DIVE_FLOOR calls for the screen's
+new companies (`budget_split`; `run_deep_dives` counts the room in calls). A
+re-dive past the room is offered after the screen's ranks, so it takes only
+the calls the new companies leave (`hygiene.redive_late`); one that gets none
+is reported in `hygiene.redive_deferred` and comes up again, oldest first, the
+following week. Example: budget 45, 2 IPO candidates, floor 15: at most 28
+re-dives go first; with 35 due, 7 wait behind the screen.
 """
 from __future__ import annotations
 
@@ -41,6 +49,19 @@ __all__ = [
     "refresh_ipo_cache", "build_ipo_candidates", "upcoming_lockin_alerts",
     "settings",
 ]
+
+
+def budget_split(ipo_slots: int) -> dict:
+    """How the week's analyst calls are shared (PR-037): `calls` in all,
+    `ipo` taken by this week's IPO candidates, `new_floor` kept for the
+    screen's new companies, and `redive_room`, the calls re-dives may take
+    ahead of them: calls less the IPO candidates less the floor, never below 0. The
+    floor is a minimum: when fewer re-dives are due, the new companies take
+    the rest. Example: 45 calls, 2 IPO candidates, floor 15 -> room 28."""
+    calls = max(0, int(settings.DISCOVERY_DEEP_DIVE_COUNT))
+    floor = max(0, int(getattr(settings, "DISCOVERY_NEW_DIVE_FLOOR", 0)))
+    return {"calls": calls, "ipo": ipo_slots, "new_floor": floor,
+            "redive_room": max(0, calls - ipo_slots - floor)}
 
 
 def run_discovery_cycle(on: date | None = None) -> dict:
@@ -99,8 +120,9 @@ def run_discovery_cycle(on: date | None = None) -> dict:
             ipo_cands = []
 
     # PR-004: shelf hygiene before any new idea. Re-dives come first in the
-    # budget but never take the IPO slots.
+    # budget but never take the IPO slots, nor (PR-037) the new companies' floor.
     shelf_store = ShelfStore()
+    split = budget_split(len(ipo_cands))
     hygiene: dict = {"not_companies": {}, "classified": [], "redive": [], "sold_candidates": []}
     redive_cands: list[DiscoveryCandidate] = []
     # FIX-025: a sold stock's idea goes first. An unread ledger costs that
@@ -121,14 +143,13 @@ def run_discovery_cycle(on: date | None = None) -> dict:
         hygiene["not_companies"] = shelf_store.drop_non_companies(listing)
         hygiene["classified"] = shelf_store.backfill_classification(market_classification)
         due = shelf_store.redive_due(on, sold)
-        room = max(0, settings.DISCOVERY_DEEP_DIVE_COUNT - len(ipo_cands))
         hygiene["redive_sold"] = [i.symbol for i in due if sold_since_dive(i, sold.get(i.symbol))]
         redive_cands = [DiscoveryCandidate(
             symbol=i.symbol, close=0.0, composite=0.0,
             flags=["redive", "sold"] if i.symbol in hygiene["redive_sold"] else ["redive"])
-            for i in due[:room]]
+            for i in due]
         hygiene["redive"] = [c.symbol for c in redive_cands]
-        hygiene["redive_deferred"] = [i.symbol for i in due[room:]]
+        hygiene["redive_deferred"] = []
     except Exception as exc:
         logger.warning("[discovery] shelf hygiene failed (non-fatal): %s", exc)
         errors.append(f"shelf hygiene failed: {exc}")
@@ -153,12 +174,19 @@ def run_discovery_cycle(on: date | None = None) -> dict:
         hygiene["sold_candidates"] = sorted({c.symbol for c in new_cands} & sold_out)
         new_cands = [c.model_copy(update={"flags": [*c.flags, "sold"]}) if c.symbol in sold_out
                      else c for c in new_cands]
+    # PR-037: re-dives past the room wait behind the screen's ranks.
+    calls: dict = {}
     try:
-        dives = run_deep_dives(redive_cands + new_cands, on=on)
+        dives = run_deep_dives(redive_cands + new_cands, on=on,
+                               redive_room=split["redive_room"], tally=calls)
     except Exception as exc:
         logger.warning("[discovery] deep dives failed (non-fatal): %s", exc)
         errors.append(f"deep_dives failed: {exc}")
         dives = []
+    late, deferred = list(calls.get("late") or []), list(calls.get("deferred") or [])
+    hygiene["redive"] = [s for s in hygiene["redive"] if s not in {*late, *deferred}]
+    hygiene["redive_late"], hygiene["redive_deferred"] = late, deferred
+    split = {**split, "made": calls.get("calls"), "redive_calls": calls.get("redive_calls")}
     try:
         shelf_store.record_dives(dives, on=on)
     except Exception as exc:
@@ -226,6 +254,7 @@ def run_discovery_cycle(on: date | None = None) -> dict:
             "listed", "read_now", "unread", "failed", "complete")},
         "listing": listing_info,
         "hygiene": hygiene,
+        "budget": split,
         "deep_dives": len(dives),
         "sectors": sectors,
         "redived": redived,

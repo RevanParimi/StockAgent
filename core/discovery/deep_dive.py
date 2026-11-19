@@ -80,11 +80,22 @@ def _latest_close(sym_win: pd.DataFrame) -> float:
 
 def run_deep_dives(
     candidates: list[DiscoveryCandidate], on: date, max_n: int | None = None,
-    listing: dict | None = None,
+    listing: dict | None = None, redive_room: int | None = None,
+    tally: dict | None = None,
 ) -> list[DeepDiveResult]:
     """Make at most max_n (default DISCOVERY_DEEP_DIVE_COUNT) analyst calls
     over the ranked candidates. Every call counts, a failed one included, so
     the budget is a bound on LLM spend. Per-candidate failures are non-fatal.
+
+    `redive_room` (PR-037; None = no limit): at most that many calls go to
+    candidates flagged "redive" in list order. A later re-dive is held back
+    and offered after the last candidate, in its order, with the calls the
+    others leave. Only a call counts: a re-dive skipped below (a held stock's
+    idea) takes no room. `tally`, when given, receives `calls` (made),
+    `redive_calls`, `late` (held back, then called) and `deferred` (a re-dive
+    that would have been called, held back or past the budget, and never
+    called). Example: room 2, re-dives A, B, C then screen ranks X, Y,
+    budget 4: calls A, B, X, Y; C is deferred.
 
     No call is made for a symbol NSE does not list as a company (`listing`,
     default the cached one; no listing means no symbol can be verified, so
@@ -128,11 +139,19 @@ def run_deep_dives(
     window = EodStore().load_window(end=on, sessions=90)
     results: list[DeepDiveResult] = []
     attempted: set[str] = set()
+    # (candidate, held back): a held-back re-dive returns at the end once.
+    queue: list[tuple[DiscoveryCandidate, bool]] = [(c, False) for c in candidates]
+    redive_calls = 0
+    late: list[str] = []
 
-    for cand in candidates:
-        if len(attempted) >= limit:
-            break
+    k = 0
+    while k < len(queue):
+        cand, held_back = queue[k]
+        k += 1
+        spent = len(attempted) >= limit
         redive = "redive" in cand.flags
+        if spent and not redive:
+            continue        # PR-037: past the budget a re-dive is only looked at, to report it
         # FIX-025: a stock the autopilot sold can still have an enabled
         # managed entry: an original entry, one another portfolio still
         # holds, or one a user's own watchlist keeps (FIX-028 releases the
@@ -154,7 +173,17 @@ def run_deep_dives(
         if close <= 0:
             logger.info("[deep_dive] %s skipped: no close to set an entry band", cand.symbol)
             continue
+        if redive and not held_back and (
+                spent or (redive_room is not None and redive_calls >= redive_room)):
+            queue.append((cand, True))      # PR-037: behind the other candidates
+            continue
+        if spent:
+            continue
         attempted.add(cand.symbol)
+        if redive:
+            redive_calls += 1
+            if held_back:
+                late.append(cand.symbol)
         try:
             classified = market_classification(cand.symbol)
             idea = ideas.get(cand.symbol)
@@ -206,4 +235,9 @@ def run_deep_dives(
                             cand.symbol, unnamed)
         except Exception as exc:
             logger.warning("[deep_dive] %s failed (non-fatal): %s", cand.symbol, exc)
+    if tally is not None:
+        tally.update(
+            calls=len(attempted), redive_calls=redive_calls, late=late,
+            deferred=[c.symbol for c, back in queue
+                      if back and c.symbol not in attempted])
     return results

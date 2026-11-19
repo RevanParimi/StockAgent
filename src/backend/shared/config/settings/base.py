@@ -950,6 +950,9 @@ DISCOVERY_CIRCUIT_STREAK_MAX: int = int(cfg("discovery.circuit_streak_max", fall
 DISCOVERY_SHORTLIST_SIZE: int = int(cfg("discovery.shortlist_size", fallback=80))
 DISCOVERY_MAX_CANDIDATES: int = int(cfg("discovery.max_candidates", fallback=40))
 DISCOVERY_DEEP_DIVE_COUNT: int = int(cfg("discovery.deep_dive_count", fallback=10))
+# PR-037: analyst calls the week's re-dives leave for the screen's new
+# companies; a re-dive behind them takes only what they leave. 0 = off.
+DISCOVERY_NEW_DIVE_FLOOR: int = int(cfg("discovery.new_dive_floor", fallback=0))
 DISCOVERY_SHELF_SIZE: int = int(cfg("discovery.shelf_size", fallback=10))
 DISCOVERY_MAX_IDEAS_PER_SECTOR: int = int(cfg("discovery.max_ideas_per_sector", fallback=0))
 DISCOVERY_REDIVE_AFTER_DAYS: int = int(cfg("discovery.redive_after_days", fallback=0))

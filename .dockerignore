@@ -7,7 +7,6 @@
 
 # --- Node (frontend) — rebuilt inside the image ---
 **/node_modules
-src/frontend/web/dist
 
 # --- Python caches / envs ---
 **/__pycache__

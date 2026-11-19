@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-19 (FIX-017 accepted and merged; push pending to Fri 20 Nov 00:10; in a push window PR-015 switches, outside one CLEAN-004; PR-033's probe run waits for your word)
+# Current handoff - 2026-11-19 (CLEAN-004 accepted; push pending to Fri 20 Nov 00:10; in a push window PR-015 switches, outside one PR-040; PR-033's probe run waits for your word)
 
 **Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
 
@@ -19,31 +19,29 @@
 
 ## Now
 
-- **PR-037 is merged** (`ab18c77`, your word 19 Nov) and ships with the 00:10 push; then the
-  first `continue` on a weekday 09:30-14:00 IST (from Fri 20 Nov) makes its one catch-up run
-  first ([receipt](evidence/PR-037-implementation.md), "Rollout").
+- **The 00:10 push ships** (`main` 29 commits ahead of `origin/main` `3f26ae5`): PR-037
+  (`ab18c77`; then the first `continue` on a weekday 09:30-14:00 IST makes its one catch-up run
+  first, [receipt](evidence/PR-037-implementation.md) "Rollout"); PR-005 (`40d04d5`,
+  [review](evidence/PR-005-review.md); the backfill waits for your word); PR-042
+  ([receipt](evidence/PR-042.md): `DECISION_GATE_MODE=enforce`, an analysis missing data cannot
+  buy, exits never blocked); PR-043 ([receipt](evidence/PR-043.md): the search also to Parallel
+  and Exa, recorded, never read); FIX-017 (`9c582e0`, [review](evidence/FIX-017-review.md): the
+  holding sync asks NSE under its own code); CLEAN-004 (below).
+- **CLEAN-004 is done** ([receipt](evidence/CLEAN-004.md)): the Prompt Lab and its midnight job,
+  the daily second AI call (control lane, about 425 model calls a month) and the C++ indicator
+  copy are gone, with three BACKLOG B-8 leftovers. After the push and the 16:30 review,
+  `CLEAN-004-W1` and `FIX-017-W1` read that review.
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
   Mondays; the next opens Fri 20 Nov 00:10): **PR-015's switch** (your word, 18 Nov about 07:05
   IST): merge `story/PR-015` (`12b7901`) into `main` (three KT conflicts, sections 1, 4 and 11;
   how to keep both: [PR-005's review](evidence/PR-005-review.md), "Decision"), the full suite on
   the exact commit, push, check the deploy and `/health`, add `PR-015-W1`
   ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md)).
+- **Next `continue` outside a window:** PR-015 waits for one, so PR-040 (first ready in order;
+  CLEAN-005 is ready after it). PR-033's probe run waits for your word.
 - **PR-036 is live, ₹1 crore in** (06:34 IST 19 Nov; [receipt](evidence/PR-036.md), "Rollout").
   Next, read-only: today's 16:30 `deployment` record (step 4).
-- **PR-005 is merged** (`40d04d5`; [review](evidence/PR-005-review.md)) and ships with the
-  next push; the backfill waits for your word.
-- **PR-042 is done** ([receipt](evidence/PR-042.md)): `DECISION_GATE_MODE=enforce` goes live
-  with the 00:10 push; an analysis missing data cannot buy; exits are never blocked.
-- **PR-043 is done** ([receipt](evidence/PR-043.md)): the search also goes to Parallel and Exa,
-  recorded, never read; ships with the next push.
-- **FIX-017 is done** ([review](evidence/FIX-017-review.md)), merged as `9c582e0`: the holding
-  sync asks NSE under its own code and applies only the ratios the grading reads; ships with the
-  next push. `FIX-017-W1` reads the first 16:30 review after the deploy.
-- **Next `continue` outside a window:** PR-015 waits for one, so CLEAN-004 (first ready in
-  order). PR-033's probe run waits for your word.
-- **Git:** `origin/main` = `3f26ae5`; `main` is 23 commits ahead (PR-037's, PR-005's and
-  FIX-017's merges, PR-043, records), push pending to Fri 20 Nov 00:10. `story/PR-015` is
-  local; merging it gives the same three KT conflicts as before FIX-017.
+- **Git:** `story/PR-015` is local; merging it gives the same three KT conflicts as before.
 
 ## Waits for you
 
@@ -64,6 +62,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 |---|---|---|
 | Fri 20 Nov | `PR-042-W0` | after the 00:10 deploy: the gate reads enforce |
 | Fri 20 Nov§ | `FIX-017-W1` | after the 16:30 review: the sync's data-health lines and applied ratios |
+| Fri 20 Nov§ | `CLEAN-004-W1` | after the 16:30 review: no prompt job, no control call or log |
 | Sat 21 Nov | `PR-038-R1` | the PR-038 re-read |
 | Sat 21 Nov§ | `PR-043-W1` | the first Saturday's shadow rows |
 | Tue 24 Nov | `FIX-032-W1` | your re-run of FIX-032's probe |

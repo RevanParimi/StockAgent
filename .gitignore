@@ -58,8 +58,6 @@ htmlcov/
 
 # Node / TypeScript / Frontend
 node_modules/
-typescript/node_modules/
-frontend/node_modules/
 *.tsbuildinfo
 
 # Claude Code internal worktrees

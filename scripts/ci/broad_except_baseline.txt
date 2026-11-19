@@ -66,8 +66,6 @@ core/portfolio/promotion.py | promote_symbol | #0
 core/portfolio/universe.py | _days_since | #0
 core/portfolio/universe.py | _no_intelligence_history | #0
 scripts/atlas_etl.py | _migrate_advice | #0
-scripts/aud098_thesis_tier_bench.py | <module> | #0
-scripts/aud098_thesis_tier_bench.py | score | #0
 scripts/model_bench.py | <module> | #0
 scripts/model_bench.py | run_turn | #0
 scripts/reasoning_bench.py | <module> | #0

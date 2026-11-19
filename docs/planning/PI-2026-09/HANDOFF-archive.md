@@ -14,6 +14,19 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 19 Nov, night (autopilot): CLEAN-004 → ACCEPTED (light lane)
+
+- **Autopilot `1119-2203-p5`**, a `continue` on the code-server from about 22:03 IST, outside a
+  push window. `main` = `f756d67`, 24 commits ahead of `origin/main` `3f26ae5`. No production read.
+- **Removed, one commit each:** the Prompt Lab, its six routes and the midnight job (`4a1df8d`);
+  the daily second AI call, switched off (`631731d`) then deleted with its settings (`e81af2f`),
+  its stored logs still on the scorecard; the C++ indicator copy (`d0d413e`), with a test that
+  the numbers are the same with and without a compiled module.
+- **BACKLOG B-8:** the third bench, the stale ignore entries and the pasted README line folded
+  in; `model_bench.py` and `reasoning_bench.py` stay for PR-012.
+- **Full suite after each item, 0 failed.** New check `CLEAN-004-W1`. Push pending to Fri 20 Nov
+  00:10. [Receipt](evidence/CLEAN-004.md).
+
 ## 19 Nov, night (autopilot): FIX-017 → ACCEPTED (fresh review); merged into `main`
 
 - **Autopilot session `1119-2135-p4`**, a `continue` on the code-server from about 21:35 IST,

@@ -671,8 +671,7 @@ no-op and delivery sends inline.
 - **Cost telemetry** — per-model rates in `llm.cost_rates`, rolled up nightly
   by `atlas_cost_rollup`; provider counts in `api_usage.py`. Bundle counters
   are estimates. **Planned:** actual call counts (SA-025).
-- **Benches** — `scripts/model_bench.py`, `reasoning_bench.py`,
-  `aud098_thesis_tier_bench.py`.
+- **Benches** — `scripts/model_bench.py`, `reasoning_bench.py`.
 - **Deploy** — `Dockerfile`, `docker-compose.yml`, Railway. Every push
   redeploys.
 

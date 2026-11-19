@@ -35,9 +35,14 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs `8422a23`. It was pushed at about 00:27 IST on 18 November
-2026 (the deployment list showed it SUCCESS at 00:28; `/health` answered 200).
-Against the inspected code it adds FIX-015, the shock exit (section 6): a held
+Production runs `2e995fe`. The code-server's autopilot pushed it at about 05:25
+IST on 19 November 2026, after the full suite passed on that commit (the
+deployment list showed it SUCCESS; `/health` answered 200 at 06:30). Against
+`8422a23` it adds PR-036's configuration, the ₹1 crore book of section 6, and
+PR-039's read-only report `scripts/missed_risers.py`. The ₹90 L deposit was
+recorded on 19 November at 06:34 IST: ₹1,00,00,000 put in. `8422a23` was pushed
+at about 00:27 IST on 18 November 2026 (the deployment list showed it SUCCESS at
+00:28; `/health` answered 200). Against the inspected code it adds FIX-015, the shock exit (section 6): a held
 stock whose latest re-forecast is a market or company shock with a falling
 path, made before one of the first two closes after it, is sold at that close
 under either exit rule. The inspected code, `73e0c29`, was pushed at about 08:05
@@ -62,7 +67,7 @@ operational control.
 | Area | State in production | Evidence |
 |---|---|---|
 | Learning mode | `observe` since 2026-09-26, set by the Railway variable `RL_LEARNING_MODE`; the repository default is `adapt`. Weight versions stay unchanged across reviews, and every review records its proposal. Every envelope since the 2026-10-01 monthly forecast was issued in `observe`. | Verified 2026-10-01 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)) |
-| Idle cash | Idle-cash deployment is on for the primary portfolio since the 15 Nov 2026 deploy, as the repository configures it (`portfolio.overrides.primary.deploy_idle_cash: true`; the global switch off). It acts in the pipeline after each weekday 16:30 review, first on Monday 16 Nov. Before it: 2 holdings, 15.6% invested, equity ₹9,82,408 at the 12 Nov point against ₹10,00,000 put in. The first run, Monday's review of the 13 Nov session (regime RISK_ON, target 80%), bought one stock, COFORGE for ₹64,896 at that session's close: 3 holdings, 22.3% invested, cash ₹7,63,937, equity ₹9,82,897. It stopped because only 1 idea qualified: 2 were offered, and the other was already held. The repository now configures the ₹1 crore book (section 6): 25 holdings to size a position by, 20 aimed for, 30 at most, 5 new positions a day, 60 managed tickers and 90 event-feed stocks; production runs 12, 10, 15, 2, 40 and 60 until the next deploy, and the ₹90 L deposit follows that deploy. | Deploy 15 Nov; read-only probes 15 Nov 21:10 and 17 Nov 06:38 IST ([PR-014 receipt](planning/PI-2026-09/evidence/PR-014-rollout.md)) |
+| Idle cash | Idle-cash deployment is on for the primary portfolio since the 15 Nov 2026 deploy, as the repository configures it (`portfolio.overrides.primary.deploy_idle_cash: true`; the global switch off). It acts in the pipeline after each weekday 16:30 review, first on Monday 16 Nov. Before it: 2 holdings, 15.6% invested, equity ₹9,82,408 at the 12 Nov point against ₹10,00,000 put in. The first run, Monday's review of the 13 Nov session (regime RISK_ON, target 80%), bought one stock, COFORGE for ₹64,896 at that session's close: 3 holdings, 22.3% invested, cash ₹7,63,937, equity ₹9,82,897. It stopped because only 1 idea qualified: 2 were offered, and the other was already held. The repository now configures the ₹1 crore book (section 6): 25 holdings to size a position by, 20 aimed for, 30 at most, 5 new positions a day, 60 managed tickers and 90 event-feed stocks; production runs them since the deploy of 19 Nov (05:25 IST), and the ₹90 L deposit was recorded on 19 Nov at 06:34 IST: ₹1,00,00,000 put in, cash ₹95,04,483, 7 holdings. | Deploy 15 Nov; read-only probes 15 Nov 21:10 and 17 Nov 06:38 IST ([PR-014 receipt](planning/PI-2026-09/evidence/PR-014-rollout.md)); deploy and deposit 19 Nov ([PR-036 receipt](planning/PI-2026-09/evidence/PR-036.md)) |
 | Decision gate | `record`, the repository default: computed and logged everywhere, nothing withheld. The 2026-10-01 decision kept `record`, because 25 of 78 analyses (32%) would have abstained, most for reasons since fixed. | [Enforce decision](planning/PI-2026-09/evidence/SA-003-enforce-decision-2026-10-01.md) |
 | Instrument identity | Since 2026-10-01, TATAMOTORS is disabled in the managed list, with its history kept, and TMPV is managed as its own automobile ticker. The registry lists TATAMOTORS and HEXAWARE as unresolved. | Owner's dashboard change, 2026-10-01 |
 | Prediction stores | The ownership quarantine was applied on 2026-10-01. It moved 16 stray `automobile/<TICKER>` copies, byte-identical, into `data/prediction_quarantine/20260930T184031Z-ce3556d023d3/`. Rollback remains available. | Apply record in [STATE.json](planning/PI-2026-09/STATE.json) |

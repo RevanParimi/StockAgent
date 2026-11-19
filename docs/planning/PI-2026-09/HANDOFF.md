@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-19 (PR-005 implemented on `story/PR-005`, its fresh review next outside a window; in a push window PR-015 switches, PR-036 ships, then the ₹90 L deposit)
+# Current handoff - 2026-11-19 (PR-005's fresh review asked for changes: its fix next outside a window; in a push window PR-015 switches)
 
 **Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
 
@@ -25,15 +25,15 @@
   cash" rewritten on `main`, "Exit rule" added by PR-015; keep both), the full suite on the
   exact commit, push, check the deploy and `/health`, add `PR-015-W1`
   ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md)).
-- **PR-036 is live and the ₹90 L is in** (19 Nov): the runner pushed `2e995fe` at 05:25 IST
-  (deploy SUCCESS, `/health` 200), without PR-015's switch, since no session ran in the window
-  after the night's last phase. The deposit was made at 06:34 IST at your confirmation: ₹1 crore
-  put in, cash ₹95,04,483, 7 holdings ([evidence/PR-036.md](evidence/PR-036.md), "Rollout").
-  Next, read-only: today's 16:30 run's `deployment` record (position about ₹3,20,000, at most 5
-  bought; the receipt's step 4); `PR-036-W5` and `-W10` keep their dates.
-- **Outside a window: PR-005's fresh review** ([REVIEW.md](REVIEW.md)) of `4407b13` on
-  `story/PR-005` ([evidence/PR-005-implementation.md](evidence/PR-005-implementation.md)). It
-  merges into `main` only on acceptance; its backfill runs only at your word.
+- **PR-036 is live and the ₹90 L is in** (19 Nov): `2e995fe` pushed 05:25 IST (deploy SUCCESS,
+  `/health` 200); deposit 06:34 IST at your confirmation: ₹1 crore in, cash ₹95,04,483, 7
+  holdings ([evidence/PR-036.md](evidence/PR-036.md), "Rollout"). Next, read-only: today's 16:30
+  `deployment` record (about ₹3,20,000 a position, at most 5 bought; step 4); `PR-036-W5` and
+  `-W10` keep their dates.
+- **Outside a window: PR-005's fix** (changes requested 19 Nov,
+  [evidence/PR-005-review.md](evidence/PR-005-review.md)): M1 and L1 to L4 on `story/PR-005`,
+  until RV1 to RV3 (`analysis_data/pr005_review/`) pass; then another fresh review. It merges
+  only on acceptance; its backfill runs at your word, after that.
 - **PR-038 is blocked on your word for its read** ([evidence/PR-038.md](evidence/PR-038.md));
   its rule is fixed there. If the limit ships, it is built on `story/PR-038` after PR-015.
 - **PR-037 is accepted** (18 Nov, fresh review): `d6e5777` on `story/PR-037`, not merged; it
@@ -41,11 +41,11 @@
 - **PR-039 is accepted and deployed** (19 Nov); its report runs at your word.
 - **PR-035's read:** the door that stays is "no sector key named" (five ideas re-dived Sat
   21 Nov; B-13). **FIX-015 is live** since 18 Nov 00:28 IST.
-- **Git:** `main` = `origin/main` = `2e995fe` before this session's records (one docs commit,
+- **Git:** `main` = `origin/main` = `3f26ae5` before this records commit (one docs commit,
   push pending to Fri 20 Nov 00:10). `story/PR-015`, `story/PR-037` and `story/PR-005` are
-  local only.
+  local only (PR-005 meets PR-015 in KT section 6: keep both).
 - **The investment track** in STATE's order: PR-035, PR-036, PR-037 (held), FIX-015, PR-015,
-  PR-038 (blocked: the read), PR-039, PR-005 (review), then PR-033 and PR-034.
+  PR-038 (blocked: the read), PR-039, PR-005 (changes requested), then PR-033 and PR-034.
 
 ## Waits for you
 
@@ -105,13 +105,18 @@ Deployed stories still `pending_observation` without a dated row get one from PR
 ## 19 Nov, early morning (autopilot): PR-005 implemented on `story/PR-005`; its fresh review next
 
 - **Autopilot `1118-0904-p6`**, code-server: started 18 Nov 09:04 IST, finished 19 Nov from
-  about 04:58 IST (in a window, but its planned work is a phase of its own). Decision path.
+  about 04:58 IST. Decision path.
 - **`4407b13` on `story/PR-005`:** each opening buy (SWITCH, deployment, manual add) writes an
   append-only case; code checks every figure; the case's invalidation price is in the buy day's
   rupees and used only between the stop and 1.5 ATR below the entry; RR-L1 and T1; pillars
   challenged by events, never a sale; `GET /portfolio/cases`; a backfill script.
-- **Decisions to check in review:** the filing leg of `case_broken` is not narrowed to pillars
-  (waits for PR-013); a case with no price is not replaced by the shelf's level.
+
+## 19 Nov, morning (autopilot): PR-005's fresh review asks for changes
+
+- **Autopilot `1119-0715-p1`**, code-server, from 07:15 IST. **`4407b13`: changes requested.**
+  At purchase it is right. M1: a case written after the buy stores its price outside the buy
+  day's basis, so the evidence rule loses the sale the shelf rule makes (about ₹20,000 on
+  ₹3.2 L). Its decisions 1 and 2 stand; 2 not for a failed NSE read (L4).
 
 # START HERE — standing rules
 

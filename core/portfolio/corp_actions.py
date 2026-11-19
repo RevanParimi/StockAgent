@@ -11,6 +11,9 @@ PR-009: the sync also returns what NSE listed for each held symbol
 invalidation level, set in the rupees of its deep dive, into the review
 day's price basis. FIX-016: the exit rule's grading reads the same record for
 a sold stock, with the rows no ratio converts (`basis_changes`).
+
+FIX-017: the sync applies only the ratios that record reads in full, so the
+sync and the grading read every row alike, and asks NSE under its own code.
 """
 from __future__ import annotations
 
@@ -26,8 +29,14 @@ from services.data.fetchers.corporate_events import fetch_corp_actions
 logger = logging.getLogger(__name__)
 
 _BONUS_RE = re.compile(r"bonus[^0-9]*?(\d+)\s*:\s*(\d+)", re.I)
+# FIX-017: a face-value split's two values, read after the word that names the split and with
+# no other number between: "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/-
+# Per Share", and NSE's older short wordings "Fv Splt Frm Rs 10 To Re 1" (JSWSTEEL 2017) and
+# "Face Value Split Rs.10/- To Re.1/- Per Share" (SBIN 2014).
+_NAMES_SPLIT_RE = re.compile(r"split|splt|sub-?\s*division", re.I)
 _SPLIT_RE = re.compile(
-    r"from\s+r[se]\.?\s*(\d+(?:\.\d+)?).{0,40}?to\s+r[se]\.?\s*(\d+(?:\.\d+)?)", re.I
+    r"(?:split|splt|sub-?\s*division)[^0-9]{0,40}?r[se]\.?\s*(\d+(?:\.\d+)?)"
+    r"[^0-9]{0,40}?\bto\s+r[se]\.?\s*(\d+(?:\.\d+)?)", re.I
 )
 _DIV_RE = re.compile(r"dividend[^0-9]*(\d+(?:\.\d+)?)", re.I)
 # FIX-016: rows that change the price basis by an amount the row does not give. A demerger
@@ -66,7 +75,8 @@ _NEUTRAL_WORDS = frozenset({
 _NEUTRAL_PHRASE_RE = re.compile(r"change\s+in\s+registrar(?:\s+and\s+transfer\s+agent)?", re.I)
 _RATIO_WORDS = {
     "bonus": frozenset({"bonus", "issue", "eq"}),
-    "split": frozenset({"face", "value", "split", "sub", "division", "from", "to"}),
+    "split": frozenset({"face", "value", "split", "sub", "division", "from", "to",
+                        "fv", "splt", "frm"}),
 }
 # Words that name a change in the share count (a bonus or a face-value change), read or not.
 _SHARE_COUNT_RE = re.compile(r"bonus|split|splt|sub-?\s*div|\bfv\b|face\s*value", re.I)
@@ -101,19 +111,6 @@ def _row_ex_date(row: dict) -> str | None:
     return None
 
 
-def _changes_share_count(desc: str) -> bool:
-    low = desc.lower()
-    return "split" in low or "bonus" in low or "sub-division" in low
-
-
-def _bonus_and_split(desc: str) -> bool:
-    """A row naming a bonus and a split ("Bonus 1:1/Face Value Split (Sub-Division) -
-    From Rs 10/- Per Share To Rs 2/- Per Share", BAJFINANCE 2016): parse_action reads
-    its bonus alone, a ratio of 2 where the price fell to a tenth."""
-    low = desc.lower()
-    return "bonus" in low and ("split" in low or "sub-division" in low)
-
-
 def basis_change_kind(desc: str) -> str:
     """The kind of price-basis change a row names that no ratio in it
     converts ("" when it names none): demerger, scheme of arrangement,
@@ -125,29 +122,64 @@ def _words(text: str) -> set[str]:
     return set(_WORD_RE.findall(_NEUTRAL_PHRASE_RE.sub(" ", text).lower()))
 
 
-def _read_ratio(desc: str, action: AppliedCorpAction | None,
-                beside_change: bool) -> AppliedCorpAction | None:
-    """`action` when grading may apply it as a ratio: a bonus or split
-    parse_action read, in a row naming not both, whose words are all of an
-    equity bonus or a face-value split or of a neutral part ("Bonus 1:1",
-    "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per
-    Share"). Beside a change no ratio converts, only the bonus or split's own
-    words are read: that change already leaves the row's day without a
-    result. Else None: "Bonus Preference Shares 21:1" is not 22 equity shares
-    for one."""
-    if (action is None or action.kind not in ("bonus", "split") or action.ratio <= 0
-            or _bonus_and_split(desc)):
-        return None
-    text = desc
-    if beside_change:
-        match = (_BONUS_RE if action.kind == "bonus" else _SPLIT_RE).search(desc)
-        text = match.group(0) if match else desc
-    return action if _words(text) <= _NEUTRAL_WORDS | _RATIO_WORDS[action.kind] else None
+def _share_count_parts(desc: str) -> list[tuple[str, float, str]] | None:
+    """(kind, ratio, the words that state it) of the bonus and the split a
+    row names, the bonus first. None when it names one whose ratio it does
+    not state in a form read here: a bonus with no "new:held" ratio, a split
+    with no two face values, or a ratio that adds no shares (a "split" from
+    Rs 1 to Rs 10 is a consolidation)."""
+    parts: list[tuple[str, float, str]] = []
+    if "bonus" in desc.lower():
+        m = _BONUS_RE.search(desc)
+        if not m:
+            return None
+        new, held = float(m.group(1)), float(m.group(2))
+        if not (new > 0 and held > 0):
+            return None
+        parts.append(("bonus", (new + held) / held, m.group(0)))
+    if _NAMES_SPLIT_RE.search(desc):
+        m = _SPLIT_RE.search(desc)
+        if not m:
+            return None
+        old_fv, new_fv = float(m.group(1)), float(m.group(2))
+        if not (new_fv > 0 and old_fv > new_fv):
+            return None
+        parts.append(("split", old_fv / new_fv, m.group(0)))
+    return parts
+
+
+def _read_ratios(desc: str, action: AppliedCorpAction | None,
+                 beside_change: bool) -> tuple[AppliedCorpAction, ...]:
+    """The ratios a row states for equity shares, read in full: one for an
+    equity bonus or a face-value split, two for a row naming both (FIX-017:
+    "Bonus 1:1/Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs
+    2/- Per Share", BAJFINANCE 2016, is ×2 and ×5, a tenth of the price). The
+    first keeps the row's key (`parse_action`'s, so a row applied before is
+    known by it), the second adds "|split". Every word must be of an equity
+    bonus or a face-value split or of a neutral part; beside a change no ratio
+    converts, only the words that state the ratios are read: that change
+    already leaves the row's day without a result. Else (): "Bonus Preference
+    Shares 21:1" is not 22 equity shares for one."""
+    if action is None or action.kind not in ("bonus", "split"):
+        return ()
+    parts = _share_count_parts(desc)
+    if not parts:
+        return ()
+    text = " ".join(said for _kind, _ratio, said in parts) if beside_change else desc
+    if not _words(text) <= _NEUTRAL_WORDS.union(*(_RATIO_WORDS[k] for k, _r, _s in parts)):
+        return ()
+    return tuple(action.model_copy(update={"kind": kind, "ratio": ratio,
+                                           "key": action.key if i == 0
+                                           else f"{action.key}|{kind}"})
+                 for i, (kind, ratio, _said) in enumerate(parts))
 
 
 def parse_action(row: dict) -> AppliedCorpAction | None:
-    """Parse one raw NSE actions() row into an AppliedCorpAction.
-    Returns None for unrecognised or non-financial rows (AGM/EGM/rights…)."""
+    """Parse one raw NSE actions() row into an AppliedCorpAction: its bonus,
+    else its split, else its dividend. Returns None for unrecognised or
+    non-financial rows (AGM/EGM/rights…). The first amount found, not yet a
+    reading: `action_record` decides which bonus and split rows are ratios of
+    equity shares (FIX-017: the holding sync applies only those)."""
     desc = _row_desc(row)
     ex_date = _row_ex_date(row)
     if not desc or not ex_date:
@@ -166,7 +198,7 @@ def parse_action(row: dict) -> AppliedCorpAction | None:
                 key=key, ex_date=ex_date, kind="bonus", desc=desc,
                 ratio=(new + base) / base, applied_on=today_iso,
             )
-    if "split" in low or "sub-division" in low:
+    if _NAMES_SPLIT_RE.search(low):
         m = _SPLIT_RE.search(low)
         if m:
             old_fv, new_fv = float(m.group(1)), float(m.group(2))
@@ -192,7 +224,7 @@ def parse_action(row: dict) -> AppliedCorpAction | None:
                 key=key, ex_date=ex_date, kind="dividend", desc=desc,
                 dividend_per_share=float(m.group(1)), applied_on=today_iso,
             )
-    if _changes_share_count(desc):
+    if _SHARE_COUNT_RE.search(desc):
         logger.warning(
             "[corp_actions] unparseable split/bonus row (manual review needed): %s", desc[:80]
         )
@@ -204,16 +236,18 @@ class ActionRecord:
     """What NSE listed for one symbol in one sync (PR-009).
 
     `actions`: its bonus and split rows, parsed and read in full
-    (`_read_ratio`). `covers_from`: the earliest ex-date of any row it
+    (`_read_ratios`; a row naming a bonus and a split gives both, FIX-017).
+    The holding sync applies these and no other share-count change.
+    `covers_from`: the earliest ex-date of any row it
     returned, whatever the kind, so every bonus or split with a later ex-date
     is in `actions` or `unparsed`; "" when it returned no dated row (NSE's
     answer, or a failed fetch: `fetch_corp_actions` returns [] for both).
     `rows` (FIX-018): how many rows it returned, dated or not, so 0 with an
     answer read by `read_corp_actions` means NSE lists nothing for the symbol.
     `unparsed`: ex-dates of rows naming a bonus or a face-value change that
-    are not read as a ratio: one that could not be parsed, one naming both
-    (FIX-016: parse_action reads only the bonus), a bonus of other securities
-    or one in words the record does not know ("Fv Splt Frm Rs 10 To Re 1").
+    are not read as a ratio: one that could not be parsed, a bonus of other
+    securities ("Bonus Preference Shares 21:1"), or one in words the record
+    does not know ("Agm/Div-Rs.2/Fv Rs10tors5").
     `basis_changes` (FIX-016): (ex-date, kind) of rows that change the price
     basis by an amount they do not give (`basis_change_kind`), whatever else
     the row also says, and of any other row with a word that is not of a
@@ -236,10 +270,10 @@ def action_record(rows: list[dict], symbol: str) -> ActionRecord:
         days.append(ex)
         desc = _row_desc(row)
         kind = basis_change_kind(desc)
-        action = _read_ratio(desc, parse_action(dict(row, symbol=symbol)), bool(kind))
+        ratios = _read_ratios(desc, parse_action(dict(row, symbol=symbol)), bool(kind))
         words = _words(desc)
-        if action is not None:
-            actions.append(action)
+        if ratios:
+            actions.extend(ratios)
         elif _SHARE_COUNT_RE.search(desc):
             unparsed.append(ex)
         elif not kind and not (words and words <= _NEUTRAL_WORDS):
@@ -259,6 +293,10 @@ def apply_actions_to_holding(
     where each dividend event is (action, cash credit) — the caller books the
     credit to cash and the transactions ledger (AUD-045)."""
     applied_keys = {a.key for a in holding.applied_actions}
+    # FIX-017: one bonus and one split per ex-date, whichever row states it. A row NSE rewords
+    # ("Bonus 1:10 (Revised)") has a new key and is the same bonus.
+    applied_steps = {(a.ex_date, a.kind) for a in holding.applied_actions
+                     if a.kind in ("bonus", "split")}
     valid = sorted((a for a in actions if a is not None), key=lambda a: a.ex_date)
     count = 0
     div_events: list[tuple[AppliedCorpAction, float]] = []
@@ -268,7 +306,13 @@ def apply_actions_to_holding(
         ex = date.fromisoformat(action.ex_date)
         if ex <= date.fromisoformat(holding.buy_date) or ex > today:
             continue
+        if action.kind in ("bonus", "split") and (action.ex_date, action.kind) in applied_steps:
+            logger.info("[corp_actions] %s: the %s ex %s is already applied under another row; "
+                        "not applied twice (%s)", holding.symbol, action.kind, action.ex_date,
+                        action.desc[:60])
+            continue
         if action.kind in ("bonus", "split") and action.ratio > 0:
+            applied_steps.add((action.ex_date, action.kind))
             holding.adj_avg_price = holding.adj_avg_price / action.ratio
             holding.adj_qty = holding.adj_qty * action.ratio
         elif action.kind == "dividend":
@@ -286,6 +330,49 @@ def apply_actions_to_holding(
     return count, div_events
 
 
+def sync_reading(holding: Holding, rows: list[dict], record: ActionRecord,
+                 today: date) -> tuple[list[AppliedCorpAction], list[str]]:
+    """FIX-017: what the sync may apply to `holding` from NSE's `rows`, and a
+    named line for each share-count row after its buy, by `today`, that
+    leaves its quantity and average price unchanged.
+
+    Applied: the bonus and split ratios `record` reads in full (the exit
+    rule's grading reads the same), one per ex-date and kind, and each row
+    `parse_action` reads as a dividend in rupees. Never applied: a row the
+    record cannot read (a bonus of preference shares, debentures or NCRPS, a
+    split with no face values), and a day with two ratios of one kind.
+    Named, never reversed: a bonus or split the holding applied under an
+    earlier reading that NSE's list, reaching back to it, no longer gives."""
+    buy, last = str(holding.buy_date)[:10], today.isoformat()
+    by_step: dict[tuple[str, str], list[AppliedCorpAction]] = {}
+    for a in record.actions:
+        by_step.setdefault((a.ex_date, a.kind), []).append(a)
+    steps, gaps = [], []
+    for (ex, kind), found in sorted(by_step.items()):
+        ratios = sorted({a.ratio for a in found})
+        if len(ratios) == 1:
+            steps.append(found[0])
+        elif buy < ex <= last:
+            gaps.append(f"NSE lists two {kind} ratios ex {ex} ({ratios[0]:g} and "
+                        f"{ratios[-1]:g}); neither is applied")
+    for ex in record.unparsed:
+        if buy < ex <= last:
+            said = " / ".join(sorted({_row_desc(r)[:60] for r in rows if _row_ex_date(r) == ex
+                                      and _SHARE_COUNT_RE.search(_row_desc(r))}))
+            gaps.append(f"NSE lists a split or bonus on {ex} that could not be read "
+                        f"({said!r}); the quantity and average price are unchanged")
+    if record.covers_from:
+        for a in holding.applied_actions:
+            if (a.kind in ("bonus", "split") and record.covers_from <= a.ex_date <= last
+                    and (a.ex_date, a.kind) not in by_step):
+                gaps.append(f"the {a.kind} ex {a.ex_date} (×{a.ratio:g}) was applied under an "
+                            "earlier reading, and NSE's row no longer reads as one; the "
+                            "quantity and average price keep it until corrected by hand")
+    dividends = [a for a in (parse_action(dict(r, symbol=holding.symbol)) for r in rows)
+                 if a is not None and a.kind == "dividend"]
+    return steps + dividends, gaps
+
+
 def sync_corp_actions(store: PortfolioStore, today: date, fetch=fetch_corp_actions) -> dict:
     """Daily sync for every holding of one user. Non-fatal per symbol —
     pipeline errors are telemetry, never training signal.
@@ -295,27 +382,41 @@ def sync_corp_actions(store: PortfolioStore, today: date, fetch=fetch_corp_actio
     critical section against a FRESH load. Dividends credit cash_deployable
     and append a DIV ledger row when cash accounting is on (AUD-045).
 
+    FIX-017: NSE is asked for the code the close is read under
+    (`symbol_resolver.nse_symbol`: the registry alias CANARABANK is listed as
+    CANBK), and only `sync_reading`'s actions are applied, so the sync and the
+    exit rule's grading read every row alike.
+
     The result's `records` maps each symbol whose fetch did not raise to its
-    ActionRecord (PR-009); applying is unaffected by it."""
+    ActionRecord (PR-009); `gaps` maps a symbol to the named lines of
+    `sync_reading`, each also logged as a data-health warning."""
     from datetime import datetime, timezone
+
+    from backend.shared.data.fetchers.symbol_resolver import nse_symbol
 
     # Phase 1 — network, lock-free, keyed by symbol from a snapshot.
     snapshot = store.load()
     actions_by_symbol: dict[str, list] = {}
     records: dict[str, ActionRecord] = {}
+    gaps: dict[str, list[str]] = {}
     for holding in snapshot.holdings:
         try:
-            rows = fetch(holding.symbol)
-            actions_by_symbol[holding.symbol] = [
-                parse_action(dict(r, symbol=holding.symbol)) for r in rows
-            ]
-            records[holding.symbol] = action_record(rows, holding.symbol)
+            rows = fetch(nse_symbol(holding.symbol, today))
+            record = action_record(rows, holding.symbol)
+            actions, lines = sync_reading(holding, rows, record, today)
         except Exception as exc:
             logger.warning(
                 "[corp_actions] sync failed for %s (non-fatal): %s", holding.symbol, exc
             )
+            continue
+        records[holding.symbol] = record
+        actions_by_symbol[holding.symbol] = actions
+        for line in lines:
+            logger.warning("[corp_actions] data health: %s: %s", holding.symbol, line)
+        if lines:
+            gaps[holding.symbol] = lines
     if not any(actions_by_symbol.values()):
-        return {"applied": 0, "symbols": [], "records": records}
+        return {"applied": 0, "symbols": [], "records": records, "gaps": gaps}
 
     # Phase 2 — locked apply + credit + save on fresh state.
     from core.portfolio.autopilot import make_txn_id   # lazy: avoids import cycle
@@ -360,5 +461,6 @@ def sync_corp_actions(store: PortfolioStore, today: date, fetch=fetch_corp_actio
                     "[corp_actions] portfolio save failed after %d applied actions (non-fatal): %s",
                     total, exc,
                 )
-                return {"applied": 0, "symbols": [], "save_failed": True, "records": records}
-        return {"applied": total, "symbols": touched, "records": records}
+                return {"applied": 0, "symbols": [], "save_failed": True, "records": records,
+                        "gaps": gaps}
+        return {"applied": total, "symbols": touched, "records": records, "gaps": gaps}

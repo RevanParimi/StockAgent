@@ -1007,9 +1007,12 @@ def _price_history(symbol: str):
 
 
 def _corp_record(symbol: str):
+    """NSE's record of `symbol`, asked under the code its close is read
+    under (FIX-017: a registry alias such as CANARABANK lists nothing)."""
+    from backend.shared.data.fetchers.symbol_resolver import nse_symbol
     from core.portfolio.corp_actions import action_record
     from services.data.fetchers.corporate_events import fetch_corp_actions
-    return action_record(fetch_corp_actions(symbol), symbol)
+    return action_record(fetch_corp_actions(nse_symbol(symbol)), symbol)
 
 
 def purchase_stop(symbol: str, buy_day: date, risk_profile: str,

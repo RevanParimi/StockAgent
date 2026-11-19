@@ -63,6 +63,7 @@ GOAL: beat the Nifty after costs, at real prices, on hundreds of graded calls
 │   ├─ Every deep dive graded, at the conviction
 │   │  it was issued with, beside the screen ..... PR-017
 │   ├─ Does conviction predict? .................. PR-018
+│   ├─ Does the screen's cut choose? ............. PR-041
 │   ├─ What each refusal rule cost ............... PR-019
 │   ├─ A written case per position ............... PR-005
 │   └─ One page that shows the record ............ PR-020
@@ -104,6 +105,7 @@ ALONGSIDE: remove what the goal does not need .... CLEAN-004, CLEAN-005, CLEAN-0
 | [PR-016](stories/PR-016.md) | Show what the book earns at prices that could really be had | 2 | planned | after PR-013 |
 | [PR-017](stories/PR-017.md) | Grade every deep dive at the conviction it was issued with, beside the screen's other candidates | 2 | planned | after PR-016 |
 | [PR-018](stories/PR-018.md) | Put the conviction check in front of the owner, with a rule for trusting it | 2 | planned | PR-017 done |
+| [PR-041](stories/PR-041.md) | Grade the screen's cut forward before it is widened | 2 | planned | after PR-018 |
 | [PR-019](stories/PR-019.md) | What each refusal rule cost | 2 | planned, blocked | `PR-014-D1` read |
 | [PR-020](stories/PR-020.md) | One page that shows the record | 2 | planned, blocked | `PR-014-R1` read |
 | [PR-032](stories/PR-032.md) | Industry lenses, first slice: the general path searches for, and is told, what moves each industry | 3 | planned | PR-017 done |

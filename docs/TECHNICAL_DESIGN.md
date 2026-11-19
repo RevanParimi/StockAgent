@@ -3831,6 +3831,7 @@ section 10) are part of the current design.
 | [PR-038](planning/PI-2026-09/stories/PR-038.md) | A stock is not refused for having risen since its analysis | Open | 6 Portfolio | PR-035 |
 | [PR-039](planning/PI-2026-09/stories/PR-039.md) | Where the funnel lost the stocks that rose | Done | 7 Marksheets; 8 Discovery | None |
 | [PR-040](planning/PI-2026-09/stories/PR-040.md) | Members see three screens and load no operator code | Open | 10 Interface | PR-001 |
+| [PR-041](planning/PI-2026-09/stories/PR-041.md) | Grade the screen's cut forward before it is widened | Open | 8 Discovery | None |
 | [CLEAN-007](planning/PI-2026-09/stories/CLEAN-007.md) | The nightly backup stops emailing the archive | Done | 1 Production state; 10 Operations | None |
 | [FIX-017](planning/PI-2026-09/stories/FIX-017.md) | The holding sync reads every NSE corporate-action row it is given, under NSE's code | Open | 6 Portfolio | None |
 | [FIX-018](planning/PI-2026-09/stories/FIX-018.md) | The switch gate sets aside a decision whose result can never be known: named, and within a cap | Done | 6 Portfolio; 7 Marksheets | FIX-016 |

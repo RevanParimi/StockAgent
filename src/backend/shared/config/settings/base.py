@@ -901,8 +901,9 @@ ADVISOR_EARNINGS_GAP_DAYS: int = cfg("advisor.earnings_gap_days", fallback=3)
 # is read per run (core/portfolio/exit_shadow.py).
 ADVISOR_MIN_HOLD_SESSIONS: int = int(cfg("advisor.min_hold_sessions", fallback=10))
 # PR-005: the investment case written for each buy that opens a position
-# (core/portfolio/cases.py). case_write off writes none (rollback; stored cases
-# stay as history); case_model off writes the deterministic case without the
+# (core/portfolio/cases.py). case_write off is the rollback: no case or version
+# is written, and the evidence rule reads the shelf idea's level again (stored
+# cases stay as history); case_model off writes the deterministic case without the
 # reasoning-tier call. The case's invalidation price is used only at least
 # case_noise_atr_mult x ATR% below the entry (and above the stop).
 ADVISOR_CASE_WRITE: bool = bool(cfg("advisor.case_write", fallback=True))

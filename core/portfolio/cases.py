@@ -41,7 +41,13 @@ of ₹470 is used, ₹435 (below the stop) and ₹490 (noise) are not, and the
 gap says which side. When the basis cannot be established the case has no
 invalidation price and names the gap; it never stores the dive's raw level.
 From then on only the holding's own applied bonuses and splits adjust it
-(`level_after_buy`).
+(`level_after_buy`). A case written after the buy keeps the buy day's
+rupees: its entry is the cost before the holding's bonuses and splits
+(`buy_day_entry`), and a dive after the buy is put back into that basis
+(`level_at_buy`). A price missing for a read that fell short (`read_gap`) is
+worked again on later review days (`retry_invalidation`), a new version
+when it settles. With `advisor.case_write` off (the rollback) the pipeline
+neither reads cases for the evidence rule nor writes versions.
 
 **Immutable history.** data/portfolio/<user>/cases/<SYMBOL>.jsonl holds every
 version of every case of that symbol, one holding (its buy date) one case. A
@@ -90,13 +96,24 @@ CHALLENGING = ("high", "medium")   # the materialities that can challenge a pill
 SYMBOL_RE = re.compile(r"^[A-Z0-9&_.-]{1,20}$")
 
 # A figure and the unit written after it. "x" and "times" are dimensionless.
+# Two-word units come first, so "1.5 lakh crore" is not read as "1.5 lakh".
 _FIGURE_RE = re.compile(
     r"(?<![\d.,])(\d[\d,]*(?:\.\d+)?)\s*"
-    r"(%|per\s*cent|percent|bps|crores?|cr\b|lakhs?|lacs?|billion|bn\b|million|mn\b)?",
+    r"(%|per\s*cent|percent|bps|(?:lakhs?|lacs?|thousand)\s*(?:crores?|cr\b)|"
+    r"crores?|cr\b|lakhs?|lacs?|billion|bn\b|million|mn\b)?",
     re.IGNORECASE)
 _UNITS = {"%": "%", "percent": "%", "bps": "bps", "crore": "cr", "crores": "cr", "cr": "cr",
           "lakh": "lakh", "lakhs": "lakh", "lac": "lakh", "lacs": "lakh",
           "billion": "bn", "bn": "bn", "million": "mn", "mn": "mn"}
+_CRORE_OF = re.compile(r"^(lakh|lac|thousand)s?(?:crores?|cr)$")   # "lakhcrore" -> "lakh cr"
+
+
+def _unit(written: str) -> str:
+    unit = re.sub(r"\s+", "", (written or "").lower())
+    two = _CRORE_OF.match(unit)
+    if two:
+        return f"{'lakh' if two.group(1) in ('lakh', 'lac') else 'thousand'} cr"
+    return _UNITS.get(unit, unit)
 
 
 # -- Figures ---------------------------------------------------------------------------------
@@ -105,7 +122,8 @@ def figures(text: str) -> list[tuple[float, str, str]]:
     """Every figure in `text` as (value, unit, as written). Commas are
     ignored ("1,20,000" is 120000); a figure inside a word counts ("FY27" has
     27, "Q3" has 3); the unit is the word after it, normalised ("crore",
-    "Cr" -> "cr"; "per cent" -> "%"), "" when none."""
+    "Cr" -> "cr"; "per cent" -> "%"; "lakh crore", "lakh Cr" -> "lakh cr",
+    and "thousand crore" -> "thousand cr", each its own unit), "" when none."""
     out = []
     for m in _FIGURE_RE.finditer(text or ""):
         token = m.group(1).rstrip(",")
@@ -113,8 +131,7 @@ def figures(text: str) -> list[tuple[float, str, str]]:
             value = float(token.replace(",", ""))
         except ValueError:
             continue
-        unit = re.sub(r"\s+", "", (m.group(2) or "").lower())
-        out.append((value, _UNITS.get(unit, unit), m.group(0).strip()))
+        out.append((value, _unit(m.group(2)), m.group(0).strip()))
     return out
 
 
@@ -592,33 +609,126 @@ def purchase_window(entry: float, atr_pct: float, stop_pct: float,
     return entry * (1 - stop_pct / 100.0), entry * (1 - mult * atr_pct / 100.0)
 
 
+def buy_day_entry(holding) -> float:
+    """The holding's cost in the buy day's rupees: its adjusted average
+    price times the ratio of every bonus or split it applied after the buy
+    (the sync divides the cost by each). Example: bought at ₹212, a 1:1 bonus
+    ex later: the cost reads ₹106, and ₹212 on the buy day."""
+    from core.portfolio.exit_shadow import SHARE_COUNT_KINDS
+    buy = str(holding.buy_date)[:10]
+    factor = 1.0
+    for a in holding.applied_actions:
+        if a.kind in SHARE_COUNT_KINDS and a.ratio > 0 and a.ex_date > buy:
+            factor *= a.ratio
+    return float(holding.adj_avg_price) * factor
+
+
+def level_at_buy(level: float, dived: date, buy_day: date, symbol: str, record,
+                 applied: Iterable = ()) -> tuple[float, str, str, bool]:
+    """`level`, set in the rupees of a deep dive (or an analysis) on
+    `dived`, in the price basis of the buy day's close. Returns (level, note,
+    gap, unread); the level is 0.0 when the basis cannot be established, and
+    `unread` is true when that is because NSE's list `record` did not reach
+    back far enough (empty, a failed fetch, or a short list), not a refusal.
+
+    - Dived on or before the buy day (every buy path): the dive-to-buy part
+      of `exit_shadow.level_in_basis`, with RR-L1's refusals.
+    - Dived after the buy (a backfill, or a manual add dated in the past):
+      multiplied back by the ratio of every bonus or split that went ex after
+      the buy and on or before the dive, in the holding's applied actions
+      (`applied`) or NSE's list, so that `level_after_buy`, which divides by
+      the holding's own, gives the dive's level again from the dive day on.
+      Not established, as at purchase: NSE's list not reaching back to the
+      buy day, a split or bonus row it could not read, a basis change with
+      no ratio, a registry break, or a split or bonus ex on the dive day.
+
+    Example: bought 23 Oct; a 1:1 bonus ex 2 Nov; re-dived 7 Nov with the
+    level ₹100: ₹200 in the buy day's rupees, and ₹100 again from 2 Nov on."""
+    from core.portfolio.exit_shadow import (BASIS_KINDS, SHARE_COUNT_KINDS, level_in_basis,
+                                            registry_break)
+    dive, buy = dived.isoformat(), buy_day.isoformat()
+    reach = record.covers_from if record is not None else ""
+    if dived <= buy_day:
+        at_buy = SimpleNamespace(symbol=symbol, buy_date=buy, applied_actions=[])
+        out, note, gap = level_in_basis(level, dived, at_buy, buy_day, record)
+        return out, note, gap, bool(gap) and (not reach or reach > dive)
+    if not reach or reach > buy:
+        since = f"starts {reach}" if reach else "is empty or was not read"
+        return 0.0, "", (f"a bonus or split between the buy ({buy}) and the dive ({dive}) "
+                         f"cannot be ruled out: NSE's list read today {since}"), True
+    applied = list(applied)
+    unread = sorted(d for d in record.unparsed if buy < d <= dive)
+    if unread:
+        return 0.0, "", (f"NSE lists a split or bonus on {unread[0]} that could not be "
+                         "read, so its price basis is unknown"), False
+    changes = sorted((ex, kind) for ex, kind in record.basis_changes if buy < ex <= dive)
+    changes += sorted((a.ex_date, a.kind) for a in applied
+                      if a.kind in BASIS_KINDS and buy < a.ex_date <= dive)
+    if changes:
+        ex, kind = changes[0]
+        return 0.0, "", (f"a {kind} went ex on {ex}, between the buy and the dive, and "
+                         "gives no ratio, so the price basis is unknown"), False
+    broken = registry_break(symbol, buy_day, dived)
+    if broken:
+        return 0.0, "", broken, False
+    used: dict[str, object] = {}
+    for a in [*applied, *record.actions]:
+        if a.kind in SHARE_COUNT_KINDS and a.ratio > 0 and buy < a.ex_date <= dive:
+            used.setdefault(a.key, a)
+    on_dive_day = [a for a in used.values() if a.ex_date == dive]
+    if on_dive_day:
+        return 0.0, "", (f"a {on_dive_day[0].kind} went ex on the dive day, {dive}, so the "
+                         "dive's close may be on either side of it"), False
+    if not used:
+        return level, "", "", False
+    steps = sorted(used.values(), key=lambda a: a.ex_date)
+    factor = 1.0
+    for a in steps:
+        factor *= a.ratio
+    note = (f"{level:.2f} at the dive of {dive}, after the buy, put back into the buy day's "
+            "rupees: " + ", ".join(f"the {a.kind} ex {a.ex_date} (×{a.ratio:g})"
+                                   for a in steps))
+    return level * factor, note, "", False
+
+
 def purchase_invalidation(symbol: str, idea, buy_day: date, entry: float, record,
-                          atr_pct: float, stop_pct: float) -> Invalidation:
+                          atr_pct: float, stop_pct: float, applied: Iterable = ()
+                          ) -> Invalidation:
     """The case's invalidation price: the idea's level in the buy day's price
-    basis (`exit_shadow.level_in_basis`, the dive-to-buy part: NSE's list
-    `record` read for the buy), used only when it lies above the stop price
-    and at or below the noise line. Else no price, and the gap says why."""
+    basis (`level_at_buy`: NSE's list `record` read for the buy, and for a
+    dive after the buy the holding's `applied` actions), used only when it
+    lies above the stop price and at or below the noise line. Else no price,
+    and the gap says why."""
     from core.discovery.shelf import last_dived
-    from core.portfolio.exit_shadow import level_in_basis
-    out = Invalidation()
     at_dive = float(getattr(idea, "invalidation_level", 0.0) or 0.0) if idea is not None else 0.0
     if at_dive <= 0:
-        out.gap = "the shelf idea set no invalidation level" if idea is not None else \
-            "no shelf idea before the buy"
-        return out
-    dived = last_dived(idea)
-    out.price_at_dive, out.dived = at_dive, dived.isoformat()
-    at_buy = SimpleNamespace(symbol=symbol, buy_date=buy_day.isoformat(), applied_actions=[])
-    level, note, gap = level_in_basis(at_dive, dived, at_buy, buy_day, record)
+        return Invalidation(gap="the shelf idea set no invalidation level" if idea is not None
+                            else "no shelf idea before the buy")
+    return invalidation_from(symbol, at_dive, last_dived(idea), buy_day, entry, record,
+                             atr_pct, stop_pct, applied)
+
+
+def invalidation_from(symbol: str, at_dive: float, dived: date, buy_day: date, entry: float,
+                      record, atr_pct: float, stop_pct: float, applied: Iterable = ()
+                      ) -> Invalidation:
+    """`purchase_invalidation` from the level `at_dive` of the deep dive on
+    `dived`: what a retry recomputes from the case's own record. `entry` is
+    in the buy day's rupees. A gap of a read that failed or fell short (NSE's
+    list, or the ATR from the price history) is marked `read_gap`."""
+    out = Invalidation(price_at_dive=at_dive, dived=dived.isoformat())
+    stop = noise = None
+    if atr_pct > 0 and stop_pct > 0:
+        stop, noise = purchase_window(entry, atr_pct, stop_pct)
+        out.stop_price, out.noise_line = round(stop, 2), round(noise, 2)
+    level, note, gap, unread = level_at_buy(at_dive, dived, buy_day, symbol, record, applied)
     if gap:
-        out.gap = f"level {at_dive:.2f} not used: {gap}"
+        out.gap, out.read_gap = f"level {at_dive:.2f} not used: {gap}", unread
         return out
-    if atr_pct <= 0 or stop_pct <= 0:
+    if stop is None:
         out.gap = (f"level {level:.2f} not used: the ATR on the purchase day is unknown, so "
                    "neither side of the window can be set")
+        out.read_gap = True
         return out
-    stop, noise = purchase_window(entry, atr_pct, stop_pct)
-    out.stop_price, out.noise_line = round(stop, 2), round(noise, 2)
     if level <= stop:
         out.gap = (f"level {level:.2f} not used: at or below the stop price {stop:.2f}, "
                    "which already covers it")
@@ -635,10 +745,11 @@ def purchase_invalidation(symbol: str, idea, buy_day: date, entry: float, record
     return out
 
 
-def _expectation(bundle: Bundle, buy_day: date, record, symbol: str) -> Expectation:
+def _expectation(bundle: Bundle, buy_day: date, record, symbol: str,
+                 applied: Iterable = ()) -> Expectation:
     """The analysis's price target in the buy day's rupees, by the same rule
-    as the level, and its recovery timeline in months."""
-    from core.portfolio.exit_shadow import level_in_basis
+    as the level (`level_at_buy`, an analysis after the buy included), and
+    its recovery timeline in months."""
     rec = bundle.analysis
     if rec is None:
         return Expectation(gap="no analysis")
@@ -656,8 +767,8 @@ def _expectation(bundle: Bundle, buy_day: date, record, symbol: str) -> Expectat
     if run_day is None:
         out.gap = "the analysis's run time is unreadable"
         return out
-    at_buy = SimpleNamespace(symbol=symbol, buy_date=buy_day.isoformat(), applied_actions=[])
-    level, _note, gap = level_in_basis(float(target), run_day, at_buy, buy_day, record)
+    level, _note, gap, _unread = level_at_buy(float(target), run_day, buy_day, symbol, record,
+                                              applied)
     if gap:
         out.gap = f"price target {float(target):.2f} not used: {gap}"
     else:
@@ -724,7 +835,7 @@ def _pillar_models(parts: dict, bundle: Bundle) -> list[Pillar]:
 def write_case(store: CaseStore, *, symbol: str, opened_on: date, entry_price: float,
                buy_path: str, bundle: Bundle, record=None, atr_pct: float = 0.0,
                stop_pct: float = 0.0, model: Callable[[str, str], str] | None = None,
-               now: datetime | None = None,
+               now: datetime | None = None, applied: Iterable = (),
                ) -> tuple[InvestmentCase | None, str]:
     """Write version 1 of the case of the holding of `symbol` bought on
     `opened_on`. Returns (the case, "") when written, (None, why) when not:
@@ -733,7 +844,8 @@ def write_case(store: CaseStore, *, symbol: str, opened_on: date, entry_price: f
     `model` writes the words (default the reasoning tier when
     `advisor.case_model` is on); an answer that breaks a rule of
     `check_model_case`, or a call that fails, stores the deterministic case,
-    naming why."""
+    naming why. `entry_price` is in the buy day's rupees; `applied` are the
+    holding's applied actions, for a level or a target set after the buy."""
     symbol = symbol.strip().upper()
     if store.versions(symbol, opened_on.isoformat()):
         return None, "a case of this holding exists already"
@@ -759,10 +871,11 @@ def write_case(store: CaseStore, *, symbol: str, opened_on: date, entry_price: f
         fallback = "the model is off (advisor.case_model)"
     if parts is None:
         parts, author = deterministic_case(bundle), "deterministic"
+    applied = list(applied)
     invalidation = purchase_invalidation(symbol, bundle.idea, opened_on, entry_price, record,
-                                         atr_pct, stop_pct)
+                                         atr_pct, stop_pct, applied)
     invalidation.business = parts["business"]
-    expectation = _expectation(bundle, opened_on, record, symbol)
+    expectation = _expectation(bundle, opened_on, record, symbol, applied)
     expectation.text = parts["expectation"]
     watch = [WatchItem(what=w["what"], ref=w["ref"]) for w in parts["watch"]]
     case = InvestmentCase(
@@ -837,6 +950,46 @@ def review_pillars(store: CaseStore, holding, events: Iterable, on: date,
     return nxt if store.append(nxt) else None
 
 
+def retry_invalidation(store: CaseStore, holding, record, on: date, *,
+                       risk_profile: str = "balanced", history: Callable | None = None,
+                       now: datetime | None = None) -> InvestmentCase | None:
+    """A case whose invalidation price is missing for a read that failed or
+    fell short (`read_gap`: NSE's list at the buy, or the price history) is
+    worked again from this review day's reads, exactly as at purchase: the
+    case's own level and dive day, its buy day and entry, the ATR to the buy
+    day (`purchase_stop`), NSE's list `record` from today's sync. A result
+    that settles, a price or a refusal (the window, RR-L1), is appended as a
+    new version; another short read writes nothing. Nothing new is cited and
+    no price after the buy day is read. Example: NSE's list unread at 16:45
+    on the buy day; the next review day's sync reads it, and the case gets
+    its price from the review day after (a version written after a close is
+    read from the next one), well inside the minimum holding period."""
+    symbol = holding.symbol.strip().upper()
+    opened = str(holding.buy_date)[:10]
+    case = store.latest(symbol, opened)
+    if case is None or not case.invalidation.read_gap:
+        return None
+    old = case.invalidation
+    if not old.price_at_dive or not old.dived:
+        return None
+    buy_day = date.fromisoformat(opened)
+    atr, stop = purchase_stop(symbol, buy_day, risk_profile, history)
+    inv = invalidation_from(symbol, float(old.price_at_dive), date.fromisoformat(old.dived),
+                            buy_day, case.entry_price, record, atr, stop,
+                            holding.applied_actions)
+    if inv.read_gap:
+        return None
+    inv.business = list(old.business)
+    nxt = case.model_copy(deep=True)
+    nxt.invalidation = inv
+    nxt.version = case.version + 1
+    nxt.created_at = (now or _now()).isoformat()
+    nxt.change = (f"invalidation price re-read on {on.isoformat()}: {inv.price:.2f} in the "
+                  "buy day's rupees" if inv.price else
+                  f"invalidation price re-read on {on.isoformat()}: {inv.gap}")
+    return nxt if store.append(nxt) else None
+
+
 def challenged_pillars(case: InvestmentCase | None) -> list[dict]:
     """The challenged pillars, for the exit evidence's record."""
     if case is None:
@@ -886,11 +1039,13 @@ def write_for_buy(user_id: str, *, symbol: str, opened_on: date, entry_price: fl
                   sector: str = "", record=None, as_of: datetime | None = None, base_dir: str | None = None,
                   history: Callable | None = None, corp_record: Callable | None = None,
                   bundle_reader: Callable | None = None, model: Callable | None = None,
-                  now: datetime | None = None,
+                  now: datetime | None = None, applied: Iterable = (),
                   ) -> tuple[InvestmentCase | None, str]:
     """Write the case of a buy that opened a position. Never raises: a case
     is never a reason a trade fails. `as_of` defaults to the time it is
-    written; a SWITCH or deployment buy passes its session's 15:30 close."""
+    written; a SWITCH or deployment buy passes its session's 15:30 close.
+    `entry_price` is in the buy day's rupees; `applied` are the holding's
+    applied corporate actions (a backfill's, after the buy)."""
     try:
         if not settings.ADVISOR_CASE_WRITE:
             return None, "case writing is off (advisor.case_write)"
@@ -905,7 +1060,7 @@ def write_for_buy(user_id: str, *, symbol: str, opened_on: date, entry_price: fl
         atr, stop = purchase_stop(symbol, opened_on, risk_profile, history)
         return write_case(store, symbol=symbol, opened_on=opened_on, entry_price=entry_price,
                           buy_path=buy_path, bundle=bundle, record=record, atr_pct=atr,
-                          stop_pct=stop, model=model, now=now)
+                          stop_pct=stop, model=model, now=now, applied=applied)
     except Exception as exc:
         logger.error("[cases] case of %s/%s not written: %s", user_id, symbol, exc)
         return None, f"not written: {exc}"
@@ -938,7 +1093,14 @@ def backfill(user_id: str, portfolio, *, ideas: Iterable = (), apply: bool = Fal
              **kw) -> list[dict]:
     """A case for each holding without one, built from the latest inputs and
     marked `after_purchase`. A dry run (the default) writes nothing and says
-    which holdings would get one. Run once, at the owner's word."""
+    which holdings would get one. Run once, at the owner's word.
+
+    Every price is in the buy day's rupees, as for a case written at
+    purchase: the entry is the holding's cost before the bonuses and splits
+    it applied since (`buy_day_entry`), and a deep dive or an analysis after
+    the buy is put back into that basis (`level_at_buy`). Example: bought at
+    ₹212 with the level ₹200, a 1:1 bonus since: the window is still set from
+    ₹212, and the level stays ₹200 (₹100 in today's rupees)."""
     store = CaseStore(user_id, kw.get("base_dir"))
     out = []
     for h in portfolio.holdings:
@@ -950,9 +1112,10 @@ def backfill(user_id: str, portfolio, *, ideas: Iterable = (), apply: bool = Fal
             out.append({"symbol": h.symbol, "opened_on": opened, "action": "would write"})
             continue
         case, why = write_for_buy(user_id, symbol=h.symbol, opened_on=date.fromisoformat(opened),
-                                  entry_price=h.adj_avg_price, buy_path="backfill",
+                                  entry_price=buy_day_entry(h), buy_path="backfill",
                                   risk_profile=getattr(portfolio, "risk_profile", "balanced"),
-                                  ideas=ideas, sector=h.sector, **kw)
+                                  ideas=ideas, sector=h.sector, applied=h.applied_actions,
+                                  **kw)
         out.append({"symbol": h.symbol, "opened_on": opened,
                     "action": f"written ({case.author})" if case else f"not written: {why}"})
     return out

@@ -6,7 +6,9 @@ decided before now, the dossier's dated guidance, the company's events),
 marked `written: after_purchase` so nobody mistakes it for the original
 reason. Its invalidation price follows the same rule as a case written at
 purchase: the shelf idea's level in the buy day's rupees, used only inside
-the window of the stop and the noise line on the buy day.
+the window of the stop and the noise line on the buy day. The entry is the
+holding's cost before the bonuses and splits it applied since, and a deep
+dive after the buy is put back into the buy day's rupees.
 
     python -B scripts/backfill_cases.py            # dry run: which holdings would get one
     python -B scripts/backfill_cases.py --apply    # write them (one model call each)

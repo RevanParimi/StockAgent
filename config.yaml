@@ -565,7 +565,8 @@ advisor:
   # deployment, a manual add with an analysis), in data/portfolio/<user>/cases/.
   # One reasoning-tier call writes its words; code checks every figure against
   # the inputs and stores a deterministic case when one is invented.
-  # Rollback: case_write false (stored cases stay as history).
+  # Rollback: case_write false: no case and no new version is written, and the
+  # evidence rule reads the shelf idea's level again (stored cases stay as history).
   case_write: true
   case_model: true               # false: the deterministic case only, no model call
   # The case's invalidation price is used by the evidence rule only above the

@@ -82,6 +82,11 @@ class Invalidation(BaseModel):
     dived: str = ""                        # that deep dive's day
     note: str = ""                         # the conversion and the window, for people
     gap: str = ""                          # why no price: the basis, or which side of the window
+    # True when the gap is a read that failed or fell short (NSE's list did
+    # not reach back far enough, or the price history to the buy day was not
+    # read), not a refusal: each review day retries it (cases.retry_invalidation)
+    # and a result that settles is a new version.
+    read_gap: bool = False
     stop_price: float | None = None        # the holding's stop on the purchase day
     noise_line: float | None = None        # entry x (1 - mult x ATR%)
     business: list[str] = Field(default_factory=list)

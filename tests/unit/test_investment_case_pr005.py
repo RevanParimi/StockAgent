@@ -717,3 +717,293 @@ def test_the_store_appends_each_version_once_and_never_edits(tmp_path):
     assert [c.version for c in store.versions(SYM)] == [1, 2]
     with pytest.raises(ValueError):
         store.versions("../u2/cases/X")
+
+
+# -- The fix of 19 Nov 2026 (fresh review M1, L1 to L4) --------------------------------------
+#
+# The holding of the fixture, bought Fri 23 Oct at ₹212 with the shelf level ₹200 (dived
+# 17 Oct). A 1:1 bonus goes ex Mon 2 Nov; the sync halves the cost to ₹106 and doubles the
+# shares. On the purchase day the ATR is 2% and the pipeline's stop 12% (mid bucket), so in
+# the buy day's rupees the stop is 212 × 0.88 = ₹186.56 and the noise line
+# 212 × (1 − 1.5 × 2%) = ₹205.64: ₹200 lies inside. On Fri 13 Nov ₹200 reads ₹100.
+
+BONUS_NOV = {"subject": "Bonus 1:1", "exDate": "02-Nov-2026"}
+REVIEW = date(2026, 11, 13)
+
+
+def _bonus_held(applied=True) -> Holding:
+    h = _held()
+    if applied:
+        h.adj_avg_price, h.adj_qty = 106.0, 20
+        h.applied_actions = [parse_action({**BONUS_NOV, "symbol": SYM})]
+    return h
+
+
+def _fixed_inputs(monkeypatch, nse_rows=(DIVIDEND_AUG, BONUS_NOV), records=()):
+    """The deterministic case, NSE's list as given, the price history of the buy paths,
+    and the bundle from `records` and the ideas only."""
+    monkeypatch.setattr(settings, "ADVISOR_CASE_WRITE", True)
+    monkeypatch.setattr(settings, "ADVISOR_CASE_MODEL", False)
+    monkeypatch.setattr(C, "_price_history", _history)
+    monkeypatch.setattr(C, "_corp_record", lambda s: action_record(list(nse_rows), s))
+    monkeypatch.setattr(C, "_now", lambda: datetime(2026, 11, 13, 16, 45, tzinfo=IST))
+    monkeypatch.setattr(C, "read_inputs", lambda s, as_of, ideas=(), sector="": C.build_bundle(
+        s, as_of, records=list(records), ideas=ideas, dossier=None, events=[]))
+
+
+def _backfilled(tmp_path, holding, idea):
+    from backend.shared.schemas.portfolio import Portfolio
+    p = Portfolio(user_id="u1", holdings=[holding])
+    rows = C.backfill("u1", p, ideas=[idea], apply=True, base_dir=str(tmp_path))
+    assert rows[0]["action"] == "written (deterministic)", rows
+    return C.CaseStore("u1", str(tmp_path)).latest(SYM, BUY.isoformat())
+
+
+def test_m1_the_buy_days_entry_undoes_only_the_share_count_actions_after_the_buy():
+    """₹106 after the 1:1 bonus is ₹212 on the buy day; a 10→2 split (×5) on top makes
+    ₹21.20 today, still ₹212; a dividend changes nothing, and neither does a split the
+    sync never applies (ex on the buy day)."""
+    h = _bonus_held()
+    assert C.buy_day_entry(h) == 212.0
+    split = {"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- "
+                        "Per Share", "exDate": "09-Nov-2026", "symbol": SYM}
+    h.adj_avg_price = 21.2
+    h.applied_actions += [parse_action(split), parse_action({**DIVIDEND_AUG, "symbol": SYM,
+                                                             "exDate": "05-Nov-2026"}),
+                          parse_action({**split, "exDate": "23-Oct-2026"})]
+    assert C.buy_day_entry(h) == pytest.approx(212.0)
+    assert C.buy_day_entry(_held()) == ENTRY
+
+
+def test_m1_a_backfill_after_a_bonus_keeps_the_buy_days_window(tmp_path, monkeypatch):
+    """The backfill on 13 Nov sets the window from ₹212, not from ₹106: the case keeps
+    ₹200, its entry reads ₹212, and on 13 Nov the level is ₹100, the same level the shelf
+    rule reads that day, so a close of ₹99 breaks the case and ₹101 does not."""
+    _fixed_inputs(monkeypatch)
+    case = _backfilled(tmp_path, _bonus_held(), _idea())
+    assert (case.entry_price, case.written) == (212.0, "after_purchase")
+    inv = case.invalidation
+    assert (inv.price, inv.stop_price, inv.noise_line, inv.read_gap) == (
+        200.0, 186.56, 205.64, False)
+    nse = action_record([DIVIDEND_AUG, BONUS_NOV], SYM)
+    ev = xs.exit_evidence(_bonus_held(), REVIEW, ideas=[], actions=nse, case=case)
+    shelf = xs.exit_evidence(_bonus_held(), REVIEW, ideas=[_idea()], actions=nse)
+    assert ev.invalidation_level == shelf.invalidation_level == 100.0
+    assert case_broken_reasons(ev, 99.0) and not case_broken_reasons(ev, 101.0)
+
+
+def test_m1_a_dive_after_the_buy_is_put_back_into_the_buy_days_rupees(tmp_path, monkeypatch):
+    """Re-dived Sat 7 Nov, after the bonus, with the level ₹100 in that day's rupees. The
+    case stores ₹200 (×2 for the bonus between the buy and the dive) and reads ₹100 again
+    on 13 Nov, never ₹50: a close of ₹99 breaks the case, as the shelf rule's own reading
+    of the same dive does."""
+    _fixed_inputs(monkeypatch)
+    redive = _idea(level=100.0, dived="2026-11-07")
+    case = _backfilled(tmp_path, _bonus_held(), redive)
+    inv = case.invalidation
+    assert (inv.price, inv.price_at_dive, inv.dived) == (200.0, 100.0, "2026-11-07")
+    assert "the bonus ex 2026-11-02 (×2)" in inv.note
+    nse = action_record([DIVIDEND_AUG, BONUS_NOV], SYM)
+    ev = xs.exit_evidence(_bonus_held(), REVIEW, ideas=[], actions=nse, case=case)
+    shelf = xs.exit_evidence(_bonus_held(), REVIEW, ideas=[redive], actions=nse)
+    assert ev.invalidation_level == shelf.invalidation_level == 100.0
+    assert case_broken_reasons(ev, 99.0)
+
+
+@pytest.mark.parametrize("later", [[], ["split"], ["bonus2"], ["split", "bonus2"]])
+def test_m1_property_the_case_reads_the_shelf_rules_level_after_a_later_dive(later):
+    """Whatever bonuses and splits go ex after the re-dive of 7 Nov (a ×5 split ex 10 Nov,
+    a second 1:1 bonus ex 11 Nov), the case's price after the buy equals PR-009's level of
+    the same dive on 13 Nov: put back to the buy day once, divided forward once."""
+    rows = {"split": {"subject": "Face Value Split (Sub-Division) - From Rs 10/- Per Share "
+                                 "To Rs 2/- Per Share", "exDate": "10-Nov-2026"},
+            "bonus2": {"subject": "Bonus 1:1", "exDate": "11-Nov-2026"}}
+    nse = action_record([DIVIDEND_AUG, BONUS_NOV, *(rows[k] for k in later)], SYM)
+    held = _bonus_held()
+    held.applied_actions += [parse_action({**rows[k], "symbol": SYM}) for k in later]
+    redive = _idea(level=100.0, dived="2026-11-07")
+    inv = C.purchase_invalidation(SYM, redive, BUY, ENTRY, nse, 2.0, 12.0,
+                                  held.applied_actions)
+    assert inv.price == 200.0
+    case = SimpleNamespace(symbol=SYM, opened_on=BUY.isoformat(), invalidation=inv)
+    level, _n, gap = C.level_after_buy(case, held, REVIEW, nse)
+    shelf, _n2, gap2 = xs.level_in_basis(100.0, date(2026, 11, 7), held, REVIEW, nse)
+    expected = 100.0 / {(): 1, ("split",): 5, ("bonus2",): 2, ("split", "bonus2"): 10}[
+        tuple(later)]
+    assert (gap, gap2) == ("", "") and level == pytest.approx(shelf) == pytest.approx(expected)
+
+
+def test_m1_a_past_dated_manual_add_before_the_sync_applies_the_bonus(tmp_path, monkeypatch):
+    """A manual add dated 23 Oct, written on 13 Nov before the sync has applied the bonus
+    (NSE lists it): the re-dive's ₹100 is still put back to ₹200, and once the sync applies
+    the bonus the case reads ₹100."""
+    _fixed_inputs(monkeypatch)
+    case, why = C.write_for_buy("u1", symbol=SYM, opened_on=BUY, entry_price=ENTRY,
+                                buy_path="manual", ideas=[_idea(level=100.0, dived="2026-11-07")],
+                                base_dir=str(tmp_path), applied=[])
+    assert why == "" and case.invalidation.price == 200.0
+    level, _n, _g = C.level_after_buy(case, _bonus_held(), REVIEW,
+                                      action_record([DIVIDEND_AUG, BONUS_NOV], SYM))
+    assert level == 100.0
+
+
+@pytest.mark.parametrize("rows, gap, unread", [
+    ([], "NSE's list read today is empty or was not read", True),
+    ([{"subject": "Bonus 1:1", "exDate": "26-Oct-2026"}], "NSE's list read today starts "
+                                                          "2026-10-26", True),
+    ([DIVIDEND_AUG, BONUS_NOV, {"subject": "Bonus Issue", "exDate": "04-Nov-2026"}],
+     "NSE lists a split or bonus on 2026-11-04 that could not be read", False),
+    ([DIVIDEND_AUG, BONUS_NOV, {"subject": "Demerger", "exDate": "05-Nov-2026"}],
+     "a demerger went ex on 2026-11-05, between the buy and the dive", False),
+    ([DIVIDEND_AUG, {"subject": "Bonus 1:1", "exDate": "07-Nov-2026"}],
+     "a bonus went ex on the dive day, 2026-11-07", False),
+])
+def test_m1_a_dive_after_the_buy_whose_basis_is_unknown_leaves_no_price(rows, gap, unread):
+    """Between the buy (23 Oct) and the re-dive (7 Nov) the ratio must be known: NSE's list
+    must reach back to the buy day (a short or empty list is a read to retry), and a row it
+    could not read, a basis change with no ratio, or an action ex on the dive day itself
+    leaves no price, named. The level is never stored in the dive's own rupees."""
+    inv = C.purchase_invalidation(SYM, _idea(level=100.0, dived="2026-11-07"), BUY, ENTRY,
+                                  action_record(rows, SYM), 2.0, 12.0, [])
+    assert inv.price is None and gap in inv.gap and inv.read_gap is unread
+
+
+def test_m1_a_registry_break_between_the_buy_and_a_later_dive_leaves_no_price(monkeypatch):
+    monkeypatch.setattr(xs, "identity_break",
+                        lambda s, a, b: "price basis changed between them" if s == SYM else "")
+    inv = C.purchase_invalidation(SYM, _idea(level=100.0, dived="2026-11-07"), BUY, ENTRY,
+                                  action_record([DIVIDEND_AUG, BONUS_NOV], SYM), 2.0, 12.0,
+                                  [])
+    assert inv.price is None and inv.gap.endswith(
+        "the instrument registry says the price basis changed between them")
+
+
+def test_m1_the_price_target_of_an_analysis_after_the_buy_is_in_the_buy_days_rupees(
+        tmp_path, monkeypatch):
+    """An analysis of 5 Nov (after the bonus) with a target of ₹150: ₹300 on the buy day."""
+    _fixed_inputs(monkeypatch, records=[_record(run_at="2026-11-05T05:00:00", target=150.0)])
+    case = _backfilled(tmp_path, _bonus_held(), _idea())
+    assert case.expectation.target == 300.0 and case.expectation.gap == ""
+
+
+def test_l1_lakh_crore_and_thousand_crore_are_their_own_units():
+    """₹1.5 lakh crore is 10⁷ times ₹1.5 lakh; ₹2 thousand crore 1,000 times ₹2 crore."""
+    assert C.ungrounded("AUM of Rs 1.5 lakh", "AUM of Rs 1.5 lakh crore") == ["1.5 lakh"]
+    assert C.ungrounded("AUM of Rs 1.5 lakh crore", "AUM of Rs 1.5 lakh") == ["1.5 lakh crore"]
+    assert C.ungrounded("capex Rs 2 crore", "capex Rs 2 thousand crore") == ["2 crore"]
+    assert C.ungrounded("AUM 1.5 lakh Cr", "AUM of Rs 1.5 lakh crores") == []
+    assert C.ungrounded("capex 2 thousand cr", "capex Rs 2 thousand crore") == []
+    assert [u for _v, u, _s in C.figures("1.5 lakh crore, 2 thousand crore, 3 lakh, 4 Cr")] \
+        == ["lakh cr", "thousand cr", "lakh", "cr"]
+
+
+# L3: the issue-time edges, each pinned on its own side.
+
+def test_l3_an_analysis_run_exactly_at_the_close_is_not_an_input():
+    """The buy session's close is 15:30 IST = 10:00 UTC (run_at is naive UTC)."""
+    at = _bundle(records=[_record(run_at="2026-10-23T10:00:00")], ideas=[], dossier=None,
+                 events=[])
+    assert at.analysis is None and "no actionable analysis before the case" in at.gaps
+    before = _bundle(records=[_record(run_at="2026-10-23T09:59:00")], ideas=[], dossier=None,
+                     events=[])
+    assert before.analysis is not None
+
+
+def test_l3_an_idea_dived_on_the_buy_day_is_decided_at_its_close_and_not_an_input():
+    """A deep dive dated the buy day counts as decided at that day's 15:30 close, the
+    case's clock: not an input. One analysed at 15:29 that day is."""
+    on_day = _bundle(ideas=[_idea(level=150.0, dived=BUY.isoformat())], records=[],
+                     dossier=None, events=[])
+    assert on_day.idea is None and "no shelf idea decided before the case" in on_day.gaps
+    timed = _idea(level=150.0, dived=BUY.isoformat())
+    timed.analysed_at = "2026-10-23T15:29:00+05:30"
+    assert _bundle(ideas=[timed], records=[], dossier=None, events=[]).idea is timed
+
+
+def test_l3_a_pillar_event_published_at_the_review_close_waits_for_the_next_day(tmp_path):
+    store, _case, _w = _write(tmp_path)
+    close = session_close_at(REVIEW)
+    at_close = _event(close.isoformat(), category="rating", direction="negative", n=11)
+    assert C.review_pillars(store, _held(), [at_close], REVIEW) is None
+    minute = _event((close - timedelta(minutes=1)).isoformat(), category="rating",
+                    direction="negative", n=12)
+    assert C.review_pillars(store, _held(), [minute], REVIEW).version == 2
+
+
+def test_l3_a_version_written_at_or_after_the_close_is_read_from_the_next_day(tmp_path):
+    """Version 2 (a lower price, ₹190) written at 15:30 on 13 Nov: the evidence of 13 Nov
+    reads version 1 (₹200), that of Mon 16 Nov version 2."""
+    store, case, _w = _write(tmp_path)
+    v2 = case.model_copy(deep=True)
+    v2.version, v2.created_at = 2, session_close_at(REVIEW).isoformat()
+    v2.invalidation.price = 190.0
+    assert store.append(v2)
+    reader = xs.EvidenceReader([], event_store=SimpleNamespace(load=lambda s: []),
+                               score_records=lambda s: [], cases=store)
+    today = reader.read(_held(), REVIEW)
+    assert (today.case_version, today.invalidation_level) == (1, 200.0)
+    nxt = reader.read(_held(), date(2026, 11, 16))
+    assert (nxt.case_version, nxt.invalidation_level) == (2, 190.0)
+
+
+# L4: a read that failed at the buy is retried, as a new version.
+
+def test_l4_nse_unread_at_the_buy_is_retried_and_settles_as_a_new_version(tmp_path,
+                                                                           monkeypatch):
+    """The deployment buy's case is written while NSE's list is unread: no price, a read to
+    retry. The sync of Mon 26 Oct reads it: version 2 holds ₹200 (the window from the
+    purchase day's ATR, 12%), read by the evidence from Tue 27 Oct; a second retry writes
+    nothing. The shelf rule's level is never used in between."""
+    monkeypatch.setattr(C, "_now", lambda: datetime(2026, 10, 26, 16, 50, tzinfo=IST))
+    store, case, _w = _write(tmp_path, record=action_record([], SYM))
+    assert case.invalidation.price is None and case.invalidation.read_gap
+    assert "is empty or was not read" in case.invalidation.gap
+    day = date(2026, 10, 26)
+    full = action_record([DIVIDEND_AUG], SYM)
+    assert C.retry_invalidation(store, _held(), action_record([], SYM), day,
+                                history=_history) is None
+    v2 = C.retry_invalidation(store, _held(), full, day, history=_history)
+    assert (v2.version, v2.invalidation.price, v2.invalidation.read_gap) == (2, 200.0, False)
+    assert (v2.invalidation.stop_price, v2.invalidation.noise_line) == (186.56, 205.64)
+    assert v2.change == "invalidation price re-read on 2026-10-26: 200.00 in the buy day's rupees"
+    assert v2.pillars == case.pillars and v2.invalidation.business == case.invalidation.business
+    assert C.retry_invalidation(store, _held(), full, day, history=_history) is None
+    reader = xs.EvidenceReader([_idea(level=150.0)], event_store=SimpleNamespace(
+        load=lambda s: []), score_records=lambda s: [], cases=store, corp_actions={SYM: full})
+    assert reader.read(_held(), day).invalidation_level == 0.0
+    assert reader.read(_held(), date(2026, 10, 27)).invalidation_level == 200.0
+
+
+def test_l4_an_unknown_atr_is_retried_and_a_refusal_never_is(tmp_path, monkeypatch):
+    """The price history unread at the buy: retried, and the history to the buy day (ATR
+    2%, the two wide later days unread) settles it. A level the window refused (ATR 5%:
+    noise line ₹196.10) is a decision, not a read: never retried."""
+    monkeypatch.setattr(C, "_now", lambda: datetime(2026, 10, 26, 16, 50, tzinfo=IST))
+    store, case, _w = _write(tmp_path, atr=0.0, stop=0.0)
+    assert case.invalidation.read_gap and "ATR on the purchase day is unknown" in \
+        case.invalidation.gap
+    v2 = C.retry_invalidation(store, _held(), action_record([DIVIDEND_AUG], SYM),
+                              date(2026, 10, 26), history=_history)
+    assert v2.invalidation.price == 200.0
+    refused_store, refused, _w = _write(tmp_path / "noise", atr=5.0)
+    assert refused.invalidation.price is None and not refused.invalidation.read_gap
+    assert C.retry_invalidation(refused_store, _held(), action_record([DIVIDEND_AUG], SYM),
+                                date(2026, 10, 26), history=_history) is None
+
+
+def test_m1_a_bonus_the_holding_applied_counts_even_when_nse_no_longer_lists_it(
+        tmp_path, monkeypatch):
+    """The holding's applied actions are the record its cost and `level_after_buy` rely
+    on: a bonus it applied counts when putting a later dive back, though NSE's list (read
+    in full from August) no longer shows it; so the price reads the dive's ₹100 again."""
+    held = _bonus_held()
+    inv = C.purchase_invalidation(SYM, _idea(level=100.0, dived="2026-11-07"), BUY, ENTRY,
+                                  action_record([DIVIDEND_AUG], SYM), 2.0, 12.0,
+                                  held.applied_actions)
+    assert inv.price == 200.0
+    case = SimpleNamespace(symbol=SYM, opened_on=BUY.isoformat(), invalidation=inv)
+    assert C.level_after_buy(case, held, REVIEW, action_record([DIVIDEND_AUG], SYM))[0] == 100.0
+    # The backfill passes the holding's own record the same way.
+    _fixed_inputs(monkeypatch, nse_rows=(DIVIDEND_AUG,))
+    assert _backfilled(tmp_path, _bonus_held(), _idea(level=100.0, dived="2026-11-07")
+                       ).invalidation.price == 200.0

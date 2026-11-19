@@ -1726,13 +1726,16 @@ events of the last 60 days, medium or high materiality (`E1`..).
 **One reasoning-tier call writes the words; code checks every figure**
 (`check_model_case`). A figure an evidence fact cites must be a figure of
 that input, with the same unit; any other figure must be one of the inputs'.
-"18%" is not "18.4%", and "₹1,200" is not "Rs 1,200 Cr". A broken rule, a
+"18%" is not "18.4%", "₹1,200" is not "Rs 1,200 Cr", and "₹1.5 lakh" is not
+"₹1.5 lakh crore" ("lakh crore" and "thousand crore" are units of their own). A broken rule, a
 malformed answer or a failed call stores the deterministic case instead: the
 shelf idea's thesis (else the analysis's) copied word for word, its deep
 dive's conviction and verdict as the evidence, the analysis's risks as what
 would prove it wrong, and the rule it broke. An idea with no thesis says
 none was written. `advisor.case_model: false` writes only the deterministic
-case; `advisor.case_write: false` writes none (rollback; stored cases stay).
+case. `advisor.case_write: false` is the rollback: no case and no new version
+is written, and the evidence rule reads the shelf idea's level again, as
+before cases; the stored cases stay as history.
 
 **Code sets every price and date.** The analysis's price target and the shelf
 idea's invalidation level are put into the buy day's price basis by the
@@ -1750,6 +1753,30 @@ bonuses and splits adjust it (`level_after_buy`), so NSE's reach back to the
 dive no longer matters; a change no ratio converts after the buy, or a
 registry basis change, leaves it unused.
 
+**A case written after the buy** (a backfill, or a manual add dated in the
+past) keeps every price in the buy day's rupees. Its entry is the holding's
+cost before the bonuses and splits it applied since (`buy_day_entry`), so the
+window is the buy day's. A deep dive or an analysis made after the buy is put
+back into the buy day's rupees (`level_at_buy`): times the ratio of each bonus
+or split ex after the buy and on or before the dive, from the holding's record
+or NSE's list, which must reach back to the buy day; a row NSE lists but could
+not read, a change no ratio converts, a registry basis change or an action ex
+on the dive day leaves no price. **Example:** bought at ₹212 with the level
+₹200; a 1:1 bonus goes ex; the cost reads ₹106. The backfill sets the window
+from ₹212 and keeps ₹200, which reads ₹100 after the bonus, as the shelf rule
+does. A re-dive after the bonus with the level ₹100 is stored as ₹200, and
+reads ₹100 again, never ₹50.
+
+**A read that failed is retried.** When the price is missing because a read
+fell short (NSE's list unread or not reaching back far enough at the buy, or
+no price history for the ATR), the case marks it `read_gap`. After each
+review's trades the pipeline works it again from that day's sync, exactly as
+at purchase (`retry_invalidation`): the case's own level, buy day, entry and
+window, nothing after the buy day. A result that settles, a price or a
+refusal, is a new version, read from the next review day; another short read
+writes nothing. A refusal by the window or by the basis rules is a decision
+and is never retried.
+
 **Immutable history.** `data/portfolio/<user>/cases/<SYMBOL>.jsonl` holds every
 version of every case of that symbol; one holding (its buy date) has one case.
 A change appends a version; nothing is edited. A second write for the same
@@ -1763,13 +1790,14 @@ clock and before the review session's close, in a category a pillar watches,
 marks that pillar `challenged` and cites the event. A results event re-checks
 every pillar: negative, it challenges all of them; otherwise each records the
 day. Each event is read once. The exit evidence records the challenged
-pillars and the case version read; a challenge is never a sale.
+pillars and the case version read: the newest written before that review
+session's close. A challenge is never a sale.
 
 `GET /portfolio/cases` returns the signed-in user's newest version of each
 case; `?symbol=` returns every version of that symbol's. A member reads only
 their own. `scripts/backfill_cases.py` writes a case, `after_purchase`, for
-each holding without one: a dry run by default, `--apply` once at the owner's
-word.
+each holding without one, its prices in the buy day's rupees (above): a dry
+run by default, `--apply` once at the owner's word.
 
 ### Data and identity checks on advice
 

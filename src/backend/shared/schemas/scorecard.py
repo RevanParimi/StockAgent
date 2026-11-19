@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
-# Component 1 — Control lane (the duel)
+# Component 1 — Control lane (the duel); removed Nov 2026, stored logs only
 # ---------------------------------------------------------------------------
 
 class ControlPrediction(BaseModel):
@@ -32,8 +32,9 @@ class ControlPrediction(BaseModel):
     One day's bare-LLM prediction, made the previous session with the same
     close + market_context StockAgent had at that moment.
 
-    `actual_direction` and `correct` are filled on the NEXT review (Step 10
-    of `run_daily_review`), once the predicted day's outcome is known.
+    `actual_direction` and `correct` were filled on the next review, once the
+    predicted day's outcome was known. The lane was removed in November 2026;
+    the monthly scorecard still reads the stored logs.
     """
     date: str                       # trading day being predicted
     made_on: str                    # review date when prediction was made (prev session)

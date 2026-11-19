@@ -769,21 +769,13 @@ RL_RESEARCH_MAX_ATTEMPTS: int = cfg("rl.research_max_attempts", env="RL_RESEARCH
 RL_RESEARCH_CONTEXT_MAX_CHARS: int = cfg("rl.research_context_max_chars", env="RL_RESEARCH_CONTEXT_MAX_CHARS", fallback=6000)
 
 # ---------------------------------------------------------------------------
-# RL Phase 1 — Monthly Scorecard + Baseline Duel (2026-06-12)
+# RL Phase 1 — Monthly Scorecard (2026-06-12)
 #
-# Control lane (the duel): a bare-LLM predictor gets the same close +
-# market_context StockAgent has, but none of the architecture (no agents,
-# no learned weights, no lessons, no dossier). Scored against StockAgent and
-# naive baselines (persistence, always-up, always-down) in the monthly
-# scorecard. Everything here is flag-gated — flags off means byte-identical
-# behavior (no Step 10, no monthly job, claims_fired stays []).
+# The monthly scorecard compares StockAgent's daily direction calls with naive
+# baselines (persistence, always-up, always-down) and with the stored control
+# logs of the months when a bare model was also asked (the control lane,
+# removed in Nov 2026). Flag off means no monthly job.
 # ---------------------------------------------------------------------------
-
-# Daily control-lane prediction + scoring (daily_review Step 10).
-RL_CONTROL_LANE_ENABLED: bool = cfg("rl.control_lane_enabled", env="RL_CONTROL_LANE_ENABLED", fallback=True)
-
-# Control-lane model; empty string -> settings.LLM_MODEL_REASONING.
-CONTROL_LANE_MODEL: str = cfg("rl.control_lane_model", env="CONTROL_LANE_MODEL", fallback="")
 
 # Monthly scorecard scheduler job (CronTrigger day 1, 02:00 IST).
 SCORECARD_ENABLED: bool = cfg("rl.scorecard_enabled", env="SCORECARD_ENABLED", fallback=True)

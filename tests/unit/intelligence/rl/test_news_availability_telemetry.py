@@ -90,14 +90,6 @@ def _run_review_with_news(news_fn, ticker: str, tmp_path, monkeypatch) -> dict:
     monkeypatch.setattr(DossierCurator, "_call_llm",
                         lambda self, *a, **k: json.dumps(dossier_payload))
 
-    import core.intelligence.rl.agents.control_lane as control_lane_mod
-    control_payload = json.dumps({
-        "direction": "FLAT", "confidence": 0.5, "predicted_close": 100.1,
-        "rationale": "Quiet session, no strong catalysts.",
-    })
-    monkeypatch.setattr(control_lane_mod, "_call_llm",
-                        lambda *a, **k: (control_payload, "test-control-model"))
-
     return dr.run_daily_review(ticker, review_date, sector=sector)
 
 

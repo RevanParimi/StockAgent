@@ -1279,7 +1279,7 @@ class AutomobileScheduler:
         Build + persist the previous month's RL scorecard (agent vs control
         LLM vs naive baselines, spec 2026-06-12). Runs on the 1st of every
         month at 2:00 am IST — by then the previous month is fully closed
-        out (last daily review + control-lane scoring already ran).
+        out (the last daily review already ran).
         Non-fatal: any failure is logged and the scheduler continues.
         """
         from core.intelligence.rl.eval.scorecard import (

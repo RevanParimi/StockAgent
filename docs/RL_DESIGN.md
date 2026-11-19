@@ -94,7 +94,6 @@ DAILY (Mon-Fri 16:30 IST: rl_daily_review, previous trading session)
     8.5  dossier curator                                   [LLM] section 23.2
     --   off-market signals saved for tomorrow
     9    seasonal validation (last trading day of the month)
-    10   control lane: score yesterday's call, make tomorrow's  [LLM] section 25
   scheduler: one outcome per ticker, then the portfolio pipeline   section 8
 
 WEEKLY
@@ -126,7 +125,7 @@ Three switches decide what this flow may change:
   never leaves a half-written file;
 - the paper lane (discovery ideas) never trains or writes weights, never
   propagates lessons to shared ledgers, never writes the sticky regime, never
-  re-forecasts and never runs the control lane.
+  re-forecasts.
 
 ## 3. Persistent memory and store ownership
 
@@ -142,7 +141,7 @@ data/predictions/
     <TICKER>/
       <TICKER>_<YYYY-MM>_prediction_envelope.json   monthly forecast rows
       <TICKER>_<YYYY-MM>_daily_feedback_log.json    one entry per graded session
-      <TICKER>_<YYYY-MM>_control_log.json           control-lane calls (section 25)
+      <TICKER>_<YYYY-MM>_control_log.json           past control-lane calls (section 25), read only
       <TICKER>_<YYYY-MM>_prompt_enhancements.json   extra queries (section 15)
       <TICKER>_agent_weight_memory.json             weights, permanent
       <TICKER>_weight_observations.json             observe-mode proposals (section 7)
@@ -541,8 +540,6 @@ tomorrow's review (section 17).
 **Step 9 — seasonal validation**, on the last trading day of the month only
 (section 14).
 
-**Step 10 — control lane** (section 25), not in the paper lane.
-
 Finally the review records whether company news was available, and returns a
 summary with `status: completed`, the learning mode, the decision weights,
 the regime, the streak, any thesis or re-forecast result, and a `data_gate`
@@ -570,7 +567,7 @@ identity and stale-close examples.
 
 - **In `enforce` mode** the first failure ends the review with
   `status: data_gated`: no grading, feedback agent, weight update or
-  proposal, lesson, revision, streak, feedback entry, dossier or control-lane
+  proposal, lesson, revision, streak, feedback entry or dossier
   step. The sticky regime, written in step 0, is the one write that has
   already happened.
 - **In `record` mode** the review runs and lists every failure in its
@@ -985,7 +982,7 @@ Pydantic models in
 | `WeightMemory`, `AgentAccuracy`, `WeightHistoryEntry` | Weights, accuracy, history (section 3.5) | Permanent |
 | `LearningLedger`, `Lesson`, `MissEvent` | Lessons, miss counters and structured miss events | Permanent |
 | `TickerDossier` and its parts | Company knowledge (section 23.1); in `schemas/dossier.py` | Permanent |
-| `ControlLog` | Control-lane calls (section 25); in `schemas/scorecard.py` | Per cycle |
+| `ControlLog` | Past control-lane calls (section 25), read by the scorecard; in `schemas/scorecard.py` | Per cycle |
 | `FeedbackAgentInput`, `FeedbackAgentOutput`, `RawLesson` | The feedback agent's contract | Per call |
 | `RegimeSnapshot`, `SeasonalPattern`, `SeasonalContext` | Regime and seasonal context | Per call |
 | `OffMarketSignals`, `FnOSnapshot` | Market-structure data (section 17) | Per date or cycle |
@@ -1028,7 +1025,7 @@ read at import, so a change needs a restart. The KT
 | `rl.lesson_emphasis_delta`, `rl.lesson_emphasis_cap`, `rl.lesson_match_min_conf` | 0.03, 0.06, 0.45 | Section 23.3 |
 | `rl.event_ingest_enabled`, `…_lookback_days`, `…_max_events_per_scan`, `…_text_max_chars` | true, 8, 3, 6000 | Section 26 |
 | `rl.research_loop_enabled`, `rl.research_max_questions_per_run`, `rl.research_max_attempts` | true, 2, 3 | Research loop |
-| `rl.control_lane_enabled`, `rl.control_lane_model`; `rl.scorecard_enabled` | true, "" (reasoning tier); true | Section 25 |
+| `rl.scorecard_enabled` | true | Section 25 |
 | `rl.reforecast_enabled`, `rl.reforecast_max_per_month`, `rl.reforecast_thesis_mult_threshold` | true, 2, 0.5 | Section 27.2 |
 | `rl.regime_sticky_enabled`; `regime.calm_days` (`RL_REGIME_CALM_DAYS`) | true; 3 | Section 27.1 |
 | `rl.preopen_check_enabled`, `rl.preopen_shock_severity` | true, 0.7 | Section 27.3 |
@@ -1130,7 +1127,6 @@ bulk `deepseek/deepseek-v4-flash`. Production's values are not recorded here.
 | `DossierCurator.run`, `distill_dossier` | `rl/agents/dossier_curator.py` | LLM, bulk tier, temperature 0.2 | Static merge enforces every bound |
 | `EventIngestor` | `rl/agents/event_ingestor.py` | LLM, bulk tier | Same merge as the curator |
 | `QuestionResearcher` | `rl/agents/question_researcher.py` | LLM, bulk tier | Section 23.2 |
-| `run_control_lane_step` | `rl/agents/control_lane.py` | LLM, `rl.control_lane_model` or reasoning tier | Section 25 |
 | `run_preopen_check` | `rl/workflows/preopen_check.py` | LLM, fast tier | Section 27.3 |
 
 ## 22. Limits and planned work
@@ -1152,8 +1148,8 @@ bulk `deepseek/deepseek-v4-flash`. Production's values are not recorded here.
   seed validation (section 14). No research path reads prompt
   enhancements, and no writer records the miss events that the
   recency-weighted ranking reads (section 15).
-- **Control lane.** It is scored on the same error-direction label, so its
-  edge measures the same defect (section 25).
+- **Control lane.** Its stored months were scored on the same error-direction
+  label, so their edge measures the same defect (section 25).
 - **Evidence of benefit.** No measurement here shows that adaptation beats
   the defaults. **Planned:** matched cohorts, effective samples and
   calibration checks (SA-018 to SA-021), prospective experiments (SA-022),
@@ -1325,12 +1321,15 @@ counters.
 
 ## 25. Monthly Scorecard, Baseline Duel and Learning Evidence
 
-**Control lane** (step 10, [control_lane.py](../core/intelligence/rl/agents/control_lane.py)).
-A bare model gets the session's close and the same context string the review
-assembled: no dimensions, weights, lessons or dossier. It predicts the next
-session's direction (UP, DOWN or FLAT, with confidence). The next review
-scores yesterday's call. Calls are stored in the month they predict for, in
-`<TICKER>_<YYYY-MM>_control_log.json`. The control is scored against the
+**Control lane** (removed in November 2026; its stored logs stay readable).
+Until then, after each review a bare model got the session's close and the
+same context string the review assembled: no dimensions, weights, lessons or
+dossier. It predicted the next session's direction (UP, DOWN or FLAT, with
+confidence), and the next review scored yesterday's call. From August to
+October 2026 it was right more often than StockAgent's forecast. Its calls
+are stored in the month they predicted for, in
+`<TICKER>_<YYYY-MM>_control_log.json`, and the scorecard still reads them, so
+later months show n 0. The control is scored against the
 feedback entry's `actual_direction`, which measures the actual close against
 StockAgent's *predicted* close. Its edge therefore inherits the grading
 defect: it is not a comparison of market-direction calls.

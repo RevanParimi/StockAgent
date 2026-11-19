@@ -110,7 +110,7 @@ Railway variable change redeploys).
 | Tier | Repository model | Used for |
 |---|---|---|
 | Fast | `deepseek/deepseek-v4.1-flash-1017` | Chat tool loop, pre-open shock rating |
-| Reasoning | `xiaomi/mimo-v2.6-pro` | Unified analyst, aggregator narrative, FeedbackAgent, ThesisReviewer, control lane, chat retries |
+| Reasoning | `xiaomi/mimo-v2.6-pro` | Unified analyst, aggregator narrative, FeedbackAgent, ThesisReviewer, chat retries |
 | Bulk | `deepseek/deepseek-v4-flash` | Ticker resolution, legacy agents, forecast profile, dossier and event agents, narration, macro reviewer, IPO extraction |
 
 [AGENTIC_DESIGN](AGENTIC_DESIGN.md) section 2 lists every caller. **Hard
@@ -320,7 +320,6 @@ to bottom; it is the product.**
 | 8 | The feedback entry |
 | 8.5 | **DossierCurator**, every day |
 | 9 | Seasonal validation, month end only |
-| 10 | **Control lane** |
 
 `review_outcomes.py` then gives each enabled ticker one outcome:
 completed, degraded, data_gated, skipped or failed.
@@ -333,7 +332,6 @@ completed, degraded, data_gated, skipped or failed.
 | WeightAdapter | `core/intelligence/rl/agents/weight_adapter.py` | Deterministic weight update; bounds applied before renormalising |
 | Learning mode | `core/intelligence/rl/learning_mode.py` | `adapt` or `observe`; decision weights; observation records |
 | ThesisReviewer | `core/intelligence/rl/agents/thesis_reviewer.py` | Fires when the error exceeds `max(1.5%, 1.5 × ATR%)` or on a structural miss |
-| Control lane | `core/intelligence/rl/agents/control_lane.py` | A bare model with the same close and context, the baseline opponent |
 | Review outcomes | `core/intelligence/rl/workflows/review_outcomes.py` | One outcome per ticker per run |
 
 ### 7.4 Lesson machinery
@@ -502,7 +500,7 @@ exercised.
 | Baselines | `core/intelligence/rl/eval/baselines.py` | Persistence and always-up |
 | Scorecard | `core/intelligence/rl/eval/scorecard.py` | Monthly lanes: agent, control, baselines |
 | Learning evidence | `core/intelligence/rl/eval/learning_evidence.py` | Self-ablation: adapted versus base versus uniform weights |
-| Schemas | `src/backend/shared/schemas/scorecard.py` | Control-lane records |
+| Schemas | `src/backend/shared/schemas/scorecard.py` | Control-lane records (stored logs only; the lane was removed) |
 
 All of it grades the same label the daily review records, which measures
 error direction (KT [section 5](TECHNICAL_DESIGN.md#grading-defect-an-example-everyone-can-follow)).
@@ -725,7 +723,7 @@ is the current baseline; [audit/LEDGER.md](audit/LEDGER.md) records every
 **Week 2 — the loop**
 
 5. [RL_DESIGN.md](RL_DESIGN.md), then module 7 in this order: schemas →
-   `generate_forecast` → **`daily_review`, steps 0–10** → `feedback_agent` →
+   `generate_forecast` → **`daily_review`, steps 0–9** → `feedback_agent` →
    `weight_adapter` → `learning_mode` → `ledger_propagator`
 6. Module 6 (regime) and module 8 (dossier), both hung off the daily review
 

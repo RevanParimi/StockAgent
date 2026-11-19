@@ -210,7 +210,7 @@ resolved at import, so editing a file does not imply live reconfiguration.
 | `discovery.max_unnamed_redives: 2` | A shelf idea still without a sector key after this many re-dives in a row is dropped with the reason (section 8); 0 = no limit. |
 | [`config/instruments.yaml`](../config/instruments.yaml) | The instrument registry: effective-dated records of which provider symbol each listed ticker is priced from, on which price basis, and whether its identity is resolved (section 4). Evidence is needed to resolve an identity, never to quarantine one. It lists TATAMOTORS and HEXAWARE as unresolved, GATI and INOXLEISUR as delisted, and two plain aliases and five NSE renames as resolved. Quarantine acts through `decision_gate.mode`. |
 | `advisor.exit_rule: shadow` | Which exit rule sells (section 6). `legacy`: the price-path rule acts and nothing is compared. `shadow`: it still acts, and both rules' verdicts are recorded. `evidence`: the evidence rule acts. Any other value reads as `shadow`. The owner switches only on the weekly scorecard's gate; `legacy` is the rollback. |
-| `rl.control_lane_enabled: false`; `rl.scorecard_enabled: true` | The daily second model call is off; the monthly scorecard still reads the stored control logs. Not proof of valid prospective comparison. |
+| `rl.scorecard_enabled: true` | The monthly scorecard. Its control line reads the stored control logs of the months before the daily second model call was removed; later months show n 0. Not proof of valid prospective comparison. |
 | `ipo.enabled: true`; `ipo.gmp_enabled: false` | IPO refresh and grey-market-price fetching have separate gates. |
 | `delivery.enabled: true`; `delivery.email_enabled: false`; `delivery.push_enabled: true` | Job scheduling, transport enablement and credentials are separate conditions. |
 | `watchdog.enabled: true`; `watchdog.prep_enabled: true` | Monitoring can perform configured prep as well as report results. |
@@ -1094,7 +1094,7 @@ The review checks these inputs, in order, before it writes anything:
 
 In `enforce` mode the first failure ends the review as `data_gated`: no
 grading, FeedbackAgent call, weight update or observe-mode proposal, lesson,
-envelope revision, streak, feedback entry, dossier or control-lane step. The
+envelope revision, streak, feedback entry or dossier step. The
 skip is recorded with its stage, reason and source run id. The market-wide
 sticky regime, updated at the start of every review, is the one write that
 still happens. In `record` mode the review runs and its summary lists what

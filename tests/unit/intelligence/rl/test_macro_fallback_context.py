@@ -123,14 +123,6 @@ def _run_review(
     monkeypatch.setattr(DossierCurator, "_call_llm",
                         lambda self, *a, **k: json.dumps(dossier_payload))
 
-    import core.intelligence.rl.agents.control_lane as control_lane_mod
-    control_payload = json.dumps({
-        "direction": "FLAT", "confidence": 0.5, "predicted_close": 100.1,
-        "rationale": "Quiet session, no strong catalysts.",
-    })
-    monkeypatch.setattr(control_lane_mod, "_call_llm",
-                        lambda *a, **k: (control_payload, "test-control-model"))
-
     summary = dr.run_daily_review(ticker, review_date, sector=sector)
     summary["_macro_cache_calls"] = calls
     return summary, prompts

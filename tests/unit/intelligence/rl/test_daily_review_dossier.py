@@ -194,12 +194,6 @@ def test_run_daily_review_writes_dossier_and_event_tags(tmp_path, monkeypatch):
     monkeypatch.setattr(DossierCurator, "_call_llm",
                          lambda self, *a, **k: json.dumps(dossier_payload))
 
-    # The daily second model call (the control lane) is off in config.yaml:
-    # the review must not run it.
-    import core.intelligence.rl.agents.control_lane as control_lane_mod
-    control_calls = []
-    monkeypatch.setattr(control_lane_mod, "run_control_lane_step",
-                        lambda *a, **k: control_calls.append(a))
 
     # --- Run ---
     summary = dr.run_daily_review(ticker, review_date, sector=sector)
@@ -223,8 +217,7 @@ def test_run_daily_review_writes_dossier_and_event_tags(tmp_path, monkeypatch):
     assert len(todays_obs) >= 1
     assert todays_obs[0].observation == "seeded obs"
 
-    # No control call and no control log: the second model call is off.
-    assert control_calls == []
+    # No control log: the daily second model call (the control lane) is gone.
     assert store.load_control_log(cycle_id).entries == []
 
 
@@ -331,15 +324,6 @@ def test_run_daily_review_external_shock_wrong_direction_no_crash(tmp_path, monk
     }
     monkeypatch.setattr(DossierCurator, "_call_llm",
                          lambda self, *a, **k: json.dumps(dossier_payload))
-
-    import core.intelligence.rl.agents.control_lane as control_lane_mod
-    control_payload = json.dumps({
-        "direction": "FLAT", "confidence": 0.5, "predicted_close": 98.0,
-        "rationale": "Unforeseeable shock, no continuation expected.",
-    })
-    monkeypatch.setattr(
-        control_lane_mod, "_call_llm",
-        lambda *a, **k: (control_payload, "test-control-model"))
 
     # Living Envelope (RL Phase 2.5): miss_type="external_shock" with
     # direction_correct=False now fires the reforecast trigger block, which

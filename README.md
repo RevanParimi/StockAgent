@@ -163,13 +163,14 @@ are archived (and resurrected if they start recurring), and a read-only evaluati
 (`python -m core.intelligence.rl.eval.run_eval`) measures direction accuracy, Brier score,
 and confidence calibration so improvement is a number, not a feeling.
 
-**The system also keeps score against controls.** Every day a *control lane* — the same
-LLM given the same information but none of the agents, learned weights, or dossier — makes
-its own prediction, and naive baselines (persistence, always-up) are computed alongside.
-A monthly scorecard (`python -m services.scheduler.run_schedule scorecard`, auto-generated
-on the 1st) persists the time series: StockAgent vs control vs baselines, month-over-month
-deltas, accuracy on days learned claims fired vs other days, and dossier health. The edge
-over the bare model is a measured number, not a claim.
+**The system also keeps score against controls.** Naive baselines (persistence, always-up)
+are computed beside every daily call. A monthly scorecard (`python -m
+services.scheduler.run_schedule scorecard`, auto-generated on the 1st) persists the time
+series: StockAgent vs baselines, month-over-month deltas, accuracy on days learned claims
+fired vs other days, and dossier health. Until November 2026 a *control lane* (the same LLM
+given the same information but none of the agents, learned weights or dossier) also made a
+daily call; from August to October it was right more often than StockAgent's forecast, so it
+was removed, and its stored months stay on the scorecard.
 
 **Including against itself with learning switched off.** A monthly Learning Evidence
 Report (`python -m core.intelligence.rl.eval.learning_evidence`, auto-emailed with the

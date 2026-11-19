@@ -124,15 +124,6 @@ def _patch_common(dr, monkeypatch, tmp_path, actual_close: float = 98.0):
     monkeypatch.setattr(DossierCurator, "_call_llm",
                          lambda self, *a, **k: json.dumps(dossier_payload))
 
-    import core.intelligence.rl.agents.control_lane as control_lane_mod
-    control_payload = json.dumps({
-        "direction": "FLAT", "confidence": 0.5, "predicted_close": actual_close,
-        "rationale": "Test control prediction.",
-    })
-    monkeypatch.setattr(
-        control_lane_mod, "_call_llm",
-        lambda *a, **k: (control_payload, "test-control-model"))
-
     # SA-005 (T1): fetch_all is stubbed above, but the constructor opened a
     # live NSE session, and the thesis reviewer called OpenRouter whenever a
     # test did not replace review(). Both now stay in-process: no session, and

@@ -2,7 +2,7 @@
 
 'Paper review never touches sector/market ledger or weight memory files' —
 plus: never writes global regime state, never fires re-forecasts, never runs
-the control lane, and stores everything under PAPER_PREDICTION_DATA_DIR.
+and stores everything under PAPER_PREDICTION_DATA_DIR.
 """
 from __future__ import annotations
 
@@ -97,8 +97,7 @@ def test_paper_review_full_isolation(tmp_path, monkeypatch):
     paper_store.save_envelope(_make_envelope())
 
     # Spies on every isolation seam.
-    adapter_calls, propagate_calls, regime_calls, reforecast_calls, control_calls = \
-        [], [], [], [], []
+    adapter_calls, propagate_calls, regime_calls, reforecast_calls = [], [], [], []
     monkeypatch.setattr(dr.WeightAdapter, "update",
                         lambda self, **kw: adapter_calls.append(kw))
     monkeypatch.setattr(dr, "propagate_lessons",
@@ -107,9 +106,6 @@ def test_paper_review_full_isolation(tmp_path, monkeypatch):
                         lambda *a, **kw: regime_calls.append(a))
     monkeypatch.setattr(dr, "regenerate_envelope",
                         lambda **kw: reforecast_calls.append(kw))
-    import core.intelligence.rl.agents.control_lane as cl
-    monkeypatch.setattr(cl, "run_control_lane_step",
-                        lambda *a, **kw: control_calls.append(a))
 
     summary = dr.run_daily_review(TICKER, REVIEW_DATE, sector=SECTOR, paper=True)
 
@@ -117,12 +113,11 @@ def test_paper_review_full_isolation(tmp_path, monkeypatch):
     assert summary["paper"] is True
 
     # THE invariant: no weight training, no shared-ledger writes, no global
-    # regime writes, no re-forecast, no control lane.
+    # regime writes, no re-forecast.
     assert adapter_calls == []
     assert propagate_calls == []
     assert regime_calls == []
     assert reforecast_calls == []
-    assert control_calls == []
 
     # Nothing appeared under the REAL prediction root.
     assert list(real_root.rglob("*")) == []
@@ -144,7 +139,6 @@ def test_paper_false_still_trains(tmp_path, monkeypatch):
     monkeypatch.setattr(dr.settings, "PREDICTION_DATA_DIR", str(real_root))
     _patch_common(dr, monkeypatch)
     monkeypatch.setattr(dr.settings, "RL_REFORECAST_ENABLED", False)
-    monkeypatch.setattr(dr.settings, "RL_CONTROL_LANE_ENABLED", False)
 
     store = PredictionStore(TICKER, sector=SECTOR, base_dir=str(real_root))
     store.save_envelope(_make_envelope())

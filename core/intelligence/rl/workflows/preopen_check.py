@@ -60,7 +60,7 @@ def _strip_think(raw: str) -> str:
 
 
 def _call_llm(system_prompt: str, user_prompt: str) -> tuple[str, str]:
-    """LLM client pattern mirrors control_lane._call_llm. May raise — caller handles."""
+    """One JSON-mode call on the fast tier, recorded either way. May raise — caller handles."""
     from services.clients.llm_client import JSON_MODE_EXTRA_BODY, get_llm_client, record_llm_call
 
     client = get_llm_client()

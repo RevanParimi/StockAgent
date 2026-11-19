@@ -275,12 +275,6 @@ def test_daily_review_persists_evidence_on_the_lesson_it_writes(tmp_path, monkey
         "flow_note": "", "open_question_updates": [],
     }))
 
-    import core.intelligence.rl.agents.control_lane as control_lane_mod
-    monkeypatch.setattr(control_lane_mod, "_call_llm", lambda *a, **k: (json.dumps({
-        "direction": "FLAT", "confidence": 0.5, "predicted_close": 100.1,
-        "rationale": "Quiet session.",
-    }), "test-control-model"))
-
     summary = dr.run_daily_review(ticker, review_date, sector=sector)
     assert summary["status"] == "completed"
 

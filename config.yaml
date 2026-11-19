@@ -21,7 +21,7 @@ llm:
   #               host ignores response_format, so the pre-open call sets
   #               provider.require_parameters (preopen_check.py).
   #   reasoning – judgment calls (unified analyst, aggregator verdict, RL feedback
-  #               and thesis, control lane, chat fallback): xiaomi/mimo-v2.6-pro —
+  #               and thesis, chat fallback): xiaomi/mimo-v2.6-pro —
   #               $0.435/$0.87 per M vs glm-5.2's $1.218/$3.828 (~72% cheaper for a
   #               7.5k-in/3k-out analyst call), AA index 46 vs 34 (v4.3.2,
   #               reasoning-on); JSON 6/6, verdict and top drivers correct with
@@ -414,9 +414,7 @@ rl:
   research_max_questions_per_run: 2
   research_max_attempts: 3
   research_context_max_chars: 6000
-  # -- Control lane + monthly scorecard (Phase 1) ---------------------------
-  control_lane_enabled: false
-  control_lane_model: ""           # empty -> llm.model_reasoning
+  # -- Monthly scorecard (Phase 1) -----------------------------------------
   scorecard_enabled: true
   # -- Living Envelope (Phase 2.5) ------------------------------------------
   reforecast_enabled: true

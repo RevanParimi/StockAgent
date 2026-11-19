@@ -126,8 +126,7 @@ StockAgent-main/
 │   │   ├── rl/                    # Reinforcement learning feedback loop
 │   │   │   ├── agents/            # feedback_agent (direction scoring: NEUTRAL correct only on
 │   │   │   │                      #  FLAT moves — Wave G), weight_adapter, thesis_reviewer,
-│   │   │   │                      #  dossier_curator, event_ingestor, question_researcher,
-│   │   │   │                      #  control_lane
+│   │   │   │                      #  dossier_curator, event_ingestor, question_researcher
 │   │   │   ├── algorithms/        # price_interpolator.py, lesson_emphasis.py (executable claims)
 │   │   │   ├── conviction/        # tracker.py (conviction streak)
 │   │   │   ├── eval/              # Read-only evaluation harness (metrics, synthetic, run_eval CLI)
@@ -580,7 +579,7 @@ tier, and `config.yaml` is the only place models are chosen.
 |------|---------|-------------|
 | `OPENROUTER_API_KEY` | `""` (required) | OpenRouter API key (.env only) |
 | `LLM_MODEL_FAST` | `deepseek/deepseek-v4.1-flash-1017` | **FAST tier** — the agentic chat tool-loop and the pre-open shock rating (`json_object`, with `provider.require_parameters` so only a host that honours every parameter sent can serve it); a dated snapshot slug |
-| `LLM_MODEL_REASONING` | `xiaomi/mimo-v2.6-pro` | **REASONING tier** — SignalAggregator verdict, RL FeedbackAgent / ThesisReviewer, control lane, the Unified Sector Analyst for all four sectors (JSON-validated), and the chat fallback; a different vendor from FAST, so the fallback survives a provider-wide fault. Candidates are compared with `scripts/reasoning_bench.py` and `scripts/model_bench.py` |
+| `LLM_MODEL_REASONING` | `xiaomi/mimo-v2.6-pro` | **REASONING tier** — SignalAggregator verdict, RL FeedbackAgent / ThesisReviewer, the Unified Sector Analyst for all four sectors (JSON-validated), and the chat fallback; a different vendor from FAST, so the fallback survives a provider-wide fault. Candidates are compared with `scripts/reasoning_bench.py` and `scripts/model_bench.py` |
 | `LLM_MODEL_BULK` | `deepseek/deepseek-v4-flash` | **BULK tier** — high-volume `json_object` scoring; $0.091/$0.182 per M, reasoning disabled via `JSON_MODE_EXTRA_BODY` |
 | `LLM_TEMPERATURE` | `0.2` | LLM sampling temperature |
 | `LLM_MAX_TOKENS` | `2048` | Max output tokens per LLM call |
@@ -813,12 +812,10 @@ the plane and flag-off is the instant-rollback lever.
 | `RL_LESSON_EMPHASIS_CAP` | `0.06` | Per-agent total emphasis cap per day |
 | `RL_LESSON_MATCH_MIN_CONF` | `0.45` | Min effective confidence for a claim to fire |
 
-### RL Phase 1 — Monthly Scorecard + Baseline Duel
+### RL Phase 1 — Monthly Scorecard
 
 | Name | Default | Description |
 |------|---------|-------------|
-| `RL_CONTROL_LANE_ENABLED` | `true` | Daily control-lane prediction + scoring (daily review Step 10) |
-| `CONTROL_LANE_MODEL` | `""` | Control model; empty → `LLM_MODEL_REASONING` |
 | `SCORECARD_ENABLED` | `true` | Monthly scorecard scheduler job (1st, 02:00 IST) |
 | `SCORECARD_DIR` | `data/eval/scorecards` | Persisted monthly scorecard time series |
 | `LEARNING_EVIDENCE_DIR` | `data/eval/learning_evidence` | Monthly Learning Evidence Report (self-ablation: adapted vs frozen vs uniform weights) |
@@ -989,7 +986,6 @@ All paths verified to exist. Paths are relative to project root.
 | `core/intelligence/rl/eval/baselines.py` | Naive baselines (persistence, always-up/down) for the monthly duel |
 | `core/intelligence/rl/eval/scorecard.py` | Monthly scorecard builder: agent vs control vs baselines + MoM deltas; CLI `run_schedule scorecard` |
 | `core/intelligence/rl/eval/learning_evidence.py` | Learning Evidence Report (AUD-116): counterfactual weight replay + sign test, credit-degeneracy, entropy/poverty-trap, per-lesson lift, Brier decomposition; CLI `python -m core.intelligence.rl.eval.learning_evidence` |
-| `core/intelligence/rl/agents/control_lane.py` | Bare-LLM control lane (daily review Step 10): same info, no architecture |
 | `core/intelligence/rl/agents/event_ingestor.py` | Event ingestion: NSE filings → dossier guidance/business (weekly + CLI `ingest-events`) |
 | `src/backend/shared/schemas/dossier.py` | TickerDossier schema + budgeted markdown digest (`to_digest`) |
 | `src/backend/shared/schemas/scorecard.py` | ControlPrediction/ControlLog + MonthlyScorecard schemas |

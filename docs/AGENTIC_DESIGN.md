@@ -33,7 +33,6 @@ Learning (daily review and monthly forecast)                                    
 ├── ThesisReviewer            [LLM reasoning] conditional, after significant misses
 ├── PriceInterpolator         [LLM bulk] forecast profile; static fallback
 ├── PromptEnhancer            [STATIC templates; LLM bulk fallback]
-├── Control lane              [LLM reasoning or configured model] baseline duel
 └── Re-forecast, sticky regime, pre-open check   [STATIC + LLM fast for the pre-open rating]
 
 Company knowledge                                                                      RL_DESIGN §23, §26
@@ -64,7 +63,7 @@ production can differ. All calls go through OpenRouter.
 | Tier | Repository model | Used by |
 |---|---|---|
 | Fast | `deepseek/deepseek-v4.1-flash-1017` | Chat tool loop; pre-open shock rating |
-| Reasoning | `xiaomi/mimo-v2.6-pro` | Unified analyst; aggregator narrative; FeedbackAgent; ThesisReviewer; control lane (unless `rl.control_lane_model` is set); chat retry after a rate limit or server error |
+| Reasoning | `xiaomi/mimo-v2.6-pro` | Unified analyst; aggregator narrative; FeedbackAgent; ThesisReviewer; chat retry after a rate limit or server error |
 | Bulk | `deepseek/deepseek-v4-flash` | Ticker resolution; legacy per-dimension agents; forecast profile; prompt-enhancer fallback; dossier curator and distillation; event ingestion; research loop; macro reviewer; portfolio narrator; brief and weekly headlines; IPO extraction and narration |
 
 Shared defaults: temperature 0.2 (`llm.temperature`), 2,048 output tokens
@@ -413,7 +412,6 @@ above.
 | Prompt enhancer | Static, LLM bulk fallback | `prompt_enhancer/enhancer.py` | RL_DESIGN §15 |
 | Dossier curator, distillation, event ingestion, research loop | LLM bulk | `rl/agents/` | RL_DESIGN §23, §26 |
 | Dossier merge, digest, tags, lesson emphasis | Static | `rl/agents/dossier_curator.py`, `schemas/dossier.py`, `rl/algorithms/lesson_emphasis.py` | RL_DESIGN §23 |
-| Control lane | LLM reasoning or configured | `rl/agents/control_lane.py` | RL_DESIGN §25 |
 | Pre-open shock rating | LLM fast | `rl/workflows/preopen_check.py` | RL_DESIGN §27.3 |
 | Advisor and autopilot | Static | `core/portfolio/` | Autopilot guide |
 | Narrator, brief and weekly headlines | LLM bulk, fallback text | `core/portfolio/narrator.py`, `core/delivery/` | Section 12 |

@@ -263,7 +263,7 @@ def _fetch_session_close(ticker: str, target_date: date) -> SessionClose:
 
 
 _GATED_REVIEW_SKIPS = ("grading, FeedbackAgent, weight update or proposal, lessons, "
-                       "envelope revision, streak, feedback entry, dossier and control lane")
+                       "envelope revision, streak, feedback entry and dossier")
 
 
 def _review_gate(
@@ -543,7 +543,7 @@ def run_daily_review(
     paper : bool
         PAPER-LANE mode (Compass Phase B, spec §6.3): isolated store root;
         disables WeightAdapter writes, shared-ledger propagation, sticky-regime
-        writes, re-forecasts and the control lane. Per-idea local
+        writes and re-forecasts. Per-idea local
         ledger/feedback only.
     """
     store    = PredictionStore(
@@ -1711,26 +1711,6 @@ def run_daily_review(
             cycle_id=cycle_id,
             review_date=review_date,
         )
-
-    # ------------------------------------------------------------------ #
-    # Step 10: Control lane (the "duel") — score yesterday's prediction and
-    # make tomorrow's, using a bare LLM with the same close + market_context
-    # StockAgent had at this moment. Flag-gated, never fatal.
-    # ------------------------------------------------------------------ #
-    if not paper and getattr(settings, "RL_CONTROL_LANE_ENABLED", True):
-        try:
-            from core.intelligence.rl.agents.control_lane import run_control_lane_step
-            run_control_lane_step(
-                store, ticker, sector, review_date,
-                actual_close=actual_close,
-                actual_direction=final_entry.actual_direction,
-                market_context=market_context or "",
-            )
-        except Exception as exc:
-            logger.warning(
-                "[daily_review] %s: Step 10 control lane failed (non-fatal): %s",
-                ticker, exc,
-            )
 
     # Switch validation (design 2026-08-20): persist news_available per
     # (symbol, date). It was only ever aggregated into one scheduler log line,

@@ -45,12 +45,6 @@ def test_preopen_check(fake_client, recorded):
     _assert_recorded(recorded, "preopen_check")
 
 
-def test_control_lane(fake_client, recorded):
-    from core.intelligence.rl.agents import control_lane
-    control_lane._call_llm("sys", "user")
-    _assert_recorded(recorded, "control_lane")
-
-
 def test_thesis_reviewer(fake_client, recorded):
     from core.intelligence.rl.agents.thesis_reviewer import ThesisReviewer
     ThesisReviewer._call_llm(SimpleNamespace(_client=fake_client), "user")
@@ -86,7 +80,7 @@ def test_failure_is_recorded(fake_client, recorded, monkeypatch):
         raise ValueError("boom")
 
     monkeypatch.setattr(fake_client.chat.completions, "create", boom)
-    from core.intelligence.rl.agents import control_lane
+    from core.intelligence.rl.workflows import preopen_check
     with pytest.raises(ValueError):
-        control_lane._call_llm("sys", "user")
+        preopen_check._call_llm("sys", "user")
     assert recorded and recorded[0][5] is False

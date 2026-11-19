@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-19 (PR-033 half done, its probe waits for phase 2 and your word; PR-043 unblocked; PR-037 and PR-005 merged, push pending; in a push window PR-015 switches)
+# Current handoff - 2026-11-19 (PR-033 shaped in full, its one probe run waits for your word; PR-043 next; PR-037 and PR-005 merged, push pending; in a push window PR-015 switches)
 
 **Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
 
@@ -39,19 +39,19 @@
 - **PR-042 is done** (your word, 19 Nov): `DECISION_GATE_MODE=enforce`, set 12:41 IST without a
   deploy, goes live with the 00:10 push. An analysis missing prices, financials or peers reads
   INSUFFICIENT DATA and cannot buy or make a shelf idea; exits and trims are never blocked
-  ([evidence/PR-042.md](evidence/PR-042.md)). `PR-042-W0` after the deploy, `-W1` from Fri 27 Nov.
-- **PR-043's route: Exa through OpenRouter, dates read from the pages** (your word, 19 Nov: no
-  second account). Test on ten shelf ideas: 53 of 98 results dated from the page; every stock had
-  a dated item Serper's five lacked ([receipt](evidence/PR-043.md)). [PR-044](stories/PR-044.md)
-  follows.
-- **Next `continue` outside a window:** PR-033 phase 2 ([receipt](evidence/PR-033.md)): the
-  November deploys join the same probe. Then PR-043.
-- **Git:** `origin/main` = `3f26ae5`; `main` is 16 commits ahead with this records commit
+  ([receipt](evidence/PR-042.md)). `PR-042-W0` after the deploy, `-W1` from Fri 27 Nov.
+- **PR-043's route: Exa through OpenRouter, dates read from the pages** (your word, 19 Nov);
+  tested on ten shelf ideas ([receipt](evidence/PR-043.md)). [PR-044](stories/PR-044.md) follows.
+- **Next `continue` outside a window:** PR-043. PR-033 is shaped in full
+  ([receipt](evidence/PR-033.md)); its probe run waits for your word.
+- **Git:** `origin/main` = `3f26ae5`; `main` is 19 commits ahead with this records commit
   (PR-037's and PR-005's merges among them), push pending to Fri 20 Nov 00:10. `story/PR-015` is
   local only.
 
 ## Waits for you
 
+- **PR-033's probe run:** say "run the PR-033 probe" (read-only; the command is in its receipt),
+  and confirm the closure list: SA-001 alone.
 - **PR-005's backfill**, after its deploy: say "run the PR-005 backfill" (a dry
   run, then `--apply`: one model call per holding; the command is in its receipt).
 - **PR-038's re-read** (Sat 21 Nov, `PR-038-R1`): your word in that session, or you run it.
@@ -114,6 +114,11 @@ is deployed by Fri 20 Nov and that day's review opens a position; a later first 
 - **Autopilot `1119-1608-p2`**, no production read. 31 stories shaped; six stale labels corrected;
   SA-003 and SA-005 verified; `PR-001-E1` needs your eyes; SA-001's closure proposed. After
   phase 2, your word runs the one read-only probe (dry run passed).
+
+## 19 Nov, evening (autopilot): PR-033 phase 2, the November half
+
+- **Autopilot `1119-1629-p1`**, no production read. 15 November deploys shaped and in the same
+  probe (dry run: 2 passed); CLEAN-007 verified from `CLEAN-007-W1`; no November closure.
 
 # START HERE — standing rules
 

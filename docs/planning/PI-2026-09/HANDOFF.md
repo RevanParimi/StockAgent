@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-19 (PR-043's probe: no dates, your route; PR-037 and PR-005 merged, push pending; PR-038 not yet decidable; in a push window PR-015 switches)
+# Current handoff - 2026-11-19 (PR-033 half done, its probe waits for phase 2 and your word; PR-043's route; PR-037 and PR-005 merged, push pending; in a push window PR-015 switches)
 
 **Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
 
@@ -19,39 +19,34 @@
 
 ## Now
 
-- **Your words, 19 Nov about 07:25 IST** (in this order, before PR-005's fix):
-  1. **PR-037 is merged** (19 Nov, `ab18c77`). The runner pushes it
-     from Fri 20 Nov 00:10. After the deploy is SUCCESS, the first `continue` on a weekday
-     09:30-14:00 IST (first chance Fri 20 Nov) makes the one catch-up run (`POST /discovery/run`;
-     [PR-037's receipt](evidence/PR-037-implementation.md), "Rollout") before
-     its own phase.
-  2. **The PR-038 read: not yet decidable** (19 Nov, below); the band stays.
+- **Your words, 19 Nov about 07:25 IST:** (1) **PR-037 is merged** (`ab18c77`) and ships with
+  the 00:10 push; then the first `continue` on a weekday 09:30-14:00 IST (first chance Fri 20 Nov)
+  makes the one catch-up run (`POST /discovery/run`;
+  [receipt](evidence/PR-037-implementation.md), "Rollout") before its own phase. (2) **The PR-038
+  read: not yet decidable** (below); the band stays.
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
   Mondays; the next opens Fri 20 Nov 00:10): **PR-015's switch** (your word, 18 Nov about 07:05
-  IST): merge `story/PR-015` (`12b7901`) into `main` (three conflicts, checked on `40d04d5`, all in
-  the KT: sections 1, 4 and 11; how to keep both is in [PR-005's review](evidence/PR-005-review.md),
-  "Decision"),
-  the full suite on the exact commit, push, check the deploy and `/health`, add `PR-015-W1`
+  IST): merge `story/PR-015` (`12b7901`) into `main` (three KT conflicts, sections 1, 4 and 11;
+  how to keep both: [PR-005's review](evidence/PR-005-review.md), "Decision"), the full suite on
+  the exact commit, push, check the deploy and `/health`, add `PR-015-W1`
   ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md)).
-- **PR-036 is live and the ₹90 L is in** (19 Nov): deposit 06:34 IST at your confirmation: ₹1 crore in, cash ₹95,04,483, 7
-  holdings ([evidence/PR-036.md](evidence/PR-036.md), "Rollout"). Next, read-only: today's 16:30
-  `deployment` record (about ₹3,20,000 a position, at most 5 bought; step 4); `PR-036-W5` and
-  `-W10` keep their dates.
-- **PR-005 is accepted and merged** (19 Nov, `40d04d5`;
-  [review](evidence/PR-005-review.md), "Second fresh review"): it ships with the next push.
-  After the deploy, `PR-005-W1` reads the first cases written at purchase; the backfill waits
-  for your word. Two low findings went to BACKLOG (B-16, B-17).
-- **PR-042 is done: the data gate enforces from the next deploy** (your word, 19 Nov about
-  11:35 IST). `DECISION_GATE_MODE=enforce` was set at 12:41 IST without a deploy; the runner's
-  00:10 push brings it live. An analysis whose prices, financials or peers did not arrive reads
-  INSUFFICIENT DATA, so it cannot buy or make a shelf idea; exits and trims are never blocked
+- **PR-036 is live, ₹1 crore in** (deposit 06:34 IST 19 Nov; [evidence/PR-036.md](evidence/PR-036.md),
+  "Rollout"). Next, read-only: today's 16:30 `deployment` record (step 4); `PR-036-W5` and `-W10`
+  keep their dates.
+- **PR-005 is accepted and merged** (`40d04d5`; [review](evidence/PR-005-review.md)): it ships
+  with the next push; `PR-005-W1` reads the first cases written at purchase; the backfill waits
+  for your word. BACKLOG B-16, B-17.
+- **PR-042 is done** (your word, 19 Nov): `DECISION_GATE_MODE=enforce`, set 12:41 IST without a
+  deploy, goes live with the 00:10 push. An analysis missing prices, financials or peers reads
+  INSUFFICIENT DATA and cannot buy or make a shelf idea; exits and trims are never blocked
   ([evidence/PR-042.md](evidence/PR-042.md)). `PR-042-W0` after the deploy, `-W1` from Fri 27 Nov.
 - **PR-043's probe ran and stopped** (19 Nov, 16:00 IST; [receipt](evidence/PR-043.md)): Exa
   through OpenRouter returns all 10 results with excerpts, but no publish date (0 of 100) and no
   date filter; $0.0075 a call. By its card, nothing is built until you choose a route (below).
   [PR-044](stories/PR-044.md) follows PR-043.
-- **Next `continue` outside a window:** PR-033 (PR-038 waits for its re-read).
-- **Git:** `origin/main` = `3f26ae5`; `main` is 15 commits ahead with this records commit
+- **Next `continue` outside a window:** PR-033 phase 2 ([receipt](evidence/PR-033.md)): the
+  November deploys join the same probe.
+- **Git:** `origin/main` = `3f26ae5`; `main` is 16 commits ahead with this records commit
   (PR-037's and PR-005's merges among them), push pending to Fri 20 Nov 00:10. `story/PR-015` is
   local only.
 
@@ -84,6 +79,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Thu 3 Dec* | `PR-036-W10` | share invested and holdings, 10 sessions after the deposit |
 | Tue 1 Dec† | `PR-037-W2` | the shelf, ideas offered a day and holdings after two Saturdays; BACKLOG B-14 |
 | Mon 7 Dec§ | `PR-043-W2` | Exa beside Serper, two weeks: the read that decides PR-044 |
+| by Thu 10 Dec | `PR-001-E1` | needs your eyes: member screens (guide 11-H, 11-I, 11-J) |
 | Mon 14 Dec | `PR-014-R1` | results at 4 weeks; which paused cards to promote |
 | Mon 11 Jan 2027 | `PR-014-R2` | results at 8 weeks; whether to promote CLEAN-006 |
 
@@ -115,6 +111,12 @@ is deployed by Fri 20 Nov and that day's review opens a position; a later first 
   early fail. A 10% limit adds 5 of 43 BUY dives (about ₹16 L).
 - **For `PR-014-R1`:** these Sep-Nov ideas trailed the Nifty wherever the price stood
   (inside the band, 30 sessions: −13.0%) while it rose 12.7% from 9 Oct.
+
+## 19 Nov, afternoon (autopilot): PR-033 phase 1, the September-October half
+
+- **Autopilot `1119-1608-p2`**, no production read. 31 stories shaped; six stale labels corrected;
+  SA-003 and SA-005 verified; `PR-001-E1` needs your eyes; SA-001's closure proposed. After
+  phase 2, your word runs the one read-only probe (dry run passed).
 
 # START HERE — standing rules
 

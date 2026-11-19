@@ -43,8 +43,16 @@
   [review](evidence/PR-005-review.md), "Second fresh review"): it ships with the next push.
   After the deploy, `PR-005-W1` reads the first cases written at purchase; the backfill waits
   for your word. Two low findings went to BACKLOG (B-16, B-17).
-- **Next `continue` outside a window:** PR-033, the first ready planned card (PR-038 waits for
-  its re-read).
+- **PR-042 is done: the data gate enforces from the next deploy** (your word, 19 Nov about
+  11:35 IST). `DECISION_GATE_MODE=enforce` was set at 12:41 IST without a deploy; the runner's
+  00:10 push brings it live. An analysis whose prices, financials or peers did not arrive reads
+  INSUFFICIENT DATA, so it cannot buy or make a shelf idea; exits and trims are never blocked
+  ([evidence/PR-042.md](evidence/PR-042.md)). `PR-042-W0` after the deploy, `-W1` from Fri 27 Nov.
+- **New, at your word:** [PR-043](stories/PR-043.md) (P1): Exa beside Serper, two weeks
+  recorded, not read; a probe first (do dates come back through OpenRouter?).
+  [PR-044](stories/PR-044.md) (P2, after PR-017): the deep dive reads Exa, only if
+  `PR-043-W2` passes.
+- **Next `continue` outside a window:** PR-043, then PR-033 (PR-038 waits for its re-read).
 - **Git:** `origin/main` = `3f26ae5`; `main` is 12 commits ahead with this records commit
   (PR-037's and PR-005's merges among them), push pending to Fri 20 Nov 00:10. `story/PR-015` is
   local only.
@@ -66,20 +74,24 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 
 | From | Row | What |
 |---|---|---|
+| Fri 20 Nov | `PR-042-W0` | after the 00:10 deploy: the gate reads enforce |
 | Sat 21 Nov | `PR-038-R1` | the PR-038 re-read |
 | Tue 24 Nov | `FIX-032-W1` | your re-run of FIX-032's probe |
 | Wed 25 Nov‡ | `PR-005-W1` | the first cases written at purchase, and any price retried |
 | Thu 26 Nov* | `PR-036-W5` | share invested and holdings, 5 sessions after the deposit |
+| Fri 27 Nov | `PR-042-W1` | a week of enforce: what it stopped; no exit or trim stopped |
 | Tue 1 Dec | `PR-014-D1` | the door read: what the buy list offered and refused (and BACKLOG B-13) |
 | Tue 1 Dec | `FIX-015-W1` | every shock sale since the deploy, read with `PR-014-D1` |
 | Thu 3 Dec* | `PR-036-W10` | share invested and holdings, 10 sessions after the deposit |
 | Tue 1 Dec† | `PR-037-W2` | the shelf, ideas offered a day and holdings after two Saturdays; BACKLOG B-14 |
+| Mon 7 Dec§ | `PR-043-W2` | Exa beside Serper, two weeks: the read that decides PR-044 |
 | Mon 14 Dec | `PR-014-R1` | results at 4 weeks; which paused cards to promote |
 | Mon 11 Jan 2027 | `PR-014-R2` | results at 8 weeks; whether to promote CLEAN-006 |
 
 \* If the deposit is recorded on Thu 19 Nov; a later deposit moves both. † If PR-037 is deployed
 and its catch-up run made by Fri 20 Nov; a later deploy moves it by as many weeks. ‡ If PR-005
-is deployed by Fri 20 Nov and that day's review opens a position; a later first buy moves it. `PR-014-D1`, `R1` and
+is deployed by Fri 20 Nov and that day's review opens a position; a later first buy moves it.
+§ If PR-043 deploys in the Sat 21 Nov 00:10 window; a later deploy moves it by as many days. `PR-014-D1`, `R1` and
 `R2` keep their dates; their baseline note says capital changes on the deposit day.
 
 ## 18 Nov, night (autopilot): PR-015 prepared on `story/PR-015`; the switch waits for your word

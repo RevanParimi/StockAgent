@@ -72,6 +72,8 @@ GOAL: beat the Nifty after costs, at real prices, on hundreds of graded calls
 │   ├─ Industry lenses: search for, and tell the
 │   │  analyst, what moves each industry
 │   │  (planned, after PR-018) ................... PR-032
+│   ├─ A fuller read of company news: Exa beside
+│   │  Serper, recorded first, read if it helps .. PR-043, PR-044
 │   ├─ Reported financials, dated ................ PR-021
 │   ├─ The full results documents ................ PR-022
 │   └─ Accounting red flags ...................... PR-023
@@ -109,6 +111,8 @@ ALONGSIDE: remove what the goal does not need .... CLEAN-004, CLEAN-005, CLEAN-0
 | [PR-019](stories/PR-019.md) | What each refusal rule cost | 2 | planned, blocked | `PR-014-D1` read |
 | [PR-020](stories/PR-020.md) | One page that shows the record | 2 | planned, blocked | `PR-014-R1` read |
 | [PR-032](stories/PR-032.md) | Industry lenses, first slice: the general path searches for, and is told, what moves each industry | 3 | planned | PR-017 done |
+| [PR-043](stories/PR-043.md) | Exa beside Serper: two weeks recorded, not read | 3 | planned | now, before PR-033 |
+| [PR-044](stories/PR-044.md) | The deep dive reads Exa's excerpts, graded before and after | 3 | planned | `PR-043-W2` passes and PR-017 done |
 | [CLEAN-004](stories/CLEAN-004.md) | Remove live prompt editing, the daily second AI call, the C++ indicator copy | — | planned | after CLEAN-002 |
 | [CLEAN-005](stories/CLEAN-005.md) | Remove the backup analysis and the old per-analyst layer | — | planned | CLEAN-004 done |
 | [CLEAN-003](stories/CLEAN-003.md) | Remove the learning writes and the 30-day price forecast; settle the operator extras | — | planned | after PR-008 |

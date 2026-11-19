@@ -7,7 +7,9 @@
 **Lane: decision path.** Reason: the case's invalidation price is what the evidence exit rule
 sells on, and RR-L1 changes when the shelf idea's level may be used (the card; AGENTS.md step 4).
 **Status after this phase: `review_required`.** The next fresh conversation performs the hard
-review from `REVIEW.md`; this phase's self-review does not count as it.
+review from `REVIEW.md`; this phase's self-review does not count as it. **19 Nov:** the review
+asked for changes; the fix phase is at the end of this receipt (`bc82a06`), and another
+fresh review follows.
 
 ## Phase
 
@@ -172,6 +174,104 @@ CODEBASE (module row, API row); AUTOPILOT_GUIDE (API row); testing case 07-U.
 
 Cases are written from the next buy after the merge and deploy. The backfill runs once, at the
 owner's word: `railway ssh "cd /app && python -B scripts/backfill_cases.py"` (dry run), then
-`--apply` (one model call per holding). Rollback: `advisor.case_write: false` (stored cases
-stay as history; the evidence rule then reads the shelf's level for holdings without a case and
-the stored case for the rest).
+`--apply` (one model call per holding). Rollback: `advisor.case_write: false`: no case and no
+version is written, and the evidence rule reads the shelf's level for every holding (changed by
+the fix phase, review L2; stored cases stay as history).
+
+## Fix phase, 19 Nov: the fresh review's changes (M1, L1 to L4)
+
+**Context.** Autopilot `1119-0805-p4`, code-server, Thursday 19 Nov 2026 from about 08:05 IST,
+outside a push window. The review (`1119-0715-p1`,
+[PR-005-review.md](PR-005-review.md)) asked for changes to `4407b13`. Worked in a scratchpad
+worktree of `story/PR-005`; committed **`bc82a06` on `story/PR-005`** (parent `4407b13`). Production
+was not read; nothing pushed, deployed, run or sent; no model was called. **Status after this
+phase: `review_required`** (decision path: another fresh review, which this phase cannot sign).
+
+**What changed (`4407b13..bc82a06`).**
+
+- **M1, the backfill's entry.** `buy_day_entry(holding)`: the adjusted cost times the ratio of
+  each bonus or split the holding applied after the buy. `backfill` passes it as the entry and
+  the holding's applied actions with it. Example (RV1): bought ₹212, 1:1 bonus since, cost
+  ₹106: the window is (₹186.56, ₹205.64] again, ₹200 is kept, and reads ₹100 on 13 Nov.
+- **M1, a dive (or an analysis) after the buy.** `level_at_buy`: a dive on or before the buy
+  day goes through `level_in_basis` as before; a dive after it is multiplied back by each bonus
+  or split ex in (buy, dive], from the holding's applied actions or NSE's list (union by key),
+  and refused, named, when NSE's list does not reach back to the buy day, a split or bonus row
+  in that span could not be read, a basis change with no ratio or a registry break falls in it,
+  or an action went ex on the dive day. The expectation's price target uses the same function.
+  Example (RV2): re-dived 7 Nov at ₹100 after the 2 Nov bonus: stored ₹200, read ₹100 on
+  13 Nov, never ₹50.
+- **L1.** "lakh crore" / "lakh Cr" / "lacs crores" read as `lakh cr`, "thousand crore" as
+  `thousand cr`, each its own unit (RV3).
+- **L2, rollback.** With `advisor.case_write: false` the pipeline builds no case store: the
+  evidence rule reads the shelf idea's level again, and neither the pillar review nor the retry
+  writes a version. One setting does both; KT section 6, `config.yaml`, settings and this
+  receipt's rollback line say so.
+- **L3.** Pinned each issue-time edge the review's mutants passed: an analysis run exactly at
+  the 15:30 clock is not an input (15:29 is); a deep dive dated the buy day is decided at its
+  close, so it is not an input (one analysed at 15:29 is); a pillar event published exactly at
+  the review close waits for the next day (a minute earlier is read); a case version written at
+  the close is read from the next review day (`EvidenceReader`'s `before=`).
+- **L4, a failed read at the buy.** `Invalidation.read_gap` marks a gap that is a read that
+  fell short: NSE's list empty, failed or not reaching back far enough, or no price history for
+  the ATR. `retry_invalidation` runs after each review's trades for each held stock, with that
+  day's sync record: the case's own level and dive day, buy day, entry and window (ATR to the
+  buy day), nothing after the buy. A result that settles (a price, or a refusal by the window or
+  the basis rules) is a new version, read from the next review day; another short read writes
+  nothing. A refusal is never retried. Chosen over falling back to the shelf's level because
+  the shelf's level is not windowed (the owner's decision of 24 Oct); the one-day delay sits
+  inside the 10-session minimum hold, so no sale is lost.
+
+**Decisions I took (delegated calls).**
+
+1. **A later dive is converted back, not refused**: it keeps the evidence rule's only price
+   trigger, and equals the shelf rule's own reading of the same dive (pinned as a property).
+2. **The union of the holding's applied actions and NSE's list** for (buy, dive]: a manual add
+   dated in the past is written before the sync applies the bonus; a bonus the holding applied
+   counts even if NSE no longer lists it, since `level_after_buy` divides by it.
+3. **L4 as a retry writing a new version**, not a fallback to the shelf (above).
+4. **One setting for the rollback** (`case_write`), not a second one.
+5. **The window is stored whenever the ATR is known**, also beside a refused level, so a case
+   shows its stop and noise line either way.
+6. **The expectation's target is not retried**: it never sells.
+
+**Tests.**
+
+- `test_investment_case_pr005.py`: 16 new tests, 23 cases with their parameters (42 → 65):
+  M1 entry (bonus, split on top, dividend and buy-day split ignored); the backfill after a bonus
+  (window, ₹200, ₹100 = the shelf rule, ₹99 breaks, ₹101 does not); a later dive put back (×2,
+  ₹100 = the shelf rule); a property over four sets of later actions (case = PR-009's level);
+  a past-dated manual add before the sync; five refusals for a later dive (empty and short
+  list as `read_gap`; unread row, demerger, ex on the dive day as refusals); a registry break;
+  a later analysis's target (₹150 → ₹300); a bonus applied but no longer listed (directly and
+  through the backfill); L1's units; L3's four edges; L4: NSE unread then read (v2 ₹200, read
+  from the next day, a second retry and a still-short list write nothing), an unknown ATR
+  retried, a window refusal never retried.
+- `test_exit_evidence_pr009.py`: the pipeline end to end with case writing on and off (L2):
+  on, AAA's evidence reads its case's ₹470 and DDD's `read_gap` settles at ₹285 (v2) before
+  its results re-check (v3); off, AAA reads the shelf's ₹455 and no case gets a version.
+- **The reviewer's cases** (`analysis_data/pr005_review/test_rv_pr005.py`, copied into the
+  worktree, not committed): RV1 to RV3 now XPASS(strict), so they fail as marked; with
+  `--runxfail` all 7 pass. The next reviewer removes the marks.
+- **Mutants: 17 of 17 caught** (the backfill entry; no factor; the coverage check; the dive-day
+  check; the registry check; the retry's settle check; the two-word units; the applied actions
+  in the union; the backfill's applied actions; the ATR read gap; a buy-day action in the entry;
+  the four L3 edges; the pipeline's rollback; the retry's call). Script in the session's
+  scratchpad, not tracked. A first run left the backfill's applied actions unpinned; a test now
+  pins it.
+- Story suites (PR-005, PR-009, FIX-016): 234 passed (10.6 s).
+- **Full suite on `bc82a06`** (the worktree, without `-n`): 6,875 passed / 14 skipped / 1 xfailed / 0 failed (3m23s, about 08:19-08:23 IST).
+- **Guards:** `check_broad_except` OK (148 grandfathered); `check_kt_docs` errors `[]`.
+
+**Manifest.** `git diff 4407b13 bc82a06 | sha256sum` = `fe95cfb800bd2ba7…`, 11 files, +637/−65. Living documents:
+KT section 6 (the units, the rollback, "A case written after the buy", "A read that failed is
+retried", the case version read), CODEBASE (module row), testing case 07-U ((h) to (j)),
+`config.yaml` and settings comments, `scripts/backfill_cases.py`'s docstring.
+
+**For the next fresh review.** The card's "written after the fact" question now covers prices
+too: a backfilled price is the same price a case written at purchase would hold, unless the
+dive came after the buy, where it equals the shelf rule's level. Open questions I could not
+settle from here: whether NSE's list reaching back to the buy day is usual for a held stock (the
+limits paragraph of KT section 6 says it reaches back years for large companies; for a small
+one the retry may never settle, which leaves that holding on the stop alone, as today when the
+shelf rule's own reach falls short).

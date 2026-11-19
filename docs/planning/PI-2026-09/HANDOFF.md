@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-19 (PR-037 merged, push pending; the PR-038 read not yet decidable; the PR-039 report run, new PR-041; next PR-005's fix; in a push window PR-015 switches)
+# Current handoff - 2026-11-19 (PR-037 merged, push pending; the PR-038 read not yet decidable; the PR-039 report run, new PR-041; PR-005 fixed, its second fresh review next; in a push window PR-015 switches)
 
 **Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
 
@@ -19,37 +19,32 @@
 
 ## Now
 
-- **Your words, 19 Nov about 07:25 IST** (a manual session; in this order, before PR-005's fix):
-  1. **PR-037 is merged** (19 Nov, `ab18c77`; the full suite passed on it). The runner pushes it
+- **Your words, 19 Nov about 07:25 IST** (in this order, before PR-005's fix):
+  1. **PR-037 is merged** (19 Nov, `ab18c77`). The runner pushes it
      from Fri 20 Nov 00:10. After the deploy is SUCCESS, the first `continue` on a weekday
      09:30-14:00 IST (first chance Fri 20 Nov) makes the one catch-up run (`POST /discovery/run`;
-     [evidence/PR-037-implementation.md](evidence/PR-037-implementation.md), "Rollout") before
+     [PR-037's receipt](evidence/PR-037-implementation.md), "Rollout") before
      its own phase.
   2. **The PR-038 read: not yet decidable** (19 Nov, below); the band stays.
   3. **The PR-039 report ran** (19 Nov, read-only; [evidence/PR-039.md](evidence/PR-039.md),
-     "Phase 3"): 19 of the 50 top risers were never screen candidates, but that place held 42 of
-     the 50 top fallers and 76% of all stocks: the cut chose. By its rule, new card PR-041 (P2,
-     after PR-018) grades the cut forward.
+     "Phase 3"): the screen's cut chose; new card PR-041 (P2, after PR-018) grades it forward.
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
   Mondays; the next opens Fri 20 Nov 00:10): **PR-015's switch** (your word, 18 Nov about 07:05
   IST): merge `story/PR-015` (`12b7901`) into `main` (one conflict, checked on `ab18c77`: KT
   section 1's table; keep `main`'s "Idle cash" and PR-015's "Exit rule"),
   the full suite on the exact commit, push, check the deploy and `/health`, add `PR-015-W1`
   ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md)).
-- **PR-036 is live and the ₹90 L is in** (19 Nov): `2e995fe` pushed 05:25 IST (deploy SUCCESS,
-  `/health` 200); deposit 06:34 IST at your confirmation: ₹1 crore in, cash ₹95,04,483, 7
+- **PR-036 is live and the ₹90 L is in** (19 Nov): deposit 06:34 IST at your confirmation: ₹1 crore in, cash ₹95,04,483, 7
   holdings ([evidence/PR-036.md](evidence/PR-036.md), "Rollout"). Next, read-only: today's 16:30
   `deployment` record (about ₹3,20,000 a position, at most 5 bought; step 4); `PR-036-W5` and
   `-W10` keep their dates.
-- **Outside a window: PR-005's fix** (changes requested 19 Nov,
-  [evidence/PR-005-review.md](evidence/PR-005-review.md)): M1 and L1 to L4 on `story/PR-005`,
-  until RV1 to RV3 (`analysis_data/pr005_review/`) pass; then another fresh review. It merges
-  only on acceptance; its backfill runs at your word, after that.
-- **Git:** `origin/main` = `3f26ae5`; `main` is 7 commits ahead with this records commit (PR-037's
-  commit and merge, five docs commits), push pending to Fri 20 Nov 00:10. `story/PR-015` and `story/PR-005`
-  are local only (PR-005 meets PR-015 in KT section 6: keep both).
+- **Outside a window: PR-005's second fresh review** of `bc82a06` on `story/PR-005`
+  ([receipt](evidence/PR-005-implementation.md), "Fix phase"); RV1 to RV3 now pass (drop their
+  xfail marks). It merges only on acceptance; the backfill after that.
+- **Git:** `origin/main` = `3f26ae5`; `main` is 8 commits ahead with this records commit, push pending to Fri 20 Nov 00:10. `story/PR-015` and `story/PR-005`
+  (`bc82a06`) are local only (PR-005 meets PR-015 in KT section 6: keep both).
 - **The investment track** in STATE's order: PR-035, PR-036, PR-037 (merged), FIX-015, PR-015,
-  PR-038 (blocked), PR-039 (run), PR-005 (changes requested), then PR-033 and PR-034.
+  PR-038 (blocked), PR-039 (run), PR-005 (fixed, second review), then PR-033 and PR-034.
 
 ## Waits for you
 
@@ -118,6 +113,12 @@ and its catch-up run made by Fri 20 Nov; a later deploy moves it by as many week
   early fail. A 10% limit adds 5 of 43 BUY dives (about ₹16 L).
 - **For `PR-014-R1`:** these Sep-Nov ideas trailed the Nifty wherever the price stood
   (inside the band, 30 sessions: −13.0%) while it rose 12.7% from 9 Oct.
+
+## 19 Nov, morning (autopilot): PR-005's fix; its second fresh review next
+
+- **Autopilot `1119-0805-p4`**, from about 08:05 IST: **`bc82a06` on `story/PR-005`.** M1: a
+  case written after the buy keeps the buy day's rupees; L1 to L4 as asked (L4: a failed NSE
+  read is retried as a new version). Mutants 17 of 17; the full suite passed.
 
 # START HERE — standing rules
 

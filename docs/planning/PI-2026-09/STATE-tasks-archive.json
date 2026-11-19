@@ -2554,6 +2554,13 @@
       "fields": {
         "sequencing_note": "Done in the conversation that took the word. The 1 Oct rules applied again: 4 of 653 analyses (0.6%) would abstain; a spot check of every abstain row since 20 Oct found none whose data was fine (evidence/PR-042.md)."
       }
+    },
+    {
+      "id": "PR-043",
+      "moved": "2026-11-19",
+      "fields": {
+        "sequencing_note": "Before PR-033: its two weeks start at its deploy. Probe first (dates and the full result list through OpenRouter); the read PR-043-W2 decides PR-044. Profit-path step: measure (for invest)."
+      }
     }
   ]
 }

@@ -627,6 +627,7 @@ class BaseSectorOrchestrator(ABC):
         else:
             outputs = analyst.run(query, bundle, self.SECTOR_NAME, run_id=run_id)
         self._record_data_health(query, bundle, outputs, run_id)
+        self._shadow_company_search(query, bundle, outputs, run_id)
         if outputs:
             # AUD-087: one LLM call produced all outputs — stamp totals on one
             # output so sum_run_usage() over the dict counts them exactly once.
@@ -644,6 +645,38 @@ class BaseSectorOrchestrator(ABC):
                 except Exception:
                     pass
         return outputs
+
+    def _shadow_company_search(
+        self,
+        query: StockQuery,
+        bundle,
+        outputs: dict[str, AgentOutput],
+        run_id: str,
+    ) -> None:
+        """
+        PR-043: queue the search shadow (the engines in search_shadow.engines
+        beside Serper) for this run's company search. Called after the analyst
+        has returned, and only when it produced outputs: a failed analysis is
+        no decision. The work runs on a daemon thread and the analysis reads
+        nothing from it.
+
+        Never raises, and never changes the run's outcome.
+        """
+        if not outputs:
+            return
+        try:
+            from services.data.fetchers.search_shadow import submit_shadow
+
+            submit_shadow(
+                run_id=run_id,
+                ticker=query.ticker,
+                sector=self.SECTOR_NAME,
+                company_search=getattr(bundle, "company_search", None),
+                section_status=(getattr(bundle, "section_status", None) or {}).get("company_news"),
+            )
+        except Exception as exc:
+            logger.warning("[%s] search shadow not queued (non-fatal): %s",
+                           self.SECTOR_NAME, exc, exc_info=True)
 
     def _record_data_health(
         self,

@@ -236,7 +236,8 @@ class TestScheduledAndApiPathsCarryTheSector:
                   "_fetch_policy_deep_dive", "_fetch_fundamentals", "_fetch_commodities",
                   "_fetch_flows_sentiment", "_fetch_peers_valuation", "_fetch_dossier"]
         orch = SimpleNamespace(SECTOR_NAME=cls.SECTOR_NAME,
-                               _record_data_health=lambda *a, **k: None)
+                               _record_data_health=lambda *a, **k: None,
+                               _shadow_company_search=lambda *a, **k: None)
         analyst = MagicMock()
         analyst.run.return_value = {}
         with patch.object(bb.settings, "get_serper_key", return_value="k"), \

@@ -120,6 +120,22 @@ data_fetch:
   price_history_years: 10        # OHLCV history for pattern analysis
   technical_refresh_interval_min: 15
 
+# PR-043: a second search beside Serper, recorded and not read. After each
+# unified analysis returns, its company search also goes to each engine below
+# through OpenRouter (10 results), each result's date is read from its page,
+# and one row per analysis goes to data/logs/search_shadow.jsonl. The analysis
+# reads nothing from it. PR-043-W2 keeps the better engine; the other is
+# removed from the list.
+search_shadow:
+  enabled: true                  # false is the rollback
+  engines:                       # OpenRouter web_search parameters, one call each
+    - {engine: parallel, mode: fast}   # about $0.002 a search with tokens
+    - {engine: exa}                    # about $0.0075; beside, for the two weeks
+  weekly_budget: 200             # calls a week per engine, Saturday 00:00 IST to Friday
+  max_results: 10
+  model: ""                      # "" = llm.model_bulk; it only runs the search
+  page_timeout_seconds: 12       # each result's page, read for its date
+
 scheduler:
   enabled: false                 # master switch (true in Railway prod via env)
   cron: "30 8 * * 1-5"           # weekdays 8:30am IST

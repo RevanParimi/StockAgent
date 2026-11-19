@@ -206,6 +206,7 @@ resolved at import, so editing a file does not imply live reconfiguration.
 | `rl.learning_mode: adapt` | Learning switch, env `RL_LEARNING_MODE`. `adapt` lets learned weights and lesson emphasis move decisions; `observe` contains them (section 5). Any other value fails closed to `observe`. Production sets `observe`. |
 | `decision_gate.mode: record` | Essential-data gate switch, env `DECISION_GATE_MODE`. `record` computes and records the gate everywhere and changes nothing; `enforce` withholds verdicts, forecasts, learning and new-risk buys that rest on unverified data or an unresolved identity (sections 4–6). Any other value fails closed to `enforce`. |
 | `peers.count: 5`, `peers.minimum: 3` | Valuation peers: at most 5 same-industry peers, none with fewer than 3 (section 4). `peers.cache_days: 30` and `peers.max_lookups: 25` bound the Yahoo lookups behind them. |
+| `search_shadow.enabled: true` | The search shadow (section 4): after each analysis, its company search also goes to each engine in `search_shadow.engines` (Parallel `fast`, then Exa) through OpenRouter, and the results are recorded, never read. `search_shadow.weekly_budget: 200` calls a week per engine. `false` is the rollback. |
 | `discovery.max_unnamed_redives: 2` | A shelf idea still without a sector key after this many re-dives in a row is dropped with the reason (section 8); 0 = no limit. |
 | [`config/instruments.yaml`](../config/instruments.yaml) | The instrument registry: effective-dated records of which provider symbol each listed ticker is priced from, on which price basis, and whether its identity is resolved (section 4). Evidence is needed to resolve an identity, never to quarantine one. It lists TATAMOTORS and HEXAWARE as unresolved, GATI and INOXLEISUR as delisted, and two plain aliases and five NSE renames as resolved. Quarantine acts through `decision_gate.mode`. |
 | `advisor.exit_rule: shadow` | Which exit rule sells (section 6). `legacy`: the price-path rule acts and nothing is compared. `shadow`: it still acts, and both rules' verdicts are recorded. `evidence`: the evidence rule acts. Any other value reads as `shadow`. The owner switches only on the weekly scorecard's gate; `legacy` is the rollback. |
@@ -234,6 +235,7 @@ evidence.
 | `data/market_cache/ipo.json` and EOD parquet | Cached IPO information and exchange price history; date, source and stale state matter. |
 | `data/events/` | The company-event feed (section 4): `<SYMBOL>.jsonl`, one event per source item, append-only; `state.json`, the day's news-search count and the items judged not about their company; `runs.jsonl`, one line per run; `ownership/<SYMBOL>.json`, each quarter's FII, DII and mutual-fund share read from its shareholding XBRL. Market facts only, with no user in them. The feed writes; `GET /events/{symbol}` reads. |
 | `data/logs/data_health.jsonl`; `data/logs/decision_gate.jsonl` | One data-health row per analysis run, also written to `telemetry.db`; one gate row per consumer decision. The gate log never holds a user id. |
+| `data/logs/search_shadow.jsonl`; `data/logs/search_shadow_budget.json` | The search shadow (section 4): one row per analysis with Serper's company-search results beside each engine's, each result dated from its page; and this week's call count per engine. Market facts and excerpts only: no key, no page text, no user. Nothing in the product reads them. |
 | `scores.db`: `score_history` | One row per completed analysis, written at the orchestrator's exit after the decision gate; the newest 90 per stock. Home's scores, the watchlist, Portfolio's verdict changes and the chat read it; lists name only shared stocks and the viewer's own (section 10). `scripts/backfill_score_history.py` can copy past runs from `telemetry.db`'s `run_summaries`, marked so they can be removed; it copies nothing from a minute before a stock's first live row on, because that run is already recorded. |
 | SQLite log, user and Atlas stores | Telemetry, sessions and relational indexes/outbox. Secondary tables may lag primary records. |
 | `telemetry.db`: `app_logs`; `error_issues`, `error_backlog_cursor` | Every WARNING+ log record, with its run id and ticker when logged inside an analysis run, kept with no cap; and the operations backlog built from it (section 10). The backlog keeps message templates, never raw text, and prunes itself; it never changes `app_logs`. |
@@ -443,6 +445,48 @@ flows answer. The analyst's prompt text is the same either way. The row says
 `degraded` with `essential technicals=empty`, `essential fundamentals=empty`
 and `essential peers_valuation=fallback`, and the decision gate reads the same
 statuses.
+
+### Search shadow
+
+The company-news section is one Serper search: five titles and two-line
+snippets from the last month. Before the analyst reads anything else, the
+search shadow (`services/data/fetchers/search_shadow.py`) records what other
+engines would have given for the same decision. It changes no input, verdict
+or size.
+
+1. The bundle keeps the company search's query and Serper's raw results
+   beside its sections (`company_search`); the prompt text is the same.
+2. After the analyst returns, and only when it produced outputs, the
+   orchestrator queues the shadow and goes on. A daemon thread sends the
+   query to each engine in `search_shadow.engines` through OpenRouter's
+   `openrouter:web_search` tool, 10 results each: Parallel `fast` (about
+   $0.002 a search with its tokens) and Exa (about $0.0075). Every deep dive
+   and every daily review of a held stock runs this path.
+3. No engine returns a publish date, so each result's page is read once, a
+   link both engines returned once. **Strong:** the page's metadata
+   (`article:published_time`, `datePublished` and their kin; a published
+   date wins over a modified one), a date in the URL, an NSE filing name's
+   time (`_DDMMYYYYhhmmss_`). **Weak:** a month in the path, recorded as
+   `YYYY-MM`, and the server's `Last-Modified`. A date in the engine's own
+   excerpt is kept beside as `excerpt_date`, never as the date. A refusal or
+   time-out leaves the page unread; a date in its URL still counts. Only
+   public http(s) addresses are read, each redirect checked again.
+4. One row per analysis goes to `data/logs/search_shadow.jsonl`: run id,
+   ticker, sector, time, query, Serper's results (title, link, date,
+   snippet) and each engine's (URL, title, excerpt up to 4,000 characters,
+   date, its source and strength, how the page answered), with its status,
+   cost and seconds. A failed call is an entry with its reason.
+5. Each engine has `search_shadow.weekly_budget` calls a week, Saturday
+   00:00 IST to Friday, so the Saturday deep dives come first. Past it the
+   entry reads `budget` and no call is made. `search_shadow.enabled: false`
+   stops the shadow; an engine removed from the list is no longer called.
+
+**Example:** a Saturday deep dive. Serper's five include two sector
+roundups. Parallel returns a news page whose metadata says 18 Nov, and an NSE
+outcome filing named `..._04112026184512_...` (strong, 4 Nov). Exa returns
+the same news page, which is read once, and a quote page that refuses the
+request (undated). The row holds all three lists; the analyst saw only
+Serper's five.
 
 ### Bank income statements
 

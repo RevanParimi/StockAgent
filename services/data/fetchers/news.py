@@ -309,6 +309,7 @@ def fetch_news_result(
     max_queries: int = settings.SERPER_MAX_QUERIES,
     api_key: str | None = None,
     tbs: str | None = None,
+    searches: list | None = None,
 ):
     """
     `fetch_news_context` with its outcome (SA-002): a `FetchResult` whose
@@ -328,6 +329,9 @@ def fetch_news_result(
     api_key : Serper key override for dual-key routing (pass via get_serper_key)
     tbs     : recency bound override — "qdr:d"/"qdr:w"/"qdr:m", "" to disable.
               None (default) uses settings.NEWS_SEARCH_RECENCY.
+    searches: when a list is given, each query's raw results are appended to
+              it as {query, source, results} (PR-043's search shadow). The
+              text and the result are the same either way.
     """
     from services.data.context.fetch_result import (
         STATUS_EMPTY, STATUS_OK, FetchResult,
@@ -352,6 +356,9 @@ def fetch_news_result(
         if not results:
             source = "newsapi"
             results = search_newsapi(query, n=settings.NEWS_ARTICLES_PER_QUERY)
+        if searches is not None:
+            searches.append({"query": query, "source": source if results else None,
+                             "results": [dict(r) for r in results]})
 
         if not results:
             unanswered += 1

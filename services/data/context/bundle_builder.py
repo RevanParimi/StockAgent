@@ -185,6 +185,9 @@ class SectorDataBundle:
     section_status: dict[str, str] = field(default_factory=dict)
     # SA-002: per section {source, as_of, reason}, from the producer's FetchResult.
     section_provenance: dict[str, dict] = field(default_factory=dict)
+    # PR-043: the company search as sent and Serper's raw results
+    # ({query, source, results}), for the search shadow. Never in the prompt.
+    company_search: dict = field(default_factory=dict)
 
     def to_prompt_text(self) -> str:
         """
@@ -272,8 +275,13 @@ def _safe(
                         "reason": "producer returned plain text; not verified"}
 
 
-def _fetch_company_news(query: StockQuery, sector: str, serper_key: str) -> FetchResult:
-    """Serper search #1 — company news, results, guidance, management commentary."""
+def _fetch_company_news(query: StockQuery, sector: str, serper_key: str,
+                        capture: dict | None = None) -> FetchResult:
+    """Serper search #1 — company news, results, guidance, management commentary.
+
+    PR-043: when `capture` is a dict it receives the query and Serper's raw
+    results ({query, source, results}) for the search shadow; the section's
+    text is the same either way."""
     from services.data.fetchers.news import fetch_news_result
 
     today = date.today()
@@ -282,7 +290,15 @@ def _fetch_company_news(query: StockQuery, sector: str, serper_key: str) -> Fetc
         f"{query.company_name} {query.ticker} latest news {terms} "
         f"{today.strftime('%B')} {today.year}"
     ]
-    return fetch_news_result(queries, max_queries=1, api_key=serper_key)
+    searches: list | None = None
+    if capture is not None:
+        capture["query"] = queries[0]
+        searches = []
+    result = fetch_news_result(queries, max_queries=1, api_key=serper_key, searches=searches)
+    if capture is not None and searches:
+        capture["source"] = searches[0]["source"]
+        capture["results"] = searches[0]["results"]
+    return result
 
 
 def _fetch_sector_policy_news(query: StockQuery, sector: str, serper_key: str) -> FetchResult:
@@ -519,8 +535,10 @@ def build_sector_bundle(query: StockQuery, sector: str) -> SectorDataBundle:
     sections: dict[str, str] = {}
     status: dict[str, str] = {}
     prov: dict[str, dict] = {}
+    company_search: dict = {}
 
-    _safe(sections, status, "company_news", _fetch_company_news, query, sector, serper_key, provenance=prov)
+    _safe(sections, status, "company_news", _fetch_company_news, query, sector, serper_key,
+          company_search, provenance=prov)
     _safe(sections, status, "sector_policy_news", _fetch_sector_policy_news, query, sector, serper_key, provenance=prov)
     _safe(sections, status, "macro_context", _fetch_macro_context, sector, serper_key, provenance=prov)
     _safe(sections, status, "policy_deep_dive", _fetch_policy_deep_dive, query, sector, provenance=prov)
@@ -554,4 +572,5 @@ def build_sector_bundle(query: StockQuery, sector: str) -> SectorDataBundle:
         api_calls_made=api_calls_made,
         section_status=status,
         section_provenance=prov,
+        company_search=company_search,
     )

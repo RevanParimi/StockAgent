@@ -211,6 +211,19 @@ NEWS_CONTEXT_RECENCY: str = cfg("data_fetch.news_context_recency", fallback="qdr
 # context while cutting the months-to-years-old articles that path used to serve.
 NEWS_SEARCH_RECENCY: str = cfg("data_fetch.news_search_recency", fallback="qdr:m")
 
+# PR-043: the search shadow. After each unified analysis returns, the company
+# search's query also goes to each engine in search_shadow.engines through
+# OpenRouter, and every result list is written to data/logs/search_shadow.jsonl.
+# The analysis reads nothing from it. `enabled: false` is the rollback; the
+# budget counts each engine's calls per week, Saturday 00:00 IST to Friday, so
+# the Saturday deep dives come first.
+SEARCH_SHADOW_ENABLED: bool = cfg("search_shadow.enabled", env="SEARCH_SHADOW_ENABLED", fallback=False)
+SEARCH_SHADOW_ENGINES: list = cfg("search_shadow.engines", fallback=[])
+SEARCH_SHADOW_WEEKLY_BUDGET: int = cfg("search_shadow.weekly_budget", env="SEARCH_SHADOW_WEEKLY_BUDGET", fallback=200)
+SEARCH_SHADOW_MAX_RESULTS: int = cfg("search_shadow.max_results", fallback=10)
+SEARCH_SHADOW_MODEL: str = cfg("search_shadow.model", fallback="") or LLM_MODEL_BULK
+SEARCH_SHADOW_PAGE_TIMEOUT_SECONDS: float = cfg("search_shadow.page_timeout_seconds", fallback=12)
+
 # F6: the preopen shock rater scores OVERNIGHT moves — it gets a tighter bound
 # (a week, not a day, so Monday still sees Friday-night and weekend news).
 PREOPEN_NEWS_RECENCY: str = cfg("data_fetch.preopen_news_recency", fallback="qdr:w")

@@ -1327,9 +1327,9 @@ def test_rr3_a_new_basis_the_registry_records_is_no_result_and_a_rename_is_grade
 def test_the_action_record_names_each_change_no_ratio_converts():
     """Every row by NSE's wording, each on its own ex-date. The record keeps the plain bonus and
     split as ratios; the rows no ratio converts as (ex-date, kind), whatever else they say (a
-    bonus with a rights issue keeps its ratio too); a row naming a bonus and a split as unparsed
-    (read as its bonus alone it would be a ratio of 2 where the price fell to a tenth); and
-    nothing for a buy back, a meeting or a dividend."""
+    bonus with a rights issue keeps its ratio too); a row naming a bonus and a split as both its
+    ratios (FIX-017: x2 and x5, the tenth the price fell to; read as its bonus alone it was x2);
+    and nothing for a buy back, a meeting or a dividend."""
     from core.portfolio.corp_actions import action_record
     named = NSE_WORDING + OTHER_WORDING
     split = "Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share"
@@ -1342,8 +1342,9 @@ def test_the_action_record_names_each_change_no_ratio_converts():
     n = len(named) + len(NEUTRAL_WORDING)
     assert [(a.ex_date, a.kind, a.ratio) for a in record.actions] == [
         (ex[len(named) - 1].isoformat(), "bonus", 2.0),     # the bonus beside a rights issue
-        (ex[n].isoformat(), "bonus", 2.0), (ex[n + 1].isoformat(), "split", 5.0)]
-    assert record.unparsed == (ex[n + 2].isoformat(),)
+        (ex[n].isoformat(), "bonus", 2.0), (ex[n + 1].isoformat(), "split", 5.0),
+        (ex[n + 2].isoformat(), "bonus", 2.0), (ex[n + 2].isoformat(), "split", 5.0)]
+    assert record.unparsed == ()
 
 
 def test_a_change_no_ratio_converts_is_no_result_by_hand():
@@ -1367,8 +1368,9 @@ def test_a_change_no_ratio_converts_is_no_result_by_hand():
     for subject in NEUTRAL_WORDING:
         assert xs.horizon_in_basis(nse, listed(subject, d20), start, decided) == (
             100.0, "", "", ""), subject
+    # FIX-017: the bonus and the split of one row, x2 and x5: ₹100 is ₹1,000 in the old shares
     assert xs.horizon_in_basis(nse, listed(BONUS_AND_SPLIT, d20), start, decided) == (
-        None, "", "NSE lists a split or bonus on 2026-10-20 that could not be read", lasting)
+        1000.0, "×2 for the bonus ex 2026-10-20, ×5 for the split ex 2026-10-20", "", "")
 
     def demerger(ex, quote):
         return xs.horizon_in_basis(quote, listed("Demerger", ex), start, decided)
@@ -1390,19 +1392,19 @@ def test_a_change_no_ratio_converts_is_no_result_by_hand():
         None, "", gone("2026-10-05"), lasting)
 
 
-def test_a_row_naming_a_bonus_and_a_split_leaves_the_invalidation_level_unused():
+def test_a_row_naming_a_bonus_and_a_split_divides_the_invalidation_level_by_both():
     """PR-009's level, with that row between the dive and the buy. Read as its bonus alone the
-    ₹455 level would become ₹227.50 where the price fell to a tenth (x2 and x5, ₹45.50), so the
-    test would never fire; the level is unused, and the gap says why. A plain bonus still
-    halves it."""
+    ₹455 level would become ₹227.50 where the price fell to a tenth, so the test would never
+    fire. FIX-017 reads both ratios: x2 and x5, ₹45.50, in the tenth the price fell to. A plain
+    bonus still halves it."""
     from core.portfolio.corp_actions import action_record
     holding = _holding("AAA", 500.0, sessions=4)
     dived, ex = date(2026, 10, 1), "12-Oct-2026"
     assert dived.isoformat() < "2026-10-12" < holding.buy_date
     both = action_record([DIVIDEND_2025, {"subject": BONUS_AND_SPLIT, "exDate": ex}], "AAA")
     assert xs.level_in_basis(455.0, dived, holding, D, both) == (
-        0.0, "", "NSE lists a split or bonus on 2026-10-12 that could not be read, so its price "
-                 "basis is unknown")
+        pytest.approx(45.5), "455.00 at the dive, adjusted for the bonus ex 2026-10-12 (÷2), "
+                             "the split ex 2026-10-12 (÷5)", "")
     bonus = action_record([DIVIDEND_2025, {"subject": "Bonus 1:1", "exDate": ex}], "AAA")
     assert xs.level_in_basis(455.0, dived, holding, D, bonus)[0] == 227.5
 
@@ -1519,14 +1521,16 @@ NSE_ROWS = [
     ("Scheme Of Arrangement - Issue Of Bonus Debentures", ((), True, (SCHEME,))),  # BLUEDART 2014
     ("Scheme Of Arangement- Bonus - 1 Debenture For 1 Equity Share Held",
      ((), True, (SCHEME,))),                                                    # BRITANNIA 2019
-    # a face-value change in words with no ratio the parser reads
-    (SHORT_SPLIT, UNREAD),                                                      # JSWSTEEL 2017
-    ("Fv Splt Frm Rs 10 To Rs 2", UNREAD),                                      # KNRCON 2016
-    ("Fv Split Rs.10 To Rs.5", UNREAD),                                         # M&M 2010
-    ("Face Value Split Rs.10/- To Re.1/- Per Share", UNREAD),                   # SBIN 2014
+    # FIX-017: a face-value split in NSE's short words is a split, old / new face value
+    (SHORT_SPLIT, ((("split", 10.0),), False, ())),                             # JSWSTEEL 2017
+    ("Fv Splt Frm Rs 10 To Rs 2", ((("split", 5.0),), False, ())),              # KNRCON 2016
+    ("Fv Split Rs.10 To Rs.5", ((("split", 2.0),), False, ())),                 # M&M 2010
+    ("Face Value Split Rs.10/- To Re.1/- Per Share", ((("split", 10.0),), False, ())),  # SBIN
+    # ... but not in words with no two face values the reader finds
     ("Agm/Div-Rs.2/Fv Rs10tors5", UNREAD),                                      # BHARTIARTL 2009
+    # FIX-017: a bonus and a split in one row are both ratios: x2 and x5, a tenth of the price
     ("Bonus 1:1/Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share",
-     UNREAD),                                                                   # BAJFINANCE 2016
+     ((("bonus", 2.0), ("split", 5.0)), False, ())),                            # BAJFINANCE 2016
     # a change no ratio converts, in NSE's short or misspelt words
     ("Rhs 3:7@Prem Rs95/Div185%", ((), False, ("rights issue",))),             # HINDALCO 2008
     ("Scheme Of Arangement", ((), False, (SCHEME,))),
@@ -1575,11 +1579,19 @@ OTHER_ROWS = [
     ("Dividend In Specie", ((), False, ("unknown",))),
     ("Bonus 1:1 Warrants", UNREAD),
     ("Reverse Split", UNREAD),
-    ("Splt Frm Rs 10 To Re 1", UNREAD),
-    # a bonus and a split beside a rights issue: never its bonus alone (×2 where the price fell
-    # to a tenth), even where only the bonus's own words are read
+    ("Splt Frm Rs 10 To Re 1", ((("split", 10.0),), False, ())),
+    # FIX-017: a split that adds no shares is a consolidation, and a share-count row whose
+    # ratio is not stated is never read as its other part alone
+    ("Reverse Split From Rs 1 To Rs 10", UNREAD),
+    ("Face Value Split From Rs 1 To Rs 10", UNREAD),
+    ("Bonus Shares/Face Value Split From Rs 10 To Rs 2", UNREAD),
+    ("Bonus 1:1/Face Value Split", UNREAD),
+    # the face values are read after the word "split", never a number before it
+    ("Dividend Rs 5/Face Value Split From Rs 10 To Rs 2", ((("split", 5.0),), False, ())),
+    # a bonus and a split beside a rights issue: both ratios, never its bonus alone (×2 where
+    # the price fell to a tenth); only their own words are read, and the rights issue is named
     ("Bonus 1:1/Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share"
-     "/Rights 1:5 @ Premium Rs 100/-", ((), True, ("rights issue",))),
+     "/Rights 1:5 @ Premium Rs 100/-", ((("bonus", 2.0), ("split", 5.0)), False, ("rights issue",))),
     # a bonus is read with a bonus's own words, never a split's: read as a bonus of 2 alone,
     # either row would be a false -80% where the face value also fell to a fifth (FIX-016's
     # re-review 3, T1, routed to FIX-018)
@@ -1592,9 +1604,9 @@ OTHER_ROWS = [
 @pytest.mark.parametrize("subject, reading", NSE_ROWS + OTHER_ROWS)
 def test_rr2_every_row_is_read_in_full_or_refused(subject, reading):
     """The re-review's RR2-F1 rows and NSE's other wordings, one row each. A row is a ratio only
-    when it is an equity bonus or a face-value split and every word is known; a bonus of
-    preference shares, debentures or NCRPS, or a split in short words, is a share-count row not
-    read; any other row is neutral only when every word is of a dividend, a meeting, a vote, a
+    when it is an equity bonus or a face-value split and every word is known (FIX-017: NSE's
+    short split words included, and a row naming both gives both); a bonus of preference
+    shares, debentures or NCRPS is a share-count row not read; any other row is neutral only when every word is of a dividend, a meeting, a vote, a
     buy back, interest or a redemption (or a registrar change), else a row of no known kind."""
     assert _row_reading(subject) == reading
 
@@ -1673,17 +1685,18 @@ def test_rr2_q3_a_demerger_in_wording_the_record_does_not_know_passes_no_losing_
     assert again["recommend"] is False
 
 
-def test_rr2_nses_short_split_wording_is_no_result_not_a_fall(monkeypatch):
+def test_rr2_nses_short_split_wording_is_a_split_not_a_fall(monkeypatch):
     """S0 is sold by the evidence rule at ₹100 and stays flat in real terms. Three sessions
     later it splits from Rs 10 to Re 1 a share, worded as JSWSTEEL's row: NSE's raw close is
     then ₹10, which is ₹100 in the old shares. By hand: a return of 0, the sale wrong with 0;
     read as prices, a 90% fall and +90 to the seller (the defect: the row was neither a ratio
-    nor unread). The record cannot read the ratio from "Fv Splt Frm", so the decision has no
-    result at both horizons, named. The standard wording of the same split is graded at 0."""
+    nor unread). FIX-017 reads "Fv Splt Frm Rs 10 To Re 1" as the split it is, x10, so both
+    wordings are graded at 0; a split worded with no face values has no result, named."""
     for subject, expected in [
-            (SHORT_SPLIT, "unread"),
+            (SHORT_SPLIT, "graded"),
             ("Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share",
-             "graded")]:
+             "graded"),
+            ("Agm/Div-Rs.2/Fv Rs10tors5", "unread")]:
         market = _Market()
         rows = _real_rows(market, [(True, 0.0)])
         decided = date.fromisoformat(rows[0]["date"])
@@ -1743,12 +1756,15 @@ def test_rr2_a_row_the_record_cannot_read_leaves_the_invalidation_level_unused()
     """PR-009's level, with ZEEL's or JSWSTEEL's wording between the dive and the buy. Read as
     a 22-for-1 bonus the ₹455 level became ₹20.68, and the short split wording was not seen at
     all, so the level stayed ₹455 where the price fell to a tenth: either way the test never
-    fired or fired at once. Now the level is unused, and the gap says why."""
+    fired or fired at once. A bonus of other securities leaves the level unused, and the gap
+    says why; FIX-017 reads the short split as x10, ₹45.50."""
     from core.portfolio.corp_actions import action_record
     holding = _holding("AAA", 500.0, sessions=4)
     dived, ex = date(2026, 10, 1), "12-Oct-2026"
     assert dived.isoformat() < "2026-10-12" < holding.buy_date
-    for subject in (PREFERENCE_BONUS, SHORT_SPLIT):
+    split = action_record([DIVIDEND_2025, {"subject": SHORT_SPLIT, "exDate": ex}], "AAA")
+    assert xs.level_in_basis(455.0, dived, holding, D, split)[0] == pytest.approx(45.5)
+    for subject in (PREFERENCE_BONUS, "Bonus Debentures 6:1"):
         record = action_record([DIVIDEND_2025, {"subject": subject, "exDate": ex}], "AAA")
         assert xs.level_in_basis(455.0, dived, holding, D, record) == (
             0.0, "", "NSE lists a split or bonus on 2026-10-12 that could not be read, so its "
@@ -1767,11 +1783,14 @@ _KNOWN_ROWS = [
     ("Annual General Meeting/Dividend - Rs 8 Per Share", "none", 1.0),
     ("Buy Back", "none", 1.0),
     ("E-Voting", "none", 1.0),
+    # FIX-017: NSE's short split words, and a bonus with a split in one row (x2 and x5)
+    (SHORT_SPLIT, "ratio", 10.0),
+    ("Fv Split Rs.10 To Rs.5", "ratio", 2.0),
+    (BONUS_AND_SPLIT, "ratio", 10.0),
 ]
 _ODD_ROWS = [
     (PREFERENCE_BONUS, "kept", 0.925),
-    (SHORT_SPLIT, "ratio", 10.0),
-    ("Fv Split Rs.10 To Rs.5", "ratio", 2.0),
+    ("Agm/Div-Rs.2/Fv Rs10tors5", "ratio", 2.0),
     ("Bonus Debentures 6:1", "kept", 0.9),
     ("Rhs 3:7@Prem Rs95/Div185%", "kept", 0.93),
     ("Scheme Of Arangement", "kept", 0.6),
@@ -1801,13 +1820,17 @@ def test_a_graded_result_is_always_the_return_in_real_terms_whatever_nse_writes(
             day = trading_days_after(date(2026, 6, 1), rnd.randrange(0, 40))
             move = rnd.choice([-7.0, -2.5, 0.0, 3.0, 12.0])
             market.value[symbol] = lambda d, day=day, move=move: 100.0 if d <= day else 100.0 + move
-            odd, listed = [], set()
+            odd, listed, ratio_days = [], set(), set()
             for _n in range(rnd.randrange(0, 4)):
                 subject, kind, effect = rnd.choice(_KNOWN_ROWS if rnd.random() < 0.5 else _ODD_ROWS)
                 ex = _session(day, rnd.randrange(-5, 36))
                 if (subject, ex) in listed:     # one row listed twice is one action
                     continue
+                if kind == "ratio" and ex in ratio_days:
+                    continue                     # one share-count row a day (FIX-017)
                 listed.add((subject, ex))
+                if kind == "ratio":
+                    ratio_days.add(ex)
                 row = {"subject": subject, "exDate": ex.strftime("%d-%b-%Y")}
                 if kind == "ratio":
                     market.actions.setdefault(symbol, []).append((ex, effect, row))

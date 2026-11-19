@@ -1446,9 +1446,10 @@ answer or a failed fetch, reads the same), a bonus or split went ex on the dive
 day itself (the dive's close may be on either side of it), or NSE lists a split
 or bonus row from the dive day on that is not read as a ratio of equity shares
 (One price basis, below): one that cannot be parsed, a bonus of other
-securities, a split in short words, or one row naming both a bonus and a split
-(read as its bonus alone, a 1:1 bonus with a ₹10-to-₹2 split would halve the
-level where the price fell to a tenth). It is also not used when, from the
+securities, or a split worded with no two face values. A row naming both a
+bonus and a split divides the level by both: a 1:1 bonus with a ₹10-to-₹2
+split, by 10 (read as its bonus alone, the level would halve where the price
+fell to a tenth). It is also not used when, from the
 dive day to the review day, NSE lists a row that changes the basis by an
 amount it does not give (a demerger, a scheme, a consolidation, a capital
 reduction, a rights issue: `ActionRecord.basis_changes`), the holding's record
@@ -1517,13 +1518,19 @@ no holding, and so no applied actions.
 words one action many ways, so a row is judged by every word in it. It is a
 ratio only when it is an equity bonus or a face-value split and every word is
 known: "Bonus 1:3" is 4 shares for 3, and "Face Value Split (Sub-Division) -
-From Rs 10/- Per Share To Rs 2/- Per Share" is 5 for 1. It leaves the basis
+From Rs 10/- Per Share To Rs 2/- Per Share" is 5 for 1. A split's two face
+values are read after the word that names it, so NSE's short words "Fv Splt Frm
+Rs 10 To Re 1" are 10 for 1, and a row naming both is both ratios: "Bonus
+1:1/Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per
+Share" is 2 and 5, ten shares for one. The daily holding sync applies the same
+reading (Corporate-action sync, below). It leaves the basis
 alone only when every word is one of a dividend, a meeting, a vote, a buy back,
 interest or a redemption, or a registrar change, in the spellings NSE uses
 ("Interim Dividend - Rs 20 Per Share (Purpose Revised)"). Any other row is not
 read: a bonus of preference shares, debentures or NCRPS ("Bonus Preference
-Shares 21:1" is not 22 equity shares for one), a split in short words ("Fv Splt
-Frm Rs 10 To Re 1"), a misspelt dividend, or wording never seen before. A row is
+Shares 21:1" is not 22 equity shares for one), a split with no two face values
+("Agm/Div-Rs.2/Fv Rs10tors5") or to a higher face value (a consolidation), a
+misspelt dividend, or wording never seen before. A row is
 neutral only when it is known to be, so a new wording can cost a decision its
 result but never decides one.
 
@@ -1539,8 +1546,7 @@ two kinds, and the switch gate (below) treats them differently.
 - a bonus or split went ex after the close's bar and by the review day, so the
   stored close may be on either side of it;
 - NSE lists, after the close and by the horizon close's bar, a split or bonus
-  row that is not read as a ratio of equity shares (or one row naming both a
-  bonus and a split), or two ratios for one day;
+  row that is not read as a ratio of equity shares, or two ratios for one day;
 - NSE lists, after the close's bar and by the horizon close's bar or the review
   day, a change that no ratio in its row converts: a demerger (part of the
   company's value leaves for another listing, and NSE's row says only
@@ -1726,7 +1732,9 @@ through and the decision pace to the scorecard.
   NSE's codes on 29 October 2026 (3,215 rows, each list its latest 20 actions or
   fewer), held 3,011 neutral rows and 110 ratios; 50 changes no ratio converts
   (14 demergers, 27 rights issues, 9 schemes, 5 of those naming a bonus of
-  debentures or NCRPS); 8 more bonus or split rows not read as ratios; 27 rows
+  debentures or NCRPS); 8 more bonus or split rows not read as ratios that day
+  (NSE's short split words and the row naming a bonus and a split, among
+  them, are read as ratios now); 27 rows
   of no known kind; and 9 undated rows. Every row not read is from 2008 to
   2021, mostly misspelt dividends, except TVSMOTOR's "Scheme Of Arrangement -
   Bonus Ncrps 4:1" of August 2025. Of the 849 rows dated from 2024, none was of
@@ -1867,6 +1875,35 @@ unchanged and `data_gate` says what enforcement would have withheld.
 **Example:** a holding's envelope was built on an abstained STRONG BUY and
 points up. Unenforced, that gives ADD and a virtual buy of 2 shares. Enforced,
 it gives HOLD with `DATA_GATE`, and no buy.
+
+**Corporate-action sync.** Each review starts with
+`corp_actions.sync_corp_actions`, before any rule reads a price. For each
+holding it asks NSE for its corporate actions under the code its close is read
+under (`symbol_resolver.nse_symbol`: the registry alias CANARABANK is listed as
+CANBK, and NSE lists nothing under the alias), and reads the rows exactly as
+the exit rule's grading does (One price basis, above). For each row ex after
+the buy and by the review day it applies to the holding's adjusted quantity
+and average price only the bonus and split ratios read in full, once per
+ex-date and kind whichever row states it, and credits each dividend in rupees
+per share. The raw quantity and buy price never change.
+
+- **Example:** 100 shares bought at ₹1,000. "Bonus 1:1/Face Value Split
+  (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share" makes them
+  1,000 at ₹100, and "Fv Splt Frm Rs 10 To Re 1" the same: at a close of ₹100
+  the P&L is 0, not −90%, and no stop fires.
+- **Not applied, and named:** a row it cannot read (a bonus of preference
+  shares, debentures or NCRPS, where the number of equity shares does not
+  change: ZEEL's "Bonus Preference Shares 21:1" is not 22 for one), or two
+  ratios of one kind on one day. The holding is unchanged, and each review the
+  sync logs a `data health` warning naming the stock, the day and the row.
+- **Applied before, read otherwise now:** a bonus or split the holding applied
+  under an earlier reading that NSE's row no longer gives is named the same
+  way and never reversed; correcting the ledger is an operator's step. A row
+  naming a bonus and a split, applied before as its bonus alone, keeps that
+  bonus and gets its split once.
+- **Limit:** while a row is unread, the price moves and the holding does not,
+  so the price-path stop can fire on a fall the row caused (a split in wording
+  never seen before). The warning names it; nothing holds the stop for it.
 
 **Identity hold.** A holding is held outright, EXIT and TRIM included, with
 the note `IDENTITY`, in two cases:

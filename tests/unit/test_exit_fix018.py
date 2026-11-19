@@ -659,9 +659,9 @@ def test_grading_tells_a_failed_read_from_an_empty_answer_and_the_sync_does_not(
 
 
 def test_the_sync_receives_the_same_for_a_failed_read_and_an_empty_list(monkeypatch, tmp_path):
-    """Through the real sync (core/portfolio/corp_actions.py), unchanged until FIX-017: a list
-    that cannot be read and an empty one both give the holding nothing to apply and the same
-    record."""
+    """Through the real sync (core/portfolio/corp_actions.py): a list that cannot be read and an
+    empty one both give the holding nothing to apply, the same record and no named gap (FIX-017
+    asks NSE under its own code, here AAA's)."""
     from core.portfolio.corp_actions import action_record, sync_corp_actions
     from core.portfolio.store import PortfolioStore
     from services.data.fetchers import corporate_events as ce
@@ -672,7 +672,7 @@ def test_the_sync_receives_the_same_for_a_failed_read_and_an_empty_list(monkeypa
         store.save(Portfolio(user_id="u1", holdings=[_held("2026-09-15")]))
         got.append(sync_corp_actions(store, D))
     assert got[0] == got[1] == {"applied": 0, "symbols": [],
-                                "records": {"AAA": action_record([], "AAA")}}
+                                "records": {"AAA": action_record([], "AAA")}, "gaps": {}}
 
 
 def test_grading_reads_each_list_once_and_names_a_failed_read_as_temporary(monkeypatch):

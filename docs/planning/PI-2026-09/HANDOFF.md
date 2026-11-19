@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-19 (PR-033 half done, its probe waits for phase 2 and your word; PR-043's route; PR-037 and PR-005 merged, push pending; in a push window PR-015 switches)
+# Current handoff - 2026-11-19 (PR-033 half done, its probe waits for phase 2 and your word; PR-043 unblocked; PR-037 and PR-005 merged, push pending; in a push window PR-015 switches)
 
 **Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
 
@@ -40,21 +40,18 @@
   deploy, goes live with the 00:10 push. An analysis missing prices, financials or peers reads
   INSUFFICIENT DATA and cannot buy or make a shelf idea; exits and trims are never blocked
   ([evidence/PR-042.md](evidence/PR-042.md)). `PR-042-W0` after the deploy, `-W1` from Fri 27 Nov.
-- **PR-043's probe ran and stopped** (19 Nov, 16:00 IST; [receipt](evidence/PR-043.md)): Exa
-  through OpenRouter returns all 10 results with excerpts, but no publish date (0 of 100) and no
-  date filter; $0.0075 a call. By its card, nothing is built until you choose a route (below).
-  [PR-044](stories/PR-044.md) follows PR-043.
+- **PR-043's route: Exa through OpenRouter, dates read from the pages** (your word, 19 Nov: no
+  second account). Test on ten shelf ideas: 53 of 98 results dated from the page; every stock had
+  a dated item Serper's five lacked ([receipt](evidence/PR-043.md)). [PR-044](stories/PR-044.md)
+  follows.
 - **Next `continue` outside a window:** PR-033 phase 2 ([receipt](evidence/PR-033.md)): the
-  November deploys join the same probe.
+  November deploys join the same probe. Then PR-043.
 - **Git:** `origin/main` = `3f26ae5`; `main` is 16 commits ahead with this records commit
   (PR-037's and PR-005's merges among them), push pending to Fri 20 Nov 00:10. `story/PR-015` is
   local only.
 
 ## Waits for you
 
-- **PR-043's route:** A, an Exa account of its own (dates and a date filter; recommended: sign
-  up, put the key in Railway or say to); B, OpenRouter with dates read from the URL or excerpt
-  (42 of 100 had none; changes the read's rule); C, stop (PR-044 stops too).
 - **PR-005's backfill**, after its deploy: say "run the PR-005 backfill" (a dry
   run, then `--apply`: one model call per holding; the command is in its receipt).
 - **PR-038's re-read** (Sat 21 Nov, `PR-038-R1`): your word in that session, or you run it.
@@ -86,7 +83,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 \* If the deposit is recorded on Thu 19 Nov; a later deposit moves both. † If PR-037 is deployed
 and its catch-up run made by Fri 20 Nov; a later deploy moves it by as many weeks. ‡ If PR-005
 is deployed by Fri 20 Nov and that day's review opens a position; a later first buy moves it.
-§ Waits for PR-043's route; it moves by as many days as the deploy. `PR-014-D1`, `R1` and
+§ 14 days after PR-043's deploy (Mon 7 Dec for a Sat 21 Nov deploy); a later one moves it. `PR-014-D1`, `R1` and
 `R2` keep their dates; their baseline note says capital changes on the deposit day.
 
 ## 18 Nov, night (autopilot): PR-015 prepared on `story/PR-015`; the switch waits for your word

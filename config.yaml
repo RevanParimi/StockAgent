@@ -561,6 +561,17 @@ advisor:
   # Rollback = legacy. An unknown value reads as shadow.
   exit_rule: shadow
   min_hold_sessions: 10          # case_broken waits this many sessions after the buy; stops never wait
+  # PR-005: an investment case for each buy that opens a position (SWITCH,
+  # deployment, a manual add with an analysis), in data/portfolio/<user>/cases/.
+  # One reasoning-tier call writes its words; code checks every figure against
+  # the inputs and stores a deterministic case when one is invented.
+  # Rollback: case_write false: no case and no new version is written, and the
+  # evidence rule reads the shelf idea's level again (stored cases stay as history).
+  case_write: true
+  case_model: true               # false: the deterministic case only, no model call
+  # The case's invalidation price is used by the evidence rule only above the
+  # stop price on the purchase day and at least this many ATR% below the entry.
+  case_noise_atr_mult: 1.5
 
 # =============================================================================
 # Compass Phase B — Discovery funnel + generic sector graph (spec 2026-07-06 §6/§8)

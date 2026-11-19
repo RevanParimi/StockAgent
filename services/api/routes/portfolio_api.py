@@ -118,6 +118,7 @@ async def get_portfolio(
 @router.post("/holdings", summary="Add a virtual holding (mock money, real prices)")
 async def add_holding(
     body: HoldingIn,
+    background_tasks: BackgroundTasks,
     user: dict = Depends(get_current_user),
 ) -> dict:
     symbol = body.symbol.strip().upper()
@@ -154,6 +155,7 @@ async def add_holding(
     # One critical section for the whole read-modify-write (AUD-001/007).
     with store.locked():
         p = store.load()
+        opens = not any(h.symbol == symbol for h in p.holdings)   # PR-005: a new position
         # State-derived txn id: an identical same-day resubmit (client retry
         # after timeout) produces the same id and is skipped ENTIRELY — no
         # double holding merge, no double capital_in (AUD-007).
@@ -187,8 +189,49 @@ async def add_holding(
             store.append_transaction(txn)
             store.save(p)
     promotion = promote_symbol(symbol, sector, origin="held")
+    if opens and settings.ADVISOR_CASE_WRITE:
+        # PR-005: the investment case, when an analysis or a shelf idea exists,
+        # after the response (one reasoning-tier call); never fails the add.
+        background_tasks.add_task(_write_manual_case, store, symbol, buy_date, price,
+                                  p.risk_profile, sector)
     return {"holding": holding.model_dump(), "promotion": promotion,
             "transaction": (txn.model_dump() if txn else None)}
+
+
+def _write_manual_case(store: PortfolioStore, symbol: str, buy_date: date, price: float,
+                       risk_profile: str, sector: str) -> None:
+    """PR-005: the case of a manual add that opened a position. Never raises."""
+    from core.portfolio import cases
+    try:
+        from core.discovery.shelf import ShelfStore
+        ideas = list(ShelfStore().load().ideas)
+    except Exception as exc:
+        logger.warning("[portfolio_api] shelf unread for the investment case: %s", exc)
+        ideas = []
+    case, why = cases.write_for_buy(
+        store.user_id, symbol=symbol, opened_on=buy_date, entry_price=price, buy_path="manual",
+        risk_profile=risk_profile, sector=sector, ideas=ideas,
+        base_dir=str(store._dir.parent))
+    if case is None:
+        logger.info("[portfolio_api] no investment case for %s/%s: %s", store.user_id, symbol,
+                    why)
+
+
+@router.get("/cases", summary="The signed-in user's investment cases (PR-005)")
+async def get_cases(
+    symbol: str | None = Query(None, description="every version of this symbol's cases"),
+    user: dict = Depends(get_current_user),
+) -> dict:
+    """The newest version of each of the user's cases, or with `symbol` every
+    version of that symbol's, oldest first. Only the signed-in user's own."""
+    from core.portfolio.cases import CaseStore
+    owner = _store(user["user_id"])
+    store = CaseStore(owner.user_id, str(owner._dir.parent))
+    try:
+        found = store.versions(symbol) if symbol else store.all_latest()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"cases": [c.model_dump() for c in found], "count": len(found)}
 
 
 @router.delete("/holdings/{symbol}", summary="Remove a holding")

@@ -126,6 +126,17 @@ def _no_real_gate_writes(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _no_case_writes(monkeypatch):
+    """PR-005: a buy writes its investment case after the trade, reading the
+    score history, the events, NSE's list and the price history, and calling
+    the model. Off here, so a test that buys stays offline and writes
+    nothing; the case's own tests switch it on with their stubs
+    (tests/unit/test_investment_case_pr005.py)."""
+    from core.config import settings
+    monkeypatch.setattr(settings, "ADVISOR_CASE_WRITE", False)
+
+
+@pytest.fixture(autouse=True)
 def _isolated_instrument_registry(monkeypatch):
     """SA-008: the suite reads an empty instrument registry unless a test
     points INSTRUMENT_REGISTRY_PATH at its own or at the shipped

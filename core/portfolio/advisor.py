@@ -115,6 +115,10 @@ class ExitEvidence(BaseModel):
     invalidation_level_at_dive: float = 0.0   # the shelf idea's level, in its deep dive's rupees
     invalidation_source: str = ""          # which shelf idea, and any bonus or split applied to it
     gaps: list[str] = Field(default_factory=list)   # a source that could not be read
+    # PR-005: the holding's investment case version read (0 = none), and its
+    # challenged pillars ({"claim", "by", "sources"}): recorded, never a sale.
+    case_version: int = 0
+    challenged_pillars: list[dict] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -651,12 +655,17 @@ def case_broken_reasons(evidence: ExitEvidence | None, close: float) -> list[str
          CASE_EVENT_SESSIONS sessions (already filtered into the evidence)
          from a source in CASE_EVENT_SOURCES. An event from any other source
          never counts here, whichever list it arrives in: a news article is a
-         watch item. No holding has an investment case yet, so any such event
-         counts; PR-005's case will narrow it to one that contradicts a pillar;
+         watch item. Any such event counts, whether or not it contradicts a
+         pillar of the holding's investment case (PR-005): a challenged pillar
+         is recorded in the evidence, and narrowing this rule to it waits for
+         PR-013's losses by exit reason;
       2. the latest actionable research verdict is SELL or STRONG SELL (only a
          run after the buy and recent enough is in the evidence);
       3. the close is at or below the invalidation level: the entry rule
          (core/portfolio/sizing.py) refuses a buy there for the same reason.
+         With an investment case, its own price in the buy day's basis, used
+         only inside its window (core/portfolio/cases.py); without one, the
+         shelf idea's level as PR-009 reads it.
 
     Pure. The minimum holding period is applied by `decide`, not here, so the
     shadow record can show a reason that broke while the rule still waited."""

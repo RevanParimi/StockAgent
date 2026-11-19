@@ -282,7 +282,14 @@ def run_post_review_pipeline(review_date: date) -> dict:
 
         # Step 3 — advise each holding.
         advice, closes = [], {}
-        evidence_reader = (exit_shadow.EvidenceReader(all_ideas, corp_actions=corp_records)
+        # PR-005: advisor.case_write off is the rollback: the evidence rule
+        # reads the shelf idea's level again and no case version is written;
+        # the stored cases stay as history.
+        from core.portfolio.cases import CaseStore
+        case_store = (CaseStore(user_id, str(store._dir.parent))
+                      if settings.ADVISOR_CASE_WRITE else None)
+        evidence_reader = (exit_shadow.EvidenceReader(all_ideas, corp_actions=corp_records,
+                                                      cases=case_store)
                            if exit_mode != "legacy" else None)
         shadow_rows: list = []
         shelf_index = {i.symbol: i for i in shelf_ideas}
@@ -416,7 +423,8 @@ def run_post_review_pipeline(review_date: date) -> dict:
                 shelf_index=shelf_index,
                 candidate_quotes=candidate_quotes,
                 surveillance=surveillance,
-                report=run_report)
+                report=run_report,
+                cases={"ideas": [*all_ideas, *shelf_index.values()]})
             if txns:
                 portfolio = store.load()          # digest sees post-trade state
                 logger.info("[portfolio_pipeline] autopilot executed %d trade(s) for %s",
@@ -424,6 +432,35 @@ def run_post_review_pipeline(review_date: date) -> dict:
         except Exception as exc:
             logger.warning("[portfolio_pipeline] autopilot failed for %s (non-fatal): %s",
                            user_id, exc)
+        # PR-005: a case whose invalidation price waits on a read that failed
+        # at the buy is worked again from today's sync; then the company
+        # events published since each case was written challenge the pillars
+        # they contradict (a record, never a sale). Neither runs when case
+        # writing is off.
+        if case_store is not None:
+            try:
+                from core.events.store import EventStore
+                from core.portfolio.cases import retry_invalidation, review_pillars
+                events = EventStore()
+                records = {str(k).strip().upper(): v for k, v in corp_records.items()}
+                current = store.load()
+                for holding in current.holdings:
+                    try:
+                        retry_invalidation(case_store, holding,
+                                           records.get(holding.symbol.strip().upper()),
+                                           review_date, risk_profile=current.risk_profile)
+                    except Exception as exc:
+                        logger.warning("[portfolio_pipeline] invalidation retry failed for "
+                                       "%s/%s (non-fatal): %s", user_id, holding.symbol, exc)
+                    try:
+                        review_pillars(case_store, holding, events.load(holding.symbol),
+                                       review_date)
+                    except Exception as exc:
+                        logger.warning("[portfolio_pipeline] pillar review failed for %s/%s "
+                                       "(non-fatal): %s", user_id, holding.symbol, exc)
+            except Exception as exc:
+                logger.warning("[portfolio_pipeline] case upkeep skipped for %s "
+                               "(non-fatal): %s", user_id, exc)
         # SA-051 R1: a holding added while this run was under way has no close
         # in `closes`. Fetch one now, outside the lock, so the point marks it at
         # its close as results.capital_flows values it; one still without a

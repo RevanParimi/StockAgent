@@ -92,6 +92,7 @@ from core.discovery.shelf import close_before_dive
 from core.intelligence.rl.nse_calendar import (IST, session_close_at, trading_days_after,
                                                trading_days_ago)
 from core.portfolio.advisor import CASE_EVENT_SOURCES, ExitEvidence, case_broken_reasons
+from core.portfolio.cases import challenged_pillars
 from core.portfolio.results import sessions_held
 from core.portfolio.sizing import entry_check
 
@@ -102,6 +103,8 @@ CASE_EVENT_SESSIONS = 5            # a negative event counts for this many sessi
 RESEARCH_VERDICT_SESSIONS = 22     # a research verdict counts until it is this many sessions old
 SELLS = ("EXIT", "SWITCH")         # the verdicts that sell the whole position
 SHARE_COUNT_KINDS = ("bonus", "split")   # the corporate actions that change the price basis
+# Applied by the operator's identity reconciliation: a new price basis with no ratio (SA-008).
+BASIS_KINDS = ("demerger", "relisting")
 BENCHMARKS = ("cash", "nifty")     # where a decision's sale put the money
 # A close in its own bar's raw basis: NSE's, or Yahoo's within 1% of it
 # (services/data/fetchers/close_verifier.py; NSE's wins a larger gap).
@@ -269,6 +272,16 @@ def level_in_basis(level: float, dived: date, holding, on: date,
     close may be on either side of it), or a split or bonus row NSE lists
     from the dive day on that could not be parsed.
 
+    PR-005 (RR-L1): also unknown when, from the dive day to `on`, NSE lists a
+    row that changes the price basis by an amount it does not give (a
+    demerger, a scheme, a consolidation, a capital reduction, a rights issue:
+    `ActionRecord.basis_changes`), the holding's record holds a demerger or
+    relisting the operator applied after the buy, or the instrument registry
+    puts the two days on different bases (`registry_break`). Such a change
+    lowers the price but not the level. Example: dived at ₹500 with the level
+    ₹455; a demerger takes the price to ₹470; a 3.2% fall to ₹455 would fire
+    `case_broken`, with the stop far away. The level is not used.
+
     Example: dived at about ₹500 with the level ₹455; bought; a 1:1 bonus
     goes ex. The sync halves the cost basis, and the level is ₹227.50."""
     try:
@@ -285,6 +298,17 @@ def level_in_basis(level: float, dived: date, holding, on: date,
     if unread:
         return 0.0, "", (f"NSE lists a split or bonus on {unread[0]} that could not be "
                          "read, so its price basis is unknown")
+    changes = sorted((ex, kind) for ex, kind in (record.basis_changes if record is not None
+                                                 else ()) if dive <= ex <= last)
+    changes += sorted((a.ex_date, a.kind) for a in holding.applied_actions
+                      if a.kind in BASIS_KINDS and buy < a.ex_date <= last)
+    if changes:
+        ex, kind = changes[0]
+        return 0.0, "", (f"a {kind} went ex on {ex}, from the dive day on, and gives no "
+                         "ratio, so the price basis is unknown")
+    broken = registry_break(holding.symbol, dived, on)
+    if broken:
+        return 0.0, "", broken
     on_dive_day = [a for a in applied + listed if a.ex_date == dive]
     if on_dive_day:
         return 0.0, "", (f"a {on_dive_day[0].kind} went ex on the dive day, {dive}, so the "
@@ -314,11 +338,19 @@ def level_in_basis(level: float, dived: date, holding, on: date,
 
 
 def exit_evidence(holding, on: date, *, events: Iterable = (), records: Iterable[dict] = (),
-                  ideas: Iterable = (), actions=None, gaps: Iterable[str] = ()) -> ExitEvidence:
+                  ideas: Iterable = (), actions=None, gaps: Iterable[str] = (),
+                  case=None) -> ExitEvidence:
     """The evidence for one holding on review day `on`. Pure: the caller
     reads the stores (`EvidenceReader`) and names any it could not read.
     `actions` is the symbol's corp_actions.ActionRecord from this review
-    day's sync, for the invalidation level's price basis."""
+    day's sync, for the invalidation level's price basis.
+
+    PR-005: `case` is the holding's investment case as it stood at `on`'s
+    close. When there is one, the invalidation price is the case's own, set
+    in the buy day's rupees and inside its window at purchase, adjusted only
+    by the holding's own bonuses and splits since (`cases.level_after_buy`);
+    the shelf idea's level is then not read, so a level the case refused is
+    never used. Its challenged pillars are recorded, never a sale."""
     symbol = holding.symbol.strip().upper()
     try:
         bought = date.fromisoformat(holding.buy_date[:10])
@@ -331,14 +363,26 @@ def exit_evidence(holding, on: date, *, events: Iterable = (), records: Iterable
     watch = [e for e in negative if e.source not in CASE_EVENT_SOURCES]
     # An unreadable buy date: no verdict can be shown to postdate the buy.
     verdict = latest_actionable_verdict(records, symbol, on, bought) if bought else None
-    at_dive, source, dived = invalidation_for(ideas, symbol, on)
-    level = at_dive
-    if at_dive > 0:
-        level, note, gap = level_in_basis(at_dive, dived, holding, on, actions)
+    if case is not None:
+        from core.portfolio.cases import level_after_buy
+        at_dive = float(case.invalidation.price_at_dive or 0.0)
+        level, note, gap = level_after_buy(case, holding, on, actions)
+        source = (f"investment case of {case.opened_on}, v{case.version}, "
+                  f"{case.invalidation.price:.2f} in the buy day's rupees"
+                  if case.invalidation.price else "")
         if gap:
-            gaps.append(f"invalidation level {at_dive:.2f} not used: {gap}")
+            gaps.append(f"invalidation price not used: {gap}")
         elif note:
             source = f"{source}; {note}"
+    else:
+        at_dive, source, dived = invalidation_for(ideas, symbol, on)
+        level = at_dive
+        if at_dive > 0:
+            level, note, gap = level_in_basis(at_dive, dived, holding, on, actions)
+            if gap:
+                gaps.append(f"invalidation level {at_dive:.2f} not used: {gap}")
+            elif note:
+                source = f"{source}; {note}"
     def brief(e) -> dict:
         return {"id": e.id, "published_at": e.published_at, "category": e.category,
                 "what": e.what, "source": e.source}
@@ -352,6 +396,8 @@ def exit_evidence(holding, on: date, *, events: Iterable = (), records: Iterable
         invalidation_level_at_dive=at_dive,
         invalidation_source=source if level > 0 else "",
         gaps=gaps,
+        case_version=case.version if case is not None else 0,
+        challenged_pillars=challenged_pillars(case),
     )
 
 
@@ -364,11 +410,12 @@ class EvidenceReader:
 
     def __init__(self, ideas: Iterable = (), event_store=None,
                  score_records: Callable[[str], list[dict]] | None = None,
-                 corp_actions: dict | None = None) -> None:
+                 corp_actions: dict | None = None, cases=None) -> None:
         self._ideas = list(ideas)
         self._events = event_store
         self._records = score_records
         self._corp_actions = {str(k).strip().upper(): v for k, v in (corp_actions or {}).items()}
+        self._cases = cases                # PR-005: a cases.CaseStore of the portfolio's user
 
     def _event_store(self):
         if self._events is None:
@@ -395,9 +442,16 @@ class EvidenceReader:
             records = self._score_records(symbol)
         except Exception as exc:
             gaps.append(f"research verdicts unread: {exc}")
+        case = None
+        if self._cases is not None:
+            try:
+                case = self._cases.latest(symbol, str(holding.buy_date)[:10],
+                                          before=session_close_at(on))
+            except Exception as exc:
+                gaps.append(f"investment case unread: {exc}")
         return exit_evidence(holding, on, events=events, records=records,
                              ideas=self._ideas, actions=self._corp_actions.get(symbol),
-                             gaps=gaps)
+                             gaps=gaps, case=case)
 
 
 def decision_benchmark(legacy_verdict: str, evidence_verdict: str, *,

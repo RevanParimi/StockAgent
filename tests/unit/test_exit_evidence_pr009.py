@@ -1114,3 +1114,87 @@ def test_a_carried_forward_close_is_graded_from_its_own_session():
     assert {g["priced"] for g in xs.grade_disagreements(
         odd, as_of=d30, stock_quote_on=_nse(95.0), bench_close_on=bench,
         corp_actions=_no_actions)} == {"2026-09-02"}
+
+
+def test_t1_a_split_that_goes_ex_on_the_buy_day_still_divides_the_level():
+    """PR-005's routed T1. Dived 1 Sep with the level ₹900; a 10→2 split (×5) goes ex on
+    15 Sep, the buy day. The buy is at the post-split close, so the sync never applies the
+    split to the holding, and the level must still be divided: 900 / 5 = ₹180.00. A mutant
+    that reads only `dive < ex < buy` leaves ₹900, five times too high, so an ordinary
+    close would fire `case_broken`."""
+    from core.portfolio.corp_actions import action_record
+    on_buy_day = dict(SPLIT_SEP, exDate="15-Sep-2026")
+    nse = action_record([DIVIDEND_AUG, on_buy_day], "AAA")
+    holding = _held("2026-09-15")
+    level, note, gap = xs.level_in_basis(900.0, date(2026, 9, 1), holding, D, nse)
+    assert (round(level, 6), gap) == (180.0, "")
+    assert note == "900.00 at the dive, adjusted for the split ex 2026-09-15 (÷5)"
+    ev = xs.exit_evidence(holding, D, ideas=[_idea(level=900.0, dived="2026-09-01")],
+                          actions=nse)
+    assert ev.invalidation_level == 180.0
+    assert case_broken_reasons(ev, 181.0) == []
+
+
+@pytest.mark.parametrize("write", [True, False])
+def test_pr005_case_write_off_reads_the_shelf_again_and_writes_no_version(monkeypatch,
+                                                                          tmp_path, write):
+    """PR-005's rollback (review L2). AAA has a case with ₹470 (in the buy day's rupees,
+    ₹500 entry). DDD's case has a pillar watching results (the world's positive results
+    event of 21 Oct) and waits on NSE's list, unread at its buy (its level ₹285 of 1 Sep).
+    Today's sync reads both lists.
+
+    Case writing on: AAA's evidence reads the case's ₹470; DDD's price is worked again
+    from today's list, ₹285 inside (₹264, ₹291] (ATR 2%, stop 12%), version 2; the
+    results re-check its pillar, version 3. Off: AAA's evidence reads the shelf's ₹455
+    again, as before PR-005, and no case gets a version. (AAA is sold today, so only the
+    holdings kept are reviewed.)"""
+    import core.portfolio.cases as C
+    import core.portfolio.pipeline as pipeline
+    import pandas as pd
+    from backend.shared.schemas.cases import Invalidation, InvestmentCase, Pillar
+    from core.events.store import EventStore
+    from core.portfolio.corp_actions import action_record
+
+    store = _pipeline_world(monkeypatch, tmp_path, "shadow")
+    monkeypatch.setattr(settings, "ADVISOR_CASE_WRITE", write)
+    nse = {s: action_record([DIVIDEND_AUG], s) for s in ("AAA", "DDD")}
+    monkeypatch.setattr(pipeline, "sync_corp_actions",
+                        lambda s, d: {"applied": 0, "records": nse})
+    events = EventStore(tmp_path / "events")          # the world's: DDD's results event
+    monkeypatch.setattr("core.events.store.EventStore", lambda *a, **k: events)
+    days = pd.bdate_range(end=pd.Timestamp(D), periods=120)
+    monkeypatch.setattr(C, "_price_history", lambda s: pd.DataFrame(
+        [(303.0, 297.0, 300.0)] * 120, columns=["High", "Low", "Close"], index=days))
+    held = {h.symbol: h for h in store.load().holdings}
+    cases = C.CaseStore("u1", str(store._dir.parent))
+
+    def case(symbol, entry, invalidation):
+        return InvestmentCase(
+            symbol=symbol, user_id="u1", opened_on=held[symbol].buy_date, entry_price=entry,
+            pillars=[Pillar(claim="Margins hold", watch_categories=["results"])],
+            invalidation=invalidation, written="after_purchase", author="deterministic",
+            buy_path="backfill", created_at="2026-09-01T16:45:00+05:30",
+            as_of="2026-09-01T16:45:00+05:30")
+    assert cases.append(case("AAA", 500.0, Invalidation(price=470.0, price_at_dive=455.0,
+                                                        dived="2026-10-01")))
+    assert cases.append(case("DDD", 300.0, Invalidation(
+        price_at_dive=285.0, dived="2026-09-01", read_gap=True,
+        gap="level 285.00 not used: NSE's list read today is empty or was not read")))
+
+    pipeline.run_post_review_pipeline(D)
+    rows = {r["symbol"]: r for r in store.load_exit_shadow()}
+    aaa = rows["AAA"]["evidence"]
+    versions = {s: [c.version for c in cases.versions(s)] for s in ("AAA", "DDD")}
+    if write:
+        assert aaa["invalidation_level"] == 470.0
+        assert aaa["invalidation_source"].startswith("investment case of")
+        assert versions == {"AAA": [1], "DDD": [1, 2, 3]}
+        v2, v3 = cases.versions("DDD")[1:]
+        assert v2.change.startswith("invalidation price re-read on 2026-10-23: 285.00")
+        assert (v3.invalidation.price, v3.invalidation.stop_price, v3.invalidation.noise_line,
+                v3.invalidation.read_gap) == (285.0, 264.0, 291.0, False)
+        assert v3.pillars[0].last_checked == D.isoformat()
+    else:
+        assert aaa["invalidation_level"] == 455.0
+        assert not aaa["invalidation_source"].startswith("investment case")
+        assert versions == {"AAA": [1], "DDD": [1]}

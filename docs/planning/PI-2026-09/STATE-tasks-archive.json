@@ -2561,6 +2561,14 @@
       "fields": {
         "sequencing_note": "Before PR-033: its two weeks start at its deploy. Probe first (dates and the full result list through OpenRouter); the read PR-043-W2 decides PR-044. Profit-path step: measure (for invest)."
       }
+    },
+    {
+      "id": "FIX-017",
+      "moved": "2026-11-19",
+      "fields": {
+        "sequencing_note": "Routing delegated (owner, 2026-10-13). Placed after FIX-015 at the end of the product track, so the owner's product order is unchanged. Revisit trigger: move it ahead if a held stock lists one of these rows with an ex-date after its buy, or if a production holding is TVSMOTORS or CANARABANK. FIX-016 fixes the same rows for grading only.",
+        "implementation_started": "2026-11-19 about 17:10 IST (autopilot 1119-1710-p3, code-server)"
+      }
     }
   ]
 }

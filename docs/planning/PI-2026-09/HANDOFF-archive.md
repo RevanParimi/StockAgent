@@ -14,6 +14,28 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 19 Nov, night (autopilot): FIX-017 → ACCEPTED (fresh review); merged into `main`
+
+- **Autopilot session `1119-2135-p4`**, a `continue` on the code-server from about 21:35 IST,
+  outside a push window. `main` = `23cf041`, 21 commits ahead of `origin/main` `3f26ae5`.
+- **Input verified:** `story/FIX-017` = `b425f8c`; digest `77549aaf…` = the implementation
+  receipt. Reviewed in a detached worktree; focused suites 342 passed; reviewer mutants 9 of 9.
+- **Every row NSE lists today** (202 tickers, 3,310 rows, read 19 Nov) through the sync before
+  and after: alike but nine rows, each the intended way (BAJFINANCE ×10; five short splits
+  read; ZEEL, DRREDDY, TVSMOTOR named, not multiplied). No dividend changed.
+- **Low, to BACKLOG:** B-23 (beside a scheme, a bonus of other securities named outside its
+  ratio's words reads as equity; latent), B-24 (a row's second dividend is never credited;
+  older). Nit N1 joins B-22.
+- **Merged** as `9c582e0`, code byte-identical to `b425f8c`; push pending to Fri 20 Nov 00:10.
+  New check `FIX-017-W1`. [Review receipt](evidence/FIX-017-review.md).
+
+## 19 Nov, evening (autopilot): FIX-017 implemented; its fresh review is next
+
+- **Autopilot `1119-1710-p3`**, no production read. The holding sync applies only the ratios
+  the grading reads and asks NSE under its own code (CANARABANK as CANBK). A bonus-and-split row
+  is ×2 and ×5; short split words are splits; a bonus of preference shares, debentures or NCRPS
+  is a named gap. BACKLOG B-21, B-22.
+
 ## 19 Nov, morning (autopilot): PR-005 → ACCEPTED (second fresh review); merged into `main`
 
 - **Autopilot session `1119-0826-p6`**, a `continue` on the code-server: started 08:26 IST, held

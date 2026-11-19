@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-19 (FIX-017 awaits its fresh review on `story/FIX-017`; PR-043 done, push pending; PR-033's probe run waits for your word; in a push window PR-015 switches)
+# Current handoff - 2026-11-19 (FIX-017 accepted and merged; push pending to Fri 20 Nov 00:10; in a push window PR-015 switches, outside one CLEAN-004; PR-033's probe run waits for your word)
 
 **Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
 
@@ -36,12 +36,14 @@
   with the 00:10 push; an analysis missing data cannot buy; exits are never blocked.
 - **PR-043 is done** ([receipt](evidence/PR-043.md)): the search also goes to Parallel and Exa,
   recorded, never read; ships with the next push.
-- **Next `continue` outside a window:** FIX-017's fresh review (REVIEW.md, a detached worktree
-  of `story/FIX-017`; [receipt](evidence/FIX-017-implementation.md)); on acceptance it merges
-  into `main`. PR-033's probe run waits for your word.
-- **Git:** `origin/main` = `3f26ae5`; `main` is 21 commits ahead (PR-037's and PR-005's merges,
-  PR-043, FIX-017's records), push pending to Fri 20 Nov 00:10. `story/PR-015` and
-  `story/FIX-017` are local.
+- **FIX-017 is done** ([review](evidence/FIX-017-review.md)), merged as `9c582e0`: the holding
+  sync asks NSE under its own code and applies only the ratios the grading reads; ships with the
+  next push. `FIX-017-W1` reads the first 16:30 review after the deploy.
+- **Next `continue` outside a window:** PR-015 waits for one, so CLEAN-004 (first ready in
+  order). PR-033's probe run waits for your word.
+- **Git:** `origin/main` = `3f26ae5`; `main` is 23 commits ahead (PR-037's, PR-005's and
+  FIX-017's merges, PR-043, records), push pending to Fri 20 Nov 00:10. `story/PR-015` is
+  local; merging it gives the same three KT conflicts as before FIX-017.
 
 ## Waits for you
 
@@ -61,6 +63,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | From | Row | What |
 |---|---|---|
 | Fri 20 Nov | `PR-042-W0` | after the 00:10 deploy: the gate reads enforce |
+| Fri 20 Nov§ | `FIX-017-W1` | after the 16:30 review: the sync's data-health lines and applied ratios |
 | Sat 21 Nov | `PR-038-R1` | the PR-038 re-read |
 | Sat 21 Nov§ | `PR-043-W1` | the first Saturday's shadow rows |
 | Tue 24 Nov | `FIX-032-W1` | your re-run of FIX-032's probe |
@@ -115,13 +118,6 @@ is deployed by Fri 20 Nov and that day's review opens a position; a later first 
 
 - **Autopilot `1119-1629-p1`**, no production read. 15 November deploys shaped and in the same
   probe (dry run: 2 passed); CLEAN-007 verified from `CLEAN-007-W1`; no November closure.
-
-## 19 Nov, evening (autopilot): FIX-017 implemented; its fresh review is next
-
-- **Autopilot `1119-1710-p3`**, no production read. The holding sync applies only the ratios
-  the grading reads and asks NSE under its own code (CANARABANK as CANBK). A bonus-and-split row
-  is ×2 and ×5; short split words are splits; a bonus of preference shares, debentures or NCRPS
-  is a named gap. BACKLOG B-21, B-22.
 
 # START HERE — standing rules
 

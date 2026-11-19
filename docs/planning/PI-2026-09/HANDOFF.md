@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-19 (PR-037 merged, push pending; the PR-038 read not yet decidable; the PR-039 report run, new PR-041; PR-005 accepted and merged; in a push window PR-015 switches)
+# Current handoff - 2026-11-19 (PR-043's probe: no dates, your route; PR-037 and PR-005 merged, push pending; PR-038 not yet decidable; in a push window PR-015 switches)
 
 **Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
 
@@ -26,8 +26,6 @@
      [PR-037's receipt](evidence/PR-037-implementation.md), "Rollout") before
      its own phase.
   2. **The PR-038 read: not yet decidable** (19 Nov, below); the band stays.
-  3. **The PR-039 report ran** (19 Nov, read-only; [evidence/PR-039.md](evidence/PR-039.md),
-     "Phase 3"): the screen's cut chose; new card PR-041 (P2, after PR-018) grades it forward.
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
   Mondays; the next opens Fri 20 Nov 00:10): **PR-015's switch** (your word, 18 Nov about 07:05
   IST): merge `story/PR-015` (`12b7901`) into `main` (three conflicts, checked on `40d04d5`, all in
@@ -48,19 +46,20 @@
   00:10 push brings it live. An analysis whose prices, financials or peers did not arrive reads
   INSUFFICIENT DATA, so it cannot buy or make a shelf idea; exits and trims are never blocked
   ([evidence/PR-042.md](evidence/PR-042.md)). `PR-042-W0` after the deploy, `-W1` from Fri 27 Nov.
-- **New, at your word:** [PR-043](stories/PR-043.md) (P1): Exa beside Serper, two weeks
-  recorded, not read; a probe first (do dates come back through OpenRouter?).
-  [PR-044](stories/PR-044.md) (P2, after PR-017): the deep dive reads Exa, only if
-  `PR-043-W2` passes.
-- **Next `continue` outside a window:** PR-043, then PR-033 (PR-038 waits for its re-read).
-- **Git:** `origin/main` = `3f26ae5`; `main` is 12 commits ahead with this records commit
+- **PR-043's probe ran and stopped** (19 Nov, 16:00 IST; [receipt](evidence/PR-043.md)): Exa
+  through OpenRouter returns all 10 results with excerpts, but no publish date (0 of 100) and no
+  date filter; $0.0075 a call. By its card, nothing is built until you choose a route (below).
+  [PR-044](stories/PR-044.md) follows PR-043.
+- **Next `continue` outside a window:** PR-033 (PR-038 waits for its re-read).
+- **Git:** `origin/main` = `3f26ae5`; `main` is 15 commits ahead with this records commit
   (PR-037's and PR-005's merges among them), push pending to Fri 20 Nov 00:10. `story/PR-015` is
   local only.
-- **The investment track** in STATE's order: PR-035, PR-036, PR-037 (merged), FIX-015, PR-015,
-  PR-038 (blocked), PR-039 (run), PR-005 (merged), then PR-033 and PR-034.
 
 ## Waits for you
 
+- **PR-043's route:** A, an Exa account of its own (dates and a date filter; recommended: sign
+  up, put the key in Railway or say to); B, OpenRouter with dates read from the URL or excerpt
+  (42 of 100 had none; changes the read's rule); C, stop (PR-044 stops too).
 - **PR-005's backfill**, after its deploy: say "run the PR-005 backfill" (a dry
   run, then `--apply`: one model call per holding; the command is in its receipt).
 - **PR-038's re-read** (Sat 21 Nov, `PR-038-R1`): your word in that session, or you run it.
@@ -91,7 +90,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 \* If the deposit is recorded on Thu 19 Nov; a later deposit moves both. † If PR-037 is deployed
 and its catch-up run made by Fri 20 Nov; a later deploy moves it by as many weeks. ‡ If PR-005
 is deployed by Fri 20 Nov and that day's review opens a position; a later first buy moves it.
-§ If PR-043 deploys in the Sat 21 Nov 00:10 window; a later deploy moves it by as many days. `PR-014-D1`, `R1` and
+§ Waits for PR-043's route; it moves by as many days as the deploy. `PR-014-D1`, `R1` and
 `R2` keep their dates; their baseline note says capital changes on the deposit day.
 
 ## 18 Nov, night (autopilot): PR-015 prepared on `story/PR-015`; the switch waits for your word

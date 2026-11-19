@@ -415,7 +415,7 @@ rl:
   research_max_attempts: 3
   research_context_max_chars: 6000
   # -- Control lane + monthly scorecard (Phase 1) ---------------------------
-  control_lane_enabled: true
+  control_lane_enabled: false
   control_lane_model: ""           # empty -> llm.model_reasoning
   scorecard_enabled: true
   # -- Living Envelope (Phase 2.5) ------------------------------------------

@@ -194,15 +194,12 @@ def test_run_daily_review_writes_dossier_and_event_tags(tmp_path, monkeypatch):
     monkeypatch.setattr(DossierCurator, "_call_llm",
                          lambda self, *a, **k: json.dumps(dossier_payload))
 
-    # Step 10: Control lane LLM call — fixed prediction payload.
+    # The daily second model call (the control lane) is off in config.yaml:
+    # the review must not run it.
     import core.intelligence.rl.agents.control_lane as control_lane_mod
-    control_payload = json.dumps({
-        "direction": "FLAT", "confidence": 0.5, "predicted_close": 100.1,
-        "rationale": "Quiet session, no strong catalysts.",
-    })
-    monkeypatch.setattr(
-        control_lane_mod, "_call_llm",
-        lambda *a, **k: (control_payload, "test-control-model"))
+    control_calls = []
+    monkeypatch.setattr(control_lane_mod, "run_control_lane_step",
+                        lambda *a, **k: control_calls.append(a))
 
     # --- Run ---
     summary = dr.run_daily_review(ticker, review_date, sector=sector)
@@ -226,14 +223,9 @@ def test_run_daily_review_writes_dossier_and_event_tags(tmp_path, monkeypatch):
     assert len(todays_obs) >= 1
     assert todays_obs[0].observation == "seeded obs"
 
-    # Step 10 — control log written with 1 prediction for the next trading day.
-    control_log = store.load_control_log(cycle_id)
-    assert len(control_log.entries) == 1
-    prediction = control_log.entries[0]
-    assert prediction.date == "2026-06-11"
-    assert prediction.made_on == date_str
-    assert prediction.predicted_direction == "FLAT"
-    assert prediction.model == "test-control-model"
+    # No control call and no control log: the second model call is off.
+    assert control_calls == []
+    assert store.load_control_log(cycle_id).entries == []
 
 
 # ---------------------------------------------------------------------------

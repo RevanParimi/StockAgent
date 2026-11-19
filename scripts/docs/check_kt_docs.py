@@ -179,7 +179,7 @@ def main(argv: list[str] | None = None) -> None:
 
     config = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
     claims = {"scheduler.enabled": False, "scheduler.feedback_cron": "30 16 * * mon-fri",
-              "rl.hard_bind_verdict_enabled": True, "rl.control_lane_enabled": True,
+              "rl.hard_bind_verdict_enabled": True, "rl.control_lane_enabled": False,
               "rl.scorecard_enabled": True, "ipo.enabled": True, "ipo.gmp_enabled": False,
               "delivery.enabled": True, "delivery.email_enabled": False, "delivery.push_enabled": True,
               "watchdog.enabled": True, "watchdog.prep_enabled": True, "audit.enabled": True}

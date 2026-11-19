@@ -14,6 +14,44 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 19 Nov, morning (autopilot): PR-005 → ACCEPTED (second fresh review); merged into `main`
+
+- **Autopilot session `1119-0826-p6`**, a `continue` on the code-server: started 08:26 IST, held
+  by usage limits, working from about 09:57 IST, outside a push window. `main` = `508c391`,
+  eight commits ahead of `origin/main` `3f26ae5`.
+- **Input verified:** `story/PR-005` = `bc82a06` (parent `4407b13`); fix digest `fe95cfb8…` =
+  the implementation receipt. Reviewed in a detached worktree of `bc82a06`.
+- **Checks:** story suites 234 passed; the first review's cases 7 passed (RV1 to RV3's marks
+  removed); new cases 303 passed + 1 strict xfail (`analysis_data/pr005_review/test_rv2_pr005.py`:
+  a retry after a bonus, a re-dive between two actions, an ADD, a 300-seed property); mutants 13
+  of 16 caught (2 unpinned, 1 equivalent); full suite on `bc82a06` 6,877 passed / 12 skipped / 1 xfailed / 0 failed; on the merge 6,890 / 12 / 1 / 0; guards pass.
+- **Findings:** none critical, high or medium. N1, low: the retry's buy-day entry is right but
+  unpinned (BACKLOG B-16). N2, low: "lakh-crore" with a hyphen reads as "lakh" (B-17).
+- **Merged** into `main` as `40d04d5`; it ships with the next push (from Fri 20 Nov 00:10).
+  After the deploy: `PR-005-W1`, and the backfill at your word.
+
+## 19 Nov, morning (autopilot): PR-005's fix; its second fresh review next
+
+- **Autopilot `1119-0805-p4`**, from about 08:05 IST: **`bc82a06` on `story/PR-005`.** M1: a
+  case written after the buy keeps the buy day's rupees; L1 to L4 as asked (L4: a failed NSE
+  read is retried as a new version). Mutants 17 of 17; the full suite passed.
+
+## 19 Nov, morning (autopilot): PR-005's fresh review asks for changes
+
+- **Autopilot `1119-0715-p1`**, code-server, from 07:15 IST. **`4407b13`: changes requested.**
+  At purchase it is right. M1: a case written after the buy stores its price outside the buy
+  day's basis, so the evidence rule loses the sale the shelf rule makes (about ₹20,000 on
+  ₹3.2 L). Its decisions 1 and 2 stand; 2 not for a failed NSE read (L4).
+
+## 19 Nov, early morning (autopilot): PR-005 implemented on `story/PR-005`; its fresh review next
+
+- **Autopilot `1118-0904-p6`**, code-server: started 18 Nov 09:04 IST, finished 19 Nov from
+  about 04:58 IST. Decision path.
+- **`4407b13` on `story/PR-005`:** each opening buy (SWITCH, deployment, manual add) writes an
+  append-only case; code checks every figure; the case's invalidation price is in the buy day's
+  rupees and used only between the stop and 1.5 ATR below the entry; RR-L1 and T1; pillars
+  challenged by events, never a sale; `GET /portfolio/cases`; a backfill script.
+
 ## 18 Nov, morning (autopilot): PR-037 → ACCEPTED (fresh review); held on `story/PR-037` for your word
 
 - **Autopilot session `1118-0834-p4`**, a `continue` on the code-server from about 08:34 IST,

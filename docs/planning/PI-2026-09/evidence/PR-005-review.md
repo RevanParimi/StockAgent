@@ -183,3 +183,151 @@ L1 to L4 in the same phase (a phase that leaves one out records it as a BACKLOG 
 trigger). It stays decision path, so the new revision needs another fresh review. Nothing merges
 into `main` and the backfill does not run until then. After PR-015 merges, `story/PR-005` meets
 one documents conflict in KT section 6: keep both texts.
+
+## Second fresh review, 19 Nov: `bc82a06` accepted
+
+**Review context: fresh session.** Autopilot session `1119-0826-p6` on the code-server, a new
+conversation opened with "continue": started 08:26 IST, held by usage limits, working from about
+09:57 IST, outside a push window. The fix phase (`1119-0805-p4`) had ended. `main` = `508c391`,
+`origin/main` = `3f26ae5` after a fetch. Production was not read. No model was called; nothing
+was pushed, deployed, run or sent.
+
+**Lane:** decision path, confirmed (the case's invalidation price is what the evidence exit rule
+sells on).
+
+**Verdict: ACCEPTED** for `bc82a06`. M1 and L1 to L4 are resolved as asked. No critical, high or
+medium finding. Two low findings go to BACKLOG (B-16, B-17).
+
+### Review input, verified
+
+| Check | Result |
+| --- | --- |
+| Branch | `story/PR-005` = `bc82a06`, parent `4407b13`; `git merge-base main story/PR-005` = `f5eefa3` |
+| Fix digest | `git diff 4407b13 bc82a06 \| sha256sum` = `fe95cfb800bd2ba7…` = the implementation receipt; 11 files, +637 / −65 |
+| Story digest | `git diff f5eefa3 bc82a06 \| sha256sum` = `5f7816f502ad50c3…` |
+| Where it ran | a detached worktree of `bc82a06` in the session's scratchpad |
+| Merge | `git merge-tree main story/PR-005`: clean |
+
+### Contract checked: the first review's asks
+
+- **M1, the backfill's entry.** `buy_day_entry` multiplies the adjusted cost by the ratio of each
+  bonus or split the holding applied after the buy. The sync divides the cost by exactly those
+  (`apply_actions_to_holding`: `buy < ex <= today`), so the product undoes them. RV1 passes. With
+  an ADD the merge keeps the first buy date and averages in today's rupees, so the entry is the
+  holding's blended cost in the buy day's rupees, the cost the stop is measured from (RV6).
+- **M1, a dive after the buy.** `level_at_buy` multiplies the level back by each bonus or split ex
+  in (buy, dive], from the holding's applied actions and NSE's list, keyed. I checked that the
+  union cannot count one action twice: NSE's parsed rows (`ActionRecord.actions`) are the same
+  `parse_action` objects the sync applies (`_read_ratio` only filters), with the same key
+  (`symbol|ex|desc[:40]`), and `setdefault` keeps the holding's own. A row NSE lists in (buy, dive]
+  that the holding has not applied yet is applied by the next sync, which runs before that day's
+  evidence; a row the sync applied but `_read_ratio` refuses is in `unparsed`, so both
+  `level_at_buy` and `level_after_buy` leave the price unused. RV2 passes. The expectation's
+  target goes through the same function.
+- **L1.** "lakh crore", "lakh Cr", "lacs crores" and "thousand crore" are units of their own.
+  RV3 passes. A hyphen between the words is not read (N2).
+- **L2.** With `advisor.case_write: false` the pipeline builds no case store: `EvidenceReader`
+  gets `cases=None` and reads the shelf idea's level; the retry and the pillar review do not run;
+  `write_for_buy` returns before writing for a SWITCH, a deployment buy and a manual add.
+  `GET /portfolio/cases` only reads.
+- **L3.** The four issue-time edges are pinned in the story's tests.
+- **L4.** `read_gap` is set for an empty, failed or short NSE list and for an unknown ATR, never
+  for a refusal by the window or the basis rules. `retry_invalidation` runs after the review's
+  trades, from the case's own level, dive day, buy day and entry, with the ATR to the buy day;
+  a result that settles is a new version, read from the next review day (`EvidenceReader`'s
+  `before=`). A retry keeps `written`, `as_of`, the pillars and the business conditions, and
+  names the change.
+
+The card's hard-review question "can the case be written after the fact and look original?" now
+holds for prices too: a backfilled price equals the price a case written at purchase holds, and
+`written: after_purchase` still says when it was written.
+
+### Reviewer cases, worked by hand
+
+`analysis_data/pr005_review/test_rv2_pr005.py` (ignored; sha256 `d11fc47f93d1b25e…`), copied into
+`tests/unit/` of the worktree: **303 passed, 1 strict xfail**. The first review's file
+`test_rv_pr005.py` with RV1 to RV3's marks removed (sha256 `f6de436cfa8ffaaf…`): **7 passed**.
+
+- **RV4 (L4 with a bonus):** a deployment buy on 23 Oct at ₹212 with NSE's list unread; a 1:1
+  bonus ex 26 Oct, applied by that day's sync. The retry on 26 Oct stores ₹200 (not ₹100) with the
+  window ₹186.56 / ₹205.64; on 27 Oct the case reads ₹100, as the shelf rule does; ₹99 breaks the
+  case, ₹101 does not.
+- **RV5 (backfill, a re-dive between two actions):** a 1:1 bonus ex 2 Nov, a re-dive on 7 Nov at
+  ₹100, a ×5 split ex 10 Nov, cost ₹21.20. Entry ₹212, price ₹200 (×2 for the bonus only), ₹20
+  on 13 Nov, the shelf rule's ₹100 ÷ 5; ₹19.90 breaks, ₹20.10 does not.
+- **RV6 (an ADD, observation):** 10 at ₹212, a 1:1 bonus, 20 more at ₹100: cost ₹103, ₹206 in
+  the buy day's rupees; stop ₹181.28, noise line ₹199.82; ₹200 is not used (noise side).
+- **RV7 (property, 300 seeds):** random bonuses and splits from 1 Sep to 13 Nov, a dive before or
+  after the buy: the case's level on 13 Nov equals the dive's level divided by every ratio ex
+  after the dive (worked independently of the code), and equals PR-009's shelf reading.
+- **RV8 (N2):** strict xfail: "₹1.5 lakh" passes against "₹1.5 lakh-crore".
+
+### Mutants
+
+16 single-line changes to the fix (script in the session's scratchpad), each run against the
+story's own `test_investment_case_pr005.py` and `test_exit_evidence_pr009.py`: **13 caught**
+(the buy-day action in the entry; coverage to the dive; the dive-day check; the registry check;
+the level not put back; the backfill's applied actions; a short read appended; a failed read never
+retried; an unknown ATR not a read gap; the retry's ATR to the retry day; the retry not called;
+the rollback keeping the store; two-word units off). **3 survived:** the retry's entry taken from
+today's cost and the retry without the applied actions (N1; RV4 catches the first); an applied
+demerger ignored when a later dive is put back, which is equivalent, since `level_after_buy`
+leaves the price unused for any applied demerger after the buy.
+
+### Findings
+
+| # | Severity | Where | What | Disposition |
+| --- | --- | --- | --- | --- |
+| N1 | Low, tests | `core/portfolio/cases.py:978-979` (`retry_invalidation`) | The retry's entry (`case.entry_price`) and applied actions are right but unpinned: a mutant that works the retry from today's cost, M1's own error, passes the story's tests | BACKLOG B-16 |
+| N2 | Low, words only | `core/portfolio/cases.py:100` (`_FIGURE_RE`) | "₹1.5 lakh-crore" is read as "1.5 lakh", so a fact "₹1.5 lakh" passes against it; "trillion" and "k" are not units either | BACKLOG B-17 |
+
+**N1, what it would cost:** nothing today; the code is right. A later edit that took the entry
+from the holding's cost would refuse ₹200 after a bonus, as M1 did: about ₹20,000 on a
+₹3,20,000 holding whose case waited on a retry. RV4 is the test to copy.
+
+**N2:** pillar words move no money; PR-010 will show them on the portfolio screen.
+
+### Commands and results
+
+- `pytest -q tests/unit/test_investment_case_pr005.py tests/unit/test_exit_evidence_pr009.py
+  tests/unit/test_exit_fix016.py`: 234 passed (9.0 s).
+- Reviewer cases: as above.
+- **Full suite on `bc82a06`** (the worktree, without `-n`): 6,877 passed / 12 skipped / 1 xfailed / 0 failed
+  (6m08s, about 10:07-10:13 IST; `node_modules` linked, so the two browser files ran).
+- **Merged into `main` as `40d04d5`** (`git merge --no-ff`, no conflict): each of the 18 files
+  carries exactly the reviewed added and removed lines; 5 also hold `main`'s own later edits.
+  **Full suite on `40d04d5`** (a detached worktree): 6,890 passed / 12 skipped / 1 xfailed / 0
+  failed (6m12s, about 10:13-10:20 IST).
+- `scripts/ci/check_broad_except.py`: OK (148 grandfathered). `scripts/docs/check_kt_docs.py`:
+  errors `[]`.
+- **Not run:** a browser check (no screen changed); production (not read); the model (stubbed).
+
+### Acceptance checklist
+
+| Criterion | Verdict |
+| --- | --- |
+| A fixture case holds only bundle figures; an invented number stores the deterministic case | Met (N2 is a low gap in units) |
+| No input dated after the case's creation (FIX-004) | Met; L3's edges pinned |
+| Each buy path writes one version 1; a re-run writes none | Met |
+| A contradicting event challenges the matching pillar and cites it; news never sells | Met |
+| A backfilled case is `after_purchase` | Met |
+| A member reads only their own cases | Met |
+| Routed: the price in the buy day's basis, never the dive's raw level; the window from the entry | Met, also for a case written after the buy (RV1, RV2, RV4, RV5, RV7) |
+| Routed: RR-L1 fixtures each side; T1 pinned; converted once | Met |
+| Rollback: stop writing cases; stored cases stay as history | Met (L2) |
+| Living documents (KT 3, 4, 6, 11; CODEBASE; AUTOPILOT_GUIDE; guide case 07-U) | Met; KT section 12's row reads Done with the records commit |
+
+### Decision and follow-up state
+
+**Accepted.** PR-005 is `done`, merged into `main` as `40d04d5`. Not pushed (outside a window): it
+ships with the next push, from Fri 20 Nov 00:10. Production verification:
+`pending_deployment`; after the deploy, `PR-005-W1` reads the first cases written at purchase.
+The backfill runs once at the owner's word after the deploy (the implementation receipt,
+"Rollout and rollback").
+
+**For PR-015's merge tonight** (`git merge-tree main story/PR-015` on `40d04d5`): three conflicts,
+all in `docs/TECHNICAL_DESIGN.md`. Section 1's table: keep `main`'s "Idle cash" row and PR-015's
+"Exit rule" row. Section 4's company-events paragraph: PR-015's sentence on the evidence rule,
+then `main`'s "The investment case reads it to challenge a holding's pillars (section 6)" and
+"**Planned:** PR-007, PR-008". Section 11: `main`'s "Own a stock for a reason" bullet (PR-005 is
+built) and PR-015's "Sell on evidence" bullet.

@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-19 (PR-037 merged, push pending; the PR-038 read not yet decidable; the PR-039 report run, new PR-041; PR-005 fixed, its second fresh review next; in a push window PR-015 switches)
+# Current handoff - 2026-11-19 (PR-037 merged, push pending; the PR-038 read not yet decidable; the PR-039 report run, new PR-041; PR-005 accepted and merged; in a push window PR-015 switches)
 
 **Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
 
@@ -30,25 +30,30 @@
      "Phase 3"): the screen's cut chose; new card PR-041 (P2, after PR-018) grades it forward.
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
   Mondays; the next opens Fri 20 Nov 00:10): **PR-015's switch** (your word, 18 Nov about 07:05
-  IST): merge `story/PR-015` (`12b7901`) into `main` (one conflict, checked on `ab18c77`: KT
-  section 1's table; keep `main`'s "Idle cash" and PR-015's "Exit rule"),
+  IST): merge `story/PR-015` (`12b7901`) into `main` (three conflicts, checked on `40d04d5`, all in
+  the KT: sections 1, 4 and 11; how to keep both is in [PR-005's review](evidence/PR-005-review.md),
+  "Decision"),
   the full suite on the exact commit, push, check the deploy and `/health`, add `PR-015-W1`
   ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md)).
 - **PR-036 is live and the ₹90 L is in** (19 Nov): deposit 06:34 IST at your confirmation: ₹1 crore in, cash ₹95,04,483, 7
   holdings ([evidence/PR-036.md](evidence/PR-036.md), "Rollout"). Next, read-only: today's 16:30
   `deployment` record (about ₹3,20,000 a position, at most 5 bought; step 4); `PR-036-W5` and
   `-W10` keep their dates.
-- **Outside a window: PR-005's second fresh review** of `bc82a06` on `story/PR-005`
-  ([receipt](evidence/PR-005-implementation.md), "Fix phase"); RV1 to RV3 now pass (drop their
-  xfail marks). It merges only on acceptance; the backfill after that.
-- **Git:** `origin/main` = `3f26ae5`; `main` is 8 commits ahead with this records commit, push pending to Fri 20 Nov 00:10. `story/PR-015` and `story/PR-005`
-  (`bc82a06`) are local only (PR-005 meets PR-015 in KT section 6: keep both).
+- **PR-005 is accepted and merged** (19 Nov, `40d04d5`;
+  [review](evidence/PR-005-review.md), "Second fresh review"): it ships with the next push.
+  After the deploy, `PR-005-W1` reads the first cases written at purchase; the backfill waits
+  for your word. Two low findings went to BACKLOG (B-16, B-17).
+- **Next `continue` outside a window:** PR-033, the first ready planned card (PR-038 waits for
+  its re-read).
+- **Git:** `origin/main` = `3f26ae5`; `main` is 12 commits ahead with this records commit
+  (PR-037's and PR-005's merges among them), push pending to Fri 20 Nov 00:10. `story/PR-015` is
+  local only.
 - **The investment track** in STATE's order: PR-035, PR-036, PR-037 (merged), FIX-015, PR-015,
-  PR-038 (blocked), PR-039 (run), PR-005 (fixed, second review), then PR-033 and PR-034.
+  PR-038 (blocked), PR-039 (run), PR-005 (merged), then PR-033 and PR-034.
 
 ## Waits for you
 
-- **PR-005's backfill**, after its acceptance and deploy: say "run the PR-005 backfill" (a dry
+- **PR-005's backfill**, after its deploy: say "run the PR-005 backfill" (a dry
   run, then `--apply`: one model call per holding; the command is in its receipt).
 - **PR-038's re-read** (Sat 21 Nov, `PR-038-R1`): your word in that session, or you run it.
 - **Optional:** the weekly watchdog line "No off-site copy has ever been confirmed" stays while it
@@ -63,6 +68,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 |---|---|---|
 | Sat 21 Nov | `PR-038-R1` | the PR-038 re-read |
 | Tue 24 Nov | `FIX-032-W1` | your re-run of FIX-032's probe |
+| Wed 25 Nov‡ | `PR-005-W1` | the first cases written at purchase, and any price retried |
 | Thu 26 Nov* | `PR-036-W5` | share invested and holdings, 5 sessions after the deposit |
 | Tue 1 Dec | `PR-014-D1` | the door read: what the buy list offered and refused (and BACKLOG B-13) |
 | Tue 1 Dec | `FIX-015-W1` | every shock sale since the deploy, read with `PR-014-D1` |
@@ -72,7 +78,8 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Mon 11 Jan 2027 | `PR-014-R2` | results at 8 weeks; whether to promote CLEAN-006 |
 
 \* If the deposit is recorded on Thu 19 Nov; a later deposit moves both. † If PR-037 is deployed
-and its catch-up run made by Fri 20 Nov; a later deploy moves it by as many weeks. `PR-014-D1`, `R1` and
+and its catch-up run made by Fri 20 Nov; a later deploy moves it by as many weeks. ‡ If PR-005
+is deployed by Fri 20 Nov and that day's review opens a position; a later first buy moves it. `PR-014-D1`, `R1` and
 `R2` keep their dates; their baseline note says capital changes on the deposit day.
 
 ## 18 Nov, night (autopilot): PR-015 prepared on `story/PR-015`; the switch waits for your word
@@ -90,22 +97,6 @@ and its catch-up run made by Fri 20 Nov; a later deploy moves it by as many week
 - **The receipt** fixes the rule before any data (above the band to 10% against inside it, mean
   30-session return against the Nifty, 15 a side) and holds the read, dry-run on a fixture.
 
-## 19 Nov, early morning (autopilot): PR-005 implemented on `story/PR-005`; its fresh review next
-
-- **Autopilot `1118-0904-p6`**, code-server: started 18 Nov 09:04 IST, finished 19 Nov from
-  about 04:58 IST. Decision path.
-- **`4407b13` on `story/PR-005`:** each opening buy (SWITCH, deployment, manual add) writes an
-  append-only case; code checks every figure; the case's invalidation price is in the buy day's
-  rupees and used only between the stop and 1.5 ATR below the entry; RR-L1 and T1; pillars
-  challenged by events, never a sale; `GET /portfolio/cases`; a backfill script.
-
-## 19 Nov, morning (autopilot): PR-005's fresh review asks for changes
-
-- **Autopilot `1119-0715-p1`**, code-server, from 07:15 IST. **`4407b13`: changes requested.**
-  At purchase it is right. M1: a case written after the buy stores its price outside the buy
-  day's basis, so the evidence rule loses the sale the shelf rule makes (about ₹20,000 on
-  ₹3.2 L). Its decisions 1 and 2 stand; 2 not for a failed NSE read (L4).
-
 ## 19 Nov, morning (autopilot): the PR-038 read, not yet decidable
 
 - **Autopilot `1119-0745-p2`**, from about 07:45 IST, read-only, at your word. Against the NIFTY
@@ -113,12 +104,6 @@ and its catch-up run made by Fri 20 Nov; a later deploy moves it by as many week
   early fail. A 10% limit adds 5 of 43 BUY dives (about ₹16 L).
 - **For `PR-014-R1`:** these Sep-Nov ideas trailed the Nifty wherever the price stood
   (inside the band, 30 sessions: −13.0%) while it rose 12.7% from 9 Oct.
-
-## 19 Nov, morning (autopilot): PR-005's fix; its second fresh review next
-
-- **Autopilot `1119-0805-p4`**, from about 08:05 IST: **`bc82a06` on `story/PR-005`.** M1: a
-  case written after the buy keeps the buy day's rupees; L1 to L4 as asked (L4: a failed NSE
-  read is retried as a new version). Mutants 17 of 17; the full suite passed.
 
 # START HERE — standing rules
 

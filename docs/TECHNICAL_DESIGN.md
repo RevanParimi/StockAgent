@@ -3915,7 +3915,7 @@ section 10) are part of the current design.
 | [PR-002](planning/PI-2026-09/stories/PR-002.md) | A weekly results scorecard with a "sold too early" check | Done | 7 Marksheets; 10 Delivery | None |
 | [PR-003](planning/PI-2026-09/stories/PR-003.md) | Fresh overnight news: no repeats, published-date freshness, global cues | Done | 10 Delivery | None |
 | [PR-004](planning/PI-2026-09/stories/PR-004.md) | Enough researched ideas to fill 10+ positions | Done | 8 Discovery | None |
-| [PR-005](planning/PI-2026-09/stories/PR-005.md) | An investment case for every position | Open | 6 Portfolio | PR-006 |
+| [PR-005](planning/PI-2026-09/stories/PR-005.md) | An investment case for every position | Done | 6 Portfolio | PR-006 |
 | [PR-006](planning/PI-2026-09/stories/PR-006.md) | A daily company-event feed for held, watched and shelf stocks | Done | 4 Research; 9 Jobs | None |
 | [PR-007](planning/PI-2026-09/stories/PR-007.md) | Plain, fact-grounded buy and sell explanations | Open | 6 Portfolio | PR-005, PR-006 |
 | [PR-008](planning/PI-2026-09/stories/PR-008.md) | "Your stocks overnight" at the top of the morning brief | Open | 10 Delivery | PR-003, PR-006 |

@@ -235,15 +235,60 @@
     return user;
   };
   window.saIsOwner = function (user) { return !!user && user.role === 'owner'; };
+
+  /* PR-040: the operator screens' code is the owner's only. A member's
+     browser never requests these files; an owner's requests them once
+     /auth/me (or sign-in) says role "owner", and App() re-renders on
+     'sa-operator'. sw.js does not list them either. Babel's own loader runs
+     them in order; the last, inline script marks the set loaded (a file
+     that failed is skipped, and its screen then says it could not load). */
+  window.SA_OPERATOR_FILES = ['agents-page.jsx', 'analytics.jsx', 'logs.jsx',
+                              'rl-data.jsx', 'rl-monitor.jsx'];
+  window.saOperatorState = 'none';            // none | loading | ready | failed
+  window.saOperatorLoaded = function () {
+    window.saOperatorState = 'ready';
+    try { window.dispatchEvent(new Event('sa-operator')); } catch (e) {}
+  };
+  window.saLoadOperator = function () {
+    if (window.saOperatorState === 'loading' || window.saOperatorState === 'ready') return;
+    if (!(window.Babel && window.Babel.transformScriptTags)) {
+      window.saOperatorState = 'failed';
+      try { window.dispatchEvent(new Event('sa-operator')); } catch (e) {}
+      return;
+    }
+    window.saOperatorState = 'loading';
+    const box = document.createElement('div');          // never attached: nothing else runs these
+    window.SA_OPERATOR_FILES.forEach(function (f) {
+      const el = document.createElement('script');
+      el.type = 'text/babel';
+      el.src = f;
+      box.appendChild(el);
+    });
+    const done = document.createElement('script');
+    done.type = 'text/babel';
+    done.text = 'window.saOperatorLoaded();';
+    box.appendChild(done);
+    window.Babel.transformScriptTags(box.getElementsByTagName('script'));
+  };
 </script>
 <script>
   /* PR-001: sample data is explicit. Only ?demo=1 installs the invented values
      in demo-fixtures.js, under a "Sample data" banner (the layout audit uses
      it). Otherwise every figure comes from the API or is shown as
-     unavailable; a failed request never falls back to a sample. */
+     unavailable; a failed request never falls back to a sample. PR-040: the
+     file itself is requested only then; data.jsx waits for it ('sa-demo-fixtures')
+     if it has not run yet, and never asks the API in demo mode. */
   window.saDemoMode = new URLSearchParams(location.search).get('demo') === '1';
+  if (window.saDemoMode) {
+    const fixtures = document.createElement('script');
+    fixtures.src = 'demo-fixtures.js';
+    fixtures.async = false;
+    fixtures.onload = function () {
+      try { window.dispatchEvent(new Event('sa-demo-fixtures')); } catch (e) {}
+    };
+    document.head.appendChild(fixtures);
+  }
 </script>
-<script src="demo-fixtures.js"></script>
 </head>
 <body>
 <div id="root"></div>
@@ -254,14 +299,7 @@
 <script type="text/babel" src="sphere.jsx"></script>
 <script type="text/babel" src="auth.jsx"></script>
 <script type="text/babel" src="home.jsx"></script>
-<script type="text/babel" src="agents-page.jsx"></script>
 <script type="text/babel" src="portfolio.jsx"></script>
-<script type="text/babel" src="learn.jsx"></script>
-<script type="text/babel" src="tweaks-panel.jsx"></script>
-<script type="text/babel" src="analytics.jsx"></script>
-<script type="text/babel" src="logs.jsx"></script>
-<script type="text/babel" src="rl-data.jsx"></script>
-<script type="text/babel" src="rl-monitor.jsx"></script>
 <script type="text/babel" src="brief-view.jsx"></script>
 <script type="text/babel" src="digest-view.jsx"></script>
 <script type="text/babel" src="weekly-view.jsx"></script>
@@ -271,13 +309,11 @@
 <script type="text/babel">
 const { useState, useEffect } = React;
 
-const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
-  "theme": "light",
-  "sphereMode": "wireframe"
-}/*EDITMODE-END*/;
+const SPHERE_MODE = 'wireframe';
 
 // Notification deep links: '#/inbox' or '#/inbox/<brief|digest|weekly|alerts>'.
 // One-shot: consumed (removed from the URL) so refresh doesn't re-trigger.
+// The Inbox lives on Today now (PR-040); the links keep their old form.
 function saConsumeDeepLink() {
   const m = /^#\/inbox(?:\/(brief|digest|weekly|alerts))?$/.exec(location.hash || '');
   if (!m) return null;
@@ -285,19 +321,53 @@ function saConsumeDeepLink() {
   return { screen: 'inbox', tab: m[1] || 'brief' };
 }
 
-// Operator tools: owner accounts only. A member never sees their chips, menu
-// entries or screens (PR-001); the server routes keep their own guards.
-const OPERATOR_SCREENS = ['analytics', 'logs', 'rl-monitor'];
+// Operator tools: owner accounts only (PR-001), loaded only for the owner
+// (PR-040). A member never sees their menu or screens; the server routes keep
+// their own guards.
+const OPERATOR_SCREENS = { 'agents': 'AgentsPage', 'analytics': 'AnalyticsPage',
+                           'logs': 'LogsPage', 'rl-monitor': 'RLMonitorPage' };
+
+// Which screen to draw for `screen`. Anything else (Learn, or a screen an
+// older cached script still offers) is Today. Scripts come from the service
+// worker's cache first, so the first open after a deploy can run this file
+// with the previous version's .jsx files: an old home.jsx has no Inbox
+// inside it, and then the old Inbox screen still opens.
+function saShownScreen(screen, isOwner) {
+  if (screen === 'auth' || screen === 'home' || screen === 'portfolio' || screen === 'settings') return screen;
+  if (screen === 'inbox') return !window.saTodayHoldsInbox && window.InboxPage ? 'inbox' : 'home';
+  if (OPERATOR_SCREENS[screen]) return isOwner ? screen : 'home';
+  return 'home';
+}
+
+// An operator screen, once its code has loaded.
+function OperatorScreen({ name, onNav, openChat }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const on = () => setTick(n => n + 1);
+    window.addEventListener('sa-operator', on);
+    return () => window.removeEventListener('sa-operator', on);
+  }, []);
+  const Page = window[OPERATOR_SCREENS[name]];
+  if (Page) return <Page onNav={onNav} openChat={openChat}/>;
+  const state = window.saOperatorState;
+  return (
+    <div style={{ minHeight:'100vh', background:'var(--bg-base)' }}>
+      {window.TopNav && <TopNav active={name} onNav={onNav}/>}
+      <div className="card sa-unavailable" style={{ maxWidth:640, margin:'32px auto', padding:24,
+        color:'var(--ink-3)', fontSize:13 }}>
+        {state === 'loading' || state === 'none'
+          ? 'Loading the operator tools…'
+          : 'This operator screen could not load. Reload the page to try again.'}
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const user = useSaUser();
   const isOwner = saIsOwner(user);
-  // Seed the theme from localStorage so it survives a reload; TWEAK_DEFAULTS
-  // still supplies it (and everything else) when nothing was ever stored.
-  const [tweaks, setTweak] = useTweaks({
-    ...TWEAK_DEFAULTS,
-    theme: (window.saGetTheme && window.saGetTheme()) || TWEAK_DEFAULTS.theme,
-  });
+  // The theme survives a reload through localStorage (saGetTheme/saSetTheme).
+  const [theme, setTheme] = useState(() => (window.saGetTheme && window.saGetTheme()) || 'light');
   const [deepLink] = useState(saConsumeDeepLink);          // lazy: runs once
   // M0: a stored bearer token is the auth signal (validated at boot below).
   const hasToken = !!(window.saGetToken && window.saGetToken());
@@ -309,25 +379,21 @@ function App() {
   const [chat, setChat] = useState(false);
   const [, forceRender] = useState(0);
 
-  // Settings' Appearance segment writes here (via setTheme below). Go through
-  // saSetTheme so the choice is persisted and the header toggle hears about it.
+  // Settings' Appearance segment writes here. Go through saSetTheme so the
+  // choice is persisted and the header toggle hears about it.
   useEffect(() => {
-    window.saSetTheme(tweaks.theme);
-  }, [tweaks.theme]);
+    window.saSetTheme(theme);
+  }, [theme]);
 
   // ...and the reverse direction: the header ☾/☀ writes data-theme through
-  // saSetTheme, which announces 'sa-theme'; mirror that back into tweaks.theme
-  // so the Settings segment can never show "Light" while the app is dark.
-  // Before this, ThemeToggle set data-theme directly and tweaks.theme never
-  // moved — so tapping the segment's already-"selected" option produced a new
-  // tweaks object but an unchanged dep string, the effect above never re-ran,
-  // and the Settings control was simply dead.
-  // The `!==` guard is what stops the two effects ping-ponging.
+  // saSetTheme, which announces 'sa-theme'; mirror that back here so the
+  // Settings segment can never show "Light" while the app is dark. The `!==`
+  // guard is what stops the two effects ping-ponging.
   useEffect(() => {
-    const onTheme = (e) => { if (e.detail !== tweaks.theme) setTweak('theme', e.detail); };
+    const onTheme = (e) => { if (e.detail !== theme) setTheme(e.detail); };
     window.addEventListener('sa-theme', onTheme);
     return () => window.removeEventListener('sa-theme', onTheme);
-  }, [tweaks.theme, setTweak]);
+  }, [theme]);
 
   // Re-render with live API data once bootstrap fetch completes
   useEffect(() => {
@@ -335,6 +401,11 @@ function App() {
     if (window.__apiReady) forceRender(n => n + 1);
     return () => { window.__onApiReady = null; };
   }, []);
+
+  // PR-040: the owner's operator code is requested once the role is known.
+  useEffect(() => {
+    if (isOwner && window.saLoadOperator) window.saLoadOperator();
+  }, [isOwner]);
 
   // Warm notification tap: SW posts {type:'sa-open', url:'/#/inbox/<tab>'}.
   useEffect(() => {
@@ -371,7 +442,11 @@ function App() {
     return () => window.removeEventListener('sa-auth-expired', onExpired);
   }, []);
 
+  const openChat = () => setChat(true);
+  const closeChat = () => setChat(false);
+
   const nav = (s) => {
+    if (s === 'ask') { openChat(); return; }   // Ask is the chat, over the current screen
     if (s === 'auth') {                       // sign out — revoke + drop token
       try { fetch('/auth/logout', { method: 'POST' }); } catch (e) {}
       if (window.saClearToken) window.saClearToken();
@@ -385,8 +460,6 @@ function App() {
   // routing, so the audit harness drives navigation through this.
   useEffect(() => { window.__auditNav = nav; return () => { window.__auditNav = null; }; });
 
-  const goHome = () => nav('home');
-  const goAgents = () => nav('agents');
   const onAuthed = (signedIn, remember) => {
     // auth.jsx has already stored the token via saSetToken; keep sa_remembered
     // as a legacy hint for any code still reading it.
@@ -401,10 +474,8 @@ function App() {
       setScreen('home');
     }
   };
-  const openChat = () => setChat(true);
-  const closeChat = () => setChat(false);
   // A member never lands on an operator screen, however `screen` was set.
-  const shown = OPERATOR_SCREENS.includes(screen) && !isOwner ? 'home' : screen;
+  const shown = saShownScreen(screen, isOwner);
 
   return <>
     {window.saDemoMode && screen !== 'auth' && (
@@ -414,69 +485,16 @@ function App() {
       }}>Sample data — the market figures and portfolio here are not live</div>
     )}
     {shown === 'auth' && <AuthScreen onAuthed={onAuthed}/>}
-    {shown === 'home' && <Home onNav={nav} openChat={openChat}/>}
-    {shown === 'agents' && <AgentsPage onNav={nav} openChat={openChat}/>}
+    {shown === 'home' && <Home onNav={nav} openChat={openChat} inboxTab={inboxTab} setInboxTab={setInboxTab}/>}
     {shown === 'portfolio' && <PortfolioPage onNav={nav} openChat={openChat}/>}
-    {shown === 'learn' && <LearnPage onNav={nav} openChat={openChat}/>}
-    {shown === 'analytics' && <AnalyticsPage onNav={nav}/>}
-    {shown === 'logs'      && <LogsPage onNav={nav}/>}
-    {shown === 'rl-monitor' && <RLMonitorPage onNav={nav}/>}
     {shown === 'inbox' && <InboxPage onNav={nav} tab={inboxTab} setTab={setInboxTab}/>}
-    {shown === 'settings' && <SettingsPage onNav={nav} theme={tweaks.theme}
-      setTheme={v => setTweak('theme', v)}/>}
+    {shown === 'settings' && <SettingsPage onNav={nav} theme={theme} setTheme={setTheme}/>}
+    {OPERATOR_SCREENS[shown] && <OperatorScreen name={shown} onNav={nav} openChat={openChat}/>}
 
     {/* Floating orb on non-auth screens */}
-    {screen !== 'auth' && !chat && <SphereOrb onOpen={openChat} mode={tweaks.sphereMode}/>}
-    <ChatOverlay open={chat} onClose={closeChat} mode={tweaks.sphereMode}/>
-
-    {/* Secondary nav — the owner's Analytics / Logs / RL Monitor, and Sign out */}
-    {/* Desktop: fixed pill bottom-left. Mobile: hidden here, accessible via hamburger menu. */}
-    {screen !== 'auth' && (
-      <div className="proto-nav" style={{
-        position:'fixed', left:24, bottom:24, zIndex:55,
-        display:'flex', gap:6, padding:6, background:'var(--bg-surface)',
-        border:'1px solid var(--border)', borderRadius:999, boxShadow:'var(--shadow-md)'
-      }}>
-        {isOwner && <>
-          <NavChip active={screen==='analytics'} onClick={()=>nav('analytics')} icon={<Icon.Trend size={14}/>} label="Analytics"/>
-          <NavChip active={screen==='logs'} onClick={()=>nav('logs')} icon={<Icon.Layers size={14}/>} label="Logs"/>
-          <NavChip active={screen==='rl-monitor'} onClick={()=>nav('rl-monitor')} icon={<Icon.Activity size={14}/>} label="RL Monitor"/>
-        </>}
-        <NavChip onClick={()=>nav('auth')} icon={<Icon.User size={14}/>} label="Sign out"/>
-      </div>
-    )}
-
-    {isOwner && <TweaksPanel title="Tweaks">
-      <TweakSection title="Sphere style">
-        <TweakRadio value={tweaks.sphereMode} options={[
-          {value:'wireframe', label:'Wireframe'},
-          {value:'liquid',    label:'Liquid'},
-        ]} onChange={v=>setTweak('sphereMode', v)}/>
-      </TweakSection>
-      <TweakSection title="Quick jump">
-        <TweakButton onClick={()=>nav('auth')}>Open auth screen</TweakButton>
-        <TweakButton onClick={goHome}>Open home</TweakButton>
-        <TweakButton onClick={goAgents}>Open agents</TweakButton>
-        <TweakButton onClick={()=>nav('portfolio')}>Open portfolio</TweakButton>
-        <TweakButton onClick={()=>nav('learn')}>Open learn</TweakButton>
-        <TweakButton onClick={()=>nav('analytics')}>Open analytics</TweakButton>
-        <TweakButton onClick={()=>nav('logs')}>Open logs</TweakButton>
-        <TweakButton onClick={()=>nav('rl-monitor')}>Open RL Monitor</TweakButton>
-        <TweakButton onClick={()=>nav('settings')}>Open settings</TweakButton>
-      </TweakSection>
-    </TweaksPanel>}
+    {screen !== 'auth' && !chat && <SphereOrb onOpen={openChat} mode={SPHERE_MODE}/>}
+    <ChatOverlay open={chat} onClose={closeChat} mode={SPHERE_MODE}/>
   </>;
-}
-
-function NavChip({ active, onClick, icon, label }) {
-  return (
-    <button onClick={onClick} style={{
-      display:'flex', alignItems:'center', gap:6, padding:'7px 12px', borderRadius:999,
-      border:'none', background: active ? 'var(--bg-tinted)' : 'transparent',
-      color: active ? 'var(--ink-1)' : 'var(--ink-2)',
-      fontSize:12, fontWeight:600
-    }}>{icon} {label}</button>
-  );
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);

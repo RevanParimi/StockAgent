@@ -14,6 +14,22 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 19 Nov, night (autopilot): PR-040 → ACCEPTED (light lane)
+
+- **Autopilot `1119-2247-p6`**, a `continue` on the code-server from about 22:47 IST, outside a
+  push window. `main` = `4fd3396`, 29 commits ahead of `origin/main` `3f26ae5`. No production read.
+- **A member's navigation:** Today (the brief with digest, weekly and alerts, then the market
+  tabs and the watchlist), Portfolio and Ask; Settings and Sign out in the account menu. The
+  owner adds an Operator menu (Agents, Analytics, Logs, RL Monitor) whose five files only the
+  owner's browser requests; `sw.js` v11 precaches member files only.
+- **Removed:** Learn, "Browse by category", "Suggested for you", the vote bars, the drawer's
+  breakdown and conflicts for members, the Tweaks panel. A member downloads 272,610 bytes, was
+  501,774 (−46%). BACKLOG B-8's spec and demo-file items done.
+- **Found:** the Agents page's saved weights and task switches reach no analysis (BACKLOG B-25);
+  the page says so beside the learning mode.
+- **Full suite 0 failed;** layout audit passes. New check `PR-040-W1` (your walk-through). Push
+  pending to Fri 20 Nov 00:10. [Receipt](evidence/PR-040.md).
+
 ## 19 Nov, night (autopilot): CLEAN-004 → ACCEPTED (light lane)
 
 - **Autopilot `1119-2203-p5`**, a `continue` on the code-server from about 22:03 IST, outside a

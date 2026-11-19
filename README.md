@@ -449,32 +449,26 @@ This is intentional. Price momentum is a lagging signal. Score changes reflect w
 
 ---
 
-## Categories
+## Screens
 
-The Browse by Category section organises stocks into:
-
-| Category | What it covers |
-|---|---|
-| EV | OEMs with significant EV exposure (Tata, M&M, TVS, Bajaj, Hero) |
-| Mass Market | Volume-driven passenger vehicles |
-| Premium | Royal Enfield, Bajaj, Maruti premium segment |
-| Commercial Vehicles | Ashok Leyland, Tata Motors CV |
-| Two-Wheelers | Hero, TVS, Bajaj, Eicher |
-| Auto Parts | Bosch, Motherson, Apollo Tyres, CEAT, MRF, Balkrishna |
-
-Click any category to see all stocks within it and their latest verdicts side by side.
+A member's navigation offers three screens: **Today** (the brief, with the digest, the weekly
+review and alerts beside it, then the market tabs and your watchlist), **Portfolio**, and **Ask**
+(the chat). Settings and Sign out are in the account menu behind your initials. The owner also
+gets an **Operator** menu: Agents, Analytics, Logs and the RL Monitor, whose code only the
+owner's browser downloads.
 
 ---
 
-## Agent Weight Customisation
+## Agent Weight Customisation (owner)
 
-On the Agents page, each agent card has a weight slider. You can reduce or increase an agent's influence on the final score — for example, if you believe raw material costs are currently irrelevant for a particular stock, you can lower that agent's weight.
+On the Agents page (Operator menu), each agent card has a plug toggle and a weight slider, and
+each agent's tasks can be switched on and off. The weights must sum to about 1.0; the server
+validates this.
 
-Changes are saved and applied to all future analyses in the current session. Weights must sum to approximately 1.0; the system validates this and will show an error if the total drifts too far.
-
-You can also disable individual agents entirely (weight = 0) if you want to run a leaner analysis.
-
-**Note:** The system also maintains its own *learned* weights per ticker from RL feedback. User-applied slider weights override the learned weights for that session.
+**What a saved weight does today:** it is kept for the Agents page only. The analyses aggregate
+with each stock's learned weights (learning mode `adapt`) or the sector's configured weights
+(`observe`, production's mode); no analysis reads the page's saved weights or task switches. The page says so
+beside the controls, with the learning mode (BACKLOG B-25).
 
 ---
 

@@ -525,7 +525,7 @@ if _FRONTEND_DIR is not None:
         app.mount("/assets", StaticFiles(directory=str(_ASSETS_DIR)), name="assets")
 
     # API namespaces: an unmatched path here is a broken contract, not a SPA
-    # route (the prototype does no URL routing — UI_SPEC.md). Serving
+    # route (the prototype does no URL routing — src/frontend/UI_SPEC.md). Serving
     # index.html@200 for these hid 5 phantom /ui/rl/* routes for a month
     # (AUD-100) — fail loudly instead.
     _API_NAMESPACES = (

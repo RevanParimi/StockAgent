@@ -1,11 +1,13 @@
-/* Inbox — notification landing screen. Each tab fetches the latest content of
- * one notification type from its structured JSON endpoint and renders it with
- * a native view component (BriefView, DigestView, WeeklyView, or AlertCard) —
- * the same card/fold vocabulary throughout, no ASCII. Alerts were the last tab
- * still printing a raw text blob; they now carry title/headline/status/
- * next_step/docs from core/delivery/alerts.py and render as a card too. The
- * `?format=text` variants of these endpoints still exist and are still used
- * by push notifications and email; this screen no longer requests them. */
+/* Inbox — the brief, digest, weekly review and alerts, shown inside Today
+ * (PR-040: no longer a screen of its own; notification links '#/inbox/<tab>'
+ * open Today on that tab). Each tab fetches the latest content of one
+ * notification type from its structured JSON endpoint and renders it with a
+ * native view component (BriefView, DigestView, WeeklyView, or AlertCard) —
+ * the same card/fold vocabulary throughout, no ASCII. Alerts carry
+ * title/headline/status/next_step/docs from core/delivery/alerts.py and
+ * render as a card too. The `?format=text` variants of these endpoints still
+ * exist and are still used by push notifications and email; this panel does
+ * not request them. */
 const { useState: useStateInbox, useEffect: useEffectInbox } = React;
 
 /* `render` picks the view component for the dispatch below — data-driven, not
@@ -103,7 +105,7 @@ function AlertCard({ a }) {
   );
 }
 
-function InboxPage({ onNav, tab, setTab }) {
+function InboxPanel({ onNav, tab, setTab }) {
   const active = INBOX_TABS.some(t => t.key === tab) ? tab : 'brief';
   const activeSpec = INBOX_TABS.find(t => t.key === active) || INBOX_TABS[0];
   const [state, setState] = useStateInbox({ status: 'loading' });
@@ -139,43 +141,37 @@ function InboxPage({ onNav, tab, setTab }) {
   };
 
   return (
-    <div className="proto-screen" style={{ minHeight: '100vh', background: 'var(--bg-base)' }}>
-      <TopNav active="inbox" onNav={onNav}/>
-
-      <div style={{ maxWidth: 640, margin: '0 auto', padding: '18px 16px 90px' }}>
-        <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--ink-1)', marginBottom: 18 }}>Inbox</div>
-
-        <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-          {INBOX_TABS.map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)} style={{
-              flex: 1, padding: '9px 0', borderRadius: 999, fontSize: 12, fontWeight: 700,
-              border: '1px solid var(--border)', cursor: 'pointer',
-              background: active === t.key ? 'var(--bg-tinted)' : 'transparent',
-              color: active === t.key ? 'var(--cyan)' : 'var(--ink-2)',
-            }}>{t.label}</button>
-          ))}
-        </div>
-
-        {state.status === 'loading' && <div style={{ color: 'var(--ink-3)' }}>Loading…</div>}
-        {state.status === 'empty'   && <div style={{ ...card, color: 'var(--ink-3)' }}>{INBOX_EMPTY[active]}</div>}
-        {state.status === 'error'   && (
-          <div style={{ ...card, color: 'var(--ink-2)' }}>
-            Couldn't load this — {state.message}.
-            <button onClick={() => setNonce(n => n + 1)} style={{ marginLeft: 10, padding: '6px 14px',
-              borderRadius: 999, border: '1px solid var(--border)', background: 'var(--bg-tinted)',
-              color: 'var(--cyan)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Retry</button>
-          </div>
-        )}
-        {state.status === 'ok' && (
-          activeSpec.render === 'alerts' ? renderAlerts(state.data)
-          : activeSpec.render === 'brief'  ? <BriefView  data={state.data} onNav={onNav}/>
-          : activeSpec.render === 'digest' ? <DigestView data={state.data}/>
-          : activeSpec.render === 'weekly' ? <WeeklyView data={state.data}/>
-          : null
-        )}
+    <div className="sa-inbox-panel">
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        {INBOX_TABS.map(t => (
+          <button key={t.key} aria-pressed={active === t.key} onClick={() => setTab(t.key)} style={{
+            flex: 1, padding: '9px 0', borderRadius: 999, fontSize: 12, fontWeight: 700,
+            border: '1px solid var(--border)', cursor: 'pointer',
+            background: active === t.key ? 'var(--bg-tinted)' : 'transparent',
+            color: active === t.key ? 'var(--cyan)' : 'var(--ink-2)',
+          }}>{t.label}</button>
+        ))}
       </div>
+
+      {state.status === 'loading' && <div style={{ color: 'var(--ink-3)' }}>Loading…</div>}
+      {state.status === 'empty'   && <div style={{ ...card, color: 'var(--ink-3)' }}>{INBOX_EMPTY[active]}</div>}
+      {state.status === 'error'   && (
+        <div className="sa-unavailable" style={{ ...card, color: 'var(--ink-2)' }}>
+          Couldn't load this — {state.message}.
+          <button onClick={() => setNonce(n => n + 1)} style={{ marginLeft: 10, padding: '6px 14px',
+            borderRadius: 999, border: '1px solid var(--border)', background: 'var(--bg-tinted)',
+            color: 'var(--cyan)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Retry</button>
+        </div>
+      )}
+      {state.status === 'ok' && (
+        activeSpec.render === 'alerts' ? renderAlerts(state.data)
+        : activeSpec.render === 'brief'  ? <BriefView  data={state.data} onNav={onNav}/>
+        : activeSpec.render === 'digest' ? <DigestView data={state.data}/>
+        : activeSpec.render === 'weekly' ? <WeeklyView data={state.data}/>
+        : null
+      )}
     </div>
   );
 }
 
-window.InboxPage = InboxPage;
+window.InboxPanel = InboxPanel;

@@ -2576,6 +2576,13 @@
       "fields": {
         "sequencing_note": "After CLEAN-002. Three items, one commit each. Nothing is pushed; the control-lane setting reaches production with the owner's next push."
       }
+    },
+    {
+      "id": "PR-040",
+      "moved": "2026-11-19",
+      "fields": {
+        "sequencing_note": "After CLEAN-004, which removes the Prompt Lab from the same files. The first half of PR-010, split on 17 Nov 2026. Profit-path step: measure (the result is visible on the product)."
+      }
     }
   ]
 }

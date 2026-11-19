@@ -25,7 +25,7 @@
  *   PORTFOLIO_DATA_DIR=.uidev-data python -m uvicorn services.api.server:app --port 8001
  *   node scripts/ui_responsive_audit.mjs --out .uidev-data/shots
  *
- * Fixture mode (PR-001): the app is opened with ?demo=1, so Home, Agents and
+ * Fixture mode (PR-001): the app is opened with ?demo=1, so Today, Agents and
  * Portfolio render demo-fixtures.js's sample data whatever the server holds,
  * and the screenshots are the same run to run. Pass --live to audit the
  * server's real answers instead (screens with no data then show their
@@ -58,11 +58,16 @@ const WIDTHS = [360, 390, 768, 1280];
 // grid, 496px measured overflow) went unasserted for two tasks. Every
 // activeTab-driven screen gets a tabs list here so that class of bug cannot
 // hide behind a tab again.
-const SCREENS = ['home', 'agents', 'portfolio', 'learn',
-                 // Inbox defaults to Brief, so the other three tabs — Alerts
-                 // above all, whose cards hold unbroken watchdog prose and doc
-                 // paths — were never rendered by the screen-level check.
+// PR-040: a member's screens are Today ('home'), Portfolio and Settings (Ask is
+// the chat overlay); the Inbox is a panel on Today, reached as 'inbox'. The
+// operator screens are the owner's (this script signs in as the dev owner)
+// and their code loads after /auth/me, so the loop waits for it.
+const SCREENS = ['home', 'portfolio',
+                 // The brief panel defaults to Brief, so the other three tabs —
+                 // Alerts above all, whose cards hold unbroken watchdog prose
+                 // and doc paths — were never rendered by the screen-level check.
                  { name: 'inbox', tabs: ['Digest', 'Weekly', 'Alerts'] },
+                 'agents',
                  { name: 'rl-monitor', tabs: ['Predictions vs actual', 'Direction calendar',
                                                'Miss attribution', 'Agent weight drift'] },
                  { name: 'analytics', tabs: ['overview', 'weights', 'sector'] },
@@ -124,9 +129,12 @@ for (const width of WIDTHS) {
 
   for (const { name: screen, tabs } of NORMALIZED_SCREENS) {
     await page.goto(APP_URL, { waitUntil: 'networkidle' });
-    // The prototype does no URL routing — drive it through the Tweaks quick-jump
-    // by calling the app's own nav via a synthetic hash the App() reads, falling
-    // back to clicking the nav entry.
+    // The owner's operator code arrives after /auth/me (PR-040).
+    await page.waitForFunction(() => window.saUser
+      && (window.saUser.role !== 'owner' || ['ready', 'failed'].includes(window.saOperatorState)),
+      null, { timeout: 30000 }).catch(() => {});
+    // The prototype does no URL routing — drive it through the app's own nav
+    // (window.__auditNav, index.html's test seam).
     const navigated = await page.evaluate(s => {
       if (typeof window.__auditNav !== 'function') return false;
       window.__auditNav(s);

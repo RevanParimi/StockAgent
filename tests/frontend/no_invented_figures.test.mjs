@@ -18,8 +18,7 @@
  *  - with the APIs answering, every percentage and rupee figure on screen is
  *    one the API sent, formatted the way any reader would;
  *  - the greeting follows the IST clock even on a device in another zone;
- *  - the verdict-changes heading states the number of change cards it lists,
- *    and Learn claims nothing about the member's progress;
+ *  - the verdict-changes heading states the number of change cards it lists;
  *  - the weekly review opens with its results scorecard (PR-002): red flags,
  *    then what could not be checked, then the lines, every figure one the row
  *    sent, and never the scoreboard it replaced;
@@ -144,9 +143,15 @@ async function goTo(page, screen) {
   await page.waitForTimeout(700);
 }
 
-// Every view a member can reach from Home, with the text each one shows.
+// Every view a member can reach (PR-040: Today, Portfolio, Ask, and Settings
+// in the account menu), with the text each one shows.
 async function memberViews(page) {
   const views = {};
+  for (const tab of ['Digest', 'Weekly', 'Alerts', 'Brief']) {     // the brief panel on Today
+    await page.getByRole('button', { name: tab, exact: true }).click();
+    await page.waitForTimeout(600);
+    views[`today/${tab}`] = await visibleText(page);
+  }
   for (const tab of ["Today's market", 'This month', 'Watchlist', 'Trending']) {
     await page.getByRole('button', { name: tab }).first().click();
     await page.waitForTimeout(600);
@@ -156,7 +161,7 @@ async function memberViews(page) {
   await page.waitForTimeout(400);
   views['home/chat'] = await visibleText(page);
   await page.keyboard.press('Escape');
-  for (const screen of ['portfolio', 'agents', 'inbox', 'settings', 'learn']) {
+  for (const screen of ['portfolio', 'settings']) {
     await goTo(page, 'home');
     await goTo(page, screen);
     views[screen] = await visibleText(page);
@@ -203,13 +208,11 @@ test('with every market API failing, no figure, ticker, company or invented name
     assert.match(views['home/Watchlist'], /Your watchlist is unavailable right now/);
     assert.match(views['home/Trending'], /Trending is unavailable right now/);
     assert.match(views.portfolio, /Your portfolio is unavailable right now/);
-    assert.match(views.agents, /The agents are unavailable right now/);
-    assert.ok(!/\d+ agents ·/.test(views.agents), 'no agent count while the agents are unknown');
-    // Learn says nothing about the member that nothing records (no progress is kept)
-    assert.match(views.learn, /Learning paths/);
-    for (const claim of [/you finished/i, /left off/i, /Recommended next/i, /Run a demo analysis/i]) {
-      assert.ok(!claim.test(views.learn), `learn: ${claim}`);
+    for (const tab of ['Digest', 'Weekly', 'Alerts', 'Brief']) {
+      assert.match(views[`today/${tab}`], /Couldn't load this/, tab);
     }
+    // The Agents page (the owner's since PR-040) and Learn (removed) are in
+    // member_screens.test.mjs.
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });
@@ -392,46 +395,50 @@ test('the greeting uses the signed-in name and the IST clock, never "Aditi"', as
   } finally { await context.close(); }
 });
 
-const OPERATOR = ['Analytics', 'Logs', 'RL Monitor'];
+const OPERATOR = ['Operator', 'Agents', 'Analytics', 'Logs', 'RL Monitor'];
 
 async function operatorSurface(page) {
   const out = {};
-  out.chips = await page.locator('.proto-nav button').allTextContents();
   out.topNav = await page.locator('.nav-top-pill button').allTextContents();
-  // the Tweaks panel opens when a host page sends this message
+  out.operatorMenu = await page.locator('.sa-operator-menu').count();
+  // the Tweaks panel used to open when a host page sent this message (gone, PR-040)
   await page.evaluate(() => window.postMessage({ type: '__activate_edit_mode' }, '*'));
   await page.waitForTimeout(300);
   out.tweaks = await page.locator('.twk-panel').count();
+  // the owner's operator code arrives after /auth/me; a member's never does
+  await page.waitForFunction(() => window.saOperatorState !== 'loading', null, { timeout: 30000 });
   await goTo(page, 'agents');
   out.cardControls = await page.locator('.sa-tune-control').count();
-  await page.locator('.card', { hasText: 'Fundamentals' }).first().click();
-  await page.waitForTimeout(400);
+  const card = page.locator('.card', { hasText: 'Fundamentals' }).first();
+  if (await card.count()) {
+    await card.click();
+    await page.waitForTimeout(400);
+  }
   // controls any version of the drawer has: the weight slider and the plug button
   out.slider = await page.locator('aside input[type="range"]').count();
   out.plugButton = await page.getByRole('button', { name: /^(Unplug|Plug in)$/ }).count();
   out.drawerControls = await page.locator('aside .sa-tune-control').count();
   await goTo(page, 'logs');
-  // Home's tab bar is on screen only when the app fell back to Home
+  // Today's tab bar is on screen only when the app fell back to Today
   out.screenAfterLogs = await page.getByRole('button', { name: "Today's market" }).count();
   return out;
 }
 
-test('a member sees no operator chip, menu entry, tuning control or Tweaks', async () => {
+test('a member sees no operator menu, screen, tuning control or Tweaks', async () => {
   const { context, page, errors } = await openApp(browser, { user: MEMBER, api: liveApi() });
   try {
     await settled(page);
     const s = await operatorSurface(page);
     for (const label of OPERATOR) {
-      assert.ok(!s.chips.some(t => t.includes(label)), `chip ${label}: ${s.chips}`);
       assert.ok(!s.topNav.some(t => t.includes(label)), `nav ${label}: ${s.topNav}`);
     }
-    assert.deepEqual(s.chips.map(t => t.trim()), ['Sign out']);
+    assert.equal(s.operatorMenu, 0);
     assert.equal(s.tweaks, 0);
     assert.equal(s.slider, 0, 'weight slider');
     assert.equal(s.plugButton, 0, 'plug button');
     assert.equal(s.cardControls, 0, 'plug toggles on the cards');
     assert.equal(s.drawerControls, 0, 'task toggles in the drawer');
-    assert.equal(s.screenAfterLogs, 1, 'navigating a member to logs lands on Home');
+    assert.equal(s.screenAfterLogs, 1, 'navigating a member to logs lands on Today');
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
   // the phone menu, where the operator entries used to be listed
@@ -440,22 +447,22 @@ test('a member sees no operator chip, menu entry, tuning control or Tweaks', asy
     await settled(phone.page);
     await phone.page.locator('.nav-hamburger button').last().click();
     const menu = await phone.page.locator('.mobile-menu').innerText();
-    for (const label of OPERATOR) assert.ok(!menu.includes(label), `menu ${label}`);
+    for (const label of OPERATOR) assert.ok(!menu.toLowerCase().includes(label.toLowerCase()), `menu ${label}`);
     assert.match(menu, /Settings/);
     const bottom = await phone.page.locator('.mobile-bottom-nav').innerText();
-    assert.ok(!bottom.includes('RL Monitor'), bottom);
+    for (const label of OPERATOR) assert.ok(!bottom.includes(label), bottom);
   } finally { await phone.context.close(); }
 });
 
-test('the owner sees the operator chips, menu entries, tuning controls and Tweaks', async () => {
+test('the owner sees the Operator menu and the tuning controls; no Tweaks for anyone', async () => {
   const { context, page, errors } = await openApp(browser, {
     user: OWNER, api: liveApi({ '/ui/logs/stream': json({ detail: 'Owner only.' }, 403) }) });
   try {
     await settled(page);
     const s = await operatorSurface(page);
-    for (const label of OPERATOR) assert.ok(s.chips.some(t => t.includes(label)), `chip ${label}: ${s.chips}`);
-    assert.ok(s.topNav.some(t => t.includes('RL Monitor')), s.topNav);
-    assert.equal(s.tweaks, 1);
+    assert.equal(s.operatorMenu, 1);
+    assert.ok(s.topNav.some(t => t.includes('Operator')), s.topNav);
+    assert.equal(s.tweaks, 0);
     assert.equal(s.slider, 1, 'weight slider');
     assert.equal(s.plugButton, 1, 'plug button');
     assert.equal(s.screenAfterLogs, 0, 'the owner reaches the logs screen');
@@ -466,7 +473,7 @@ test('the owner sees the operator chips, menu entries, tuning controls and Tweak
     await settled(phone.page);
     await phone.page.locator('.nav-hamburger button').last().click();
     const menu = await phone.page.locator('.mobile-menu').innerText();
-    for (const label of ['Analytics', 'Logs', 'RL Monitor']) assert.ok(menu.includes(label), `menu ${label}`);
+    for (const label of ['Agents', 'Analytics', 'Logs', 'RL Monitor']) assert.ok(menu.includes(label), `menu ${label}`);
   } finally { await phone.context.close(); }
 });
 
@@ -603,6 +610,7 @@ test('signing in fetches the verdict changes again as the new viewer', async () 
 const SECOND = { user_id: 'u-second', email: 'second@example.test', display_name: 'Second Member', role: 'member' };
 
 async function signOutThenIn(page, user) {
+  await page.getByRole('button', { name: 'Account' }).click();     // Sign out is in the account menu (PR-040)
   await page.getByRole('button', { name: 'Sign out' }).first().click();
   await page.getByPlaceholder('you@example.com').waitFor({ timeout: 30000 });
   const atLogin = await page.evaluate(() => window.PORTFOLIO_LEARNINGS);

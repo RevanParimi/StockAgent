@@ -543,24 +543,30 @@ the browser.
 
 ### 14.3 Frontend — `src/frontend/prototypes/`
 
-A single-page PWA of 22 modules, transformed in the browser with no build
-step: `home`, `portfolio`, `brief-view`, `digest-view`, `weekly-view`,
-`inbox`, `analytics`, `agents-page`, `rl-monitor`, `rl-data`, `settings`,
-`auth`, `learn`, `logs`, `data`, `sphere` (the chat overlay),
-`chat-markdown.js` (the sanitizing boundary), `demo-fixtures.js` (sample data
-for `?demo=1` only), `tweaks-panel`, `hooks`, `icons` and the versioned
-service worker `sw.js`.
+A single-page PWA transformed in the browser with no build step. A member's
+browser loads 12 screen modules: `home` (Today, with the brief panel),
+`inbox` (that panel: brief, digest, weekly, alerts), `brief-view`,
+`digest-view`, `weekly-view`, `portfolio`, `settings`, `auth`, `data`,
+`sphere` (the chat overlay, which is Ask), `hooks` and `icons`, plus
+`chat-markdown.js` (the sanitizing boundary) and the versioned service worker
+`sw.js`. The owner's browser also loads the five operator modules,
+`agents-page`, `analytics`, `logs`, `rl-data` and `rl-monitor`, once `/auth/me`
+says `owner`. `demo-fixtures.js` (sample data) is requested only with
+`?demo=1`. The internal UI spec is `src/frontend/UI_SPEC.md`, outside the
+served folder.
 
-Every figure a member sees comes from an API answer, with its date, or the
-screen says it is unavailable; a failed request never shows sample data. The
-operator screens (Analytics, RL Monitor, Logs), agent tuning and
-the Tweaks panel show only for the owner's session (`/auth/me` role), and the
-server keeps its own guards ([KT section 10](TECHNICAL_DESIGN.md#10-delivery-interface-identity-and-operations)).
+A member's navigation offers Today, Portfolio and Ask, with Settings and Sign
+out in the account menu. Every figure a member sees comes from an API answer,
+with its date, or the screen says it is unavailable; a failed request never
+shows sample data. The owner's Operator menu holds Agents (with agent tuning),
+Analytics, Logs and RL Monitor; a member never sees them, and the server keeps
+its own guards ([KT section 10](TECHNICAL_DESIGN.md#10-delivery-interface-identity-and-operations)).
 
 Responsive check: `node scripts/ui_responsive_audit.mjs` (runs on the
 `?demo=1` samples; `--live` for the server's answers). Browser tests
-(`npm run test:frontend`) cover the chat boundary, the Logs screen and the
-real-figures and owner-only rules. **Planned:** packaging and a compiled
+(`npm run test:frontend`) cover the chat boundary, the Logs screen, the
+real-figures and owner-only rules, and the member screens and the files each
+role downloads. **Planned:** packaging and a compiled
 client (SA-028, stretch).
 
 ---

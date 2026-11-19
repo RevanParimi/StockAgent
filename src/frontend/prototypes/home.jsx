@@ -53,13 +53,20 @@ function MarketUnavailable({ what }) {
   );
 }
 
-function Home({ onNav, openChat }) {
+// Today (PR-040): a member's first screen. The brief, with the digest, the
+// weekly review and the alerts beside it (the former Inbox), then the market
+// tabs, the watchlist and its Analyse button. index.html reads this flag: an
+// older cached home.jsx has no Inbox inside it.
+window.saTodayHoldsInbox = true;
+
+function Home({ onNav, openChat, inboxTab, setInboxTab }) {
   const [tab, setTab] = useStateHome('today');
+  const [ownInboxTab, setOwnInboxTab] = useStateHome('brief');
   const [search, setSearch] = useStateHome('');
   // analyzeState: { ticker, loading, report, error, agentProgress }
   const [analyzeState, setAnalyzeState] = useStateHome({ ticker: null, loading: false, report: null, error: null, agentProgress: {} });
   const [selectedDriver, setSelectedDriver] = useStateHome(null);
-  const [selectedCategory, setSelectedCategory] = useStateHome(null);
+  const InboxPanel = window.InboxPanel;      // absent only with an older cached inbox.jsx
 
   const onAnalyze = (sym) => {
     localStorage.setItem('sa_last_ticker', sym);
@@ -128,6 +135,21 @@ function Home({ onNav, openChat }) {
         {/* HERO */}
         <Hero openChat={openChat}/>
 
+        {/* THE BRIEF — with the digest, weekly review and alerts beside it */}
+        {InboxPanel && (
+          <section className="sa-today-brief" style={{ maxWidth:760, marginBottom:36 }}>
+            <SectionHead title="Your brief" subtitle="The morning brief, the evening digest, the weekly review and any alerts"/>
+            <div style={{ marginTop:16 }}>
+              <InboxPanel onNav={onNav} tab={setInboxTab ? inboxTab : ownInboxTab}
+                setTab={setInboxTab || setOwnInboxTab}/>
+            </div>
+          </section>
+        )}
+
+        <div style={{ marginBottom:16 }}>
+          <SectionHead title="Markets and your watchlist"/>
+        </div>
+
         {/* TAB BAR */}
         <div className="tab-bar" style={{
           display:'flex', gap:4, padding:4, background:'var(--bg-tinted)', borderRadius:14,
@@ -155,25 +177,6 @@ function Home({ onNav, openChat }) {
         {tab==='watch' && <WatchlistPane onAnalyze={onAnalyze}/>}
         {tab==='trend' && <TrendingPane onAnalyze={onAnalyze}/>}
 
-        {/* CATEGORIES — only what the API sent */}
-        {window.CATEGORIES.length > 0 && (
-          <div style={{ marginTop:36 }}>
-            <SectionHead title="Browse by category"/>
-            <div style={{ display:'grid', gridTemplateColumns:'var(--grid-categories)', gap:12, marginTop:16 }}>
-              {window.CATEGORIES.map(c => <CategoryCard key={c.key} c={c} onClick={()=>setSelectedCategory(c)}/>)}
-            </div>
-          </div>
-        )}
-
-        {/* SUGGESTIONS — only what the API sent */}
-        {window.SUGGESTIONS.length > 0 && (
-          <div style={{ marginTop:36 }}>
-            <SectionHead title="Suggested for you" subtitle="Picked by your agents based on what you watch"/>
-            <div style={{ display:'grid', gridTemplateColumns:'var(--grid-suggestions)', gap:16, marginTop:16 }}>
-              {window.SUGGESTIONS.map(s => <SuggestCard key={s.sym} s={s} onAnalyze={onAnalyze}/>)}
-            </div>
-          </div>
-        )}
       </main>
 
       {/* Analysis result drawer */}
@@ -185,11 +188,6 @@ function Home({ onNav, openChat }) {
       {selectedDriver && (
         <DriverDetailPanel driver={selectedDriver} onClose={()=>setSelectedDriver(null)} onAnalyze={onAnalyze}/>
       )}
-
-      {/* Category drawer */}
-      {selectedCategory && (
-        <CategoryDrawer category={selectedCategory} onClose={()=>setSelectedCategory(null)} onAnalyze={onAnalyze}/>
-      )}
     </div>
   );
 }
@@ -198,6 +196,24 @@ function TopNav({ active, onNav, search, setSearch }) {
   const [results, setResults] = useStateHome([]);
   const [dropOpen, setDropOpen] = useStateHome(false);
   const [menuOpen, setMenuOpen] = useStateHome(false);
+  const [opsOpen, setOpsOpen] = useStateHome(false);        // the owner's Operator menu
+  const [acctOpen, setAcctOpen] = useStateHome(false);      // Settings and Sign out
+  const opsRef = useRefHome(null);
+  const acctRef = useRefHome(null);
+  // An open menu closes on a click outside it, or on Escape.
+  useEffectHome(() => {
+    if (!opsOpen && !acctOpen) return;
+    const inside = (el) => (opsRef.current && opsRef.current.contains(el))
+      || (acctRef.current && acctRef.current.contains(el));
+    const onDown = (e) => { if (!inside(e.target)) { setOpsOpen(false); setAcctOpen(false); } };
+    const onKey = (e) => { if (e.key === 'Escape') { setOpsOpen(false); setAcctOpen(false); } };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [opsOpen, acctOpen]);
   // Search text is TopNav's own, exactly like `results`/`dropOpen`, unless a
   // parent hands down real state. Four screens (analytics, inbox, logs,
   // rl-monitor) used to pass `search="" setSearch={()=>{}}`: the
@@ -206,8 +222,7 @@ function TopNav({ active, onNav, search, setSearch }) {
   // those screens, including Inbox, where a brief notification lands. Since
   // Task 13 the hamburger menu is the ONLY search below 1024px, so a dead
   // input there is worse than no input at all. Props stay optional so the
-  // screens that do own the state (home, agents, learn, portfolio) are
-  // unchanged.
+  // screens that do own the state (home, agents, portfolio) are unchanged.
   const [ownSearch, setOwnSearch] = useStateHome('');
   const value = setSearch ? search : ownSearch;
   const write = setSearch || setOwnSearch;
@@ -233,15 +248,35 @@ function TopNav({ active, onNav, search, setSearch }) {
     }, 350);
   };
 
+  // PR-040: a member's screens are Today, Portfolio and Ask (the chat).
   const navLinks = [
-    { screen:'home',       label:'Home',       icon:<Icon.Home size={17}/> },
-    { screen:'agents',     label:'Agents',     icon:<Icon.Cpu size={17}/> },
+    { screen:'home',       label:'Today',      icon:<Icon.Home size={17}/> },
     { screen:'portfolio',  label:'Portfolio',  icon:<Icon.Briefcase size={17}/> },
-    { screen:'inbox',      label:'Inbox',      icon:<Icon.Bell size={17}/> },
-    { screen:'learn',      label:'Learn',      icon:<Icon.Book size={17}/> },
-    // Operator screens: the owner's only (PR-001).
-    ...(isOwner ? [{ screen:'rl-monitor', label:'RL Monitor', icon:<Icon.Activity size={17}/> }] : []),
+    { screen:'ask',        label:'Ask',        icon:<Icon.Sparkles size={17}/> },
   ];
+  // The owner's Operator menu (PR-001 keeps these from members; PR-040 loads
+  // their code only for the owner). The RL Monitor leaves with CLEAN-003.
+  const operatorLinks = isOwner ? [
+    { screen:'agents',     label:'Agents',     icon:<Icon.Cpu size={16}/> },
+    { screen:'analytics',  label:'Analytics',  icon:<Icon.Trend size={16}/> },
+    { screen:'logs',       label:'Logs',       icon:<Icon.Layers size={16}/> },
+    { screen:'rl-monitor', label:'RL Monitor', icon:<Icon.Activity size={16}/> },
+  ] : [];
+  const onOperator = operatorLinks.some(l => l.screen === active);
+  const go = (s) => { setOpsOpen(false); setAcctOpen(false); setMenuOpen(false); onNav?.(s); };
+  const menuItem = (l, i) => (
+    <button key={l.screen} onClick={()=>go(l.screen)} style={{
+      display:'flex', alignItems:'center', gap:10, width:'100%', padding:'10px 14px',
+      border:'none', borderTop: i ? '1px solid var(--border)' : 'none', textAlign:'left',
+      background: active===l.screen ? 'var(--bg-tinted)' : 'transparent',
+      color: active===l.screen ? 'var(--cyan)' : 'var(--ink-1)', fontSize:13, fontWeight:600, cursor:'pointer'
+    }}>{l.icon} {l.label}</button>
+  );
+  const dropdown = {
+    position:'absolute', top:'calc(100% + 8px)', right:0, minWidth:190, zIndex:60,
+    background:'var(--bg-surface)', border:'1px solid var(--border)', borderRadius:12,
+    boxShadow:'var(--shadow-lg)', overflow:'hidden'
+  };
 
   return (
     <>
@@ -278,7 +313,7 @@ function TopNav({ active, onNav, search, setSearch }) {
             </div>
           )}
           {navLinks.map(l => (
-            <button key={l.screen} onClick={()=>{ onNav?.(l.screen); setMenuOpen(false); }} style={{
+            <button key={l.screen} onClick={()=>go(l.screen)} style={{
               display:'flex', alignItems:'center', gap:14, padding:'16px 14px', borderRadius:12, width:'100%',
               border:'none', background: active===l.screen ? 'var(--bg-tinted)' : 'transparent',
               color: active===l.screen ? 'var(--cyan)' : 'var(--ink-1)',
@@ -286,16 +321,14 @@ function TopNav({ active, onNav, search, setSearch }) {
             }}>{l.icon} {l.label}</button>
           ))}
 
-          {/* Secondary screens — the operator ones for the owner only */}
+          {/* The account's Settings, then the owner's Operator menu */}
           <div style={{ height:1, background:'var(--border)', margin:'12px 0 8px' }}/>
           {[
             { screen:'settings',   label:'Settings',   icon:<Icon.Settings size={16}/> },
-            ...(isOwner ? [
-              { screen:'analytics',  label:'Analytics',  icon:<Icon.Trend size={16}/> },
-              { screen:'logs',       label:'Logs',        icon:<Icon.Layers size={16}/> },
-            ] : []),
-          ].map(l => (
-            <button key={l.screen} onClick={()=>{ onNav?.(l.screen); setMenuOpen(false); }} style={{
+          ].concat(operatorLinks.length ? [{ heading:'Operator' }] : [], operatorLinks).map(l => l.heading ? (
+            <div key="ops-heading" className="eyebrow" style={{ padding:'14px 14px 6px' }}>{l.heading}</div>
+          ) : (
+            <button key={l.screen} onClick={()=>go(l.screen)} style={{
               display:'flex', alignItems:'center', gap:14, padding:'12px 14px', borderRadius:12, width:'100%',
               border:'none', background: active===l.screen ? 'var(--bg-tinted)' : 'transparent',
               color: active===l.screen ? 'var(--cyan)' : 'var(--ink-2)',
@@ -304,7 +337,7 @@ function TopNav({ active, onNav, search, setSearch }) {
           ))}
 
           <div style={{ flex:1 }}/>
-          <button onClick={()=>{ onNav?.('auth'); setMenuOpen(false); }} style={{
+          <button onClick={()=>go('auth')} style={{
             display:'flex', alignItems:'center', gap:10, padding:'14px', borderRadius:12, width:'100%',
             border:'1px solid var(--border)', background:'transparent', fontSize:14, fontWeight:600,
             color:'var(--ink-2)', marginTop:16
@@ -351,10 +384,21 @@ function TopNav({ active, onNav, search, setSearch }) {
             boxShadow:'var(--shadow-sm)',
           }}>
             {navLinks.map(l => (
-              <NavLink key={l.screen} onClick={()=>onNav?.(l.screen)} active={active===l.screen} icon={l.icon}>
+              <NavLink key={l.screen} onClick={()=>go(l.screen)} active={active===l.screen} icon={l.icon}>
                 {l.label}
               </NavLink>
             ))}
+            {operatorLinks.length > 0 && (
+              <div className="sa-operator-menu" ref={opsRef} style={{ position:'relative' }}>
+                <NavLink onClick={()=>{ setAcctOpen(false); setOpsOpen(o => !o); }} active={onOperator}
+                  icon={<Icon.Layers size={17}/>}>Operator ▾</NavLink>
+                {opsOpen && (
+                  <div aria-label="Operator" style={{ ...dropdown, left:0, right:'auto' }}>
+                    {operatorLinks.map(menuItem)}
+                  </div>
+                )}
+              </div>
+            )}
             <div style={{ width:1, background:'rgba(34,211,238,.35)', margin:'6px 4px' }}/>
             <ThemeToggle/>
           </nav>
@@ -395,19 +439,27 @@ function TopNav({ active, onNav, search, setSearch }) {
             )}
           </div>
 
-          {/* Bell — desktop-only. Duplicates the Inbox tab already in the bottom
-              nav / mobile menu, so it stays nav-desktop rather than adding a
-              third route to the same screen. */}
-          {/* No unread dot: nothing counts unread items, so a dot would always be on. */}
-          <button className="nav-desktop nav-bell" style={{ width:36, height:36, borderRadius:'50%', border:'1px solid var(--border)', background:'var(--bg-surface)', display:'grid', placeItems:'center', position:'relative', flexShrink:0 }}>
-            <Icon.Bell size={16} c="var(--ink-2)"/>
-          </button>
-          {/* Avatar — the single Settings entry point, visible at every width (no
-              nav-desktop). Below 1024px .nav-avatar picks up margin-left:auto
-              (styles.css:130) so it clusters with the theme toggle + hamburger
-              at the right edge instead of sitting orphaned next to the logo
-              once the pill/search/bell disappear. */}
-          <button className="nav-avatar" onClick={()=>onNav?.('settings')} title="Settings" style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#22d3ee,#a78bfa)', display:'grid', placeItems:'center', color:'#fff', fontWeight:700, fontSize:13, flexShrink:0, border:'none', cursor:'pointer' }}>{initials || <Icon.User size={16} c="#fff"/>}</button>
+          {/* Avatar — the account menu (Settings, Sign out), visible at every
+              width (no nav-desktop). Below 1024px .nav-avatar picks up
+              margin-left:auto (styles.css) so it clusters with the theme toggle
+              + hamburger at the right edge once the pill and search disappear.
+              The Inbox's bell went with the Inbox screen (PR-040). */}
+          <div className="nav-avatar" ref={acctRef} style={{ position:'relative', flexShrink:0 }}>
+            <button onClick={()=>{ setOpsOpen(false); setAcctOpen(o => !o); }} title="Account"
+              aria-label="Account" aria-expanded={acctOpen}
+              style={{ width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#22d3ee,#a78bfa)', display:'grid', placeItems:'center', color:'#fff', fontWeight:700, fontSize:13, border:'none', cursor:'pointer' }}>{initials || <Icon.User size={16} c="#fff"/>}</button>
+            {acctOpen && (
+              <div aria-label="Account" className="sa-account-menu" style={dropdown}>
+                {user && user.display_name && (
+                  <div style={{ padding:'10px 14px', fontSize:12, color:'var(--ink-3)',
+                    borderBottom:'1px solid var(--border)', overflow:'hidden', textOverflow:'ellipsis',
+                    whiteSpace:'nowrap' }}>{user.display_name}</div>
+                )}
+                {menuItem({ screen:'settings', label:'Settings', icon:<Icon.Settings size={16}/> }, 0)}
+                {menuItem({ screen:'auth', label:'Sign out', icon:<Icon.User size={16}/> }, 1)}
+              </div>
+            )}
+          </div>
 
           {/* Mobile + tablet: theme toggle + hamburger (opens the full-screen
               menu, which now also carries search) */}
@@ -666,10 +718,9 @@ function TodayPulse({ data, onDriverClick }) {
 function MonthPane({ data, onDriverClick }) {
   if (!data) return <MarketUnavailable what="This month's market"/>;
   const drivers = data.drivers || [];
-  // Agent votes only when the API sent real ones; nothing is drawn in their place.
-  const votes = data.agentVotes || [];
+  // The agents' vote bars are gone (PR-040): the month's pulse and themes only.
   return (
-    <div style={{ display:'grid', gridTemplateColumns: votes.length ? 'var(--grid-2col)' : '1fr', gap:20 }}>
+    <div style={{ display:'grid', gridTemplateColumns:'1fr', gap:20 }}>
       <div className="card" style={{ padding:24 }}>
         <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:16 }}>
           <PulseDot kind="good"/>
@@ -690,25 +741,6 @@ function MonthPane({ data, onDriverClick }) {
           )}
         </div>
       </div>
-
-      {votes.length > 0 && (
-        <div className="card sa-agent-votes" style={{ padding:20 }}>
-          <div className="eyebrow" style={{ marginBottom:14 }}>How agents are voting</div>
-          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            {votes.map(a => (
-              <div key={a.n} style={{ display:'grid', gridTemplateColumns:'1fr 80px 50px', alignItems:'center', gap:10 }}>
-                <span style={{ fontSize:13, color:'var(--ink-2)' }}>{a.n}</span>
-                <div style={{ height:6, background:'var(--bg-tinted)', borderRadius:999, overflow:'hidden' }}>
-                  <div style={{ width: (a.v*100)+'%', height:'100%',
-                    background: a.k==='good' ? 'var(--buy)' : a.k==='mid' ? 'var(--neutral)' : 'var(--sell)',
-                    borderRadius:999, transition:'width .8s' }}/>
-                </div>
-                <span className="mono" style={{ fontSize:12, color:'var(--ink-2)', textAlign:'right' }}>{a.v.toFixed(2)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1136,57 +1168,6 @@ function SectorRow({ s }) {
   );
 }
 
-function CategoryCard({ c, onClick }) {
-  return (
-    <button className="card" onClick={onClick} style={{
-      padding:18, textAlign:'left', cursor:'pointer', border:'1px solid var(--border)',
-      transition:'transform .15s, box-shadow .15s'
-    }}
-      onMouseEnter={e=>{e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.boxShadow='var(--shadow-md)'}}
-      onMouseLeave={e=>{e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow='var(--shadow-sm)'}}>
-      <div style={{
-        width:40, height:40, borderRadius:10,
-        background: `color-mix(in oklab, ${c.color} 12%, transparent)`,
-        color: c.color, display:'grid', placeItems:'center', fontSize:20, marginBottom:10
-      }}>{c.icon}</div>
-      <div style={{ fontSize:13, fontWeight:700, color:'var(--ink-1)' }}>{c.label}</div>
-      <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:2 }}>{c.count} stocks</div>
-    </button>
-  );
-}
-
-function SuggestCard({ s, onAnalyze }) {
-  const ticker = window.TICKERS.find(x => x.sym === s.sym);
-  return (
-    <div className="card" style={{ padding:20 }}>
-      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
-        <div style={{ width:36, height:36, borderRadius:9,
-          background:'linear-gradient(135deg, var(--cyan-soft), var(--violet-soft))',
-          display:'grid', placeItems:'center', fontWeight:800, color:'var(--cyan)' }}>{s.sym[0]}</div>
-        <div style={{ flex:1, minWidth:0 }}>
-          <div className="mono" style={{ fontWeight:700, fontSize:13 }}>{s.sym}</div>
-          <div style={{ fontSize:11, color:'var(--ink-3)' }}>{ticker?.name}</div>
-        </div>
-        <span style={{ fontSize:11, fontWeight:700, padding:'3px 8px', borderRadius:999,
-          background:'var(--cyan-soft)', color:'var(--cyan)' }}>For you</span>
-      </div>
-      <div style={{ fontSize:13, color:'var(--ink-2)', lineHeight:1.5, marginBottom:14 }}>{s.reason}</div>
-      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-        <div style={{ flex:1, padding:10, background:'var(--bg-base)', borderRadius:10, fontSize:11, color:'var(--ink-3)',
-          display:'flex', alignItems:'center', gap:6 }}>
-          <Icon.Sparkles size={12} c="var(--violet)"/>
-          {s.why}
-        </div>
-        <button onClick={()=>onAnalyze(s.sym)} style={{
-          padding:'8px 12px', border:'none', borderRadius:8,
-          background:'linear-gradient(135deg,var(--cyan),var(--violet))', color:'#fff',
-          fontSize:11, fontWeight:700, cursor:'pointer', flexShrink:0
-        }}>Analyze</button>
-      </div>
-    </div>
-  );
-}
-
 function Pill({ children, kind='neutral' }) {
   const styles = {
     neutral: { bg:'var(--bg-tinted)', fg:'var(--ink-2)' },
@@ -1237,6 +1218,9 @@ function RangeTabs({ value, onChange, options=['1W','1M','3M','6M','1Y'] }) {
 // ── Analysis Result Drawer ─────────────────────────────────────────────────
 function AnalysisResultDrawer({ state, onClose }) {
   const { ticker, loading, report, error } = state;
+  // The agents' breakdown and the conflicts they resolved are operator
+  // detail: the owner keeps them, a member reads the case (PR-040).
+  const isOwner = saIsOwner(useSaUser());
   const VERDICT_COLOR = {
     'STRONG BUY': 'var(--buy-strong)', 'BUY': 'var(--buy)',
     'NEUTRAL': 'var(--neutral)', 'SELL': 'var(--sell)', 'STRONG SELL': 'var(--sell-strong)',
@@ -1437,8 +1421,8 @@ function AnalysisResultDrawer({ state, onClose }) {
                 </div>
               </div>
 
-              {/* Agent score bars */}
-              {report.weighted_agent_scores && Object.keys(report.weighted_agent_scores).length > 0 && (
+              {/* Agent score bars — the owner's */}
+              {isOwner && report.weighted_agent_scores && Object.keys(report.weighted_agent_scores).length > 0 && (
                 <div>
                   <div className="eyebrow" style={{ marginBottom:12 }}>Agent breakdown</div>
                   <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
@@ -1462,8 +1446,8 @@ function AnalysisResultDrawer({ state, onClose }) {
                 </div>
               )}
 
-              {/* Conflicts */}
-              {report.conflicts_resolved?.length > 0 && (
+              {/* Conflicts — the owner's */}
+              {isOwner && report.conflicts_resolved?.length > 0 && (
                 <div>
                   <div className="eyebrow" style={{ marginBottom:8 }}>Conflicts resolved</div>
                   <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
@@ -1543,112 +1527,6 @@ function DriverDetailPanel({ driver: d, onClose, onAnalyze }) {
               Run analyses on affected tickers to see their scores here.
             </div>
           )}
-        </div>
-      </aside>
-    </>
-  );
-}
-
-// ── Category Drawer ────────────────────────────────────────────────────────
-function CategoryDrawer({ category: initialCat, onClose, onAnalyze }) {
-  const [cat, setCat] = useStateHome(initialCat);
-  const [editOpen, setEditOpen] = useStateHome(false);
-  const [addVal, setAddVal] = useStateHome('');
-  const [editBusy, setEditBusy] = useStateHome(false);
-  const [editError, setEditError] = useStateHome('');
-
-  const tickers = (cat.tickers || []).map(sym => {
-    const t = window.TICKERS.find(x => x.sym === sym);
-    return t || { sym, name: sym, hasData: false };   // no figures: shown as "Not analyzed"
-  });
-
-  const mutate = async (add = [], remove = []) => {
-    setEditBusy(true); setEditError('');
-    try {
-      const res = await fetch(`/ui/categories/${cat.key}/tickers`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ add, remove }),
-      });
-      const d = await res.json();
-      if (!res.ok) { setEditError(d.detail || 'Server error'); }
-      else {
-        if (d.invalid_syms?.length) setEditError(`Not in supported list: ${d.invalid_syms.join(', ')}`);
-        if (d.category) {
-          setCat(d.category);
-          // reflect in window.CATEGORIES so other parts of the UI stay in sync
-          window.CATEGORIES = window.CATEGORIES.map(c => c.key === cat.key ? d.category : c);
-        }
-        setAddVal('');
-      }
-    } catch { setEditError('Network error'); }
-    setEditBusy(false);
-  };
-
-  return (
-    <>
-      <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(15,23,42,.45)', backdropFilter:'blur(4px)', zIndex:60, animation:'fade-in .2s' }}/>
-      <aside className="drawer-panel" style={{ width:460, zIndex:65 }}>
-        <div className="drawer-handle"/>
-        <div style={{ padding:'20px 24px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:14 }}>
-          <div style={{ width:44, height:44, borderRadius:11, background:`color-mix(in oklab,${cat.color} 12%,transparent)`, color:cat.color, display:'grid', placeItems:'center', fontSize:22, flexShrink:0 }}>{cat.icon}</div>
-          <div style={{ flex:1 }}>
-            <div className="eyebrow" style={{ marginBottom:2 }}>Category · {tickers.length} stocks</div>
-            <div style={{ fontSize:17, fontWeight:800 }}>{cat.label}</div>
-          </div>
-          <button onClick={()=>setEditOpen(o=>!o)} style={{
-            padding:'6px 12px', border:'1px dashed var(--border-strong)', borderRadius:8,
-            background:'transparent', fontSize:11, fontWeight:600, color:'var(--ink-2)', cursor:'pointer'
-          }}>{editOpen ? 'Done' : 'Edit list'}</button>
-          <button onClick={onClose} style={{ width:32, height:32, borderRadius:8, border:'1px solid var(--border)', background:'transparent', display:'grid', placeItems:'center', color:'var(--ink-2)', cursor:'pointer' }}><Icon.X size={16}/></button>
-        </div>
-
-        {/* Inline add-ticker form */}
-        {editOpen && (
-          <div style={{ padding:'12px 24px', borderBottom:'1px solid var(--border)', background:'var(--bg-base)', display:'flex', gap:8, flexWrap:'wrap', alignItems:'center' }}>
-            <input value={addVal} onChange={e=>{setAddVal(e.target.value.toUpperCase()); setEditError('');}}
-              onKeyDown={e=>e.key==='Enter' && mutate([addVal.trim()], [])}
-              placeholder="Add ticker e.g. ESCORTS" style={{
-                padding:'7px 11px', border:'1px solid var(--border)', borderRadius:8,
-                fontSize:12, background:'var(--bg-surface)', outline:'none', minWidth:160
-              }}/>
-            <button onClick={()=>mutate([addVal.trim()], [])} disabled={editBusy || !addVal.trim()} style={{
-              padding:'7px 12px', border:'none', borderRadius:8, background:'var(--cyan)',
-              color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer'
-            }}>{editBusy ? '…' : 'Add'}</button>
-            {editError && <span style={{ fontSize:11, color:'var(--sell-strong)' }}>{editError}</span>}
-            <span style={{ fontSize:10, color:'var(--ink-3)', marginLeft:'auto' }}>Supported tickers only</span>
-          </div>
-        )}
-
-        <div style={{ flex:1, overflowY:'auto', padding:24, display:'flex', flexDirection:'column', gap:10 }}>
-          {tickers.map(t => {
-            const verdictColor = {'STRONG BUY':'var(--buy-strong)','BUY':'var(--buy)','NEUTRAL':'var(--neutral)','SELL':'var(--sell)','STRONG SELL':'var(--sell-strong)'}[t.verdict] || 'var(--neutral)';
-            return (
-              <div key={t.sym} style={{ padding:'14px 16px', borderRadius:12, border:'1px solid var(--border)', background:'var(--bg-base)', display:'flex', alignItems:'center', gap:12 }}>
-                <div style={{ width:38, height:38, borderRadius:9, background:'linear-gradient(135deg,var(--cyan-soft),var(--violet-soft))', display:'grid', placeItems:'center', fontWeight:800, color:'var(--cyan)', fontSize:14, flexShrink:0 }}>{t.sym[0]}</div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                    <span className="mono" style={{ fontWeight:700, fontSize:13 }}>{t.sym}</span>
-                    {t.hasData !== false ? (
-                      <span style={{ fontSize:11, padding:'2px 7px', borderRadius:999, background:`color-mix(in oklab,${verdictColor} 14%,transparent)`, color:verdictColor, fontWeight:700 }}>{t.verdict}</span>
-                    ) : (
-                      <span style={{ fontSize:10, padding:'2px 7px', borderRadius:999, background:'var(--bg-tinted)', color:'var(--ink-3)', fontWeight:600 }}>Not analyzed</span>
-                    )}
-                  </div>
-                  <div style={{ fontSize:12, color:'var(--ink-3)', marginTop:2 }}>
-                    {t.hasData !== false ? tickerFigures(t) : t.name}
-                  </div>
-                </div>
-                <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-                  <button onClick={()=>{onClose(); onAnalyze(t.sym);}} style={{ padding:'6px 12px', border:'none', borderRadius:8, background:'linear-gradient(135deg,var(--cyan),var(--violet))', color:'#fff', fontSize:11, fontWeight:700, cursor:'pointer' }}>Analyze</button>
-                  {editOpen && (
-                    <button onClick={()=>mutate([], [t.sym])} disabled={editBusy} title="Remove from category" style={{ width:28, height:28, border:'1px solid var(--border)', borderRadius:7, background:'transparent', display:'grid', placeItems:'center', color:'var(--ink-3)', cursor:'pointer', fontSize:14 }}>×</button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
         </div>
       </aside>
     </>

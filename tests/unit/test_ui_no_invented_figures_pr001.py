@@ -449,10 +449,10 @@ def test_the_pulse_ignores_sectors_that_were_not_fetched():
 # ---------------------------------------------------------------------------
 
 FIXTURE_MODULE = "demo-fixtures.js"
-# Owner-only screens (PR-001 hides them from members; PR-010 moves them to an
-# Operator menu). Their diagnostics are out of this card's scope.
-OPERATOR_ONLY = {"analytics.jsx", "rl-monitor.jsx", "rl-data.jsx", "logs.jsx",
-                 "tweaks-panel.jsx"}
+# Owner-only screens (PR-001 hides them from members; PR-040 puts them in the
+# Operator menu and loads them for the owner only). Their diagnostics are out
+# of this card's scope. agents-page.jsx is owner-only too but stays scanned.
+OPERATOR_ONLY = {"analytics.jsx", "rl-monitor.jsx", "rl-data.jsx", "logs.jsx"}
 
 GUARDS = {
     "the name Aditi": re.compile(r"Aditi", re.I),
@@ -559,7 +559,13 @@ def test_the_fixture_module_defines_nothing_outside_demo_mode():
     assert first == "if (!window.saDemoMode) return;", first
     html = (PROTO / "index.html").read_text(encoding="utf-8")
     flag = html.index("window.saDemoMode = new URLSearchParams(location.search).get('demo') === '1';")
-    assert flag < html.index('<script src="demo-fixtures.js"></script>') < html.index('type="text/babel"')
+    # PR-040: the file is requested only in demo mode, before the screens run.
+    load = html.index("if (window.saDemoMode) {\n    const fixtures = document.createElement('script');\n"
+                      "    fixtures.src = 'demo-fixtures.js';")
+    assert flag < load < html.index('type="text/babel"')
+    assert '<script src="demo-fixtures.js"></script>' not in html
+    data = (PROTO / "data.jsx").read_text(encoding="utf-8")
+    assert "window.addEventListener('sa-demo-fixtures', saApplyDemoFixtures, { once: true });" in data
 
 
 def test_no_invented_figures_browser_suite():

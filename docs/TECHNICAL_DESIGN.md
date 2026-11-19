@@ -3544,10 +3544,10 @@ have been left out. With no change it reads "No verdict changes since 16 Sept":
 `since` is the date of the oldest kept run among those stocks. If the score
 history cannot be read, the route sends nothing rather than a partial list. A composite-score change is not rupees, so there is no
 gain, loss or agreement figure and no templated lesson; realized trade results
-are in the portfolio's closed-trade card and the weekly scorecard (section 7). The Learn page claims no progress for a member,
-because nothing records it. Sample data exists only in demo mode: `?demo=1` loads the invented
+are in the portfolio's closed-trade card and the weekly scorecard (section 7). Sample data exists only in demo mode: `?demo=1` loads the invented
 values in `src/frontend/prototypes/demo-fixtures.js` under a "Sample data"
-banner and makes no market call, and the layout audit uses it.
+banner and makes no market call, and the layout audit uses it. Without
+`?demo=1` the browser does not request that file at all.
 A failed request never falls back to a sample.
 
 **Score history and who sees which stock.** Every completed analysis writes
@@ -3556,8 +3556,8 @@ the decision gate, with the verdict the run returns. Each entry point ends
 there: the 16:30 review, the monthly forecast, discovery deep dives,
 `/analyse`, the stream and the chat. A failed write is a warning and never
 fails the analysis. The store keeps the newest `SCORE_HISTORY_MAX_ROWS` (90)
-runs per stock, and each agent's score as its own reading (`raw`), which the
-"This month" votes average. Because the store also holds stocks that a member
+runs per stock, and each agent's score as its own reading (`raw`), which
+`/ui/bootstrap`'s month votes average (no screen draws them). Because the store also holds stocks that a member
 asked about by name, a screen that lists stocks out of it names only:
 
 - the shared stocks: the built-in universe, the managed list (which
@@ -3580,16 +3580,45 @@ owner holds BEL and a member holds DIXON, and neither is managed or on the
 shelf. The member's Portfolio lists DIXON's verdict changes and never BEL's,
 and the chat answers the member with DIXON's verdict, not BEL's.
 
-Operator tools show only for a session whose `/auth/me` role is `owner`:
-Analytics, RL Monitor, Logs, agent tuning (the plug, task and
-weight controls) and the Tweaks panel. While the role is unknown none show,
-and a member sent to an operator screen lands on Home. Hiding is not the
-protection: the server keeps `require_owner` on every tuning write and on the
-log reads. The RL client still has demo/fallback paths on API failure, so
-populated operator charts alone do not prove live data. **Planned:** four
-member screens and an Operator menu, with operator code loaded only for the
-owner (PR-040, then PR-010); honest unavailable states on the
-remaining screens (SA-024); a public-read and demo-data policy (SA-032).
+**Screens.** A member's navigation offers three screens: **Today**, **Portfolio**
+and **Ask** (the chat, over the current screen), with Settings and Sign out in
+the account menu (the avatar). Today is the hero (greeting, Nifty line), then
+the brief with the digest, the weekly review and the alerts beside it (the
+former Inbox; a notification link `#/inbox/<tab>` opens Today on that tab),
+then the market tabs (Today's market, This month, Watchlist, Trending) with
+the watchlist's Analyse button. There is no Learn page, no "Browse by
+category" or "Suggested for you" section, no agent-vote bars and no Tweaks
+panel; the server still sends `CATEGORIES`, `SUGGESTIONS` and the month's
+`agentVotes`, and no screen draws them. The analysis drawer shows a member the
+case (summary, verdict, thesis, drivers, risks); the agents' breakdown and the
+conflicts they resolved are the owner's.
+
+Operator tools show only for a session whose `/auth/me` role is `owner`: the
+**Operator** menu holds Agents (with the agent tuning: plug, task and weight
+controls), Analytics, Logs and RL Monitor. While the role is unknown none
+show, and a member sent to an operator screen lands on Today. Their code is
+the owner's too: `index.html` loads only the member screens' scripts, and
+requests `agents-page.jsx`, `analytics.jsx`, `logs.jsx`, `rl-data.jsx` and
+`rl-monitor.jsx` (`SA_OPERATOR_FILES`, through Babel's script loader) once the
+role is `owner`; `sw.js` precaches none of them. The agents' task catalogue
+lives in `agents-page.jsx`. Because scripts come from the service worker's
+cache first, the first open after a deploy runs the new `index.html` with the
+previous version's scripts; it renders any screen it does not know as Today,
+and the old Inbox screen while the cached `home.jsx` has no brief panel.
+Hiding is not the protection: the server keeps `require_owner` on every
+tuning write and on the log reads. The Agents page states the learning mode
+beside the weight controls (from `/ui/rl/weights/<ticker>`), and that its
+saved weights and task switches are kept for the page only: `PUT
+/ui/agents/weights` writes `data/agent_weights.json`, which only `GET
+/ui/agents` reads, and `PUT /ui/agents/tasks` writes `data/agent_tasks.json`,
+which only `/ui/bootstrap` and `GET /ui/agents/tasks` read; no analysis reads
+either (BACKLOG B-25). The RL client still has demo/fallback paths on API
+failure, so populated operator charts alone do not prove live data. The
+internal UI spec is `src/frontend/UI_SPEC.md`, outside the served folder
+(the catch-all serves any file inside it). **Planned:** the fourth member
+screen, Ideas, and plain words in member copy (PR-010); honest unavailable
+states on the remaining screens (SA-024); a public-read and demo-data policy
+(SA-032).
 
 Chat replies are untrusted text: the model quotes news snippets and tool
 output, and a quoted `<img src=x onerror=…>` passed to the browser as HTML
@@ -3838,7 +3867,8 @@ The planned changes connect the research to the money:
   why, what would change our mind, what next", grounded and free of internal
   words (PR-007). The brief opens with your stocks (PR-008).
 - **Show only what is real.** On top of section 10's real-figures rule,
-  members see four screens and the owner an Operator menu (PR-040, then PR-010).
+  members see three screens and the owner an Operator menu (done); Ideas
+  makes four (PR-010).
 - **Choose models on evidence.** Models are chosen per role from a bench on
   stored bundles (PR-012).
 
@@ -4017,7 +4047,7 @@ section 10) are part of the current design.
 | [PR-037](planning/PI-2026-09/stories/PR-037.md) | Enough analysed ideas to hold 25 to 30 stocks | Open | 8 Discovery | PR-035, PR-036 |
 | [PR-038](planning/PI-2026-09/stories/PR-038.md) | A stock is not refused for having risen since its analysis | Open | 6 Portfolio | PR-035 |
 | [PR-039](planning/PI-2026-09/stories/PR-039.md) | Where the funnel lost the stocks that rose | Done | 7 Marksheets; 8 Discovery | None |
-| [PR-040](planning/PI-2026-09/stories/PR-040.md) | Members see three screens and load no operator code | Open | 10 Interface | PR-001 |
+| [PR-040](planning/PI-2026-09/stories/PR-040.md) | Members see three screens and load no operator code | Done | 10 Interface | PR-001 |
 | [PR-041](planning/PI-2026-09/stories/PR-041.md) | Grade the screen's cut forward before it is widened | Open | 8 Discovery | None |
 | [CLEAN-007](planning/PI-2026-09/stories/CLEAN-007.md) | The nightly backup stops emailing the archive | Done | 1 Production state; 10 Operations | None |
 | [FIX-017](planning/PI-2026-09/stories/FIX-017.md) | The holding sync reads every NSE corporate-action row it is given, under NSE's code | Open | 6 Portfolio | None |

@@ -108,11 +108,14 @@ StockAgent-main/
 │   │       └── schemas/
 │   │           └── feedback.py    # Feedback/RL schemas (src path)
 │   └── frontend/
+│       ├── UI_SPEC.md             # Internal UI spec (outside the served folder)
 │       └── prototypes/            # THE real frontend — vanilla-React JSX (Babel standalone),
 │                                  #  served statically at /app; PWA (sw.js + VAPID push).
 │                                  #  chat-markdown.js = the chat reply → HTML boundary;
-│                                  #  demo-fixtures.js = sample data for ?demo=1 only (no
-│                                  #  screen falls back to it); operator screens owner-only;
+│                                  #  demo-fixtures.js = sample data, requested only with
+│                                  #  ?demo=1 (no screen falls back to it); members load the
+│                                  #  Today/Portfolio/Ask screens only, the owner's browser
+│                                  #  also loads the operator screens (SA_OPERATOR_FILES);
 │                                  #  browser tests in tests/frontend/ (npm run test:frontend).
 │                                  #  (The old TypeScript/Vite src/frontend/web scaffold was
 │                                  #   deleted in audit Wave E — it was never the deployed UI.)

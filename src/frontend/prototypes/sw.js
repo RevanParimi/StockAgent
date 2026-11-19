@@ -12,17 +12,19 @@
 // pre-fix sphere.jsx and the unpinned marked@12 CDN entry.
 // v9 (PR-001): data.jsx no longer carries sample market data (demo-fixtures.js
 // does, for ?demo=1 only); drop the cached screens that still show it.
-const VERSION = 'v10';
+// v11 (PR-040): members see Today, Portfolio and Ask. The operator screens'
+// files are the owner's only and are not listed here (index.html requests
+// them for the owner); demo-fixtures.js is requested only with ?demo=1.
+const VERSION = 'v11';
 const SHELL_CACHE = `sa-shell-${VERSION}`;
 const RUNTIME_CACHE = `sa-runtime-${VERSION}`;
 
 const SHELL = [
   '/', '/index.html', '/styles.css', '/manifest.json',
-  '/chat-markdown.js', '/demo-fixtures.js',
-  '/data.jsx', '/icons.jsx', '/sphere.jsx', '/auth.jsx', '/home.jsx',
-  '/agents-page.jsx', '/portfolio.jsx', '/learn.jsx', '/tweaks-panel.jsx',
-  '/analytics.jsx', '/logs.jsx', '/rl-data.jsx', '/rl-monitor.jsx',
-  '/inbox.jsx',
+  '/chat-markdown.js',
+  '/data.jsx', '/hooks.jsx', '/icons.jsx', '/sphere.jsx', '/auth.jsx', '/home.jsx',
+  '/portfolio.jsx', '/brief-view.jsx', '/digest-view.jsx', '/weekly-view.jsx',
+  '/inbox.jsx', '/settings.jsx',
   '/icons/pwa-192x192.png', '/icons/pwa-512x512.png', '/icons/pwa-maskable-512x512.png',
   '/icons/apple-touch-icon.png', '/icons/favicon-32x32.png',
 ];

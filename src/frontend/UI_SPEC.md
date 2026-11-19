@@ -6,33 +6,43 @@
 
 ## 1. Architecture Overview
 
-### Script load order (index.html lines 19–27)
+### Script load order (index.html)
 ```
 styles.css          ← CSS variables, utility classes (.card, .mono, .eyebrow)
 marked + DOMPurify  ← CDN, exact versions with SRI (SA-001)
 chat-markdown.js    ← window.saRenderChatMarkdown: chat reply → sanitized HTML (plain script, not Babel)
 inline <script>     ← window.saUser / saSetUser / useSaUser / saIsOwner (the signed-in account)
-inline <script>     ← window.saDemoMode = (?demo=1)
-demo-fixtures.js    ← window.saDemoFixtures: sample data, defined ONLY when saDemoMode (plain script)
-data.jsx            ← Static catalogues + empty market globals; bootstrap fetch (no React)
+                      and SA_OPERATOR_FILES / saLoadOperator / saOperatorState (operator code, owner only)
+inline <script>     ← window.saDemoMode = (?demo=1); only then appends a <script> for demo-fixtures.js
+demo-fixtures.js    ← window.saDemoFixtures: sample data (plain script; requested only with ?demo=1;
+                      data.jsx applies it at once, or on 'sa-demo-fixtures' if it is still loading)
+data.jsx            ← Empty market globals; bootstrap fetch (no React)
 hooks.jsx           ← useIsMobile, useViewportWidth
 icons.jsx           ← window.Icon object
-sphere.jsx          ← window.Sphere, window.SphereOrb, window.ChatOverlay
+sphere.jsx          ← window.Sphere, window.SphereOrb, window.ChatOverlay (Ask)
 auth.jsx            ← window.AuthScreen
-home.jsx            ← window.Home, window.TopNav, window.RangeTabs, window.Sparkline
-agents-page.jsx     ← window.AgentsPage, window.AGENT_SOURCES
+home.jsx            ← window.Home (Today), window.TopNav, window.RangeTabs, window.Sparkline; saTodayHoldsInbox
 portfolio.jsx       ← window.PortfolioPage
-learn.jsx           ← window.LearnPage
-tweaks-panel.jsx    ← window.useTweaks, window.TweaksPanel, and all TweakXxx controls
-inline <script>     ← App(), NavChip(), ReactDOM.createRoot().render()
+brief-view.jsx, digest-view.jsx, weekly-view.jsx ← the brief panel's views
+inbox.jsx           ← window.InboxPanel (the brief panel on Today)
+settings.jsx        ← window.SettingsPage
+inline <script>     ← App(), saShownScreen(), OperatorScreen(), ReactDOM.createRoot().render()
+
+owner only, after /auth/me says role 'owner' (saLoadOperator → Babel.transformScriptTags):
+agents-page.jsx     ← window.AgentsPage, window.AGENT_SOURCES, the AGENT_TASKS catalogue
+analytics.jsx       ← window.AnalyticsPage
+logs.jsx            ← window.LogsPage
+rl-data.jsx         ← RL_* globals, window.rlFetch
+rl-monitor.jsx      ← window.RLMonitorPage
 ```
+`sw.js` precaches the member files only; the operator files are not in its list.
 
 **Why Babel standalone:** No build step. All JSX files are tagged `type="text/babel"` — Babel parses and transpiles in-browser at page load. Suitable for prototype iteration only.
 
 ### Global state sharing
 No React context. All shared data is attached to `window.*` by data.jsx and read directly inside components. Agent/task mutable state is lifted into `AgentsPage` local state and initialized from `window.AGENTS` / `window.AGENT_TASKS`.
 
-The signed-in account is `window.saUser` (from `/auth/me`, published by `App` with `saSetUser` at boot, sign-in and sign-out); components read it with `useSaUser()`. The helpers sit in an inline script in index.html, not a .jsx file: navigations are network-first but the service worker serves scripts from its cache first, so the first open after a deploy runs the new index.html with the previous .jsx files, which must still render. Operator tools render only when `saIsOwner(user)` (role `owner`): the Analytics / Logs / RL Monitor chips and menu entries, the agent tuning controls and the Tweaks panel. A member sent to an operator screen gets Home. The server routes keep their own guards.
+The signed-in account is `window.saUser` (from `/auth/me`, published by `App` with `saSetUser` at boot, sign-in and sign-out); components read it with `useSaUser()`. The helpers sit in an inline script in index.html, not a .jsx file: navigations are network-first but the service worker serves scripts from its cache first, so the first open after a deploy runs the new index.html with the previous .jsx files, which must still render. Operator tools render only when `saIsOwner(user)` (role `owner`): the Operator menu (Agents, Analytics, Logs, RL Monitor) and the agent tuning controls. Their code is requested only then (`saLoadOperator`); until it has run, an operator screen shows "Loading the operator tools…". A member sent to an operator screen gets Today. The server routes keep their own guards. There is no Tweaks panel.
 
 ### Live data bootstrap (PR-001: real or unavailable, never a sample)
 `data.jsx` sets every market global empty (`[]` / `null`), then fires an async IIFE that calls `GET /ui/bootstrap`. On success it fills the `window.*` keys; on failure it leaves them empty. Either way it sets `window.__apiState` and calls `window.__onApiReady()`, and `App` re-renders. Screens show "Loading…" while `__apiState` is `'loading'` and "… is unavailable right now" after `'failed'`; no screen falls back to sample values.
@@ -52,28 +62,17 @@ Demo mode: `?demo=1` sets `window.saDemoMode`; demo-fixtures.js then defines `wi
 Status flags: `window.__apiState` (`'loading'|'ready'|'failed'|'demo'`), `window.__apiReady` (bool), `window.__apiLive` (bool — false if DB empty), `window.__apiFetchedAt` (ISO string; the hero shows it in IST).
 
 ### Routing model
-Single `screen` string in `App` state (index.html line 40):
+Single `screen` string in `App` state:
 ```
-'auth' | 'home' | 'agents' | 'portfolio' | 'learn'
+'auth' | 'home' (Today) | 'portfolio' | 'settings' | 'inbox' (Today, on a brief-panel tab)
+owner: 'agents' | 'analytics' | 'logs' | 'rl-monitor'
 ```
-`setScreen(name)` is passed as `onNav` prop to every screen. No React Router, no URL changes.
+`nav(name)` is passed as `onNav` to every screen; `nav('ask')` opens the chat instead of changing screen, `nav('auth')` signs out. `saShownScreen(screen, isOwner)` decides what is drawn: any other name (Learn, or one an older cached script still offers) is Today, an operator screen is Today for a member, and `'inbox'` is Today unless the cached `home.jsx` predates the brief panel (`window.saTodayHoldsInbox` unset) and the old `InboxPage` exists. No React Router, no URL changes; notification links `#/inbox/<tab>` are read once at boot.
 
 ### Theme system
-- `App` calls `document.documentElement.setAttribute('data-theme', tweaks.theme)` on mount and on change (index.html lines 43–45).
+- `App` keeps `theme` in state and writes it through `saSetTheme` (the one writer of `data-theme`), which persists it in localStorage.
 - CSS variables are defined in `:root` (light) and overridden in `[data-theme="dark"]` in styles.css.
 - Two theme values: `"light"` | `"dark"`.
-
-### TweaksPanel
-Fixed floating panel (bottom-right, draggable, z-index 2147483646) defined in tweaks-panel.jsx.
-- Opened by host iframe via `window.postMessage({ type: '__activate_edit_mode' })`.
-- Closed via `__deactivate_edit_mode` or user clicking ✕ (posts `__edit_mode_dismissed` back).
-- **What it controls (index.html lines 79–105):**
-
-| Section | Key | Values |
-|---|---|---|
-| Theme | `theme` | `light` / `dark` |
-| Sphere style | `sphereMode` | `wireframe` / `liquid` |
-| Quick jump | — | Buttons: setScreen to each screen |
 
 ---
 
@@ -85,16 +84,17 @@ All variables are on `window`. No module exports.
 
 | Variable | Shape | Live? | Consumed by | Notes |
 |---|---|---|---|---|
-| `AGENTS` | `Array<{key, name, icon, weight, desc, enabled, beginner}>` | ✅ bootstrap | AgentsPage (initial state), MonthPane | 9 items; `weight` custom-overridden via `PUT /ui/agents/weights` |
-| `TICKERS` | `Array<{sym, name, price, change, score, verdict, trend, hasData}>` | ✅ bootstrap | WatchlistPane, TrendingPane, SuggestCard | 8 NSE auto stocks; `hasData` false if no analysis run yet |
+| `AGENTS` | `Array<{key, name, icon, weight, desc, enabled, beginner}>` | ✅ bootstrap | AgentsPage (initial state), the analysis drawer's progress rows | 9 items; `weight` custom-overridden via `PUT /ui/agents/weights` |
+| `TICKERS` | `Array<{sym, name, price, change, score, verdict, trend, hasData}>` | ✅ bootstrap | WatchlistPane, TrendingPane, DriverDetailPanel | 8 NSE auto stocks; `hasData` false if no analysis run yet |
 | `WATCHLIST` | `string[]` | ✅ bootstrap | WatchlistPane | The pane re-reads the account's own list from `GET /ui/watchlist` |
-| `AGENT_TASKS` | `Record<agentKey, Array<{key,label,source,enabled,beginner}>>` | 〰️ static catalogue | AgentsPage (initial state), AgentDrawer | `enabled` overlaid from bootstrap `AGENT_TASK_FLAGS`; the owner's toggles persist via `PUT /ui/agents/tasks` |
+| `AGENT_TASKS` | `Record<agentKey, Array<{key,label,source,enabled,beginner}>>` | 〰️ static catalogue, in agents-page.jsx (owner only) | AgentsPage (initial state), AgentDrawer | `enabled` overlaid from `AGENT_TASK_FLAGS` by `saApplyTaskFlags`; the owner's toggles persist via `PUT /ui/agents/tasks` |
+| `AGENT_TASK_FLAGS` | `Record<agentKey, Record<taskKey, bool>>` | ✅ bootstrap | AgentsPage | `{}` until bootstrap answers |
 | `MARKET_TODAY` | `{pulse, oneLiner, autoChange, drivers[], sectorChange[], freshness}` | ✅ bootstrap | TodayPane, Hero | `null` until bootstrap; `drivers` only from analyses (may be empty); `sectorChange[i].pct` is `null` when that index failed. `freshness` (here and in `MARKET_MONTH`) is `{label, runAt, isStale}` for the newest shared analysis: "Updated 5h ago", then "Last analysis 2 days ago"; `isStale` past 12 h; "No data yet" with none |
-| `MARKET_MONTH` | `{pulse, oneLiner, drivers[], agentVotes[], freshness}` | ✅ bootstrap | MonthPane | `agentVotes` only agents with scores (no weight stand-in); the votes card is hidden when empty |
+| `MARKET_MONTH` | `{pulse, oneLiner, drivers[], agentVotes[], freshness}` | ✅ bootstrap | MonthPane | `agentVotes` is sent and not drawn (the vote bars were removed) |
 | `NIFTY50` | `{name, value, changePct, asOf}` \| `null` | ✅ bootstrap | Hero market line | Last close, its change on the close before, that close's date |
 | `TRENDING` | `Array<{sym,delta,volume,why}>` | ✅ bootstrap | TrendingPane | Ranked by `abs(price change)` in bootstrap; use `GET /ui/trending` for score-delta ranking |
-| `SUGGESTIONS` | `Array<{sym,reason,score,why}>` | ✅ bootstrap | SuggestCard | Tickers not in watchlist with DB scores |
-| `CATEGORIES` | `Array<{key,icon,label,count,color}>` | 〰️ static | CategoryCard | 6 items; color is hex — no API needed |
+| `SUGGESTIONS` | `Array<{sym,reason,score,why}>` | ✅ bootstrap | — | Sent and not drawn ("Suggested for you" was removed; BACKLOG B-25) |
+| `CATEGORIES` | `Array<{key,icon,label,count,color}>` | ✅ bootstrap | — | Sent and not drawn ("Browse by category" was removed; BACKLOG B-25) |
 | `NIFTY_AUTO_HISTORY` | `number[]` | ✅ bootstrap | (unused by the screens) | `^CNXAUTO` closes; `[]` when the fetch failed |
 | `NIFTY50_RANGES` | `Record<'1W'…'1Y', /ui/nifty-ranges answer>` | 🧪 demo | NiftyBox (demo mode) | Live mode fetches `GET /ui/nifty-ranges?range=` per tab |
 | `PORTFOLIO_RANGES` | `Record<'1W'…'1Y', {points, label, change}>` | 🧪 demo | PortfolioPage → Sparkline | Live hero chart reads `GET /portfolio/performance` history (`liveHist`/`liveSlice`), hidden until ≥2 equity points exist |
@@ -102,9 +102,6 @@ All variables are on `window`. No module exports.
 | `PORTFOLIO` | `{totalValue, totalCost, dayChange, dayChangePct, cash, holdings[], recentActivity[], alerts[]}` | 🧪 demo | PortfolioPage and all sub-cards | Live page fetches `GET /portfolio` + `/portfolio/performance` + `/portfolio/transactions`; when `/portfolio` fails the page says the portfolio is unavailable |
 | `PORTFOLIO_LEARNINGS` | `{items[], since}` | ✅ `GET /ui/learnings` | LearningsSection ("Recent verdict changes") | Shown only when the API sent items (`__learningsLive`) or in demo mode. Fetched at load and again when `saSetToken` stores a sign-in (`saLoadLearnings` in data.jsx): the list depends on the viewer. `saClearToken` (sign-out, an expired session, a deleted account) drops it (`saForgetLearnings`), and an answer that arrives after a sign-out is discarded |
 | `PORTFOLIO_LEARNINGS.items` | `Array<{id,kind,severity,sym,title,when,what,detail,agentSnapshot[]}>` | ✅ | LessonCard | Only stocks the viewer may see (shared ones plus their own; `/ui/learnings` with the session). Verdict changes first (a verdict that differs from the run before it), newest first, at most 10 (`LEARNINGS_MAX_CHANGES` mirrors the server's cap); then forecast misses, newest first, at most 5. `kind`: `'turned-bullish'|'turned-bearish'|'bullish'|'bearish'|'neutral'` for a change, `'forecast-miss'` for a miss; no money figure, rate or advice text |
-| `LEARN_PATHS` | `Array<{key,title,sub,minutes,steps,progress,color,icon}>` | 〰️ static | PathCard, PathOverlay, LearnPage hero | 6 paths; `progress` is 0 (nothing records a user's progress, so the page claims none: no percentage, no "where you left off") |
-| `GLOSSARY` | `Array<{term,short,defn}>` | 〰️ static | GlossaryCard | 6 terms |
-| `LEARN_TIPS` | `Array<{title,body}>` | 〰️ static | TipsCard | 3 tips |
 | `AGENT_SOURCES` | `Record<agentKey, string[]>` | ✅ via bootstrap `AGENT_SOURCES` key | AgentDrawer "Data sources" | Defined in agents-page.jsx, also returned by bootstrap |
 | `Icon` | `Record<string, (props)=>JSX>` | 〰️ static | All screens | Defined in icons.jsx |
 
@@ -131,13 +128,13 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 | `Star` | Home tab bar "Watchlist" |
 | `Trend` | Home tab "Today", DriverRow good kind, PatternChip good kind |
 | `TrendDown` | DriverRow bad kind, ActivityCard sell icon, PatternChip bad kind |
-| `Sparkles` | Logo, Hero CTA, SuggestCard, ChatOverlay header, AskAssistantCard |
+| `Sparkles` | Logo, Hero CTA, the Ask nav entry, ChatOverlay header, AskAssistantCard |
 | `Compass` | Home tab "This month", DriverRow mid kind, LessonCard action |
 | `Layers` | PathCard step counter |
 | `Bot` | (available, unused in current screens) |
-| `Cpu` | TopNav "Agents" link, bottom NavChip "Agents" |
+| `Cpu` | Operator menu "Agents" |
 | `Settings` | (available, unused) |
-| `Home` | TopNav "Home" link, bottom NavChip "Home" |
+| `Home` | TopNav "Today" link |
 | `Bell` | TopNav notification button |
 | `Send` | ChatOverlay submit button |
 | `X` | ChatOverlay close, AgentDrawer close, PathOverlay close |
@@ -152,11 +149,10 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 | `Drag` | (available, unused) |
 | `Mail` | Auth email field |
 | `Lock` | Auth password field |
-| `User` | Auth name field (signup), bottom NavChip "Sign out" |
+| `User` | Auth name field (signup), "Sign out" in the account and phone menus |
 | `Google` | Auth Google social button (colored SVG, not stroked) |
 | `Apple` | Auth Apple social button |
-| `Briefcase` | TopNav "Portfolio" link, bottom NavChip "Portfolio" |
-| `Book` | TopNav "Learn" link, bottom NavChip "Learn" |
+| `Briefcase` | TopNav "Portfolio" link |
 
 ---
 
@@ -201,9 +197,9 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 
 ---
 
-### Home (home.jsx)
+### Today (home.jsx, `Home`)
 
-**Entry component:** `Home({ onNav, openChat })`
+**Entry component:** `Home({ onNav, openChat, inboxTab, setInboxTab })`
 
 **Layout:**
 ```
@@ -211,24 +207,24 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 ├── <TopNav active="home" onNav search setSearch/>  ← sticky top
 └── <main> maxWidth:1280, padding:24px 32px 96px
     ├── <Hero openChat/>                             ← dark gradient hero, Sphere inside
-    ├── tab bar (Today / This month / Watchlist / Trending)
-    ├── active tab pane (conditionally rendered)
-    ├── "Browse by category" → CategoryCard grid (hidden when CATEGORIES is empty)
-    └── "Suggested for you" → SuggestCard grid (hidden when SUGGESTIONS is empty)
+    ├── "Your brief" → <InboxPanel tab setTab/>       ← Brief / Digest / Weekly / Alerts (maxWidth 760)
+    ├── "Markets and your watchlist"
+    ├── tab bar (Today's market / This month / Watchlist / Trending)
+    └── active tab pane (conditionally rendered)
 ```
+`InboxPanel` (inbox.jsx) fetches the active tab's `/delivery/brief/latest`, `/portfolio/digest/latest`, `/delivery/weekly/latest` or `/delivery/alerts?limit=20`: 404 → the empty sentence, another failure → "Couldn't load this — HTTP …" with Retry. Home draws it only when `window.InboxPanel` exists (an older cached inbox.jsx has `InboxPage` instead).
 
 **Sub-components and data:**
 
 | Component | Props | window.* reads |
 |---|---|---|
-| `TopNav` | `active, onNav, search, setSearch` | `saUser` via `useSaUser` (avatar initials; RL Monitor tab and the menu's Analytics / Logs for the owner only) |
+| `TopNav` | `active, onNav, search, setSearch` | `saUser` via `useSaUser`: Today / Portfolio / Ask; the Operator menu (Agents, Analytics, Logs, RL Monitor) for the owner only; the avatar's account menu (Settings, Sign out). Phone: bottom bar Today / Portfolio / Ask; the hamburger menu adds Settings, the owner's Operator entries and Sign out |
 | `Hero` | `openChat` | `saUser` (first name), `NIFTY50` ("Nifty 50 ±x.xx% on <date>", omitted when null), `MARKET_TODAY.oneLiner`, `__apiState` / `__apiFetchedAt` (badge). Greeting by the IST hour |
 | `TodayPane` | `data` (MARKET_TODAY) | `MarketUnavailable` when `data` is null; `NiftyBox` fetches `GET /ui/nifty-ranges?range=` (value, change, "as of <date>", or "Unavailable right now") |
-| `MonthPane` | `data` (MARKET_MONTH) | Votes card only when `agentVotes` is non-empty |
+| `MonthPane` | `data` (MARKET_MONTH) | Pulse and themes only |
 | `WatchlistPane` | — | `WATCHLIST`, `TICKERS`, then `GET /ui/watchlist` (the account's list + prices). Price 0 → "—"; `hasData` false → "Not analysed". Add and remove send `PUT /ui/watchlist` with `{add: [sym]}` or `{remove: [sym]}` only, then show the list the answer carries |
 | `TrendingPane` | — | `GET /ui/trending`, `TRENDING` on a network error; unavailable when both are empty |
-| `CategoryCard` | `c` (one CATEGORIES item) | — |
-| `SuggestCard` | `s` (one SUGGESTIONS item) | `TICKERS` (by sym) |
+| `AnalysisResultDrawer` | `state` | The case for everyone (summary, verdict, thesis, drivers, risks); "Agent breakdown" and "Conflicts resolved" for the owner only |
 
 **Internal state:**
 
@@ -240,9 +236,9 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 
 ---
 
-### Agents (agents-page.jsx)
+### Agents (agents-page.jsx) — Operator, owner only
 
-**Entry component:** `AgentsPage({ onNav, openChat })`
+**Entry component:** `AgentsPage({ onNav, openChat })`. Loaded only in the owner's browser. `LearningModeNote` under the title reads the learning mode from `GET /ui/rl/tickers` → `GET /ui/rl/weights/<first ticker>` and says the page's saved weights reach no analysis (BACKLOG B-25).
 
 **Layout:**
 ```
@@ -267,7 +263,7 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 | `TaskRow` | `t, disabled, onToggle` | One task with toggle switch inside drawer |
 | `Section` | `title, children` | Eyebrow label + children grouping inside drawer |
 
-**window.* reads:** `AGENTS` (initial state only; when empty the page fetches `GET /ui/agents` itself), `AGENT_TASKS` (initial state only), `AGENT_SOURCES` (in AgentDrawer data sources section), `saUser` (`canTune` = owner). A member gets a read-only page: no plug toggles, task toggles, weight slider or save badge; the drawer shows the weight as a number.
+**window.* reads:** `AGENTS` (initial state only; when empty the page fetches `GET /ui/agents` itself), `AGENT_TASKS` + `AGENT_TASK_FLAGS` (initial state only), `AGENT_SOURCES` (in AgentDrawer data sources section), `saUser` (`canTune` = owner). Only the owner opens the page; `canTune` still guards the controls.
 
 **Internal state:**
 
@@ -362,54 +358,13 @@ Cash/day-change/range-chart/activity are now live-wired via `/portfolio/performa
 
 ---
 
-### Learn (learn.jsx)
-
-**Entry component:** `LearnPage({ onNav, openChat })`
-
-**Layout:**
-```
-<div> min-height:100vh
-├── <TopNav active="learn" .../>
-└── <main> maxWidth:1280
-    ├── hero (dark gradient, "0/28 steps" bar with no percentage, Sphere)
-    ├── "Learning paths" → 3-col PathCard grid
-    ├── grid 1.3fr/1fr
-    │   ├── <GlossaryCard/>
-    │   └── <TipsCard/>
-    └── [conditional] <PathOverlay/>    ← right drawer, fixed z-55
-```
-
-Nothing records a member's progress, so the page states none about them: no
-"where you left off", no "because you finished", and the overlay's button reads
-"Start from step 1" at step 0.
-
-**Sub-components:**
-
-| Component | Props | window.* reads |
-|---|---|---|
-| `PathCard` | `p, onClick` | — |
-| `GlossaryCard` | `openChat` | `GLOSSARY` |
-| `TipsCard` | `tips` | — (passed `LEARN_TIPS` directly) |
-| `PathOverlay` | `p, onClose` | — (uses `getStepTitle` helper) |
-
-**window.* reads (LearnPage):** `LEARN_PATHS`, `LEARN_TIPS`.
-
-**Internal state:**
-
-| State | Controls |
-|---|---|
-| `search` (string) | TopNav input (display only) |
-| `activePath` (string|null) | Which PathOverlay is open |
-
----
-
 ## 5. Component Reference
 
 ### Shared / cross-screen
 
 | Name | File | Props | Visual | window.* |
 |---|---|---|---|---|
-| `TopNav` | home.jsx:63 | `active, onNav, search, setSearch` | Sticky frosted-glass header: logo, 4 nav links, search input, bell icon, avatar initials | None |
+| `TopNav` | home.jsx | `active, onNav, search, setSearch` | Sticky frosted-glass header: logo, Today / Portfolio / Ask (+ the owner's Operator ▾), theme toggle, search input, avatar (account menu) | `saUser` |
 | `NavLink` | home.jsx:108 | `children, icon, active, onClick` | Pill button with icon + label; active = `--bg-tinted` bg | None |
 | `Sparkline` | home.jsx:518 | `values, height=60, color` | SVG polyline with gradient area fill | None |
 | `RangeTabs` | home.jsx:536 | `value, onChange, options?` | Small segmented button group (1W/1M/3M/6M/1Y) on light bg | `NIFTY_AUTO_RANGES` keys |
@@ -432,13 +387,11 @@ Nothing records a member's progress, so the page states none about them: no
 |---|---|---|---|---|
 | `Hero` | home.jsx:119 | `openChat` | Dark gradient card (2-col): copy left, Sphere right; two CTA buttons | `MARKET_TODAY.oneLiner` |
 | `TodayPane` | home.jsx:183 | `data` | 2-col: market pulse card left; Nifty sparkline + sector heatmap right | `NIFTY_AUTO_RANGES` |
-| `MonthPane` | home.jsx:243 | `data` | 2-col: pulse card left; agent vote bars right | None |
+| `MonthPane` | home.jsx | `data` | One card: pulse and the month's themes | None |
 | `WatchlistPane` | home.jsx:293 | — | Full-width card with table (6 cols) | `WATCHLIST`, `TICKERS` |
 | `TrendingPane` | home.jsx:320 | — | 2×2 card grid | `TRENDING`, `TICKERS` |
 | `DriverRow` | home.jsx:412 | `d` | 3-col row: colored icon, label+meta, chevron | None |
 | `SectorRow` | home.jsx:445 | `s` | 3-col: name, centered bar with midpoint, % value | None |
-| `CategoryCard` | home.jsx:466 | `c` | Card with emoji icon, label, stock count | `CATEGORIES` |
-| `SuggestCard` | home.jsx:485 | `s` | Card: ticker avatar + name, reason text, AI explanation chip | `TICKERS` |
 | `TickerRow` | home.jsx:355 | `t` | Table row: avatar+sym, price, change%, score+dot, verdict pill, Analyze button | None |
 | `ScoreDot` | home.jsx:397 | `v` | 8px colored circle: green ≥0.75, lighter green ≥0.55, amber ≥0.40, orange ≥0.20, red else | None |
 | `PulseDot` | home.jsx:402 | `kind='good'` | 10px pulsing dot with outer ring animation | None |
@@ -469,31 +422,6 @@ Nothing records a member's progress, so the page states none about them: no
 | `AlertsCard` | portfolio.jsx:234 | `alerts` | Card with left-bordered alert rows |
 | `AllocationCard` | portfolio.jsx:257 | `holdings` | Card: horizontal bar chart + legend list |
 | `AskAssistantCard` | portfolio.jsx:286 | `openChat` | Dark mini-card with Sphere(36), prompt text, open button |
-
-### Learn screen
-
-| Name | File | Props | Visual |
-|---|---|---|---|
-| `PathCard` | learn.jsx:80 | `p, onClick` | Card: 6px progress bar top, emoji icon, title, sub, steps/min footer |
-| `GlossaryCard` | learn.jsx:122 | `openChat` | Card: 2-col grid of term+defn mini-cards |
-| `TipsCard` | learn.jsx:150 | `tips` | Card: numbered tip list with gradient number badges |
-| `PathOverlay` | learn.jsx:175 | `p, onClose` | 560px right slide-in: colored header, step list, Start/Continue button footer |
-
-### TweaksPanel controls (tweaks-panel.jsx)
-
-| Name | Props | Visual |
-|---|---|---|
-| `TweaksPanel` | `title?, children` | Floating draggable panel; hidden until `__activate_edit_mode` |
-| `TweakSection` | `label, children` | Uppercase eyebrow label separator |
-| `TweakRow` | `label, value?, children, inline?` | Label+value row wrapper |
-| `TweakSlider` | `label, value, min, max, step, unit, onChange` | Range input with label+value |
-| `TweakToggle` | `label, value, onChange` | Inline toggle switch |
-| `TweakRadio` | `label?, value, options, onChange` | Segmented draggable radio (supports `{value,label}` or plain string options) |
-| `TweakSelect` | `label, value, options, onChange` | Native `<select>` styled |
-| `TweakText` | `label, value, placeholder, onChange` | Text input |
-| `TweakNumber` | `label, value, min, max, step, unit, onChange` | Scrub-to-change number input |
-| `TweakColor` | `label, value, onChange` | Color swatch `<input type="color">` |
-| `TweakButton` | `label?, onClick, secondary?` | Dark (primary) or light (secondary) action button |
 
 ---
 
@@ -570,8 +498,8 @@ Nothing records a member's progress, so the page states none about them: no
 | `sa-pulse` | sphere.jsx: scale 1→1.18 | Sphere core dot |
 | `auth-grad` | auth.jsx: bg-position 0→100% | Auth left panel gradient |
 | `chat-in` | sphere.jsx: opacity+translateY slide up | ChatOverlay mount |
-| `fade-in` | agents-page.jsx / learn.jsx: opacity | Drawer backdrop |
-| `slide-in` | agents-page.jsx / learn.jsx: translateX(100%)→0 | AgentDrawer / PathOverlay |
+| `fade-in` | agents-page.jsx: opacity | Drawer backdrop |
+| `slide-in` | agents-page.jsx: translateX(100%)→0 | AgentDrawer |
 
 ---
 
@@ -580,30 +508,20 @@ Nothing records a member's progress, so the page states none about them: no
 ### onNav flow
 ```
 index.html: App()
-  screen state + setScreen
+  screen state + nav(name)
   │
-  ├── passes setScreen as onNav to: Home, AgentsPage, PortfolioPage, LearnPage
+  ├── passes nav as onNav to: Home, PortfolioPage, SettingsPage, and (owner) the operator pages
   │
   └── each screen passes onNav to <TopNav onNav={onNav}/>
-      TopNav calls onNav('home'|'agents'|'portfolio'|'learn') on NavLink clicks
+      TopNav calls onNav('home'|'portfolio'|'ask') from its links, onNav('settings'|'auth')
+      from the account menu, and (owner) onNav('agents'|'analytics'|'logs'|'rl-monitor')
 ```
-`AuthScreen` receives `onAuthed` (not `onNav`) — calling it sets `screen='home'`.
+`AuthScreen` receives `onAuthed` (not `onNav`) — calling it sets `screen='home'` (or the pending notification tab).
 
-### Bottom nav strip (index.html lines 64–76)
-Fixed bottom-left, z-index 55, visible on all non-auth screens.
-
-| Chip | Icon | onClick |
-|---|---|---|
-| Home | `Icon.Home` | `goHome` → `setScreen('home')` |
-| Agents | `Icon.Cpu` | `goAgents` → `setScreen('agents')` |
-| Portfolio | `Icon.Briefcase` | `setScreen('portfolio')` |
-| Learn | `Icon.Book` | `setScreen('learn')` |
-| Sign out | `Icon.User` | `setScreen('auth')` |
-
-Active chip: `background: var(--bg-tinted)`, color `var(--ink-1)`.
+There is no floating chip strip: Sign out is in the account menu (desktop) and the hamburger menu (phone).
 
 ### ChatOverlay
-- **Opens:** `App.openChat` → `setChat(true)` — called from: Hero "Ask the assistant" button (home.jsx:148), Hero Sphere click (home.jsx:162), `SphereOrb.onOpen` (sphere.jsx:130), `AskAssistantCard` button (portfolio.jsx:302), Learn Sphere click (learn.jsx:52), GlossaryCard "Ask anything" (learn.jsx:127).
+- **Opens:** `App.openChat` → `setChat(true)` — called from: the Ask nav entry (`nav('ask')`), Hero "Ask the assistant" button, Hero Sphere click, `SphereOrb.onOpen`, `AskAssistantCard` button (portfolio.jsx).
 - **Closes:** `App.closeChat` → `setChat(false)` — called from `ChatOverlay.onClose` (Icon.X button, sphere.jsx:170).
 - **Renders:** Fixed bottom-right (right:24, bottom:104), 400×560, z-65. Slides up on mount.
 - **Seeds:** Shows `window.CHAT_SEEDS` buttons when `msgs.length === 1` (initial bot message only).
@@ -612,7 +530,7 @@ Active chip: `background: var(--bg-tinted)`, color `var(--ink-1)`.
 - Renders when: `screen !== 'auth' && !chat` (index.html line 60).
 - Position: `fixed, right:24, bottom:24, z-60`.
 - Hidden when ChatOverlay is open (both would occupy bottom-right).
-- `mode` prop comes from `tweaks.sphereMode`.
+- `mode` is `SPHERE_MODE` ('wireframe') in index.html.
 
 ---
 
@@ -620,26 +538,18 @@ Active chip: `background: var(--bg-tinted)`, color `var(--ink-1)`.
 
 | Task | File | Location | What to change |
 |---|---|---|---|
-| **Add a new screen** | index.html | Lines 52–57 | Add `{screen==='myscreen' && <MyScreen onNav={setScreen} openChat={openChat}/>}` |
-| | index.html | Lines 70–74 | Add `<NavChip active={screen==='myscreen'} onClick={()=>setScreen('myscreen')} icon={<Icon.X size={14}/>} label="My"/>` |
-| | tweaks-panel.jsx section in index.html | Lines 99–104 | Add `<TweakButton onClick={()=>setScreen('myscreen')}>Open myscreen</TweakButton>` |
-| | home.jsx | Line 81 (TopNav nav) | Add `<NavLink onClick={()=>onNav?.('myscreen')} active={active==='myscreen'} icon={<Icon.X size={15}/>}>MyScreen</NavLink>` |
-| **Add a nav chip** | index.html | Lines 70–74 | Add `<NavChip>` with desired `icon`, `label`, `onClick` |
+| **Add a new screen** | index.html | `App` render + `saShownScreen` | Add `{shown==='myscreen' && <MyScreen onNav={nav} openChat={openChat}/>}` and let `saShownScreen` return it |
+| | home.jsx | `TopNav` `navLinks` (members) or `operatorLinks` (owner) | Add `{ screen:'myscreen', label:'My', icon:<Icon.X size={17}/> }`; an operator screen also goes in `OPERATOR_SCREENS` and its file in `SA_OPERATOR_FILES` (and never in `sw.js`) |
 | **Add a new window.* variable** | data.jsx | End of file | `window.MY_DATA = {...};` — must come before any component that reads it |
 | **Change a color token** | styles.css | Lines 3–34 (light) or 36–50 (dark) | Update `--token-name` value; dark overrides only need to list changed tokens |
 | **Add a new icon** | icons.jsx | Lines 6–38 (Icon object) | Add `MyIcon: (p) => <I {...p}><path d="..."/></I>,` then access as `<Icon.MyIcon size={N}/>` |
 | **Add a tab to Home** | home.jsx | Lines 21–26 (tab array) | Add `{k:'mytab', label:'My Tab', icon:<Icon.X size={15}/>}` |
 | | home.jsx | Lines 38–41 (pane rendering) | Add `{tab==='mytab' && <MyPane/>}` |
 | **Add an agent card** | data.jsx | Lines 3–13 (AGENTS array) | Add entry `{key, name, icon, weight, desc, enabled, beginner}` |
-| | data.jsx | Lines 29–95 (AGENT_TASKS) | Add `myagentkey: [{key,label,source,enabled,beginner}, ...]` |
+| | agents-page.jsx | AGENT_TASKS catalogue (top of file) | Add `myagentkey: [{key,label,source,enabled,beginner}, ...]` |
 | | agents-page.jsx | Lines 429–439 (AGENT_SOURCES) | Add `myagentkey: ['source1','source2']` |
-| **Change sphere mode default** | index.html | Line 33 (TWEAK_DEFAULTS) | Change `"sphereMode": "wireframe"` to `"liquid"` |
 | **Add a portfolio holding** | data.jsx | Lines 222–228 (PORTFOLIO.holdings) | Add `{sym, qty, avgPrice, currentPrice, agentScore, verdict}` — sym must exist in TICKERS |
-| **Add a learn path** | data.jsx | Lines 395–456 (LEARN_PATHS) | Add `{key, title, sub, minutes, steps, progress, color, icon}` |
-| | learn.jsx | Lines 267–276 (getStepTitle) | Add `mykey: ['Step 1 title', ...]` entry |
-| **Add a TweaksPanel control** | index.html | Lines 79–105 (TweaksPanel JSX) | Add `<TweakXxx ... onChange={v=>setTweak('myKey', v)}/>` inside a `<TweakSection>` |
-| | index.html | Lines 32–36 (TWEAK_DEFAULTS) | Add `"myKey": defaultValue` |
-| **Change TopNav links** | home.jsx | Lines 80–85 (TopNav nav) | Edit the four `<NavLink>` calls; `active` is compared against the `active` prop passed by each screen |
+| **Change TopNav links** | home.jsx | `TopNav` `navLinks` / `operatorLinks` | Edit the arrays; `active` is compared against the `active` prop passed by each screen |
 
 ---
 
@@ -680,7 +590,7 @@ FastAPI server at `http://localhost:8001`. Frontend served at `/app` via `Static
 ### Weight persistence notes
 - `PUT /ui/agents/weights` saves only the changed keys to `data/agent_weights.json`.
 - `GET /ui/agents` and `GET /ui/bootstrap` both merge `data/agent_weights.json` on top of `settings.AGENT_WEIGHTS` (base config).
-- The frontend AgentDrawer weight slider must call `PUT /ui/agents/weights` to persist — currently it only updates local React state.
+- No analysis reads `data/agent_weights.json`: the analyses use the learned weights (`adapt`) or the sector's configured table (`observe`). The Agents page says so beside the controls (BACKLOG B-25).
 
 ### DB schema (SQLite at `data/scores.db`)
 Table `score_history`: `id, ticker, company_name, run_at, final_score, verdict, agent_scores (JSON), investment_thesis, conviction_drivers (JSON), top_risks (JSON), report_json`.

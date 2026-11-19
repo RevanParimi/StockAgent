@@ -37,3 +37,13 @@ def test_registered_api_routes_unaffected(monkeypatch, tmp_path):
     monkeypatch.setattr(rlm, "_BASE_DIR_OVERRIDE", str(tmp_path))
     assert c.get("/health").status_code == 200
     assert c.get("/ui/rl/tickers").status_code == 200  # real route, not catch-all
+
+
+def test_the_ui_spec_is_not_served():
+    """PR-040 (BACKLOG B-8): the catch-all serves any file in the frontend
+    folder, so the internal UI spec moved out of it. Its old path now gets the
+    app's own page, not the document."""
+    r = c.get("/UI_SPEC.md")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    assert r.text == c.get("/").text

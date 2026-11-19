@@ -19,6 +19,18 @@
 
 ## Now
 
+- **Your words, 19 Nov about 07:25 IST** (a manual session; in this order, before PR-005's fix):
+  1. **PR-037 ships.** Merge `story/PR-037` (`d6e5777`) into `main` and run the full suite on the
+     exact commit; the push waits for a job-free window (the runner pushes waiting commits from
+     Fri 20 Nov 00:10). After the deploy is SUCCESS, the first `continue` on a weekday 09:30-14:00
+     IST (first chance Fri 20 Nov) makes the one catch-up run (`POST /discovery/run`;
+     [evidence/PR-037-implementation.md](evidence/PR-037-implementation.md), "Rollout") before
+     its own phase.
+  2. **The PR-038 read** ([evidence/PR-038.md](evidence/PR-038.md); not 16:30-17:10 on a
+     weekday, not Saturday 12:00-15:00).
+  3. **The PR-039 report** (the command is in [evidence/PR-039.md](evidence/PR-039.md); if place
+     1 or 2 loses more than a quarter of the risers, that session writes the card, with a money
+     example).
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
   Mondays; the next opens Fri 20 Nov 00:10): **PR-015's switch** (your word, 18 Nov about 07:05
   IST): merge `story/PR-015` (`12b7901`) into `main` (one conflict: KT section 11's table, "Idle
@@ -34,32 +46,21 @@
   [evidence/PR-005-review.md](evidence/PR-005-review.md)): M1 and L1 to L4 on `story/PR-005`,
   until RV1 to RV3 (`analysis_data/pr005_review/`) pass; then another fresh review. It merges
   only on acceptance; its backfill runs at your word, after that.
-- **PR-038 is blocked on your word for its read** ([evidence/PR-038.md](evidence/PR-038.md));
-  its rule is fixed there. If the limit ships, it is built on `story/PR-038` after PR-015.
-- **PR-037 is accepted** (18 Nov, fresh review): `d6e5777` on `story/PR-037`, not merged; it
-  merges at your word (below), cleanly with or without PR-015.
-- **PR-039 is accepted and deployed** (19 Nov); its report runs at your word.
+- **PR-038's read has your word** (above); its rule is fixed in
+  [evidence/PR-038.md](evidence/PR-038.md). If the limit ships, it is built on `story/PR-038` after PR-015.
+- **PR-037 is accepted** (18 Nov, fresh review): `d6e5777` on `story/PR-037`, not merged yet; it
+  merges at your word (above), cleanly with or without PR-015.
+- **PR-039 is accepted and deployed** (19 Nov); its report has your word (above).
 - **PR-035's read:** the door that stays is "no sector key named" (five ideas re-dived Sat
   21 Nov; B-13). **FIX-015 is live** since 18 Nov 00:28 IST.
 - **Git:** `main` = `origin/main` = `3f26ae5` before this records commit (one docs commit,
   push pending to Fri 20 Nov 00:10). `story/PR-015`, `story/PR-037` and `story/PR-005` are
   local only (PR-005 meets PR-015 in KT section 6: keep both).
 - **The investment track** in STATE's order: PR-035, PR-036, PR-037 (held), FIX-015, PR-015,
-  PR-038 (blocked: the read), PR-039, PR-005 (changes requested), then PR-033 and PR-034.
+  PR-038 (the read: your word), PR-039, PR-005 (changes requested), then PR-033 and PR-034.
 
 ## Waits for you
 
-- **PR-038's read:** say "run the PR-038 read" in a session on the code-server (read-only; the
-  commands and the hours to avoid are in its receipt, with the rule that decides).
-- **PR-037's rollout** (the card: "at the owner's word"; its review accepted it on 18 Nov): may
-  it ship with a push in a job-free window, and may a session then make the one catch-up
-  discovery run (`POST /discovery/run`, a weekday 09:30-14:00 IST, so the shelf fills that week
-  instead of over three Saturdays)? It is a 45-idea shelf, 6 a sector, 45 deep dives a week (15
-  kept for new companies); the 0.55 bar does not move; about $2.6 a month more model cost. A
-  catch-up run on Monday to Wednesday is first bought a session sooner than one on Thursday.
-- **PR-039's report, now deployed:** say "run the PR-039 report" (read-only; the
-  command is in its receipt). If place 1 or 2 loses more than a quarter of the risers, that
-  session writes the card, with a money example.
 - **PR-005's backfill**, after its acceptance and deploy: say "run the PR-005 backfill" (a dry
   run, then `--apply`: one model call per holding; the command is in its receipt).
 - **Optional:** the weekly watchdog line "No off-site copy has ever been confirmed" stays while it

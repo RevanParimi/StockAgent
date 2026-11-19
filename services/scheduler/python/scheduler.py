@@ -204,18 +204,6 @@ class AutomobileScheduler:
         )
         logger.info("[Scheduler] Calendar update job: Dec 31 at 11:00 pm IST")
 
-        # ── Job 4: Prompt daily deploy (midnight IST = 18:30 UTC) ────────────
-        scheduler.add_job(
-            func=self._prompt_deploy_job,
-            trigger=CronTrigger(hour=0, minute=0, timezone="Asia/Kolkata"),
-            id="prompt_daily_deploy",
-            name="Prompt daily deploy to GitHub",
-            misfire_grace_time=3600,
-            coalesce=True,
-            replace_existing=True,
-        )
-        logger.info("[Scheduler] Prompt deploy job: daily at midnight IST")
-
         # ── Jobs 5 + 6: Macro news background feed ───────────────────────────
         try:
             from backend.shared.config import settings as _macro_cfg
@@ -1033,29 +1021,6 @@ class AutomobileScheduler:
                     "[Scheduler] Monthly forecast FAILED for %s: %s", ticker, exc, exc_info=True
                 )
         _job_banner("RL Monthly Forecast", done=True)
-
-    def _prompt_deploy_job(self) -> None:
-        """
-        Deploy any pending prompt file changes to GitHub once per day at midnight IST.
-        Skips silently if nothing is pending or GITHUB_TOKEN/REPO are not set.
-        """
-        _job_banner("Prompt Daily Deploy")
-        try:
-            from services.api.routes.prompts import run_scheduled_deploy
-            result = run_scheduled_deploy(triggered_by="scheduler")
-            if result["status"] == "nothing_to_deploy":
-                logger.info("[Scheduler] Prompt deploy: no pending changes")
-            elif result["status"] == "skipped":
-                logger.info("[Scheduler] Prompt deploy skipped: %s", result.get("reason", ""))
-            else:
-                logger.info(
-                    "[Scheduler] Prompt deploy complete — %d deployed, %d errors",
-                    len(result.get("deployed", [])),
-                    len(result.get("errors", [])),
-                )
-        except Exception as exc:
-            logger.error("[Scheduler] Prompt deploy FAILED: %s", exc, exc_info=True)
-        _job_banner("Prompt Daily Deploy", done=True)
 
     def _calendar_update_job(self) -> None:
         """Fetch NSE holidays for next year and hot-reload the calendar."""

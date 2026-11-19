@@ -3085,13 +3085,12 @@ established, and is not part of the September remediation scope.
 
 Source: [scheduler.py](../services/scheduler/python/scheduler.py).
 These are in-process APScheduler jobs, not separate OS cron jobs. There are
-**26 possible job IDs**, including three IPO jobs. Registration depends on gates
+**25 possible job IDs**, including three IPO jobs. Registration depends on gates
 and valid cron configuration; registration alone is not execution.
 All times are **Asia/Kolkata (IST)** defaults.
 
 | Job ID | Schedule | Work / condition |
 |---|---|---|
-| `prompt_daily_deploy` | Daily 00:00 | Prompt publishing; handler/configuration can write externally. |
 | `ops_watchdog` | Daily 06:30 | Milestones/checks/configured prep; watchdog gate. |
 | `macro_daily_news` | Mon–Fri 07:30 | Policy/RBI feed; macro-news gate. |
 | `ipo_refresh_am` | Daily 08:00 | Calendar/bids/snapshots; IPO gate. |
@@ -3582,7 +3581,7 @@ shelf. The member's Portfolio lists DIXON's verdict changes and never BEL's,
 and the chat answers the member with DIXON's verdict, not BEL's.
 
 Operator tools show only for a session whose `/auth/me` role is `owner`:
-Prompt Lab, Analytics, RL Monitor, Logs, agent tuning (the plug, task and
+Analytics, RL Monitor, Logs, agent tuning (the plug, task and
 weight controls) and the Tweaks panel. While the role is unknown none show,
 and a member sent to an operator screen lands on Home. Hiding is not the
 protection: the server keeps `require_owner` on every tuning write and on the

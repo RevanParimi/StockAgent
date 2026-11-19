@@ -392,7 +392,7 @@ test('the greeting uses the signed-in name and the IST clock, never "Aditi"', as
   } finally { await context.close(); }
 });
 
-const OPERATOR = ['Prompt Lab', 'Analytics', 'Logs', 'RL Monitor'];
+const OPERATOR = ['Analytics', 'Logs', 'RL Monitor'];
 
 async function operatorSurface(page) {
   const out = {};
@@ -466,7 +466,7 @@ test('the owner sees the operator chips, menu entries, tuning controls and Tweak
     await settled(phone.page);
     await phone.page.locator('.nav-hamburger button').last().click();
     const menu = await phone.page.locator('.mobile-menu').innerText();
-    for (const label of ['Prompt Lab', 'Analytics', 'Logs', 'RL Monitor']) assert.ok(menu.includes(label), `menu ${label}`);
+    for (const label of ['Analytics', 'Logs', 'RL Monitor']) assert.ok(menu.includes(label), `menu ${label}`);
   } finally { await phone.context.close(); }
 });
 

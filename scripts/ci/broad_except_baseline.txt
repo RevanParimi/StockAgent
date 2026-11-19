@@ -78,9 +78,6 @@ services/api/log_buffer.py | load_managed_tickers | #0
 services/api/routes/analytics.py | _build_score_index | #0
 services/api/routes/analytics.py | _try_import_score_store | #0
 services/api/routes/analytics.py | sector_comparison | #0
-services/api/routes/prompts.py | _extract_docstring | #0
-services/api/routes/prompts.py | _load_deploy_status | #0
-services/api/routes/prompts.py | _load_pending | #0
 services/api/routes/ui_data.py | <module> | #0
 services/api/routes/ui_data.py | _build_drivers_from_db | #0
 services/api/routes/ui_data.py | _build_month_agent_scores | #0

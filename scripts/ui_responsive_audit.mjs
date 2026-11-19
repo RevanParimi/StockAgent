@@ -66,7 +66,7 @@ const SCREENS = ['home', 'agents', 'portfolio', 'learn',
                  { name: 'rl-monitor', tabs: ['Predictions vs actual', 'Direction calendar',
                                                'Miss attribution', 'Agent weight drift'] },
                  { name: 'analytics', tabs: ['overview', 'weights', 'sector'] },
-                 'logs', 'prompt-lab', 'settings'];
+                 'logs', 'settings'];
 // Normalize to { name, tabs } so the loop below doesn't need to branch on shape.
 const NORMALIZED_SCREENS = SCREENS.map(s => typeof s === 'string' ? { name: s, tabs: [] } : s);
 

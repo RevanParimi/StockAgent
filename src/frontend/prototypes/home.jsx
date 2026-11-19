@@ -199,8 +199,8 @@ function TopNav({ active, onNav, search, setSearch }) {
   const [dropOpen, setDropOpen] = useStateHome(false);
   const [menuOpen, setMenuOpen] = useStateHome(false);
   // Search text is TopNav's own, exactly like `results`/`dropOpen`, unless a
-  // parent hands down real state. Five screens (analytics, inbox, logs,
-  // prompt-lab, rl-monitor) used to pass `search="" setSearch={()=>{}}`: the
+  // parent hands down real state. Four screens (analytics, inbox, logs,
+  // rl-monitor) used to pass `search="" setSearch={()=>{}}`: the
   // inputs are controlled, so every keystroke was written to a no-op setter
   // and React put the empty value straight back — search was untypeable on
   // those screens, including Inbox, where a brief notification lands. Since
@@ -291,7 +291,6 @@ function TopNav({ active, onNav, search, setSearch }) {
           {[
             { screen:'settings',   label:'Settings',   icon:<Icon.Settings size={16}/> },
             ...(isOwner ? [
-              { screen:'prompt-lab', label:'Prompt Lab', icon:<Icon.Settings size={16}/> },
               { screen:'analytics',  label:'Analytics',  icon:<Icon.Trend size={16}/> },
               { screen:'logs',       label:'Logs',        icon:<Icon.Layers size={16}/> },
             ] : []),

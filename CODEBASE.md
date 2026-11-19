@@ -3,7 +3,7 @@
 Developer quick-reference for the StockAgent codebase. All entries verified against source files.
 Last full verification: **2026-07-18** (post audit Waves A–H — the Wave E deletion pass removed
 ~570 dead files, so trees you may remember from older commits are intentionally absent).
-For the system-level map (the three loops, the 24 scheduled job IDs, data layout), start with
+For the system-level map (the three loops, the 25 scheduled job IDs, data layout), start with
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
@@ -318,8 +318,8 @@ StockAgent-main/
 ## 2. API Endpoints
 
 All endpoints are served on port 8001. No global auth middleware — auth is per-endpoint.
-Since audit Wave B (2026-07-16), **every mutation route** (all `/ui/*` writes, all
-`/ui/prompts/*` routes, portfolio/discovery/delivery POST/PUT/DELETE) passes through the
+Since audit Wave B (2026-07-16), **every mutation route** (all `/ui/*` writes,
+portfolio/discovery/delivery POST/PUT/DELETE) passes through the
 shared `services/api/auth.py::check_scheduler_key` gate: requests must carry
 `X-Scheduler-Key` **when `SCHEDULER_KEY` is set in the environment**; when unset the gate
 logs a warning and allows (dormant enforcement — flipping it on is one env var). The only
@@ -399,17 +399,6 @@ acts as owner (single-user passthrough).
 
 Ticker path params are validated against the managed list *before* any store construction
 (unknown tickers 404 without creating directories).
-
-### Prompt Management (`/ui/prompts/*`)
-
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/ui/prompts/catalogue` | optional key | List all sectors and their agent names. |
-| GET | `/ui/prompts/status` | optional key | Pending deploy count, next midnight IST deploy time, last deploy result. |
-| GET | `/ui/prompts/pending` | optional key | Files modified since last deploy. |
-| GET | `/ui/prompts/{sector}/{agent}` | optional key | Read `SYSTEM_PROMPT`, `ANALYSIS_PROMPT`, `CONTEXT_SEARCH_QUERIES` for an agent. |
-| PUT | `/ui/prompts/{sector}/{agent}` | optional key | Write prompt to disk and patch live module in-memory (content is escaped into a safe Python string literal — no `"""`/trailing-backslash breakout). Marks file as pending deploy. |
-| POST | `/ui/prompts/deploy` | optional key | Emergency manual deploy: push pending files to GitHub immediately (requires `GITHUB_TOKEN`/`GITHUB_REPO`). |
 
 ### Scheduler (`/scheduler/*`)
 
@@ -886,13 +875,11 @@ A results or concall filing found by the company-event feed also runs this inges
 | `MACRO_NEWS_CONTEXT_MAX_ITEMS` | `3` | Max HIGH-severity items injected into chat context |
 | `MACRO_NEWS_REVIEWER_MAX_ITEMS` | `5` | Max HIGH-severity items passed to reviewer |
 
-### Prompt Deploy (GitHub)
+### GitHub
 
 | Name | Default | Description |
 |------|---------|-------------|
-| `GITHUB_TOKEN` | `""` | PAT with repo write scope (for prompt deploy) |
-| `GITHUB_REPO` | `""` | Repo in `owner/repo` format |
-| `GITHUB_BRANCH` | `main` | Branch to push prompt changes to |
+| `GITHUB_TOKEN` | `""` | Optional token the watchdog uses to read `config/milestones.yaml` from `main` (`core/ops/watchdog/checks.py`) |
 
 ---
 
@@ -958,7 +945,6 @@ All paths verified to exist. Paths are relative to project root.
 | `data/discovery/` | `screens/`, `shelf.json`, `shelf_events.jsonl`, `insider_trades.json` |
 | `data/events/` | Company events: `<SYMBOL>.jsonl` (one per source item), `state.json` (the day's search count, items judged unrelated), `runs.jsonl` (one line per run), `ownership/<SYMBOL>.json` (each quarter's FII, DII and mutual-fund % from its shareholding XBRL). No user id |
 | `data/rl/paper/predictions/` | ISOLATED paper-lane RL store — never mixed into real metrics |
-| `services/api/routes/prompts.py` | /ui/prompts/* — live prompt editing and GitHub deploy |
 | `services/api/routes/analytics.py` | /analytics/* — RL performance exports and Power BI feed |
 | `services/api/log_buffer.py` | In-memory ring buffer for real-time log streaming (read only through the owner-only `/ui/logs` routes); the managed-ticker file's readers (`load_managed_tickers`, which seeds a missing file, and the read-only `managed_symbols`, `managed_sectors`) |
 | `services/scheduler/python/scheduler.py` | APScheduler: daily RL review (4:30pm IST), monthly forecast (1st, 9am IST), calendar update (Dec 31), pre-open shock check (`preopen_shock_check`, Mon-Fri 08:45 IST, Living Envelope §27.3), Job 13 morning brief (Mon-Fri 08:50 IST) + Job 14 weekly review (Sun 18:00 IST, Compass Phase C), `ops_watchdog` (06:30 IST daily) |

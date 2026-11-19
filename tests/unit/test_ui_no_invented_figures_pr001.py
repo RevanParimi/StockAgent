@@ -451,8 +451,8 @@ def test_the_pulse_ignores_sectors_that_were_not_fetched():
 FIXTURE_MODULE = "demo-fixtures.js"
 # Owner-only screens (PR-001 hides them from members; PR-010 moves them to an
 # Operator menu). Their diagnostics are out of this card's scope.
-OPERATOR_ONLY = {"analytics.jsx", "rl-monitor.jsx", "rl-data.jsx", "prompt-lab.jsx",
-                 "logs.jsx", "tweaks-panel.jsx"}
+OPERATOR_ONLY = {"analytics.jsx", "rl-monitor.jsx", "rl-data.jsx", "logs.jsx",
+                 "tweaks-panel.jsx"}
 
 GUARDS = {
     "the name Aditi": re.compile(r"Aditi", re.I),

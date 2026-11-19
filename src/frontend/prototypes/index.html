@@ -258,7 +258,6 @@
 <script type="text/babel" src="portfolio.jsx"></script>
 <script type="text/babel" src="learn.jsx"></script>
 <script type="text/babel" src="tweaks-panel.jsx"></script>
-<script type="text/babel" src="prompt-lab.jsx"></script>
 <script type="text/babel" src="analytics.jsx"></script>
 <script type="text/babel" src="logs.jsx"></script>
 <script type="text/babel" src="rl-data.jsx"></script>
@@ -288,7 +287,7 @@ function saConsumeDeepLink() {
 
 // Operator tools: owner accounts only. A member never sees their chips, menu
 // entries or screens (PR-001); the server routes keep their own guards.
-const OPERATOR_SCREENS = ['prompt-lab', 'analytics', 'logs', 'rl-monitor'];
+const OPERATOR_SCREENS = ['analytics', 'logs', 'rl-monitor'];
 
 function App() {
   const user = useSaUser();
@@ -419,7 +418,6 @@ function App() {
     {shown === 'agents' && <AgentsPage onNav={nav} openChat={openChat}/>}
     {shown === 'portfolio' && <PortfolioPage onNav={nav} openChat={openChat}/>}
     {shown === 'learn' && <LearnPage onNav={nav} openChat={openChat}/>}
-    {shown === 'prompt-lab' && <PromptLabPage onNav={nav}/>}
     {shown === 'analytics' && <AnalyticsPage onNav={nav}/>}
     {shown === 'logs'      && <LogsPage onNav={nav}/>}
     {shown === 'rl-monitor' && <RLMonitorPage onNav={nav}/>}
@@ -431,7 +429,7 @@ function App() {
     {screen !== 'auth' && !chat && <SphereOrb onOpen={openChat} mode={tweaks.sphereMode}/>}
     <ChatOverlay open={chat} onClose={closeChat} mode={tweaks.sphereMode}/>
 
-    {/* Secondary nav — the owner's Prompt Lab / Analytics / Logs / RL Monitor, and Sign out */}
+    {/* Secondary nav — the owner's Analytics / Logs / RL Monitor, and Sign out */}
     {/* Desktop: fixed pill bottom-left. Mobile: hidden here, accessible via hamburger menu. */}
     {screen !== 'auth' && (
       <div className="proto-nav" style={{
@@ -440,7 +438,6 @@ function App() {
         border:'1px solid var(--border)', borderRadius:999, boxShadow:'var(--shadow-md)'
       }}>
         {isOwner && <>
-          <NavChip active={screen==='prompt-lab'} onClick={()=>nav('prompt-lab')} icon={<Icon.Settings size={14}/>} label="Prompt Lab"/>
           <NavChip active={screen==='analytics'} onClick={()=>nav('analytics')} icon={<Icon.Trend size={14}/>} label="Analytics"/>
           <NavChip active={screen==='logs'} onClick={()=>nav('logs')} icon={<Icon.Layers size={14}/>} label="Logs"/>
           <NavChip active={screen==='rl-monitor'} onClick={()=>nav('rl-monitor')} icon={<Icon.Activity size={14}/>} label="RL Monitor"/>
@@ -462,7 +459,6 @@ function App() {
         <TweakButton onClick={goAgents}>Open agents</TweakButton>
         <TweakButton onClick={()=>nav('portfolio')}>Open portfolio</TweakButton>
         <TweakButton onClick={()=>nav('learn')}>Open learn</TweakButton>
-        <TweakButton onClick={()=>nav('prompt-lab')}>Open prompt lab</TweakButton>
         <TweakButton onClick={()=>nav('analytics')}>Open analytics</TweakButton>
         <TweakButton onClick={()=>nav('logs')}>Open logs</TweakButton>
         <TweakButton onClick={()=>nav('rl-monitor')}>Open RL Monitor</TweakButton>

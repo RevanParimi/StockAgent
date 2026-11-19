@@ -32,7 +32,7 @@ inline <script>     ← App(), NavChip(), ReactDOM.createRoot().render()
 ### Global state sharing
 No React context. All shared data is attached to `window.*` by data.jsx and read directly inside components. Agent/task mutable state is lifted into `AgentsPage` local state and initialized from `window.AGENTS` / `window.AGENT_TASKS`.
 
-The signed-in account is `window.saUser` (from `/auth/me`, published by `App` with `saSetUser` at boot, sign-in and sign-out); components read it with `useSaUser()`. The helpers sit in an inline script in index.html, not a .jsx file: navigations are network-first but the service worker serves scripts from its cache first, so the first open after a deploy runs the new index.html with the previous .jsx files, which must still render. Operator tools render only when `saIsOwner(user)` (role `owner`): the Prompt Lab / Analytics / Logs / RL Monitor chips and menu entries, the agent tuning controls and the Tweaks panel. A member sent to an operator screen gets Home. The server routes keep their own guards.
+The signed-in account is `window.saUser` (from `/auth/me`, published by `App` with `saSetUser` at boot, sign-in and sign-out); components read it with `useSaUser()`. The helpers sit in an inline script in index.html, not a .jsx file: navigations are network-first but the service worker serves scripts from its cache first, so the first open after a deploy runs the new index.html with the previous .jsx files, which must still render. Operator tools render only when `saIsOwner(user)` (role `owner`): the Analytics / Logs / RL Monitor chips and menu entries, the agent tuning controls and the Tweaks panel. A member sent to an operator screen gets Home. The server routes keep their own guards.
 
 ### Live data bootstrap (PR-001: real or unavailable, never a sample)
 `data.jsx` sets every market global empty (`[]` / `null`), then fires an async IIFE that calls `GET /ui/bootstrap`. On success it fills the `window.*` keys; on failure it leaves them empty. Either way it sets `window.__apiState` and calls `window.__onApiReady()`, and `App` re-renders. Screens show "Loading…" while `__apiState` is `'loading'` and "… is unavailable right now" after `'failed'`; no screen falls back to sample values.
@@ -221,7 +221,7 @@ All icons are inline SVG, Lucide-style, exposed on `window.Icon`.
 
 | Component | Props | window.* reads |
 |---|---|---|
-| `TopNav` | `active, onNav, search, setSearch` | `saUser` via `useSaUser` (avatar initials; RL Monitor tab and the menu's Prompt Lab / Analytics / Logs for the owner only) |
+| `TopNav` | `active, onNav, search, setSearch` | `saUser` via `useSaUser` (avatar initials; RL Monitor tab and the menu's Analytics / Logs for the owner only) |
 | `Hero` | `openChat` | `saUser` (first name), `NIFTY50` ("Nifty 50 ±x.xx% on <date>", omitted when null), `MARKET_TODAY.oneLiner`, `__apiState` / `__apiFetchedAt` (badge). Greeting by the IST hour |
 | `TodayPane` | `data` (MARKET_TODAY) | `MarketUnavailable` when `data` is null; `NiftyBox` fetches `GET /ui/nifty-ranges?range=` (value, change, "as of <date>", or "Unavailable right now") |
 | `MonthPane` | `data` (MARKET_MONTH) | Votes card only when `agentVotes` is non-empty |

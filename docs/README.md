@@ -51,7 +51,7 @@ revision.
 | 12 | [Verification Layer ("the auditor")](PRODUCT_MAP.md#12-verification-layer-the-auditor) | Deterministic grading of issued advice vs `^NSEI`; breach thresholds |
 | 13 | [Measurement & Scientific Evidence](PRODUCT_MAP.md#13-measurement--scientific-evidence) | Eval harness, baseline duel, monthly scorecard, self-ablation report |
 | 14 | [Service & Interface Layer](PRODUCT_MAP.md#14-service--interface-layer) | 13 routers, 86 endpoints + 1 WebSocket, the chat tool loop, the PWA |
-| 15 | [Time Orchestration](PRODUCT_MAP.md#15-time-orchestration) | APScheduler: 24 possible job IDs, registration controlled by gates (KT section 9) |
+| 15 | [Time Orchestration](PRODUCT_MAP.md#15-time-orchestration) | APScheduler: 25 possible job IDs, registration controlled by gates (KT section 9) |
 | 16 | [Identity, Multi-Tenancy & Data Governance](PRODUCT_MAP.md#16-identity-multi-tenancy--data-governance) | Auth/sessions/invites, Atlas `atlas.db`, the two-plane boundary, DPDP delete |
 | 17 | [Ops, Cost & Reliability](PRODUCT_MAP.md#17-ops-cost--reliability) | Watchdog, backup and restore drill, cost telemetry, two-tier self-monitoring |
 | 18 | [Quality](PRODUCT_MAP.md#18-quality) | 333 test files behind a hermetic boundary, CI, the audit records |

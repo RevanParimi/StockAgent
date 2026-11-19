@@ -36,8 +36,8 @@ PWA, and grades its own advice against the Nifty 50.
 | `scripts/` | ~3,000 |
 | `tests/` | ~60,700 in 333 test files |
 
-**Surface:** 86 HTTP endpoints and 1 WebSocket across 13 routers, plus 3
-app-level routes · 24 possible scheduled job IDs · 4 native sector graphs and
+**Surface:** 87 HTTP endpoints and 1 WebSocket across 14 routers, plus 3
+app-level routes · 25 possible scheduled job IDs · 4 native sector graphs and
 1 generic graph · 3 LLM tiers · 28 `config.yaml` sections.
 
 **Three switches change what the system may do** (KT section 2): the
@@ -524,7 +524,6 @@ error direction (KT [section 5](TECHNICAL_DESIGN.md#grading-defect-an-example-ev
 | delivery | `services/api/routes/delivery_api.py` | 9: brief and weekly, manual runs, alerts, push subscriptions, the outbox view |
 | analytics | `services/api/routes/analytics.py` | 8: RL exports, accuracy, drift, misses, conviction, sector comparison, an OData feed |
 | auth | `services/api/routes/auth_api.py` | 7: signup, login, logout, me, invites, account deletion |
-| prompts | `services/api/routes/prompts.py` | 6: live prompt read and edit, publishing |
 | discovery | `services/api/routes/discovery_api.py` | 5: shelf, screen, run, promote, drop |
 | rl_monitor | `services/api/routes/rl_monitor.py` | 5: read-only learning views, with the learning mode |
 | scheduler | `services/api/routes/scheduler_api.py` | 4: status and job triggers (owner or machine key) |
@@ -546,17 +545,17 @@ the browser.
 
 ### 14.3 Frontend — `src/frontend/prototypes/`
 
-A single-page PWA of 23 modules, transformed in the browser with no build
+A single-page PWA of 22 modules, transformed in the browser with no build
 step: `home`, `portfolio`, `brief-view`, `digest-view`, `weekly-view`,
-`inbox`, `analytics`, `agents-page`, `rl-monitor`, `rl-data`, `prompt-lab`,
-`settings`, `auth`, `learn`, `logs`, `data`, `sphere` (the chat overlay),
+`inbox`, `analytics`, `agents-page`, `rl-monitor`, `rl-data`, `settings`,
+`auth`, `learn`, `logs`, `data`, `sphere` (the chat overlay),
 `chat-markdown.js` (the sanitizing boundary), `demo-fixtures.js` (sample data
 for `?demo=1` only), `tweaks-panel`, `hooks`, `icons` and the versioned
 service worker `sw.js`.
 
 Every figure a member sees comes from an API answer, with its date, or the
 screen says it is unavailable; a failed request never shows sample data. The
-operator screens (Prompt Lab, Analytics, RL Monitor, Logs), agent tuning and
+operator screens (Analytics, RL Monitor, Logs), agent tuning and
 the Tweaks panel show only for the owner's session (`/auth/me` role), and the
 server keeps its own guards ([KT section 10](TECHNICAL_DESIGN.md#10-delivery-interface-identity-and-operations)).
 
@@ -571,7 +570,7 @@ client (SA-028, stretch).
 ## 15. Time Orchestration
 
 `services/scheduler/python/scheduler.py` (1,531 lines): an APScheduler
-background thread in the process that owns the background work. **24 possible
+background thread in the process that owns the background work. **25 possible
 job IDs**; registration depends on feature gates and valid cron settings, and
 registration is not execution. The KT's
 [job table](TECHNICAL_DESIGN.md#9-scheduled-jobs-and-event-hooks) is the
@@ -579,7 +578,6 @@ reference.
 
 | IST | Job ID | Days |
 |---|---|---|
-| 00:00 | `prompt_daily_deploy` | Daily |
 | 02:00 | `scorecard_monthly` | 1st |
 | 03:30 | `ledger_cleanup_weekly` | Monday |
 | 06:30 | `ops_watchdog` | Daily |

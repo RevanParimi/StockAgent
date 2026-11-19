@@ -46,7 +46,6 @@ from services.api.routes.history import router as history_router
 from services.api.routes.stream import router as stream_router
 from services.api.routes.ui_data import router as ui_router
 from services.api.routes.scheduler_api import router as scheduler_router
-from services.api.routes.prompts import router as prompts_router
 from services.api.routes.analytics import router as analytics_router
 from services.api.routes.portfolio_api import router as portfolio_router
 from services.api.routes.discovery_api import router as discovery_router
@@ -476,7 +475,6 @@ app.include_router(history_router,   tags=["History"])
 app.include_router(stream_router,    tags=["Streaming"])
 app.include_router(ui_router,        tags=["UI"])
 app.include_router(scheduler_router, tags=["Scheduler"])
-app.include_router(prompts_router,   tags=["Prompts"])
 app.include_router(analytics_router, tags=["Analytics"])
 app.include_router(portfolio_router,  tags=["Portfolio"])
 app.include_router(discovery_router,  tags=["Discovery"])

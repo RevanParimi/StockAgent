@@ -12,7 +12,7 @@
 // pre-fix sphere.jsx and the unpinned marked@12 CDN entry.
 // v9 (PR-001): data.jsx no longer carries sample market data (demo-fixtures.js
 // does, for ?demo=1 only); drop the cached screens that still show it.
-const VERSION = 'v9';
+const VERSION = 'v10';
 const SHELL_CACHE = `sa-shell-${VERSION}`;
 const RUNTIME_CACHE = `sa-runtime-${VERSION}`;
 
@@ -21,7 +21,7 @@ const SHELL = [
   '/chat-markdown.js', '/demo-fixtures.js',
   '/data.jsx', '/icons.jsx', '/sphere.jsx', '/auth.jsx', '/home.jsx',
   '/agents-page.jsx', '/portfolio.jsx', '/learn.jsx', '/tweaks-panel.jsx',
-  '/prompt-lab.jsx', '/analytics.jsx', '/logs.jsx', '/rl-data.jsx', '/rl-monitor.jsx',
+  '/analytics.jsx', '/logs.jsx', '/rl-data.jsx', '/rl-monitor.jsx',
   '/inbox.jsx',
   '/icons/pwa-192x192.png', '/icons/pwa-512x512.png', '/icons/pwa-maskable-512x512.png',
   '/icons/apple-touch-icon.png', '/icons/favicon-32x32.png',
@@ -30,7 +30,7 @@ const SHELL = [
 // Always hit the network for these (live data / docs) — never cache.
 const API_PREFIXES = [
   '/api', '/ui', '/analyse', '/history', '/health', '/tickers',
-  '/scheduler', '/prompts', '/analytics', '/ws', '/docs', '/redoc', '/openapi.json',
+  '/scheduler', '/analytics', '/ws', '/docs', '/redoc', '/openapi.json',
   '/delivery', '/portfolio', '/discovery',
 ];
 

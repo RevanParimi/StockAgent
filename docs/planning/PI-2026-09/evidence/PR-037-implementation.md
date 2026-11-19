@@ -202,7 +202,7 @@ no `.env` read.
 | KT section 8, PRODUCT_MAP and the testing guide describe the wider path | Met; the PDF is not regenerated with a story (AGENTS.md, owner's rule of 17 Nov) |
 | Rollout at the owner's word: push before a Saturday run, then one catch-up run; a dated check row | Row `PR-037-W2` added; the push and the run wait for the owner's word (below) |
 
-## Rollout, at the owner's word (not given yet)
+## Rollout, at the owner's word (given 19 Nov about 07:25 IST)
 
 1. After the fresh review accepts `story/PR-037`, it stays on its branch until the owner's word,
    as PR-015's did: merging it into `main` would ship it with the next push. On the word, a
@@ -213,3 +213,25 @@ no `.env` read.
    review. Its dives keep their day, so they are first offered at the review of the next
    session's close (a Thursday run, at Monday's run).
 3. `PR-037-W2`: after the second Saturday run, read-only (STATE).
+
+## Rollout, Thu 19 Nov: merged into `main`; the push waits for Fri 20 Nov 00:10
+
+Autopilot `1119-0734-p1`, code-server, from about 07:34 IST (outside a push window), at the
+owner's word of 19 Nov about 07:25 IST ("go ahead on pr 37"; STATE card `owner_word`).
+
+1. **Merge** [code]: `git diff 3a59155..d6e5777 | sha256sum` printed `d24636e5…`, the reviewed
+   digest. `story/PR-037` merged with `--no-ff` into `main` (`013c80f`) as **`ab18c77`**, with no
+   conflict. Twelve of the thirteen files are byte-identical to `d6e5777`;
+   `docs/TECHNICAL_DESIGN.md` auto-merged with `main`'s section 1 edits since `3a59155` and
+   carries exactly the reviewed added and removed lines (compared line for line).
+2. **Full suite on `ab18c77`** (a detached worktree, `.stockai/bin/python -m pytest -q`):
+   **6,822 passed, 12 skipped, 1 xfailed, 0 failed** in 7 min 55 s (07:35–07:43 IST); the
+   worktree stayed clean.
+3. **The merges after it** [code, `git merge-tree`]: `story/PR-015` onto the new `main` still has
+   the one known conflict, section 1's table (`main`'s "Idle cash" row against PR-015's "Idle
+   cash" and "Exit rule" rows; keep both), and no new one. `story/PR-005` merges cleanly.
+4. **Next:** the runner pushes the waiting commits from Fri 20 Nov 00:10 IST, after the full suite
+   passes on the tip; the session after it checks the deploy and `/health`. After the deploy is
+   SUCCESS, the first `continue` on a weekday 09:30–14:00 IST makes the catch-up run (step 2,
+   first chance Fri 20 Nov) before its own phase. `PR-037-W2` keeps Tue 1 Dec if both happen by
+   Fri 20 Nov; a later deploy moves it by as many weeks.

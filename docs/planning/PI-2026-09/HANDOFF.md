@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-19 (PR-005's fresh review asked for changes: its fix next outside a window; in a push window PR-015 switches)
+# Current handoff - 2026-11-19 (PR-037 merged, push pending; next the PR-038 read; in a push window PR-015 switches)
 
 **Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
 
@@ -20,10 +20,9 @@
 ## Now
 
 - **Your words, 19 Nov about 07:25 IST** (a manual session; in this order, before PR-005's fix):
-  1. **PR-037 ships.** Merge `story/PR-037` (`d6e5777`) into `main` and run the full suite on the
-     exact commit; the push waits for a job-free window (the runner pushes waiting commits from
-     Fri 20 Nov 00:10). After the deploy is SUCCESS, the first `continue` on a weekday 09:30-14:00
-     IST (first chance Fri 20 Nov) makes the one catch-up run (`POST /discovery/run`;
+  1. **PR-037 is merged** (19 Nov, `ab18c77`; the full suite passed on it). The runner pushes it
+     from Fri 20 Nov 00:10. After the deploy is SUCCESS, the first `continue` on a weekday
+     09:30-14:00 IST (first chance Fri 20 Nov) makes the one catch-up run (`POST /discovery/run`;
      [evidence/PR-037-implementation.md](evidence/PR-037-implementation.md), "Rollout") before
      its own phase.
   2. **The PR-038 read** ([evidence/PR-038.md](evidence/PR-038.md); not 16:30-17:10 on a
@@ -33,9 +32,9 @@
      example).
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
   Mondays; the next opens Fri 20 Nov 00:10): **PR-015's switch** (your word, 18 Nov about 07:05
-  IST): merge `story/PR-015` (`12b7901`) into `main` (one conflict: KT section 11's table, "Idle
-  cash" rewritten on `main`, "Exit rule" added by PR-015; keep both), the full suite on the
-  exact commit, push, check the deploy and `/health`, add `PR-015-W1`
+  IST): merge `story/PR-015` (`12b7901`) into `main` (one conflict, checked on `ab18c77`: KT
+  section 1's table, "Idle cash" rewritten on `main`, "Exit rule" added by PR-015; keep both),
+  the full suite on the exact commit, push, check the deploy and `/health`, add `PR-015-W1`
   ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md)).
 - **PR-036 is live and the ₹90 L is in** (19 Nov): `2e995fe` pushed 05:25 IST (deploy SUCCESS,
   `/health` 200); deposit 06:34 IST at your confirmation: ₹1 crore in, cash ₹95,04,483, 7
@@ -48,15 +47,13 @@
   only on acceptance; its backfill runs at your word, after that.
 - **PR-038's read has your word** (above); its rule is fixed in
   [evidence/PR-038.md](evidence/PR-038.md). If the limit ships, it is built on `story/PR-038` after PR-015.
-- **PR-037 is accepted** (18 Nov, fresh review): `d6e5777` on `story/PR-037`, not merged yet; it
-  merges at your word (above), cleanly with or without PR-015.
 - **PR-039 is accepted and deployed** (19 Nov); its report has your word (above).
 - **PR-035's read:** the door that stays is "no sector key named" (five ideas re-dived Sat
   21 Nov; B-13). **FIX-015 is live** since 18 Nov 00:28 IST.
-- **Git:** `main` = `origin/main` = `3f26ae5` before this records commit (one docs commit,
-  push pending to Fri 20 Nov 00:10). `story/PR-015`, `story/PR-037` and `story/PR-005` are
-  local only (PR-005 meets PR-015 in KT section 6: keep both).
-- **The investment track** in STATE's order: PR-035, PR-036, PR-037 (held), FIX-015, PR-015,
+- **Git:** `origin/main` = `3f26ae5`; `main` is 5 commits ahead with this records commit (PR-037's
+  commit and merge, three docs commits), push pending to Fri 20 Nov 00:10. `story/PR-015` and `story/PR-005`
+  are local only (PR-005 meets PR-015 in KT section 6: keep both).
+- **The investment track** in STATE's order: PR-035, PR-036, PR-037 (merged), FIX-015, PR-015,
   PR-038 (the read: your word), PR-039, PR-005 (changes requested), then PR-033 and PR-034.
 
 ## Waits for you

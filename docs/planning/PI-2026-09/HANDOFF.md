@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-19 (PR-043 done: the search shadow, push pending; PR-033's probe run waits for your word; in a push window PR-015 switches; next FIX-017)
+# Current handoff - 2026-11-19 (FIX-017 awaits its fresh review on `story/FIX-017`; PR-043 done, push pending; PR-033's probe run waits for your word; in a push window PR-015 switches)
 
 **Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
 
@@ -19,33 +19,29 @@
 
 ## Now
 
-- **Your words, 19 Nov about 07:25 IST:** (1) **PR-037 is merged** (`ab18c77`) and ships with
-  the 00:10 push; then the first `continue` on a weekday 09:30-14:00 IST (first chance Fri 20 Nov)
-  makes the one catch-up run (`POST /discovery/run`;
-  [receipt](evidence/PR-037-implementation.md), "Rollout") before its own phase. (2) **The PR-038
-  read: not yet decidable** (below); the band stays.
+- **PR-037 is merged** (`ab18c77`, your word 19 Nov) and ships with the 00:10 push; then the
+  first `continue` on a weekday 09:30-14:00 IST (from Fri 20 Nov) makes its one catch-up run
+  first ([receipt](evidence/PR-037-implementation.md), "Rollout").
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
   Mondays; the next opens Fri 20 Nov 00:10): **PR-015's switch** (your word, 18 Nov about 07:05
   IST): merge `story/PR-015` (`12b7901`) into `main` (three KT conflicts, sections 1, 4 and 11;
   how to keep both: [PR-005's review](evidence/PR-005-review.md), "Decision"), the full suite on
   the exact commit, push, check the deploy and `/health`, add `PR-015-W1`
   ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md)).
-- **PR-036 is live, ₹1 crore in** (deposit 06:34 IST 19 Nov; [evidence/PR-036.md](evidence/PR-036.md),
-  "Rollout"). Next, read-only: today's 16:30 `deployment` record (step 4); `PR-036-W5` and `-W10`
-  keep their dates.
-- **PR-005 is accepted and merged** (`40d04d5`; [review](evidence/PR-005-review.md)): it ships
-  with the next push; `PR-005-W1` reads the first cases written at purchase; the backfill waits
-  for your word. BACKLOG B-16, B-17.
-- **PR-042 is done** (your word, 19 Nov): `DECISION_GATE_MODE=enforce`, set 12:41 IST without a
-  deploy, goes live with the 00:10 push. An analysis missing prices, financials or peers reads
-  INSUFFICIENT DATA and cannot buy or make a shelf idea; exits and trims are never blocked
-  ([receipt](evidence/PR-042.md)). `PR-042-W0` after the deploy, `-W1` from Fri 27 Nov.
-- **PR-043 is done** (light; [receipt](evidence/PR-043.md)): each analysis's company search also
-  goes to Parallel `fast` and, for two weeks, Exa; recorded, never read. Ships with the next
-  push; `PR-043-W2` keeps one engine.
-- **Next `continue` outside a window:** FIX-017. PR-033's probe run waits for your word.
-- **Git:** `origin/main` = `3f26ae5`; `main` is 20 commits ahead (PR-037's and PR-005's merges,
-  PR-043), push pending to Fri 20 Nov 00:10. `story/PR-015` is local.
+- **PR-036 is live, ₹1 crore in** (06:34 IST 19 Nov; [receipt](evidence/PR-036.md), "Rollout").
+  Next, read-only: today's 16:30 `deployment` record (step 4).
+- **PR-005 is merged** (`40d04d5`; [review](evidence/PR-005-review.md)) and ships with the
+  next push; the backfill waits for your word.
+- **PR-042 is done** ([receipt](evidence/PR-042.md)): `DECISION_GATE_MODE=enforce` goes live
+  with the 00:10 push; an analysis missing data cannot buy; exits are never blocked.
+- **PR-043 is done** ([receipt](evidence/PR-043.md)): the search also goes to Parallel and Exa,
+  recorded, never read; ships with the next push.
+- **Next `continue` outside a window:** FIX-017's fresh review (REVIEW.md, a detached worktree
+  of `story/FIX-017`; [receipt](evidence/FIX-017-implementation.md)); on acceptance it merges
+  into `main`. PR-033's probe run waits for your word.
+- **Git:** `origin/main` = `3f26ae5`; `main` is 21 commits ahead (PR-037's and PR-005's merges,
+  PR-043, FIX-017's records), push pending to Fri 20 Nov 00:10. `story/PR-015` and
+  `story/FIX-017` are local.
 
 ## Waits for you
 
@@ -119,6 +115,13 @@ is deployed by Fri 20 Nov and that day's review opens a position; a later first 
 
 - **Autopilot `1119-1629-p1`**, no production read. 15 November deploys shaped and in the same
   probe (dry run: 2 passed); CLEAN-007 verified from `CLEAN-007-W1`; no November closure.
+
+## 19 Nov, evening (autopilot): FIX-017 implemented; its fresh review is next
+
+- **Autopilot `1119-1710-p3`**, no production read. The holding sync applies only the ratios
+  the grading reads and asks NSE under its own code (CANARABANK as CANBK). A bonus-and-split row
+  is ×2 and ×5; short split words are splits; a bonus of preference shares, debentures or NCRPS
+  is a named gap. BACKLOG B-21, B-22.
 
 # START HERE — standing rules
 

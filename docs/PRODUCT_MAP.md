@@ -26,7 +26,7 @@ day, records what it learns, manages a virtual portfolio from those signals,
 discovers new candidates weekly, tracks IPOs, delivers briefs and alerts to a
 PWA, and grades its own advice against the Nifty 50.
 
-**Size** (lines of Python, JavaScript and C++ in tracked files):
+**Size** (lines of Python and JavaScript in tracked files):
 
 | Area | Lines |
 |---|---|
@@ -254,7 +254,7 @@ applies the decision gate. Fallback engagements are counted in
 
 | Part | Path | Note |
 |---|---|---|
-| C++ indicators | `core/intelligence/algorithms/cpp/src/indicators.cpp` | RSI, MACD, Bollinger via pybind11, with a Python fallback |
+| Chart indicators | `core/intelligence/algorithms/indicators/fetcher.py` | RSI, MACD, Bollinger bands, support and resistance, in Python (pandas) |
 | F&O analyzer and fetcher | `core/intelligence/fno/` | Put-call ratio, max pain, open-interest build-up |
 | Prompt enhancer | `core/intelligence/prompt_enhancer/enhancer.py` | Extra search queries from the miss counter |
 

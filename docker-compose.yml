@@ -29,7 +29,6 @@ services:
   # ──────────────────────────────────────────────────────────
   # Python FastAPI — agent orchestrator + RL feedback loop
   # Serves the API, the PWA, and the in-process job scheduler.
-  # Includes compiled C++ pybind11 indicators (multi-stage build)
   # ──────────────────────────────────────────────────────────
   python-api:
     build:

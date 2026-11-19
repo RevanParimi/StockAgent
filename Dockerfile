@@ -1,7 +1,6 @@
 # ============================================================
 # StockAgent — Python FastAPI (serves the prototype PWA at root)
-# Single-stage build (C++ pybind11 uses pure Python fallback
-# when stockindicators.so is absent — fetcher.py handles it)
+# Single-stage build
 # ============================================================
 FROM python:3.11-slim
 

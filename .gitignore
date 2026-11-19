@@ -56,9 +56,6 @@ htmlcov/
 *.db
 *.sqlite
 
-# C++ build artifacts
-cpp/build/
-
 # Node / TypeScript / Frontend
 node_modules/
 typescript/node_modules/

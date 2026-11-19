@@ -1,9 +1,10 @@
 ﻿"""
-tools/yfinance_fetcher_pure.py
-==============================
-Frozen pure-Python copy of the technical indicator functions from
-yfinance_fetcher.py.  Used by Phase 1 parity tests to provide a
-reference implementation when the C++ extension is compiled.
+tests/fixtures/yfinance_fetcher_pure.py
+=======================================
+Frozen pure-Python copy of the technical indicator functions in
+core/intelligence/algorithms/indicators/fetcher.py. The indicator contract
+test compares the live functions with it, so a change to the live arithmetic
+shows up as a difference here.
 
 Do NOT import yfinance or any network-dependent code here.
 """

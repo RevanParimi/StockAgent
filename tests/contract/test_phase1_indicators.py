@@ -1,29 +1,25 @@
 ﻿"""
 tests/test_phase1_indicators.py
 ================================
-Phase 1 — C++ technical indicators extension.
+The technical indicators (RSI, MACD, Bollinger bands, support/resistance).
 
 Tests two layers:
-  A) Pure-Python fallback (always runnable, no build needed)
-     — verifies the existing pandas-based implementations are correct
-     — these must pass before the C++ extension is built
-
-  B) C++ extension bridge (skipped if stockindicators.pyd/.so is absent)
-     — verifies numerical parity between C++ and Python results
-     — verifies the _USE_CPP flag is set when the extension is present
-     — verifies the fallback activates cleanly when the extension is missing
+  A) The pandas/numpy implementations are correct.
+  B) They are Python only: a compiled `stockindicators` module on the machine
+     changes no number, and the numbers match a frozen Python reference.
 
 Running:
-    pytest tests/test_phase1_indicators.py -v
-
-The C++ extension tests are marked @pytest.mark.skipif and only run
-after `cmake --build cpp/build` has deposited stockindicators.pyd in tools/.
+    pytest tests/contract/test_phase1_indicators.py -v
 """
 
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import math
+import sys
+import types
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -160,109 +156,72 @@ class TestSupportResistancePurePython:
 
 
 # ---------------------------------------------------------------------------
-# B. C++ extension bridge — only runs when stockindicators is compiled
+# B. Python only: a compiled `stockindicators` module on the machine changes
+#    nothing (production never had one; CLEAN-004 removed the C++ copy)
 # ---------------------------------------------------------------------------
 
-try:
-    import stockindicators as _cpp
-    _CPP_AVAILABLE = True
-except ImportError:
-    _cpp = None
-    _CPP_AVAILABLE = False
-
-_skip_no_cpp = pytest.mark.skipif(
-    not _CPP_AVAILABLE,
-    reason="stockindicators C++ extension not built. Run: cmake --build cpp/build"
-)
+_FETCHER_PATH = (Path(__file__).resolve().parents[2]
+                 / "core" / "intelligence" / "algorithms" / "indicators" / "fetcher.py")
 
 
-class TestCppExtensionBridge:
-    @_skip_no_cpp
-    def test_cpp_flag_set_in_fetcher(self):
-        import core.intelligence.algorithms.indicators.fetcher as fetcher
-        assert fetcher._USE_CPP is True, (
-            "_USE_CPP should be True when stockindicators is importable"
-        )
+def _fresh_fetcher(name: str):
+    """A new copy of fetcher.py, imported under `name`, leaving the real one alone."""
+    spec = importlib.util.spec_from_file_location(name, _FETCHER_PATH)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
-    @_skip_no_cpp
-    def test_cpp_rsi_parity_with_python(self):
-        """C++ RSI must match pure Python to within 0.01."""
-        from core.intelligence.algorithms.indicators.fetcher import compute_rsi
+
+def _indicator_numbers(module, close: pd.Series) -> tuple:
+    return (module.compute_rsi(close), module.compute_macd(close),
+            module.compute_bollinger_bands(close))
+
+
+def _fake_compiled_module() -> types.ModuleType:
+    """A stand-in for the old .pyd whose every answer is wrong on purpose."""
+    fake = types.ModuleType("stockindicators")
+    fake.compute_rsi = lambda *a, **k: -1.0
+    fake.compute_macd = lambda *a, **k: {"macd": -1.0, "signal": -1.0, "histogram": -1.0,
+                                         "bullish_crossover": True}
+    fake.compute_bollinger_bands = lambda *a, **k: {"upper": -1.0, "middle": -1.0,
+                                                    "lower": -1.0, "pct_b": -1.0}
+    return fake
+
+
+class TestPythonOnlyIndicators:
+    def test_same_numbers_with_and_without_a_compiled_module(self, monkeypatch):
+        close = _synthetic_series(300)
+        # Without: importing `stockindicators` fails, as it does in production.
+        monkeypatch.setitem(sys.modules, "stockindicators", None)
+        without = _indicator_numbers(_fresh_fetcher("_clean004_fetcher_without"), close)
+        # With: a module of that name is importable, as on the owner's laptop.
+        monkeypatch.setitem(sys.modules, "stockindicators", _fake_compiled_module())
+        with_module = _indicator_numbers(_fresh_fetcher("_clean004_fetcher_with"), close)
+        assert with_module == without
+
+    def test_numbers_match_the_frozen_python_reference(self, monkeypatch):
         from tests.fixtures import yfinance_fetcher_pure as pure
+        close = _synthetic_series(300)
+        monkeypatch.setitem(sys.modules, "stockindicators", _fake_compiled_module())
+        rsi, macd, bands = _indicator_numbers(_fresh_fetcher("_clean004_fetcher_ref"), close)
+        assert rsi == pytest.approx(pure.compute_rsi(close))
+        ref_macd = pure.compute_macd(close)
+        for key in ("macd", "signal", "histogram"):
+            assert macd[key] == pytest.approx(ref_macd[key])
+        assert macd["bullish_crossover"] == ref_macd["bullish_crossover"]
+        ref_bands = pure.compute_bollinger_bands(close)
+        for key in ("upper", "middle", "lower", "pct_b"):
+            assert bands[key] == pytest.approx(ref_bands[key])
 
-        series = _synthetic_series(300)
-        py_rsi = pure.compute_rsi(series)
-        cpp_rsi = _cpp.compute_rsi(series.tolist())
-        assert abs(py_rsi - cpp_rsi) < 0.01, (
-            f"RSI parity failed: Python={py_rsi:.4f} C++={cpp_rsi:.4f}"
-        )
+    def test_fetcher_names_no_compiled_module(self):
+        source = _FETCHER_PATH.read_text(encoding="utf-8")
+        assert "stockindicators" not in source
+        assert "_USE_CPP" not in source
 
-    @_skip_no_cpp
-    def test_cpp_macd_parity_with_python(self):
-        from tests.fixtures import yfinance_fetcher_pure as pure
-        series = _synthetic_series(300)
-        py_result = pure.compute_macd(series)
-        cpp_result = _cpp.compute_macd(series.tolist())
-        assert abs(py_result["macd"] - cpp_result["macd"]) < 0.01
-        assert abs(py_result["signal"] - cpp_result["signal"]) < 0.01
-
-    @_skip_no_cpp
-    def test_cpp_bollinger_parity_with_python(self):
-        from tests.fixtures import yfinance_fetcher_pure as pure
-        series = _synthetic_series(300)
-        py_bb = pure.compute_bollinger_bands(series)
-        cpp_bb = _cpp.compute_bollinger_bands(series.tolist())
-        assert abs(py_bb["upper"] - cpp_bb["upper"]) < 0.01
-        assert abs(py_bb["lower"] - cpp_bb["lower"]) < 0.01
-
-    @_skip_no_cpp
-    def test_cpp_rsi_range(self):
-        rsi = _cpp.compute_rsi(_synthetic_series(300).tolist())
-        assert 0.0 <= rsi <= 100.0
-
-    @_skip_no_cpp
-    def test_cpp_macd_keys(self):
-        result = _cpp.compute_macd(_synthetic_series(300).tolist())
-        assert {"macd", "signal", "histogram", "bullish_crossover"} == set(result.keys())
-
-    @_skip_no_cpp
-    def test_cpp_bollinger_keys(self):
-        result = _cpp.compute_bollinger_bands(_synthetic_series(300).tolist())
-        assert {"upper", "middle", "lower", "pct_b"} == set(result.keys())
-
-
-# ---------------------------------------------------------------------------
-# C. Fallback mechanism — simulate missing extension
-# ---------------------------------------------------------------------------
-
-class TestFallbackMechanism:
-    def test_fetcher_works_when_cpp_absent(self):
-        """Patching out stockindicators import must leave compute_rsi functional."""
-        import core.intelligence.algorithms.indicators.fetcher as fetcher
-
-        original_flag = fetcher._USE_CPP
-        try:
-            fetcher._USE_CPP = False
-            result = fetcher.compute_rsi(_synthetic_series(200))
-            assert 0.0 <= result <= 100.0
-        finally:
-            fetcher._USE_CPP = original_flag
-
-    def test_use_cpp_flag_is_boolean(self):
-        import core.intelligence.algorithms.indicators.fetcher as fetcher
-        assert isinstance(fetcher._USE_CPP, bool)
-
-    def test_compute_technicals_succeeds_without_cpp(self):
-        """compute_technicals() must not raise even when _USE_CPP is False."""
+    def test_compute_technicals_has_every_indicator(self):
         import core.intelligence.algorithms.indicators.fetcher as fetcher
         from tests.integration.test_data_fetchers import _make_ohlcv
-
-        original_flag = fetcher._USE_CPP
-        try:
-            fetcher._USE_CPP = False
-            result = fetcher.compute_technicals(_make_ohlcv(300))
-            assert "rsi" in result
-            assert "macd" in result
-            assert "bollinger_bands" in result
-        finally:
-            fetcher._USE_CPP = original_flag
+        result = fetcher.compute_technicals(_make_ohlcv(300))
+        assert "rsi" in result
+        assert "macd" in result
+        assert "bollinger_bands" in result

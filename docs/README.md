@@ -41,7 +41,7 @@ revision.
 | 2 | [LLM & External Service Clients](PRODUCT_MAP.md#2-llm--external-service-clients) | 3 model tiers, OpenRouter wrapper, Tavily, API quota counter |
 | 3 | [Data Acquisition Layer](PRODUCT_MAP.md#3-data-acquisition-layer) | 17 fetchers (NSE, bhavcopy, news, macro, IPO…), typed section statuses, context builders |
 | 4 | [Persistence Layer](PRODUCT_MAP.md#4-persistence-layer) | SQLite / JSON / append-only JSONL / parquet; the RL file tree |
-| 5 | [Analysis Engine](PRODUCT_MAP.md#5-analysis-engine--the-verdict-producer) | Sector routing, unified analyst vs legacy pool, aggregator, decision gate, C++ indicators |
+| 5 | [Analysis Engine](PRODUCT_MAP.md#5-analysis-engine--the-verdict-producer) | Sector routing, unified analyst vs legacy pool, aggregator, decision gate, chart indicators |
 | 6 | [Regime & Market-State Intelligence](PRODUCT_MAP.md#6-regime--market-state-intelligence) | 6 regime labels, hysteresis, seasonal calendar, conviction streaks |
 | 7 | [Adaptive Learning Loop (RL)](PRODUCT_MAP.md#7-the-adaptive-learning-loop-rl--the-heart) | **The heart.** Forecast envelope, the daily review (steps 0–9), the learning mode, lesson machinery |
 | 8 | [Knowledge Layer (Ticker Dossier)](PRODUCT_MAP.md#8-knowledge-layer-ticker-dossier) | Permanent per-ticker knowledge: curator, event ingestor, research loop |

@@ -18,10 +18,8 @@ get_technical_result(ticker, sector=) / get_valuation_result(ticker, peers)
 from __future__ import annotations
 
 import logging
-import sys
 import time
 from datetime import date, timedelta
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -30,22 +28,6 @@ import yfinance as yf
 from core.config import settings
 
 logger = logging.getLogger(__name__)
-
-# Ensure the .pyd sitting next to this file is importable as `stockindicators`.
-_indicators_dir = str(Path(__file__).parent)
-if _indicators_dir not in sys.path:
-    sys.path.insert(0, _indicators_dir)
-
-# Phase 1 C++ extension guard.
-# When the compiled stockindicators module is present (built via cpp/CMakeLists.txt),
-# indicator functions are dispatched to it.  Falls back to pure Python silently.
-try:
-    import stockindicators as _cpp_indicators  # noqa: F401 — used by compute_* below
-    _USE_CPP = True
-    logger.debug("[yfinance_fetcher] C++ stockindicators extension loaded")
-except ImportError:
-    _cpp_indicators = None
-    _USE_CPP = False
 
 
 def _nse_ticker(ticker: str) -> str:
@@ -133,8 +115,6 @@ def _price_history(ticker: str, years: int) -> tuple[pd.DataFrame, str]:
 # ---------------------------------------------------------------------------
 
 def compute_rsi(close: pd.Series, period: int = settings.RSI_PERIOD) -> float:
-    if _USE_CPP:
-        return _cpp_indicators.compute_rsi(close.tolist(), period)
     delta = close.diff()
     gain = delta.where(delta > 0, 0.0)
     loss = -delta.where(delta < 0, 0.0)
@@ -146,10 +126,6 @@ def compute_rsi(close: pd.Series, period: int = settings.RSI_PERIOD) -> float:
 
 
 def compute_macd(close: pd.Series) -> dict[str, float]:
-    if _USE_CPP:
-        return _cpp_indicators.compute_macd(
-            close.tolist(), settings.MACD_FAST, settings.MACD_SLOW, settings.MACD_SIGNAL
-        )
     ema_fast = close.ewm(span=settings.MACD_FAST, adjust=False).mean()
     ema_slow = close.ewm(span=settings.MACD_SLOW, adjust=False).mean()
     macd_line = ema_fast - ema_slow
@@ -169,8 +145,6 @@ def compute_macd(close: pd.Series) -> dict[str, float]:
 def compute_bollinger_bands(
     close: pd.Series, period: int = settings.BB_PERIOD, std_dev: float = settings.BB_STD
 ) -> dict[str, float]:
-    if _USE_CPP:
-        return _cpp_indicators.compute_bollinger_bands(close.tolist(), period, std_dev)
     ma = close.rolling(period).mean()
     std = close.rolling(period).std()
     upper = ma + std_dev * std

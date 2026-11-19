@@ -12,7 +12,9 @@
 - **[STATE.json](STATE.json)** holds the status fields and one line of history per event.
   `next_phase` is at most 600 characters: the next first step and a pointer here. History older
   than 14 days and passed production checks move word for word to
-  [STATE-history-archive.json](STATE-history-archive.json).
+  [STATE-history-archive.json](STATE-history-archive.json). A `done` story keeps its card in
+  STATE; the rest of its entry moves word for word to
+  [STATE-tasks-archive.json](STATE-tasks-archive.json) with `scripts/docs/archive_done_tasks.py`.
 - **The archives** are read only when a card points there. The standing rules follow this section.
 
 ## Now

@@ -10,6 +10,7 @@ python scripts/docs/build_kt_pdf.py
 python scripts/docs/check_kt_docs.py
 python scripts/docs/check_kt_docs.py --require-fresh-pdf
 python scripts/docs/run_kt_checks.py
+python scripts/docs/archive_done_tasks.py [--check]
 ```
 
 **When the PDF is built (owner's rule of 17 Nov 2026).** Only when the owner
@@ -59,3 +60,11 @@ Logs, intermediate HTML and machine-readable check summaries go to ignored
 PDF archive under `docs/archive/` is preserved separately and is never touched
 by these tools. After a build, inspect the output PDF and run the checker with
 `--require-fresh-pdf`; the checker does not build the PDF or accept PI stories.
+
+- `archive_done_tasks.py` (AGENTS.md step 5, owner's rule of 19 Nov 2026)
+  moves a `done` story's notes from `docs/planning/PI-2026-09/STATE.json` to
+  `STATE-tasks-archive.json` word for word. STATE keeps the card: identity,
+  status, dependencies, receipt and commit links, origin and routed findings,
+  owner decisions and `production_verification`. Other tasks' text is left
+  byte for byte; the script refuses to write if any task cannot be rebuilt
+  exactly from its card and the archive. `--check` reports without writing.

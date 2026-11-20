@@ -503,6 +503,10 @@ class TestConfigureLogging:
 # 5. The orchestrator opens the run context
 # ---------------------------------------------------------------------------
 
+# One scored dimension: a run that scores nothing is "no analysis" (CLEAN-005).
+_ONE_SCORED = {"technical": AgentOutput(agent="technical", ticker="SUZLON", overall_score=0.6)}
+
+
 class _DummyAgent:
     def run(self, query, run_id):  # pragma: no cover - graph is never invoked
         return AgentOutput(agent="dummy", ticker=query.ticker, overall_score=0.5)
@@ -556,7 +560,7 @@ class TestOrchestratorOpensTheRunContext:
             seen["run_id"] = log_store.current_run_id.get()
             seen["ticker"] = log_store.current_ticker.get()
             seen["passed"] = run_id
-            return {}
+            return _ONE_SCORED
 
         monkeypatch.setattr(quiet_orchestrator, "_run_agents", _agents)
         quiet_orchestrator.analyse("suzlon")
@@ -568,7 +572,7 @@ class TestOrchestratorOpensTheRunContext:
         self, quiet_orchestrator, monkeypatch
     ):
         monkeypatch.setattr(quiet_orchestrator, "_run_agents",
-                            lambda *a, **kw: {})
+                            lambda *a, **kw: _ONE_SCORED)
         quiet_orchestrator.analyse("suzlon")
         assert log_store.current_run_id.get() is None
         assert log_store.current_ticker.get() is None
@@ -579,7 +583,7 @@ class TestOrchestratorOpensTheRunContext:
         def _agents(query, run_id="", progress_callback=None):
             seen["run_id"] = log_store.current_run_id.get()
             seen["ticker"] = log_store.current_ticker.get()
-            return {}
+            return _ONE_SCORED
 
         monkeypatch.setattr(quiet_orchestrator, "_run_agents", _agents)
         monkeypatch.setattr(quiet_orchestrator, "_unified_enabled", lambda: True)

@@ -44,6 +44,7 @@ from core.intelligence.rl.algorithms.price_interpolator import (
 from services.data.fetchers.close_verifier import get_verified_close
 from services.data.stores.log_store import configure_logging
 from backend.shared.pipeline import decision_gate as dg
+from backend.shared.pipeline.no_analysis import AnalysisUnavailable
 
 # E1: one setup for every entry point. Idempotent, so importing this module
 # from the API server (which has already configured) is a no-op rather than a
@@ -838,6 +839,10 @@ def regenerate_envelope(
             archived_file or "<none>",
         )
         return envelope
+    except AnalysisUnavailable:
+        # CLEAN-005: no analysis, no re-forecast; the orchestrator logged and
+        # counted it. The current envelope stays as it is.
+        return None
     except Exception as exc:
         logger.error(
             "[regenerate_envelope] %s: unhandled failure (non-fatal, original "

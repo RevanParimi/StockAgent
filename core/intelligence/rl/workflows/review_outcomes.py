@@ -15,7 +15,8 @@ Every required ticker now gets exactly one outcome:
                 would have stopped (SA-003 record mode lists those inputs)
     data_gated  the gate stopped the review before any write (enforce mode)
     skipped     a required input was missing: no envelope, no forecast row for
-                the session, or no close
+                the session, or no close; or the session's re-analysis scored
+                nothing (CLEAN-005 `no_analysis`)
     failed      the review raised, returned a malformed result, or had not
                 finished when the harvest budget ran out
 
@@ -48,7 +49,7 @@ WROTE_FEEDBACK = frozenset({COMPLETED, DEGRADED})
 # source); until then it counts as a malformed result, never as output.
 REVIEW_COMPLETED = "completed"
 REVIEW_DATA_GATED = "data_gated"
-REVIEW_SKIP_STATUSES = ("no_envelope", "no_forecast_row", "no_actual_data")
+REVIEW_SKIP_STATUSES = ("no_envelope", "no_forecast_row", "no_actual_data", "no_analysis")
 REVIEW_STATUSES = (REVIEW_COMPLETED, REVIEW_DATA_GATED) + REVIEW_SKIP_STATUSES
 
 # What run_post_review_pipeline returns when it ran as designed.

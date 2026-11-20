@@ -33,6 +33,7 @@ from typing import NamedTuple
 
 from core.config import settings
 from backend.shared.pipeline import decision_gate as dg
+from backend.shared.pipeline.no_analysis import AnalysisUnavailable
 from core.intelligence.rl.agents.feedback_agent import (
     FeedbackAgent,
     classify_direction,
@@ -312,6 +313,18 @@ def _identity_review_reasons(ticker: str, review_date: date, envelope, row) -> l
     return reasons
 
 
+def _no_analysis_summary(ticker: str, sector: str, date_str: str, mode: str,
+                         paper: bool, failure: AnalysisUnavailable) -> dict:
+    """CLEAN-005: the re-analysis scored nothing, so the stock is skipped for
+    this session, at the same point and with the same nothing written as a
+    gate stop. The orchestrator has logged and counted the failure."""
+    return {
+        "status": "no_analysis", "ticker": ticker, "sector": sector, "paper": paper,
+        "date": date_str, "learning_mode": mode, "reason": failure.reason,
+        "run_id": failure.run_id,
+    }
+
+
 def _gated_summary(ticker: str, sector: str, date_str: str, mode: str,
                    paper: bool, gate_row: dict) -> dict:
     """What a review stopped by the gate returns: no side effect was written."""
@@ -351,6 +364,8 @@ def _run_todays_agent_scores(
         if capture is not None:
             capture["report"] = report
         return {name: ws.raw for name, ws in report.weighted_agent_scores.items()}
+    except AnalysisUnavailable:
+        raise           # CLEAN-005: the review skips the stock (run_daily_review)
     except Exception as exc:
         logger.warning(
             "[daily_review] Agent re-run failed for %s (%s): %s", ticker, sector, exc
@@ -792,12 +807,17 @@ def run_daily_review(
         )
     else:
         _todays_capture: dict = {}
-        todays_scores = _run_todays_agent_scores(
-            ticker,
-            sector=sector,
-            learned_weights=decision_weights(wm_for_scores, sector),
-            capture=_todays_capture,
-        )
+        try:
+            todays_scores = _run_todays_agent_scores(
+                ticker,
+                sector=sector,
+                learned_weights=decision_weights(wm_for_scores, sector),
+                capture=_todays_capture,
+            )
+        except AnalysisUnavailable as failure:
+            # CLEAN-005: no analysis today, so nothing is graded, learned or
+            # advised from this session for the stock.
+            return _no_analysis_summary(ticker, sector, date_str, mode, paper, failure)
         # SA-003: a re-run on missing essential data produces fabricated drift
         # and, under hard-bind, the verdict the day is graded against.
         _rerun_report = _todays_capture.get("report")

@@ -430,7 +430,7 @@ rl:
 unified_analyst:
   # CSV of sectors on the unified one-call path; "" disables everywhere.
   sectors: "automobile,banking_bfsi,it_sector,renewable_energy,generic"
-  fallback_legacy: true
+  fallback_legacy: false   # CLEAN-005 step 1: a failed analysis is no analysis
   max_tokens: 6000
   section_max_chars: 2500
   bundle_max_chars: 18000

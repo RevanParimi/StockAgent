@@ -39,10 +39,14 @@ class TestOrchestratorTickerResolution:
 
         orch = AutomobileAgentOrchestrator()
         query = StockQuery(ticker="MARUTI", company_name="Maruti Suzuki India Ltd")
+        # One scored dimension: a run that scores nothing is "no analysis".
+        from core.schemas.pipeline import AgentOutput
+        scored = {"fundamentals": AgentOutput(agent="fundamentals", ticker="MARUTI",
+                                              overall_score=0.65)}
         with patch.object(orch, "_resolve_ticker", return_value=query), \
              patch.object(orch, "_prefetch_nse_data"), \
              patch.object(orch, "_load_learned_weights", return_value=None), \
-             patch.object(orch, "_run_agents", return_value={}), \
+             patch.object(orch, "_run_agents", return_value=scored), \
              patch("backend.shared.pipeline.base_orchestrator.log_run_summary"), \
              patch("backend.shared.pipeline.base_orchestrator.log_run_api_usage"), \
              patch("backend.shared.pipeline.base_orchestrator.log_analysis"), \

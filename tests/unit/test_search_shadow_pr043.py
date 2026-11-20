@@ -506,7 +506,7 @@ class _Orchestrator:
 
 
 class TestAnalysisPath:
-    def _run(self, monkeypatch, *, enabled, llm_reply="{}"):
+    def _run(self, monkeypatch, *, enabled, llm_reply='{"fundamentals": {"score": 0.6}}'):
         from backend.shared.pipeline import unified_analyst as ua
 
         events: list = []

@@ -311,6 +311,31 @@ def _resolve_sub_scores_model(output_cls: type[AgentOutput]) -> type | None:
     return None
 
 
+class ModelCallFailed(RuntimeError):
+    """The analysis model call failed on every attempt (CLEAN-005: a named
+    failure, so "no analysis" can say which)."""
+
+    def __init__(self, attempts: int, last_error: Exception | None) -> None:
+        self.attempts = attempts
+        self.last_error = last_error
+        super().__init__(
+            f"[UnifiedAnalyst] LLM call failed after {attempts} attempts: {last_error}")
+
+
+def _failure_reason(exc: Exception) -> str:
+    """CLEAN-005: why run() returned {}, in plain words."""
+    if isinstance(exc, ModelCallFailed):
+        kind = type(exc.last_error).__name__ if exc.last_error is not None else "no answer"
+        if isinstance(exc.last_error, APITimeoutError):
+            return f"the model call timed out on all {exc.attempts} attempts"
+        return f"the model call failed after {exc.attempts} attempts ({kind})"
+    if isinstance(exc, json.JSONDecodeError):
+        return "the model's answer could not be read (not JSON)"
+    if isinstance(exc, ValueError):
+        return f"the model's answer could not be read ({exc})"[:200]
+    return f"the analysis failed ({type(exc).__name__})"
+
+
 class UnifiedAnalyst:
     """
     Sector-generic Unified Analyst: ONE LLM call -> all of that sector's
@@ -324,6 +349,9 @@ class UnifiedAnalyst:
         # FIX-026: the SECTOR_ANSWER_KEY block of the last run, as written;
         # None when no question was asked or the block is missing.
         self._last_sector_answer = None
+        # CLEAN-005: why the last run returned {}, in plain words; None when
+        # it returned outputs. The orchestrator's "no analysis" names it.
+        self._last_failure: str | None = None
 
     # ------------------------------------------------------------------
     # Public entrypoint
@@ -352,16 +380,19 @@ class UnifiedAnalyst:
           - any other unexpected error
         """
         self._last_sector_answer = None
+        self._last_failure = None
         try:
             spec = SECTOR_SPECS.get(sector)
             if spec is None:
                 logger.error("[UnifiedAnalyst] Unknown sector '%s' — no sector spec", sector)
+                self._last_failure = f"no analysis method for the sector '{sector}'"
                 return {}
             class_map = spec.classes
 
             system_prompt, user_prompt = self._build_prompt(query, bundle, sector, spec)
             if system_prompt is None:
                 # _build_prompt already logged the error.
+                self._last_failure = "the analysis prompt could not be built"
                 return {}
             if sector_question:
                 user_prompt = f"{user_prompt}\n{sector_question}"
@@ -412,6 +443,7 @@ class UnifiedAnalyst:
         except Exception as exc:
             logger.error("[UnifiedAnalyst] run() failed for %s/%s: %s",
                          sector, query.ticker, exc, exc_info=True)
+            self._last_failure = _failure_reason(exc)
             return {}
 
     # ------------------------------------------------------------------
@@ -505,7 +537,7 @@ class UnifiedAnalyst:
                     time.sleep(delay)
                     delay = min(delay * 2, 2.0)
 
-        raise RuntimeError(f"[UnifiedAnalyst] LLM call failed after {retries} attempts: {last_error}")
+        raise ModelCallFailed(retries, last_error)
 
     # ------------------------------------------------------------------
     # Parsing

@@ -5,7 +5,7 @@ from core.config import settings
 
 def test_unified_analyst_settings_defaults():
     assert settings.UNIFIED_ANALYST_SECTORS == "automobile,banking_bfsi,it_sector,renewable_energy,generic"
-    assert settings.UNIFIED_ANALYST_FALLBACK_LEGACY is True
+    assert settings.UNIFIED_ANALYST_FALLBACK_LEGACY is False   # CLEAN-005 step 1
     assert settings.UNIFIED_ANALYST_MAX_TOKENS == 6000
     assert settings.UNIFIED_SECTION_MAX_CHARS == 2500
     assert settings.UNIFIED_BUNDLE_MAX_CHARS == 18000

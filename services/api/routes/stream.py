@@ -43,6 +43,7 @@ import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from backend.sectors import detect_sector, get_orchestrator
+from backend.shared.pipeline.no_analysis import AnalysisUnavailable
 from services.api.auth import (WS_BEARER_SUBPROTOCOL, check_analyse_quota,
                                get_ws_user)
 
@@ -137,6 +138,10 @@ async def _run_pipeline(run: _TickerRun) -> None:
                                   "report": report.model_dump()}))
     except asyncio.CancelledError:
         raise
+    except AnalysisUnavailable as failure:
+        # CLEAN-005: say so plainly; no verdict, no score.
+        _publish(run, json.dumps({"event": "error", "no_analysis": True,
+                                  "detail": failure.user_message()}))
     except Exception as exc:
         logger.error("[WS /ws/stream] pipeline failed for %s: %s",
                      run.ticker, exc, exc_info=True)

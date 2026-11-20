@@ -846,7 +846,7 @@ UNIFIED_ANALYST_SECTORS: str = cfg(
     "unified_analyst.sectors", env="UNIFIED_ANALYST_SECTORS",
     fallback="automobile,banking_bfsi,it_sector,renewable_energy,generic",
 )
-UNIFIED_ANALYST_FALLBACK_LEGACY: bool = cfg("unified_analyst.fallback_legacy", env="UNIFIED_ANALYST_FALLBACK_LEGACY", fallback=True)
+UNIFIED_ANALYST_FALLBACK_LEGACY: bool = cfg("unified_analyst.fallback_legacy", env="UNIFIED_ANALYST_FALLBACK_LEGACY", fallback=False)
 UNIFIED_ANALYST_MAX_TOKENS: int = cfg("unified_analyst.max_tokens", env="UNIFIED_ANALYST_MAX_TOKENS", fallback=6000)
 UNIFIED_SECTION_MAX_CHARS: int = cfg("unified_analyst.section_max_chars", env="UNIFIED_SECTION_MAX_CHARS", fallback=2500)
 UNIFIED_BUNDLE_MAX_CHARS: int = cfg("unified_analyst.bundle_max_chars", env="UNIFIED_BUNDLE_MAX_CHARS", fallback=18000)

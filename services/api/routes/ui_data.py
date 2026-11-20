@@ -36,6 +36,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from backend.shared.pipeline.no_analysis import AnalysisUnavailable
 from services.api.auth import (
     check_scheduler_key,
     get_current_user,
@@ -2124,6 +2125,9 @@ async def _chat_tool_run_agent_analysis(ticker: str) -> str:
         )
     except asyncio.TimeoutError:
         return f"Analysis for {ticker} timed out (45s). Click 'Analyze' on the Home screen to run a full pipeline."
+    except AnalysisUnavailable as failure:
+        # CLEAN-005: no verdict and no score to quote.
+        return failure.user_message()
     except Exception as exc:
         return f"Could not run analysis for {ticker}: {exc}"
 

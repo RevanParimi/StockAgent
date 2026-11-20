@@ -54,6 +54,7 @@ from backend.shared.data.stores.analysis_logger import log_analysis
 from backend.shared.data.stores.api_usage import log_run_api_usage, snapshot_usage
 from backend.shared.pipeline.graphs.nodes import make_dispatch_fn, make_run_agent_node
 from backend.shared.pipeline.graphs.state import GraphState
+from backend.shared.pipeline.no_analysis import AnalysisUnavailable, scored_nothing, why_nothing
 from backend.shared.pipeline.signal_aggregator import SignalAggregator
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,9 @@ class BaseSectorOrchestrator(ABC):
         # the analysis's answer to it (unvalidated). Reset per run.
         self._sector_question: str | None = None
         self._last_sector_answer = None
+        # CLEAN-005: why the unified analyst returned nothing, for the run in
+        # flight. Reset per run.
+        self._last_analyst_failure: str | None = None
         self._worker_pool_graph = _build_worker_pool_graph(self._sub_agents, self.SECTOR_NAME)
 
     # ------------------------------------------------------------------
@@ -150,6 +154,7 @@ class BaseSectorOrchestrator(ABC):
             self._last_gate_inputs = None
             self._sector_question = None
             self._last_sector_answer = None
+            self._last_analyst_failure = None
             logger.info("[%s] Async run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
 
             query = await asyncio.to_thread(self._resolve_ticker, user_input, run_id)
@@ -174,6 +179,9 @@ class BaseSectorOrchestrator(ABC):
                 agent_outputs = await self._run_via_graph_async(
                     query, run_id=run_id, progress_callback=progress_callback
                 )
+            # CLEAN-005: a run that scored nothing is no analysis.
+            if scored_nothing(agent_outputs):
+                self._no_analysis(query, run_id, agent_outputs, api_snapshot)
 
             report = self._aggregator.run(
                 ticker=query.ticker,
@@ -245,6 +253,7 @@ class BaseSectorOrchestrator(ABC):
             self._last_gate_inputs = None
             self._sector_question = sector_question
             self._last_sector_answer = None
+            self._last_analyst_failure = None
             logger.info("[%s] Run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
 
             query = self._resolve_ticker(user_input, run_id=run_id)
@@ -261,6 +270,9 @@ class BaseSectorOrchestrator(ABC):
             agent_outputs = self._run_agents(
                 query, run_id=run_id, progress_callback=progress_callback
             )
+            # CLEAN-005: a run that scored nothing is no analysis.
+            if scored_nothing(agent_outputs):
+                self._no_analysis(query, run_id, agent_outputs, api_snapshot)
 
             report = self._aggregator.run(
                 ticker=query.ticker,
@@ -310,6 +322,41 @@ class BaseSectorOrchestrator(ABC):
                 report.verdict, report.final_score,
             )
             return report
+
+    def _no_analysis(
+        self,
+        query: StockQuery,
+        run_id: str,
+        agent_outputs: dict[str, AgentOutput],
+        api_snapshot,
+    ) -> None:
+        """
+        CLEAN-005: the run scored no dimension, so there is no analysis.
+
+        Records the failure (the day's count on GET /scheduler/status), logs
+        it once and raises AnalysisUnavailable. Nothing a verdict feeds is
+        written: no aggregator call, no score-history row, no analysis log,
+        no run summary. The run's data-health row (written by
+        _record_data_health) and its API spend stay on record.
+        """
+        reason = why_nothing(agent_outputs, self._last_analyst_failure)
+        try:
+            from services.data.stores.analysis_failures import record_analysis_failure
+            record_analysis_failure(self.SECTOR_NAME, query.ticker, reason, run_id=run_id)
+        except Exception as exc:
+            logger.warning("[%s] analysis failure not recorded (non-fatal): %s",
+                           self.SECTOR_NAME, exc, exc_info=True)
+        try:
+            log_run_api_usage(run_id, query.ticker, api_snapshot)
+        except Exception as exc:
+            logger.warning("[%s] API usage not logged for failed run %s (non-fatal): %s",
+                           self.SECTOR_NAME, run_id, exc, exc_info=True)
+        logger.warning(
+            "[%s] No analysis for %s today (run %s): %s. No verdict or score; "
+            "the stock is skipped by this run's caller.",
+            self.SECTOR_NAME, query.ticker, run_id, reason,
+        )
+        raise AnalysisUnavailable(query.ticker, self.SECTOR_NAME, reason, run_id=run_id)
 
     def _record_score_history(self, report: FinalReport) -> None:
         """One score-history row per completed analysis, with the verdict the
@@ -626,6 +673,8 @@ class BaseSectorOrchestrator(ABC):
             self._last_sector_answer = analyst._last_sector_answer
         else:
             outputs = analyst.run(query, bundle, self.SECTOR_NAME, run_id=run_id)
+        if not outputs:
+            self._last_analyst_failure = getattr(analyst, "_last_failure", None)
         self._record_data_health(query, bundle, outputs, run_id)
         self._shadow_company_search(query, bundle, outputs, run_id)
         if outputs:
@@ -656,13 +705,13 @@ class BaseSectorOrchestrator(ABC):
         """
         PR-043: queue the search shadow (the engines in search_shadow.engines
         beside Serper) for this run's company search. Called after the analyst
-        has returned, and only when it produced outputs: a failed analysis is
-        no decision. The work runs on a daemon thread and the analysis reads
+        has returned, and only when it scored a dimension: a failed analysis
+        is no decision. The work runs on a daemon thread and the analysis reads
         nothing from it.
 
         Never raises, and never changes the run's outcome.
         """
-        if not outputs:
+        if scored_nothing(outputs):     # CLEAN-005: no analysis is no decision
             return
         try:
             from services.data.fetchers.search_shadow import submit_shadow

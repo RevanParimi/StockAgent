@@ -650,11 +650,13 @@ def test_the_shipped_horizons_and_caps():
 def test_the_run_records_every_dive_before_the_memo_and_asks_the_bare_judge(
         tmp_path, monkeypatch):
     """Sat 4 Jul: the screen of Fri 3 Jul offers NEWA and NEWB, both dived.
-    The memo already holds a rejected dive of 20 Jun (OLDR, NEUTRAL 0.41). The
-    run's record holds OLDR (seeded, as the memo said before this run rewrote
-    it), NEWA and NEWB at their convictions (0.7, 0.3) and one run row naming
-    the screen; the bare judge was asked about both, with each one's own
-    evidence and without its dossier."""
+    The memo already holds a rejected dive of 20 Jun (OLDR, NEUTRAL 0.41) and
+    one of 3 Jun (OLDX, SELL 0.30): 31 days old today, kept by last week's run
+    (24 days then) and pruned by this one. The run's record holds both
+    (seeded, as the memo said before this run rewrote it), NEWA and NEWB at
+    their convictions (0.7, 0.3) and one run row naming the screen; the bare
+    judge was asked about both, with each one's own evidence and without its
+    dossier."""
     import core.discovery as disc_mod
     import core.discovery.deep_dive as dd
     import tests.unit.test_idea_supply_pr004 as pr004
@@ -666,9 +668,11 @@ def test_the_run_records_every_dive_before_the_memo_and_asks_the_bare_judge(
     monkeypatch.setattr(disc_mod, "autopilot_sales", lambda: {})
     monkeypatch.setattr(disc_mod, "no_longer_held", lambda s: set())
     folder = tmp_path / "disc"
-    (folder / "dives.json").write_text(json.dumps({"OLDR": {
-        "date": "2026-06-20", "conviction": 0.41, "verdict": "NEUTRAL",
-        "data_gate": "actionable"}}), encoding="utf-8")
+    (folder / "dives.json").write_text(json.dumps({
+        "OLDR": {"date": "2026-06-20", "conviction": 0.41, "verdict": "NEUTRAL",
+                 "data_gate": "actionable"},
+        "OLDX": {"date": "2026-06-03", "conviction": 0.30, "verdict": "SELL",
+                 "data_gate": "actionable"}}), encoding="utf-8")
     stub = env["analyst"].orchestrator
 
     def with_bundle(sector):
@@ -696,6 +700,7 @@ def test_the_run_records_every_dive_before_the_memo_and_asks_the_bare_judge(
     by_ref = {r["ref"]: r for r in record.dive_rows()}
     assert by_ref["dive:2026-06-20|OLDR"]["recorded"] == "backfill"
     assert by_ref["dive:2026-06-20|OLDR"]["verdict"] == "NEUTRAL"
+    assert by_ref["dive:2026-06-03|OLDX"]["verdict"] == "SELL"      # gone from the memo now
     assert (by_ref["dive:2026-07-04|NEWA"]["conviction"],
             by_ref["dive:2026-07-04|NEWB"]["conviction"]) == (0.7, 0.3)
     assert by_ref["dive:2026-07-04|NEWA"]["close"] == 100.0
@@ -707,7 +712,7 @@ def test_the_run_records_every_dive_before_the_memo_and_asks_the_bare_judge(
     assert all("PRODUCT MEMORY" not in u for u in asked)
     # The memo itself moved on after the record was written.
     memo = json.loads((folder / "dives.json").read_text(encoding="utf-8"))
-    assert {"NEWA", "NEWB"} <= set(memo)
+    assert {"NEWA", "NEWB"} <= set(memo) and "OLDX" not in memo
 
 
 def test_a_dive_without_a_price_is_counted_in_the_report(disc, store):

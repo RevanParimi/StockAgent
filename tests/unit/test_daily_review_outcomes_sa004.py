@@ -70,7 +70,7 @@ def test_every_review_status_is_classified_deliberately():
     src = Path(ro.__file__).with_name("daily_review.py").read_text(encoding="utf-8")
     returned = set(re.findall(r'"status":\s*"(\w+)"', src))
     assert returned == {"completed", "data_gated", "no_envelope",
-                        "no_forecast_row", "no_actual_data"}
+                        "no_forecast_row", "no_actual_data", "no_analysis"}
     assert returned == set(ro.REVIEW_STATUSES)
 
 
@@ -88,6 +88,7 @@ def test_every_review_status_is_classified_deliberately():
     ({"status": "no_envelope"}, "skipped", "no_envelope"),
     ({"status": "no_forecast_row"}, "skipped", "no_forecast_row"),
     ({"status": "no_actual_data"}, "skipped", "no_actual_data"),
+    ({"status": "no_analysis"}, "skipped", "no_analysis"),      # CLEAN-005
     # malformed: fails closed, never output
     (None, "failed", "malformed: NoneType result"),
     ([], "failed", "malformed: list result"),

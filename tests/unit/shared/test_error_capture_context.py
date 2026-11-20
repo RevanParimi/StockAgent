@@ -503,9 +503,8 @@ class TestConfigureLogging:
 # 5. The orchestrator opens the run context
 # ---------------------------------------------------------------------------
 
-class _DummyAgent:
-    def run(self, query, run_id):  # pragma: no cover - graph is never invoked
-        return AgentOutput(agent="dummy", ticker=query.ticker, overall_score=0.5)
+# One scored dimension: a run that scores nothing is "no analysis" (CLEAN-005).
+_ONE_SCORED = {"technical": AgentOutput(agent="technical", ticker="SUZLON", overall_score=0.6)}
 
 
 def _orchestrator():
@@ -513,10 +512,6 @@ def _orchestrator():
 
     class _TestOrchestrator(BaseSectorOrchestrator):
         SECTOR_NAME = "renewable_energy"
-
-        def __init__(self) -> None:
-            self._sub_agents = {"dummy": _DummyAgent()}
-            super().__init__()
 
     with patch("backend.shared.pipeline.base_orchestrator.get_llm_client",
                return_value=MagicMock()):
@@ -556,7 +551,7 @@ class TestOrchestratorOpensTheRunContext:
             seen["run_id"] = log_store.current_run_id.get()
             seen["ticker"] = log_store.current_ticker.get()
             seen["passed"] = run_id
-            return {}
+            return _ONE_SCORED
 
         monkeypatch.setattr(quiet_orchestrator, "_run_agents", _agents)
         quiet_orchestrator.analyse("suzlon")
@@ -568,7 +563,7 @@ class TestOrchestratorOpensTheRunContext:
         self, quiet_orchestrator, monkeypatch
     ):
         monkeypatch.setattr(quiet_orchestrator, "_run_agents",
-                            lambda *a, **kw: {})
+                            lambda *a, **kw: _ONE_SCORED)
         quiet_orchestrator.analyse("suzlon")
         assert log_store.current_run_id.get() is None
         assert log_store.current_ticker.get() is None
@@ -579,10 +574,9 @@ class TestOrchestratorOpensTheRunContext:
         def _agents(query, run_id="", progress_callback=None):
             seen["run_id"] = log_store.current_run_id.get()
             seen["ticker"] = log_store.current_ticker.get()
-            return {}
+            return _ONE_SCORED
 
         monkeypatch.setattr(quiet_orchestrator, "_run_agents", _agents)
-        monkeypatch.setattr(quiet_orchestrator, "_unified_enabled", lambda: True)
         asyncio.run(quiet_orchestrator.analyse_async("suzlon"))
 
         assert seen["run_id"] and seen["ticker"] == "SUZLON"

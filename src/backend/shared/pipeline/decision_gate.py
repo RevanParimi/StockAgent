@@ -14,7 +14,7 @@ The gate, for one analysis run:
               fundamentals, technicals, peers_valuation) is not ok/cache_hit;
               or fewer than decision_gate.min_dimensions_fraction of the
               sector's dimensions were scored; or the run has no structured
-              provenance (the legacy worker-pool fallback builds no bundle).
+              provenance (its data bundle was not described).
   degraded    actionable, but an ordinary enrichment (news, macro, flows, ...)
               or a dimension above the minimum share is missing.
   actionable  complete.
@@ -185,7 +185,8 @@ def assess_analysis(
 
 
 def no_provenance_gate(run_id: str, reason: str) -> DecisionGate:
-    """Abstain for a run that built no bundle (legacy worker-pool path)."""
+    """Abstain for a run whose data bundle was not described, or whose gate
+    could not be computed: nothing to verify it against."""
     return DecisionGate(status=ABSTAIN, run_id=run_id, reasons=[reason])
 
 

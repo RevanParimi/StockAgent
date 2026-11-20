@@ -22,7 +22,7 @@ class StockQuery(BaseModel):
     company_name: str = Field(default="", description="Full company name (auto-resolved if empty)")
     exchange: str = Field(default="NSE")
     analysis_date: date = Field(default_factory=date.today)
-    # Pre-fetched NseIndiaApi data — set once before LangGraph fan-out, read-only for all agents.
+    # Pre-fetched NseIndiaApi data — set once before the data bundle is built, read-only.
     # Structure: {"announcements": [...], "board_meetings": [...], "actions": [...],
     #             "symbol_used": str, "fetched_at": str, "error": str|None}
     nse_data: dict = Field(default_factory=dict)
@@ -270,8 +270,8 @@ class FinalReport(BaseModel):
 
     # B2 (Three Loops PI): what this run actually received — per-section fetch
     # outcomes, dimensions scored vs expected, and a derived ok/degraded/hollow
-    # verdict. See services/data/stores/data_health.py. None on the legacy
-    # worker-pool path and whenever `observability.data_health_enabled` is off.
+    # verdict. See services/data/stores/data_health.py. None whenever
+    # `observability.data_health_enabled` is off.
     data_health: dict[str, Any] | None = None
 
     # SA-003: whether this analysis may act, why, and the run it came from.

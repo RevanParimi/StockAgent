@@ -473,12 +473,14 @@ async def scheduler_status(
     total_feedback = sum(t.get("feedback_log", {}).get("entries", 0) for t in ticker_states)
 
     from services.data.stores.job_outcomes import load_job_outcomes
-    from services.data.stores.fallback_events import fallback_count_today
+    from services.data.stores.analysis_failures import failed_count_today
 
     return {
         "scheduler_key_configured": bool(os.getenv("SCHEDULER_KEY")),
         "last_runs":                load_job_outcomes(),   # AUD-090d
-        "fallback_events_today":    fallback_count_today(),  # Wave I: legacy-pool engagements
+        # CLEAN-005: analyses that scored nothing today (IST); each stock was
+        # skipped by its caller. The slot the legacy-pool fallback count had.
+        "analyses_failed_today":    failed_count_today(),
 
         "rl_active_tickers":        rl_active,
         "total_tickers":            len(ticker_states),

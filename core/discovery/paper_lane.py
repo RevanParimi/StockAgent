@@ -17,6 +17,7 @@ import math
 from datetime import date, timedelta
 
 from core.config import settings
+from backend.shared.pipeline.no_analysis import AnalysisUnavailable
 from backend.shared.schemas.discovery import ShelfIdea
 from core.discovery.shelf import ShelfStore
 from core.intelligence.rl.nse_calendar import is_trading_day
@@ -87,6 +88,8 @@ def run_paper_reviews(on: date) -> dict:
                 reviewed.append(idea.symbol)
             else:
                 failed.append(idea.symbol)
+        except AnalysisUnavailable:
+            failed.append(idea.symbol)  # CLEAN-005: logged and counted by the orchestrator
         except Exception as exc:
             logger.warning("[paper_lane] paper review failed for %s (non-fatal): %s",
                            idea.symbol, exc)

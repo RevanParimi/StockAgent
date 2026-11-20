@@ -597,17 +597,8 @@ class TestLegacyRows:
 # 4. Integration: bundle -> health row -> what a watchdog or the UI reads
 # ---------------------------------------------------------------------------
 
-class _DummyAgent:
-    def run(self, query, run_id):  # pragma: no cover - the graph is never invoked
-        return AgentOutput(agent="dummy", ticker=query.ticker, overall_score=0.5)
-
-
 class _AutoOrchestrator(BaseSectorOrchestrator):
     SECTOR_NAME = "automobile"
-
-    def __init__(self) -> None:
-        self._sub_agents = {"dummy": _DummyAgent()}
-        super().__init__()
 
 
 def _nine_scored():

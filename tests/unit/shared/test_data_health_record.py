@@ -360,17 +360,8 @@ class TestNeverRaises:
 # 5. The orchestrator wiring
 # ---------------------------------------------------------------------------
 
-class _DummyAgent:
-    def run(self, query, run_id):  # pragma: no cover - graph is never invoked
-        return AgentOutput(agent="dummy", ticker=query.ticker, overall_score=0.5)
-
-
 class _RenewableTestOrchestrator(BaseSectorOrchestrator):
     SECTOR_NAME = "renewable_energy"
-
-    def __init__(self) -> None:
-        self._sub_agents = {"dummy": _DummyAgent()}
-        super().__init__()
 
 
 @pytest.fixture()
@@ -466,32 +457,27 @@ class TestOrchestratorWiring:
         assert result == outputs                       # the verdict survives
         assert orchestrator._last_data_health is None  # only the record is lost
 
-    def test_legacy_fallback_keeps_the_row_but_drops_it_from_the_report(
-        self, orchestrator, health_log, fresh_db, monkeypatch
+    def test_a_hollow_run_is_recorded_and_returns_nothing(
+        self, orchestrator, health_log, fresh_db
     ):
-        """The hollow unified attempt is real and stays on disk — that is the
-        degradation nothing used to record. But the verdict comes from the
-        legacy pool, so `dimensions_scored: 0` must not ride along on it."""
-        monkeypatch.setattr(bo_mod.settings, "UNIFIED_ANALYST_SECTORS", "renewable_energy")
-        monkeypatch.setattr(bo_mod.settings, "UNIFIED_ANALYST_FALLBACK_LEGACY", True)
-        legacy_outputs = _suzlon_outputs([])
+        """CLEAN-005: the hollow attempt is real and stays on disk, the
+        degradation nothing used to record. With no backup analysis behind
+        it the run returns nothing, which analyse() turns into "no analysis"."""
         bundle = bb.SectorDataBundle(
             sections={n: "live text" for n in bb.SECTION_ORDER},
             has_real_data=True, api_calls_made={}, section_status=_all_ok_status(),
         )
         analyst = MagicMock()
-        analyst.run.return_value = {}          # total unified failure
+        analyst.run.return_value = {}          # total failure of the one call
         query = StockQuery(ticker="SUZLON", company_name="Suzlon Energy Ltd")
 
         with patch("services.data.context.bundle_builder.build_sector_bundle", return_value=bundle), \
-             patch("backend.shared.pipeline.unified_analyst.UnifiedAnalyst", return_value=analyst), \
-             patch.object(orchestrator, "_run_via_graph", return_value=legacy_outputs):
+             patch("backend.shared.pipeline.unified_analyst.UnifiedAnalyst", return_value=analyst):
             result = orchestrator._run_agents(query, run_id="r1")
 
-        assert result == legacy_outputs
-        assert orchestrator._last_data_health is None      # not attached to the report
+        assert result == {}
         rows = _rows(health_log)
-        assert len(rows) == 1                              # but recorded all the same
+        assert len(rows) == 1                              # recorded all the same
         assert rows[0]["health"] == dh.HEALTH_HOLLOW
 
     def test_the_record_is_reset_between_runs(self, orchestrator, health_log, fresh_db):

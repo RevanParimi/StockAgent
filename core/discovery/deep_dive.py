@@ -28,6 +28,7 @@ import pandas as pd
 
 from core.config import settings
 from backend.shared.pipeline import decision_gate as dg
+from backend.shared.pipeline.no_analysis import AnalysisUnavailable
 from backend.shared.schemas.discovery import DeepDiveResult, DiscoveryCandidate
 from core.discovery.sector_naming import (
     analysis_named_on, configured_sectors, decide_key, graph_guess, known_key, read_answer,
@@ -233,6 +234,10 @@ def run_deep_dives(
                 logger.info("[deep_dive] %s has no sector key: %s; filed under the generic "
                             "graph, not bought until an analysis names one",
                             cand.symbol, unnamed)
+        except AnalysisUnavailable:
+            # CLEAN-005: no analysis, no idea and no memo entry, so a later
+            # run can dive it again; the orchestrator logged and counted it.
+            continue
         except Exception as exc:
             logger.warning("[deep_dive] %s failed (non-fatal): %s", cand.symbol, exc)
     if tally is not None:

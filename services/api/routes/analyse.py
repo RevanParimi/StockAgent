@@ -14,6 +14,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from backend.shared.pipeline.no_analysis import AnalysisUnavailable
 from services.api.auth import check_analyse_quota, get_current_user
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,10 @@ async def analyse(req: AnalyseRequest,
     orchestrator = OrchestratorClass()
     try:
         report = await orchestrator.analyse_async(ticker)
+    except AnalysisUnavailable as failure:
+        # CLEAN-005: say so plainly; no verdict, no score. Logged and counted
+        # by the orchestrator.
+        raise HTTPException(status_code=503, detail=failure.user_message())
     except Exception as exc:
         logger.error(
             "[API /analyse] Pipeline failed for ticker=%s sector=%s: %s",

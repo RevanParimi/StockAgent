@@ -41,6 +41,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from backend.shared.config.settings.loader import cfg
+from backend.shared.pipeline.no_analysis import AnalysisUnavailable
 from core.audit.outcomes import grade_due
 from core.audit.report import build_report as build_audit_report
 from core.audit.report import render_section as render_audit_section
@@ -1016,6 +1017,8 @@ class AutomobileScheduler:
                     ticker, sector, env.cycle_id, len(env.daily_forecasts),
                     env.base_close, env.weight_version_used,
                 )
+            except AnalysisUnavailable:
+                continue    # CLEAN-005: no envelope; logged and counted by the orchestrator
             except Exception as exc:
                 logger.error(
                     "[Scheduler] Monthly forecast FAILED for %s: %s", ticker, exc, exc_info=True
@@ -1543,6 +1546,8 @@ class AutomobileScheduler:
                     "[Scheduler] run_now %s — verdict=%s score=%.3f",
                     ticker, report.verdict, report.final_score,
                 )
+            except AnalysisUnavailable:
+                continue    # CLEAN-005: logged and counted by the orchestrator
             except Exception as exc:
                 logger.error("[Scheduler] run_now FAILED for %s: %s", ticker, exc)
 

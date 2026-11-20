@@ -488,11 +488,3 @@ class TestSection:
         chosen = res.provenance()["peers"].split(": ")[-1].split(", ")
         # The valuation's own calls only: the stock once and each chosen peer once.
         assert sorted(yahoo.asked) == sorted(["SUNPHARMA.NS"] + [f"{c}.NS" for c in chosen])
-
-    def test_legacy_valuation_builder_uses_the_same_rule(self, market):
-        from services.data.context.builder import ContextBuilder
-        cb = ContextBuilder()
-        cb._sector = "automobile"
-        text = cb._build_valuation_catalyst(_query("SUNPHARMA"))
-        assert text.startswith(f'peers: same Yahoo industry "{PHARMA}"')
-        assert "  MARUTI:" not in text

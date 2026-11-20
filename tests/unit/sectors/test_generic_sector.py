@@ -2,32 +2,21 @@
 from core.config import settings
 
 
-def test_generic_dimensions_order():
-    from backend.sectors.generic.prompts.dimensions import DIMENSIONS, PROMPTS
-    assert DIMENSIONS == ["business", "fundamentals", "valuation", "technical",
-                          "macro", "risk", "management", "earnings"]
-    for dim in DIMENSIONS:
-        p = PROMPTS[dim]
-        assert isinstance(p.SYSTEM_PROMPT, str) and len(p.SYSTEM_PROMPT) > 50
-        rendered = p.ANALYSIS_PROMPT.format(ticker="SUNPHARMA",
-                                            company_name="Sun Pharma", context="ctx")
-        assert "SUNPHARMA" in rendered
-        assert isinstance(p.CONTEXT_SEARCH_QUERIES, list)
-
-
 def test_generic_config_settings_module():
     from backend.sectors.generic.config.settings import AGENT_WEIGHTS, TICKERS
     assert AGENT_WEIGHTS == settings.GENERIC_AGENT_WEIGHTS
     assert TICKERS == []
 
 
-def test_generic_orchestrator_constructs_with_8_agents():
+def test_generic_orchestrator_scores_8_dimensions_in_one_call():
     from backend.sectors.generic.pipeline.orchestrator import GenericSectorOrchestrator
+    from backend.shared.pipeline.unified_analyst import DIMENSIONS
     orch = GenericSectorOrchestrator()
     assert orch.SECTOR_NAME == "generic"
-    assert set(orch._sub_agents) == {"business", "fundamentals", "valuation",
-                                     "technical", "macro", "risk",
-                                     "management", "earnings"}
+    assert set(DIMENSIONS["generic"]) == {"business", "fundamentals", "valuation",
+                                          "technical", "macro", "risk",
+                                          "management", "earnings"}
+    assert set(orch._get_default_weights()) == set(DIMENSIONS["generic"])
     assert abs(sum(orch._get_default_weights().values()) - 1.0) < 1e-9
 
 

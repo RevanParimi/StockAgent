@@ -30,7 +30,6 @@ from core.intelligence.algorithms.indicators import fetcher
 from core.schemas.pipeline import StockQuery
 from services.data.context import bundle_builder as bb
 from services.data.context import fetch_result as fr
-from services.data.context.builder import ContextBuilder
 
 # The benchmark each sector must be measured against, written out by hand.
 EXPECTED_INDEX = {
@@ -248,49 +247,6 @@ class TestScheduledAndApiPathsCarryTheSector:
         bundle = analyst.run.call_args[0][1]
         assert y.paired_calls() == [["HDFCBANK.NS", index]]
         assert bundle.section_provenance["technicals"]["benchmark"] == index
-
-
-class TestLegacyWorkerPoolCarriesTheSector:
-    """The legacy per-agent fallback (fallback_legacy: true) builds each
-    agent's context through ContextBuilder with the agent's own sector."""
-
-    @staticmethod
-    def _agent(sector: str, name: str):
-        if sector == "automobile_orchestrator":
-            from backend.sectors.automobile.pipeline.orchestrator import _SUB_AGENTS
-            return _SUB_AGENTS[name]
-        if sector == "generic":
-            from backend.sectors.generic.pipeline.orchestrator import GenericSectorOrchestrator
-            with patch("backend.shared.pipeline.base_orchestrator.get_llm_client",
-                       return_value=MagicMock()):
-                return GenericSectorOrchestrator()._sub_agents[name]
-        import importlib
-        return importlib.import_module(f"backend.sectors.{sector}.config.registry").AGENTS[name]
-
-    @pytest.mark.parametrize("sector,name,index", [
-        ("automobile_orchestrator", "pattern_analysis", "^CNXAUTO"),  # declares no sector
-        ("automobile", "pattern_analysis", "^CNXAUTO"),
-        ("renewable_energy", "technical", "^CNXENERGY"),
-        ("generic", "technical", "^NSEI"),
-    ])
-    def test_a_technicals_agent_downloads_its_sectors_index(self, yahoo, sector, name, index):
-        y = yahoo(_market())
-        agent = self._agent(sector, name)
-        context, live = agent._gather_context(_query())
-        assert live is True
-        assert y.paired_calls() == [["HDFCBANK.NS", index]]
-
-    @pytest.mark.parametrize("sector", ["banking_bfsi", "it_sector"])
-    def test_bank_and_it_chart_agents_fetch_no_index_at_all(self, yahoo, sector):
-        """Their legacy pattern builders are search-only; neither reaches the
-        automobile index (nor any other)."""
-        y = yahoo(_market())
-        agent = self._agent(sector, "pattern_analysis")
-        with patch("services.data.fetchers.fundamentals.get_fundamentals_context",
-                   return_value="fundamentals"), \
-             patch("services.data.fetchers.news.fetch_news_context", return_value="news"):
-            agent._gather_context(_query())
-        assert not (y.symbols() & INDEXES)
 
 
 # ---------------------------------------------------------------------------

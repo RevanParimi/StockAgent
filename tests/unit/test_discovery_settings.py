@@ -45,8 +45,8 @@ def test_generic_agent_weights_sum_to_one():
 
 
 def test_generic_on_unified_path_and_regime_role_mapped():
-    sectors = {s.strip() for s in settings.UNIFIED_ANALYST_SECTORS.split(",")}
-    assert "generic" in sectors
+    from backend.shared.pipeline.unified_analyst import SECTOR_SPECS
+    assert "generic" in SECTOR_SPECS
     role_map = settings.SECTOR_AGENT_REGIME_ROLE["generic"]
     assert role_map["technical"] == "pattern_analysis"
     assert role_map["macro"] == "risk_macro"

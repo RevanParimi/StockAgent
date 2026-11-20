@@ -9,7 +9,7 @@ earnings events sourced directly from the NSE exchange.
 Architecture
 ------------
 Pre-fetch pattern: get_nse_market_data() fetches once and caches for the day.
-ContextBuilder methods call format_nse_market_context() — no re-fetch per agent.
+The data bundle (bundle_builder) calls format_nse_market_context() — no re-fetch.
 
 Cache: in-process dict keyed by date. Re-fetches on new calendar day or restart.
 
@@ -159,8 +159,7 @@ def get_nse_market_data(force_refresh: bool = False) -> dict:
     Return today's NSE market intelligence, fetching once per day.
 
     The result is an in-process cache — zero overhead for subsequent calls
-    within the same process (typical: ContextBuilder calls this per agent,
-    but NSE is only hit once per analysis session).
+    within the same process (NSE is only hit once per analysis session).
     """
     key = _today_key()
     if not force_refresh and key in _CACHE:

@@ -107,8 +107,10 @@ def agent_researcher() -> dict[str, dict]:
         old_weights = auto_weights
         new_weights = sector_weights
 
-        # 4. Agent names registered in this sector
-        agent_names = list(orch._sub_agents.keys())
+        # 4. The sector's dimensions (CLEAN-005: one analysis call scores them;
+        #    there is no per-dimension agent registry any more)
+        from backend.shared.pipeline.unified_analyst import DIMENSIONS
+        agent_names = list(DIMENSIONS.get(orch.SECTOR_NAME) or sector_weights.keys())
 
         print(f"    Registered agents: {agent_names}")
         print(f"    _load_learned_weights(fresh_ticker) = {learned}  (expected: None)")

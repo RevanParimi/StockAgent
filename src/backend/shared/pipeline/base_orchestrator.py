@@ -1,26 +1,22 @@
 """
 src/backend/shared/pipeline/base_orchestrator.py
 =================================================
-Abstract base class for all sector orchestrators.
+Base class for the five analysis paths (automobile, banking_bfsi, it_sector,
+renewable_energy, generic).
 
-Every sector (automobile, banking_bfsi, it_sector, renewable_energy) creates one
-concrete subclass that:
-  1. Defines its SECTOR_NAME class attribute
-  2. Instantiates its own _SUB_AGENTS dict
-  3. Calls super().__init__() to wire everything up
+A path is a subclass that sets SECTOR_NAME (and, where it has its own, the
+default weights). Everything else lives here: ticker resolution, the data
+bundle and the one analysis call (unified_analyst.py), RL weight loading,
+signal aggregation, the decision gate and logging.
 
-All the heavy lifting — ticker resolution, LangGraph dispatch, RL weight loading,
-signal aggregation, logging — lives here so it never has to be duplicated.
+When the analysis call scores no dimension there is no analysis: the run
+raises AnalysisUnavailable (no_analysis.py) and writes no verdict. There is no
+second method behind it (CLEAN-005 removed the per-analyst worker pool).
 
-Usage (automobile sector):
+Usage (automobile path):
     from backend.shared.pipeline.base_orchestrator import BaseSectorOrchestrator
     class AutomobileAgentOrchestrator(BaseSectorOrchestrator):
         SECTOR_NAME = "automobile"
-        def __init__(self):
-            from backend.sectors.automobile.agents.sales_demand import SalesDemandAgent
-            ...
-            self._sub_agents = {"sales_demand": SalesDemandAgent(), ...}
-            super().__init__()
 """
 
 from __future__ import annotations
@@ -36,12 +32,6 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from datetime import date, datetime, timezone
 
-from langgraph.graph import END, START, StateGraph
-try:
-    from langgraph.types import RetryPolicy
-except ImportError:
-    from langgraph.pregel import RetryPolicy  # type: ignore[no-redef]
-
 from backend.shared.config import settings
 from backend.shared.schemas.pipeline import AgentOutput, FinalReport, PipelineRun, StockQuery
 from backend.shared.prompts import orchestrator as P
@@ -52,24 +42,10 @@ from backend.shared.data.stores.run_logger import log_llm_call, log_run_summary
 from services.data.stores.log_store import run_context, set_run_ticker
 from backend.shared.data.stores.analysis_logger import log_analysis
 from backend.shared.data.stores.api_usage import log_run_api_usage, snapshot_usage
-from backend.shared.pipeline.graphs.nodes import make_dispatch_fn, make_run_agent_node
-from backend.shared.pipeline.graphs.state import GraphState
+from backend.shared.pipeline.no_analysis import AnalysisUnavailable, scored_nothing, why_nothing
 from backend.shared.pipeline.signal_aggregator import SignalAggregator
 
 logger = logging.getLogger(__name__)
-
-
-def _build_worker_pool_graph(agents: dict, sector: str):
-    """Compile a minimal LangGraph worker pool for a given sector's agent dict."""
-    agents_snapshot = dict(agents.items())
-    _run_agent_node = make_run_agent_node(agents_snapshot, sector)
-    _dispatch_fn = make_dispatch_fn(list(agents_snapshot.keys()))
-
-    wf = StateGraph(GraphState)
-    wf.add_node("run_agent", _run_agent_node, retry_policy=RetryPolicy(max_attempts=2))
-    wf.add_conditional_edges(START, _dispatch_fn)
-    wf.add_edge("run_agent", END)
-    return wf.compile()
 
 
 def sum_run_usage(
@@ -92,20 +68,14 @@ def sum_run_usage(
 
 class BaseSectorOrchestrator(ABC):
     """
-    Sector-agnostic orchestrator base.
-
-    Concrete subclasses must:
-      - Set SECTOR_NAME (str)
-      - Populate self._sub_agents (dict[str, BaseAgent]) before calling super().__init__()
+    Sector-agnostic orchestrator base. A subclass sets SECTOR_NAME (str), the
+    key of its spec in unified_analyst.SECTOR_SPECS. A name without a spec
+    gets no analysis (the analyst returns nothing), never another method.
     """
 
     SECTOR_NAME: str = "unknown"
 
     def __init__(self) -> None:
-        if not hasattr(self, "_sub_agents") or not self._sub_agents:
-            raise RuntimeError(
-                f"{self.__class__.__name__} must populate self._sub_agents before calling super().__init__()"
-            )
         self._llm = get_llm_client()
         self._aggregator = SignalAggregator()
         # Set by generate_forecast.py / daily_review.py; else auto-loaded from RL WeightMemory.
@@ -119,14 +89,16 @@ class BaseSectorOrchestrator(ABC):
         # is long-lived, and a stale record on the next report would be a lie.
         self._last_data_health: dict | None = None
         # SA-003: what the decision gate is computed from — the unified run's
-        # section statuses and dimension counts. None means the run built no
-        # bundle (legacy worker pool), which the gate treats as unverified.
+        # section statuses and dimension counts. None means no bundle was
+        # described, which the gate treats as unverified.
         self._last_gate_inputs: dict | None = None
         # FIX-026: the deep dive's sector question for the run in flight, and
         # the analysis's answer to it (unvalidated). Reset per run.
         self._sector_question: str | None = None
         self._last_sector_answer = None
-        self._worker_pool_graph = _build_worker_pool_graph(self._sub_agents, self.SECTOR_NAME)
+        # CLEAN-005: why the unified analyst returned nothing, for the run in
+        # flight. Reset per run.
+        self._last_analyst_failure: str | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -150,6 +122,7 @@ class BaseSectorOrchestrator(ABC):
             self._last_gate_inputs = None
             self._sector_question = None
             self._last_sector_answer = None
+            self._last_analyst_failure = None
             logger.info("[%s] Async run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
 
             query = await asyncio.to_thread(self._resolve_ticker, user_input, run_id)
@@ -161,19 +134,16 @@ class BaseSectorOrchestrator(ABC):
                 self._aggregator_weights = learned or self._get_default_weights()
                 self._aggregator_weights_ticker = query.ticker
 
-            # Pre-fetch NseIndiaApi data before fan-out — NSE() is sync, run in thread.
-            # All 8 parallel agents share query.nse_data as read-only (set here, never written by agents).
+            # Pre-fetch NseIndiaApi data before the bundle — NSE() is sync, run in thread.
             await asyncio.to_thread(self._prefetch_nse_data, query)
 
             pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
-            if self._unified_enabled():
-                agent_outputs = await asyncio.to_thread(
-                    self._run_agents, query, run_id, progress_callback
-                )
-            else:
-                agent_outputs = await self._run_via_graph_async(
-                    query, run_id=run_id, progress_callback=progress_callback
-                )
+            agent_outputs = await asyncio.to_thread(
+                self._run_agents, query, run_id, progress_callback
+            )
+            # CLEAN-005: a run that scored nothing is no analysis.
+            if scored_nothing(agent_outputs):
+                self._no_analysis(query, run_id, agent_outputs, api_snapshot)
 
             report = self._aggregator.run(
                 ticker=query.ticker,
@@ -184,8 +154,7 @@ class BaseSectorOrchestrator(ABC):
                 sector=self.SECTOR_NAME,
             )
 
-            # B2: the run's health record travels with its verdict. None on the
-            # legacy worker-pool path, which builds no bundle to describe.
+            # B2: the run's health record travels with its verdict.
             report.data_health = self._last_data_health
             # SA-003: the decision gate, before anything logs or returns the verdict.
             self._apply_decision_gate(report, query.ticker, run_id)
@@ -245,6 +214,7 @@ class BaseSectorOrchestrator(ABC):
             self._last_gate_inputs = None
             self._sector_question = sector_question
             self._last_sector_answer = None
+            self._last_analyst_failure = None
             logger.info("[%s] Run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
 
             query = self._resolve_ticker(user_input, run_id=run_id)
@@ -253,14 +223,16 @@ class BaseSectorOrchestrator(ABC):
 
             self._resolve_weights_for(query.ticker)
 
-            # Pre-fetch NseIndiaApi data before fan-out — one session, three calls, 0.5s sleep each.
-            # All 8 parallel agents share query.nse_data as read-only.
+            # Pre-fetch NseIndiaApi data before the bundle — one session, three calls, 0.5s sleep each.
             self._prefetch_nse_data(query)
 
             pipeline_run = PipelineRun(run_id=run_id, query=query, status="running")
             agent_outputs = self._run_agents(
                 query, run_id=run_id, progress_callback=progress_callback
             )
+            # CLEAN-005: a run that scored nothing is no analysis.
+            if scored_nothing(agent_outputs):
+                self._no_analysis(query, run_id, agent_outputs, api_snapshot)
 
             report = self._aggregator.run(
                 ticker=query.ticker,
@@ -271,8 +243,7 @@ class BaseSectorOrchestrator(ABC):
                 sector=self.SECTOR_NAME,
             )
 
-            # B2: the run's health record travels with its verdict. None on the
-            # legacy worker-pool path, which builds no bundle to describe.
+            # B2: the run's health record travels with its verdict.
             report.data_health = self._last_data_health
             # FIX-026: the sector answer, None unless a question was asked and
             # the unified call answered it.
@@ -310,6 +281,41 @@ class BaseSectorOrchestrator(ABC):
                 report.verdict, report.final_score,
             )
             return report
+
+    def _no_analysis(
+        self,
+        query: StockQuery,
+        run_id: str,
+        agent_outputs: dict[str, AgentOutput],
+        api_snapshot,
+    ) -> None:
+        """
+        CLEAN-005: the run scored no dimension, so there is no analysis.
+
+        Records the failure (the day's count on GET /scheduler/status), logs
+        it once and raises AnalysisUnavailable. Nothing a verdict feeds is
+        written: no aggregator call, no score-history row, no analysis log,
+        no run summary. The run's data-health row (written by
+        _record_data_health) and its API spend stay on record.
+        """
+        reason = why_nothing(agent_outputs, self._last_analyst_failure)
+        try:
+            from services.data.stores.analysis_failures import record_analysis_failure
+            record_analysis_failure(self.SECTOR_NAME, query.ticker, reason, run_id=run_id)
+        except Exception as exc:
+            logger.warning("[%s] analysis failure not recorded (non-fatal): %s",
+                           self.SECTOR_NAME, exc, exc_info=True)
+        try:
+            log_run_api_usage(run_id, query.ticker, api_snapshot)
+        except Exception as exc:
+            logger.warning("[%s] API usage not logged for failed run %s (non-fatal): %s",
+                           self.SECTOR_NAME, run_id, exc, exc_info=True)
+        logger.warning(
+            "[%s] No analysis for %s today (run %s): %s. No verdict or score; "
+            "the stock is skipped by this run's caller.",
+            self.SECTOR_NAME, query.ticker, run_id, reason,
+        )
+        raise AnalysisUnavailable(query.ticker, self.SECTOR_NAME, reason, run_id=run_id)
 
     def _record_score_history(self, report: FinalReport) -> None:
         """One score-history row per completed analysis, with the verdict the
@@ -382,16 +388,16 @@ class BaseSectorOrchestrator(ABC):
             self._aggregator_weights_ticker = ticker
 
     # ------------------------------------------------------------------
-    # NseIndiaApi pre-fetch (called before LangGraph fan-out)
+    # NseIndiaApi pre-fetch (called before the data bundle is built)
     # ------------------------------------------------------------------
 
     def _prefetch_nse_data(self, query: StockQuery) -> None:
         """
-        Fetch NseIndiaApi data and store in query.nse_data before fan-out.
+        Fetch NseIndiaApi data and store in query.nse_data before the bundle.
 
-        All 8 parallel agents read query.nse_data in their ContextBuilder calls.
-        This method sets it once — agents never write to it (read-only sharing).
-        Non-fatal: on any failure, query.nse_data stays empty and agents use Serper-only.
+        The data bundle reads query.nse_data; this method sets it once and
+        nothing writes to it afterwards.
+        Non-fatal: on any failure, query.nse_data stays empty and the bundle uses Serper only.
         """
         try:
             from services.data.fetchers.nse_announcements import prefetch_nse_data
@@ -586,17 +592,6 @@ class BaseSectorOrchestrator(ABC):
     # Unified Sector Analyst (2026-06-12 redesign) — one bundle + one call
     # ------------------------------------------------------------------
 
-    def _unified_enabled(self) -> bool:
-        """
-        True when this sector is on the unified-analyst path.
-
-        Reads settings.UNIFIED_ANALYST_SECTORS freshly (via the settings
-        module object held by this module) so tests can monkeypatch
-        `base_orchestrator.settings.UNIFIED_ANALYST_SECTORS` directly.
-        """
-        sectors = {s.strip() for s in settings.UNIFIED_ANALYST_SECTORS.split(",") if s.strip()}
-        return self.SECTOR_NAME in sectors
-
     def _run_unified(
         self,
         query: StockQuery,
@@ -604,11 +599,11 @@ class BaseSectorOrchestrator(ABC):
         progress_callback: Callable[[str, float], None] | None = None,
     ) -> dict[str, AgentOutput]:
         """
-        Unified path: one shared data bundle + one reasoning-model call
-        produces all of this sector's dimension AgentOutputs.
+        One shared data bundle + one reasoning-model call produces all of
+        this sector's dimension AgentOutputs.
 
-        Returns {} (never raises) to signal the caller should fall back to
-        the legacy worker pool when UNIFIED_ANALYST_FALLBACK_LEGACY is set.
+        Returns {} (never raises) when the call produced nothing; the analyst
+        says why in `_last_failure`, kept for the "no analysis" record.
         """
         from services.data.context.bundle_builder import build_sector_bundle
         from backend.shared.pipeline.unified_analyst import UnifiedAnalyst
@@ -626,6 +621,8 @@ class BaseSectorOrchestrator(ABC):
             self._last_sector_answer = analyst._last_sector_answer
         else:
             outputs = analyst.run(query, bundle, self.SECTOR_NAME, run_id=run_id)
+        if not outputs:
+            self._last_analyst_failure = getattr(analyst, "_last_failure", None)
         self._record_data_health(query, bundle, outputs, run_id)
         self._shadow_company_search(query, bundle, outputs, run_id)
         if outputs:
@@ -656,13 +653,13 @@ class BaseSectorOrchestrator(ABC):
         """
         PR-043: queue the search shadow (the engines in search_shadow.engines
         beside Serper) for this run's company search. Called after the analyst
-        has returned, and only when it produced outputs: a failed analysis is
-        no decision. The work runs on a daemon thread and the analysis reads
+        has returned, and only when it scored a dimension: a failed analysis
+        is no decision. The work runs on a daemon thread and the analysis reads
         nothing from it.
 
         Never raises, and never changes the run's outcome.
         """
-        if not outputs:
+        if scored_nothing(outputs):     # CLEAN-005: no analysis is no decision
             return
         try:
             from services.data.fetchers.search_shadow import submit_shadow
@@ -751,8 +748,8 @@ class BaseSectorOrchestrator(ABC):
             inputs = self._last_gate_inputs
             if inputs is None:
                 gate = dg.no_provenance_gate(
-                    run_id, "no structured provenance: this run's outputs came from "
-                            "the legacy worker pool, which builds no data bundle")
+                    run_id, "no structured provenance: this run's data bundle was "
+                            "not described, so its inputs cannot be checked")
             else:
                 gate = dg.assess_analysis(run_id=run_id, **inputs)
             provenance = (inputs or {}).get("section_provenance") or {}
@@ -783,85 +780,7 @@ class BaseSectorOrchestrator(ABC):
         run_id: str = "",
         progress_callback: Callable[[str, float], None] | None = None,
     ) -> dict[str, AgentOutput]:
-        """
-        Dispatch: unified path when enabled for this sector, legacy worker
-        pool otherwise (or as a fallback on unified-analyst total failure).
-        """
-        if self._unified_enabled():
-            outputs = self._run_unified(query, run_id, progress_callback)
-            if outputs:
-                return outputs
-            if not settings.UNIFIED_ANALYST_FALLBACK_LEGACY:
-                return outputs
-            logger.warning("[%s] unified analyst failed -> legacy fallback", self.SECTOR_NAME)
-            # B2: the row just written is true and stays on disk — the unified
-            # attempt really did come back hollow, which is exactly the kind of
-            # degradation nothing used to record. But it describes an ABANDONED
-            # attempt, and the verdict about to be returned comes from the
-            # legacy pool instead, so it must not ride along on the report:
-            # `dimensions_scored: 0` beside a full set of agent outputs would
-            # be a lie about the run that actually produced them.
-            self._last_data_health = None
-            # SA-003: likewise the gate inputs. The legacy pool builds no
-            # bundle, so the gate has no provenance for its outputs.
-            self._last_gate_inputs = None
-            # Wave I: fallback costs ~6-8x the Serper credits of the unified
-            # path — record it so /scheduler/status can surface the rate.
-            try:
-                from services.data.stores.fallback_events import record_fallback
-                record_fallback(self.SECTOR_NAME, query.ticker)
-            except Exception:
-                pass
-        return self._run_via_graph(query, run_id=run_id, progress_callback=progress_callback)
-
-    # ------------------------------------------------------------------
-    # Parallel sub-agent execution — LangGraph worker pool
-    # ------------------------------------------------------------------
-
-    def _run_via_graph(
-        self,
-        query: StockQuery,
-        run_id: str = "",
-        progress_callback: Callable[[str, float], None] | None = None,
-    ) -> dict[str, AgentOutput]:
-        initial: GraphState = {
-            "query": query, "run_id": run_id,
-            "current_agent": "", "agent_outputs": {}, "rail_errors": [],
-        }
-        result = self._worker_pool_graph.invoke(initial)
-        agent_outputs: dict[str, AgentOutput] = result.get("agent_outputs", {})
-        for name, out in agent_outputs.items():
-            logger.info("[%s] %s done — score=%.3f", self.SECTOR_NAME, name, out.overall_score)
-            if progress_callback:
-                try:
-                    progress_callback(name, out.overall_score)
-                except Exception:
-                    pass
-        return agent_outputs
-
-    async def _run_via_graph_async(
-        self,
-        query: StockQuery,
-        run_id: str = "",
-        progress_callback: Callable[[str, float], None] | None = None,
-    ) -> dict[str, AgentOutput]:
-        initial: GraphState = {
-            "query": query, "run_id": run_id,
-            "current_agent": "", "agent_outputs": {}, "rail_errors": [],
-        }
-        collected: dict[str, AgentOutput] = {}
-        async for event in self._worker_pool_graph.astream_events(initial, version="v2"):
-            if event["event"] == "on_chain_end" and event["name"] == "run_agent":
-                partial: dict = event["data"]["output"].get("agent_outputs", {})
-                for name, out in partial.items():
-                    collected[name] = out
-                    logger.info(
-                        "[%s] %s done (async) — score=%.3f",
-                        self.SECTOR_NAME, name, out.overall_score,
-                    )
-                    if progress_callback:
-                        try:
-                            progress_callback(name, out.overall_score)
-                        except Exception:
-                            pass
-        return collected
+        """The one analysis method: one bundle and one call (CLEAN-005: no
+        per-sector switch and no backup). An empty or wholly errored result
+        is "no analysis" (analyse / analyse_async raise AnalysisUnavailable)."""
+        return self._run_unified(query, run_id, progress_callback)

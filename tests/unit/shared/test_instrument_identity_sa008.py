@@ -184,10 +184,6 @@ def _automobile_orchestrator(llm_answer: str):
     class _Auto(BaseSectorOrchestrator):
         SECTOR_NAME = "automobile"
 
-        def __init__(self):
-            self._sub_agents = {"dummy": object()}         # never run
-            super().__init__()
-
     with patch("backend.shared.pipeline.base_orchestrator.get_llm_client", return_value=MagicMock()):
         orch = _Auto()
     choice = MagicMock()

@@ -12,7 +12,6 @@ What is tested:
   - news_fetcher: Serper response parsing
   - fundamentals_fetcher: financial metrics calculation
   - macro_fetcher: commodity price extraction
-  - context_builder: routes to correct builder per agent
 """
 
 from __future__ import annotations
@@ -217,49 +216,6 @@ class TestMacroFetcher:
         result = get_rbi_repo_rate()
         assert "repo_rate_pct" in result
         assert float(result["repo_rate_pct"]) > 0
-
-
-# ---------------------------------------------------------------------------
-# context_builder
-# ---------------------------------------------------------------------------
-
-class TestContextBuilder:
-    def setup_method(self):
-        self.query = StockQuery(
-            ticker="MARUTI",
-            company_name="Maruti Suzuki India Ltd",
-            exchange="NSE",
-            analysis_date=date(2026, 4, 3),
-        )
-
-    @patch("services.data.context.builder.ContextBuilder._build_pattern_analysis")
-    def test_routes_to_pattern_analysis(self, mock_build):
-        from services.data.context.builder import ContextBuilder
-        mock_build.return_value = "tech context"
-        result = ContextBuilder().build("pattern_analysis", self.query)
-        mock_build.assert_called_once_with(self.query)
-        assert result == ("tech context", True)
-
-    @patch("services.data.context.builder.ContextBuilder._build_risk_macro")
-    def test_routes_to_risk_macro(self, mock_build):
-        from services.data.context.builder import ContextBuilder
-        mock_build.return_value = "macro context"
-        result = ContextBuilder().build("risk_macro", self.query)
-        mock_build.assert_called_once_with(self.query)
-
-    def test_generic_fallback_for_unknown_agent(self):
-        from services.data.context.builder import ContextBuilder
-        context, has_real_data = ContextBuilder().build("unknown_agent", self.query)
-        assert "MARUTI" in context
-        assert has_real_data is False
-
-    @patch("services.data.context.builder.ContextBuilder._build_pattern_analysis")
-    def test_exception_in_builder_falls_back_to_generic(self, mock_build):
-        from services.data.context.builder import ContextBuilder
-        mock_build.side_effect = RuntimeError("fetch failed")
-        context, has_real_data = ContextBuilder().build("pattern_analysis", self.query)
-        assert "MARUTI" in context  # generic fallback includes ticker
-        assert has_real_data is False
 
 
 # ---------------------------------------------------------------------------

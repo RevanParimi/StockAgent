@@ -63,47 +63,45 @@ StockAgent-main/
 │                                  # (see docs/ARCHITECTURE.md §3 for the full schedule table)
 ├── src/                           # Source packages
 │   ├── backend/                   # Python backend agents
-│   │   ├── sectors/               # Per-sector agent implementations
+│   │   ├── sectors/               # The five analysis paths (one call each)
 │   │   │   ├── registry.py        # Unified ticker→sector map + SectorRegistry class
-│   │   │   ├── automobile/        # Automobile agents (9 dimensions)
-│   │   │   │   ├── agents/        # Individual agent modules (legacy multi-agent fallback path)
+│   │   │   ├── automobile/        # Automobile path (9 dimensions)
 │   │   │   │   ├── pipeline/
-│   │   │   │   │   └── orchestrator.py   # AutomobileAgentOrchestrator (legacy 9-agent pool)
-│   │   │   │   ├── prompts/       # SYSTEM_PROMPT / ANALYSIS_PROMPT per agent + unified.py (Unified Sector Analyst prompt)
+│   │   │   │   │   └── orchestrator.py   # AutomobileAgentOrchestrator (SECTOR_NAME only)
+│   │   │   │   ├── prompts/       # unified.py: the one analysis prompt
 │   │   │   │   ├── config/settings.py    # Automobile-specific config
 │   │   │   │   └── schemas/
-│   │   │   ├── banking_bfsi/      # Banking/BFSI agents (6 agents)
+│   │   │   ├── banking_bfsi/      # Banking/BFSI path (6 dimensions)
 │   │   │   │   └── pipeline/orchestrator.py  # BankingAgentOrchestrator
-│   │   │   ├── it_sector/         # IT sector agents (8 agents)
+│   │   │   ├── it_sector/         # IT path (8 dimensions)
 │   │   │   │   └── pipeline/orchestrator.py  # ITAgentOrchestrator
-│   │   │   ├── renewable_energy/  # Renewable energy agents (6 agents)
+│   │   │   ├── renewable_energy/  # Renewable energy path (6 dimensions)
 │   │   │   │   └── pipeline/orchestrator.py  # RenewableAgentOrchestrator
 │   │   │   └── generic/           # Compass Phase B — sector-agnostic unified graph for
 │   │   │       │                  #  auto-promoted tickers outside the 4 native sectors
 │   │   │       ├── pipeline/orchestrator.py  # GenericSectorOrchestrator (8 dimensions)
-│   │   │       ├── prompts/       # unified.py (one-call prompt) + dimensions.py (fallback pool)
+│   │   │       ├── prompts/       # unified.py (one-call prompt)
 │   │   │       └── config/settings.py        # AGENT_WEIGHTS ← settings.GENERIC_AGENT_WEIGHTS; TICKERS=[]
 │   │   └── (dead intelligence/, api/ subtrees deleted — audit Wave E 2026-07-17)
 │   │
 │   │   # src/backend/shared/ — shared machinery across sectors:
 │   │   ├── shared/
-│   │       ├── agents/            # Base agent classes
 │   │       ├── clients/           # Shared API clients
 │   │       ├── config/
 │   │       │   └── settings/base.py   # Master settings file (all env vars)
 │   │       ├── data/              # Data helpers
 │   │       │   ├── instruments.py         # Instrument registry: dated identity + price basis
 │   │       ├── pipeline/          # THE analysis engine:
-│   │       │   ├── base_orchestrator.py   # resolve → bundle → analyse → aggregate
+│   │       │   ├── base_orchestrator.py   # resolve → bundle → analyse → aggregate;
+│   │       │   │                          #  a run that scores nothing raises
+│   │       │   │                          #  AnalysisUnavailable (no backup method)
+│   │       │   ├── no_analysis.py         # AnalysisUnavailable, scored_nothing, the user message
 │   │       │   ├── unified_analyst.py     # Unified Sector Analyst — one-call dimension scoring
 │   │       │   ├── signal_aggregator.py   # learned weights + conflict detection + LLM verdict
 │   │       │   ├── decision_gate.py       # Essential-data gate: actionable/degraded/abstain,
 │   │       │   │                          #  decision_gate.mode record|enforce, skip log
 │   │       │   ├── verdict_shadow.py      # observe-only threshold(composite) lane
 │   │       │   │                          #  → data/rl/verdict_shadow.jsonl (audit Wave G)
-│   │       │   ├── base_agent.py          # legacy per-dimension agent base (fallback pool)
-│   │       │   └── graphs/                # nodes.py/rails.py/state.py — legacy fallback
-│   │       │                              #  dispatch machinery (UNIFIED_ANALYST_FALLBACK_LEGACY)
 │   │       ├── prompts/           # Shared prompt templates
 │   │       └── schemas/
 │   │           └── feedback.py    # Feedback/RL schemas (src path)
@@ -212,7 +210,6 @@ StockAgent-main/
 │   │                              #  per-channel rows when ATLAS_ENABLED; singleton-owner drainer
 │   │                              #  claims each atomically (queued→sending CAS) → send + backoff
 │   ├── pipeline/                  # Live shim for the automobile path via sector_router
-│   │   ├── base_agent.py
 │   │   ├── orchestrator.py
 │   │   └── signal_aggregator.py
 │   └── schemas/
@@ -409,7 +406,7 @@ Ticker path params are validated against the managed list *before* any store con
 | POST | `/scheduler/forecast?ticker=<sym>` | `X-Scheduler-Key` header | Generate 30-day prediction envelopes (full 9-agent pipeline). Returns 202, runs in background. |
 | POST | `/scheduler/daily-review?ticker=<sym>&review_date=<ISO>` | `X-Scheduler-Key` header | Run RL daily feedback loop for one date. Returns 202, runs in background. |
 | POST | `/scheduler/backfill?ticker=<sym>` | `X-Scheduler-Key` header | Backfill all past trading days this month. Returns 202, runs in background. |
-| GET | `/scheduler/status` | `X-Scheduler-Key` header | Full RL state for all configured tickers: envelope, feedback log, weight memory — plus `last_runs` (per-job last outcome from `data/scheduler_job_outcomes.json`: produced/expected counts, stragglers, pipeline result). `daily_review` adds `status` (ok/partial/failed/empty), `required`/`attempted`, the five outcome counts (completed/degraded/data_gated/skipped/failed), `missing`, `by_ticker`, `retried`/`runs`, `excluded`, `duplicates` and `pipeline_status`; `produced` counts only reviews that wrote feedback. |
+| GET | `/scheduler/status` | `X-Scheduler-Key` header | Full RL state for all configured tickers: envelope, feedback log, weight memory — plus `last_runs` (per-job last outcome from `data/scheduler_job_outcomes.json`: produced/expected counts, stragglers, pipeline result). `daily_review` adds `status` (ok/partial/failed/empty), `required`/`attempted`, the five outcome counts (completed/degraded/data_gated/skipped/failed), `missing`, `by_ticker`, `retried`/`runs`, `excluded`, `duplicates` and `pipeline_status`; `produced` counts only reviews that wrote feedback. `analyses_failed_today`: analyses that scored nothing today (IST), from `data/rl/analysis_failures.jsonl`; each stock was skipped by its caller. |
 
 ### Portfolio — Compass Phase A (`/portfolio/*`)
 
@@ -629,9 +626,7 @@ tier, and `config.yaml` is the only place models are chosen.
 
 | Name | Default | Description |
 |------|---------|-------------|
-| `UNIFIED_ANALYST_SECTORS` | `automobile,banking_bfsi,it_sector,renewable_energy` | CSV of sector names on the one-bundle/one-call path (all four by default); `""` disables it everywhere (legacy multi-agent path byte-identical) |
-| `UNIFIED_ANALYST_FALLBACK_LEGACY` | `true` | On total Unified Analyst failure, fall back to the legacy multi-agent worker pool |
-| `UNIFIED_ANALYST_MAX_TOKENS` | `6000` | Max output tokens for the single Unified Analyst LLM call |
+| `UNIFIED_ANALYST_MAX_TOKENS` | `6000` | Max output tokens for the single Unified Analyst LLM call. Every path runs this one call; no setting selects another method, and a call that scores nothing is "no analysis" |
 | `UNIFIED_SECTION_MAX_CHARS` | `2500` | Per-section cap in `SectorDataBundle` |
 | `UNIFIED_BUNDLE_MAX_CHARS` | `18000` | Total cap on the rendered bundle text passed to the analyst prompt |
 
@@ -940,7 +935,7 @@ All paths verified to exist. Paths are relative to project root.
 | `services/data/fetchers/bhavcopy.py` | NSE delivery-bhavcopy fetcher + resumable `sync_recent()`; the instrument listing (series and ISIN per symbol from the UDiFF bhavcopy): `refresh_listing()`, `load_listing()`, cached in `data/discovery/listing.json` |
 | `services/data/fetchers/bulk_block.py` | Bulk/block deals cache (degraded-mode keeps stale deals) |
 | `services/data/fetchers/surveillance.py` | `surveillance_list()`: NSE's daily Surveillance Indicator report (GSM, long/short-term ASM stage and status per security), read once a run and cached in `data/discovery/surveillance.json`, never dated after the screen's session nor more than 7 days before it + yfinance float mcap and `market_classification()` (Yahoo sector and industry, the one industry source) |
-| `src/backend/sectors/generic/pipeline/orchestrator.py` | GenericSectorOrchestrator — sector-agnostic 8-dimension graph (unified primary, UniversalAgent fallback pool) |
+| `src/backend/sectors/generic/pipeline/orchestrator.py` | GenericSectorOrchestrator — sector-agnostic 8-dimension path (one call, generic weights) |
 | `data/market_cache/bhavcopy/` | Per-day parquet EOD cache, ~550 sessions rolling |
 | `data/discovery/` | `screens/`, `shelf.json`, `shelf_events.jsonl`, `insider_trades.json` |
 | `data/events/` | Company events: `<SYMBOL>.jsonl` (one per source item), `state.json` (the day's search count, items judged unrelated), `runs.jsonl` (one line per run), `ownership/<SYMBOL>.json` (each quarter's FII, DII and mutual-fund % from its shareholding XBRL). No user id |
@@ -959,6 +954,7 @@ All paths verified to exist. Paths are relative to project root.
 | `services/data/context/bundle_builder.py` | `build_sector_bundle()` — one-pass `SectorDataBundle` (10 labeled, char-capped sections), sector-aware via `_SECTOR_BUNDLE_CFG` (per-sector queries, deep-dive Tavily target, commodities applicability, peer lists); `section_status` holds one outcome per section, taken from each producer's `FetchResult`, and `section_provenance` (source, as-of, reason) |
 | `services/data/context/fetch_result.py` | `FetchResult` (text, status, source, as_of, reason), the section status vocabulary, and the price/fundamentals freshness bounds |
 | `src/backend/shared/pipeline/decision_gate.py` | The essential-data gate: `assess_analysis` / `gate_from_health_row` (actionable/degraded/abstain), `apply_gate` (enforce → `INSUFFICIENT DATA`), `decision_gate.mode` record|enforce (unknown → enforce), `record_gate_decision` → `data/logs/decision_gate.jsonl` (ticker-level); `apply_identity` (unresolved identity, or price history for another symbol → abstain; stamps `DecisionGate.identity`) |
+| `services/data/stores/analysis_failures.py` | One row per analysis that scored nothing (`data/rl/analysis_failures.jsonl`: time, IST date, path, ticker, run id, reason); `failed_count_today()` is `analyses_failed_today` on `GET /scheduler/status`. Never raises |
 | `services/data/stores/data_health.py` | B2 — one row per unified run: section outcomes, dimensions scored vs expected, derived `ok`/`degraded`/`hollow`. Contract v2: `health_reasons`, `essential_unusable`, `section_provenance`, stale/fallback/unverified counts; `normalize_health_row` / `recent_health_rows` read v1 rows with unknown provenance. Writes `data/logs/data_health.jsonl` + `telemetry.db.data_health`, attaches to `FinalReport.data_health`. Never raises. Flag `observability.data_health_enabled` (the row only: the decision gate reads the same inputs and does not depend on it); `build_record` is also the gate's source |
 | `services/data/fetchers/search_shadow.py` | The search shadow, recorded and never read: `submit_shadow()` (called by the orchestrator after the unified analyst returns with outputs; returns at once, one daemon thread, bounded queue) sends the bundle's company search to each engine in `search_shadow.engines` through OpenRouter's `openrouter:web_search` (`search_web`), dates each result from its page (`read_page_date`: page metadata, a date in the URL, an NSE filing name strong; a month in the path, `Last-Modified` weak; public http(s) addresses only), and appends one row per analysis to `data/logs/search_shadow.jsonl`. Per-engine weekly budget in `data/logs/search_shadow_budget.json` (Saturday 00:00 IST to Friday). Never raises; no key or page text written. Flag `search_shadow.enabled` |
 | `src/backend/shared/pipeline/unified_analyst.py` | `UnifiedAnalyst` — one reasoning-model call → all dimension `AgentOutput`s for a sector (9/6/8/6 per `SECTOR_SPECS`); an optional sector question is appended to the user prompt and its `SECTOR_ANSWER_KEY` block kept unvalidated (without it the prompt is unchanged); never raises, falls back to legacy on total failure |

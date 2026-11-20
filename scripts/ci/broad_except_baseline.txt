@@ -120,7 +120,6 @@ services/data/fetchers/macro.py | get_rbi_repo_rate | #1
 services/data/stores/analysis_logger.py | _fetch_price | #0
 services/data/stores/atlas_store.py | _reset_for_tests | #0
 services/data/stores/chat_session_store.py | _reset_for_tests | #0
-services/data/stores/fallback_events.py | fallback_count_today | #0
 services/data/stores/job_outcomes.py | load_job_outcomes | #0
 services/data/stores/log_store.py | SQLiteLogHandler.emit | #0
 services/data/stores/log_store.py | log_app_record | #0
@@ -137,10 +136,6 @@ src/backend/sectors/automobile/config/settings.py | get_business_model_context |
 src/backend/sectors/automobile/config/settings.py | get_business_model_context | #1
 src/backend/shared/data/fetchers/symbol_resolver.py | _has_price | #0
 src/backend/shared/data/fetchers/symbol_resolver.py | _india_candidates | #0
-src/backend/shared/pipeline/base_agent.py | BaseAgent._fetch_dossier_digest | #0
-src/backend/shared/pipeline/base_orchestrator.py | BaseSectorOrchestrator._run_agents | #0
 src/backend/shared/pipeline/base_orchestrator.py | BaseSectorOrchestrator._run_unified | #0
-src/backend/shared/pipeline/base_orchestrator.py | BaseSectorOrchestrator._run_via_graph | #0
-src/backend/shared/pipeline/base_orchestrator.py | BaseSectorOrchestrator._run_via_graph_async | #0
 src/backend/shared/pipeline/base_orchestrator.py | BaseSectorOrchestrator._verify_ticker | #0
 src/backend/shared/schemas/feedback.py | LearningLedger.active_lessons_summary | #0

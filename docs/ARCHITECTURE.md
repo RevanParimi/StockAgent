@@ -29,7 +29,7 @@ baseline evidence that the current design responds to, and the
 ```mermaid
 flowchart TD
     D[Prices, filings, news and caches] --> B[Sector data bundle with typed section statuses]
-    B --> U[Unified analyst or legacy fallback]
+    B --> U[Unified analyst: one call, or no analysis]
     U --> A[Weighted aggregation and narrative]
     W[Weights and lessons] --> A
     A --> G[Decision gate: actionable, degraded or abstain]

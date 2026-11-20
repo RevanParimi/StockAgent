@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-20 (PR-016 implemented, awaiting its fresh review; push pending to Sat 21 Nov 00:10; in a push window PR-015 switches; PR-037's catch-up run and PR-042-W0's read wait for you)
+# Current handoff - 2026-11-20 (PR-016 accepted and merged; push pending to Sat 21 Nov 00:10; in a push window PR-015 switches, outside one PR-017; PR-037's catch-up run and PR-042-W0's read wait for you)
 
 ## Now
 
@@ -8,10 +8,10 @@
   PR-040. Each card reads `pending_observation`.
 - **Refused to unattended sessions:** PR-037's catch-up run and `PR-042-W0`'s read (below).
 - **Done today, shipping with the next push:** CLEAN-005 ([review](evidence/CLEAN-005-review.md),
-  merged as `f6b2055`, an image without `langgraph`; `CLEAN-005-W1`; BACKLOG B-27) and PR-013
-  (light; [receipt](evidence/PR-013.md); `PR-013-W1`; BACKLOG B-12 waits for PR-015's merge).
-- **PR-016 is `review_required`** (decision path; [receipt](evidence/PR-016-implementation.md)):
-  on `story/PR-016` (`31d178e`), not merged. BACKLOG B-28.
+  merged as `f6b2055`, an image without `langgraph`; `CLEAN-005-W1`; BACKLOG B-27), PR-013
+  (light; [receipt](evidence/PR-013.md); `PR-013-W1`; BACKLOG B-12 waits for PR-015's merge)
+  and PR-016 ([review](evidence/PR-016-review.md), merged as `f0ab71c`; `PR-016-W1`; BACKLOG
+  B-28, B-29).
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
   Mondays; the next opens Sat 21 Nov 00:10): after the runner's push, **PR-015's switch** (your
   word, 18 Nov about 07:05 IST): merge `story/PR-015` (`12b7901`) into `main` (four KT conflict
@@ -19,12 +19,13 @@
   [PR-005's review](evidence/PR-005-review.md), "Decision"), the full suite on the exact commit,
   push, check the deploy and `/health`, add `PR-015-W1`
   ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md)); then BACKLOG B-12.
-- **Next `continue` outside a window:** **PR-016's fresh hard review** (`REVIEW.md`). After
+- **Next `continue` outside a window:** **PR-017** (decision path: grade every deep dive at the
+  conviction it was issued with). After
   today's 16:30 review: `FIX-017-W1` and `CLEAN-004-W1` (production reads, so your word or your
   command).
-- **Git:** `origin/main` = `03debc1`; `main` is 8 commits ahead (records, CLEAN-005's two
-  commits and its merge, PR-013, PR-016's records), push pending to Sat 21 Nov 00:10.
-  `story/PR-015` and `story/PR-016` are local.
+- **Git:** `origin/main` = `03debc1`; `main` is 11 commits ahead (records, CLEAN-005's two
+  commits and its merge, PR-013, PR-016's commit, its merge and records), push pending to Sat
+  21 Nov 00:10. `story/PR-015` is local.
 
 ## Waits for you
 
@@ -56,6 +57,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Sat 21 Nov | `CLEAN-005-W1` | after the 00:10 push: the build without `langgraph`, `analyses_failed_today`; Mon 23 Nov: the 16:30 review's log |
 | Sat 21 Nov | `PR-038-R1` | the PR-038 re-read |
 | Sun 22 Nov | `PR-013-W1` | after the weekly review: the scorecard's four new lines |
+| Sun 22 Nov | `PR-016-W1` | after the weekly review: `executable_prices.jsonl`, the line and `paper_prices` |
 | Sat 21 Nov | `PR-043-W1` | the first Saturday's shadow rows |
 | Tue 24 Nov | `FIX-032-W1` | your re-run of FIX-032's probe |
 | Wed 25 Nov‡ | `PR-005-W1` | the first cases written at purchase, and any price retried |
@@ -106,13 +108,6 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 
 - **Autopilot `1119-1629-p1`**, no production read. 15 November deploys shaped and in the same
   probe (dry run: 2 passed); CLEAN-007 verified from `CLEAN-007-W1`; no November closure.
-
-## 20 Nov, afternoon (autopilot): PR-016 implemented on `story/PR-016`; its fresh review next
-
-- **Autopilot `1120-1355-p4`**, code-server, from about 13:55 IST, outside a push window.
-- **`31d178e`:** each autopilot trade at the next session's open and the open after its run
-  (NSE's bhavcopy), one row each in `executable_prices.jsonl`; the line "At prices that could be
-  had"; red flag `paper_prices` (the card's rule).
 
 # START HERE — standing rules
 

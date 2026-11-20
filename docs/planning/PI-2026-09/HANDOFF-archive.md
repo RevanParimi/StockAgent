@@ -14,6 +14,27 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 20 Nov, afternoon (autopilot): PR-016 → ACCEPTED (fresh review); merged into `main`
+
+- **Autopilot session `1120-1433-p5`**, a `continue` on the code-server from about 14:33 IST,
+  outside a push window. `main` = `a909e6e`, 8 commits ahead of `origin/main` `03debc1`. No
+  production read.
+- **Input verified:** `story/PR-016` = `31d178e`; digest `bf0d79fb…` = the implementation
+  receipt. An autopilot trade traced from the executor to the email; only the scorecard reads
+  the side file. Reviewer cases RV1–RV5 through the real day files, store and weekly scorecard;
+  reviewer mutants 9 of 9; full suite 6,917 passed / 5 skipped / 1 xfailed / 0 failed.
+- **Low, to BACKLOG B-29:** `paper_prices` can read clear while trades have no price, and its
+  sentence does not say how many.
+- **Merged** as `f0ab71c`, code byte-identical to `31d178e`; push pending to Sat 21 Nov 00:10.
+  New check `PR-016-W1`. [Review receipt](evidence/PR-016-review.md).
+
+## 20 Nov, afternoon (autopilot): PR-016 implemented on `story/PR-016`; its fresh review next
+
+- **Autopilot `1120-1355-p4`**, code-server, from about 13:55 IST, outside a push window.
+- **`31d178e`:** each autopilot trade at the next session's open and the open after its run
+  (NSE's bhavcopy), one row each in `executable_prices.jsonl`; the line "At prices that could be
+  had"; red flag `paper_prices` (the card's rule).
+
 ## 20 Nov, afternoon (autopilot): PR-013 → ACCEPTED (light lane)
 
 - **Autopilot `1120-1154-p3`**, a `continue` on the code-server from about 11:54 IST, outside a

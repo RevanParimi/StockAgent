@@ -40,11 +40,9 @@ LINE_HORIZON_TD = 30
 
 
 def _floor() -> float:
-    try:
-        from core.config import settings
-        return float(settings.DISCOVERY_MIN_CONVICTION)
-    except Exception:
-        return 0.55
+    """The shelf's conviction floor (`discovery.min_conviction`)."""
+    from core.config import settings
+    return float(settings.DISCOVERY_MIN_CONVICTION)
 
 
 def is_buy_dive(row, floor: float) -> bool:

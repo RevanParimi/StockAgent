@@ -76,7 +76,7 @@ def idea_horizons() -> tuple[int, ...]:
     configured = cfg("audit.idea_horizons_td", fallback=list(IDEA_HORIZONS))
     try:
         out = tuple(int(h) for h in configured)
-    except Exception:
+    except (TypeError, ValueError):       # not a list of numbers
         return IDEA_HORIZONS
     return out or IDEA_HORIZONS
 

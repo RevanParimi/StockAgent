@@ -238,7 +238,7 @@ evidence.
 | `data/managed_tickers.json` | The managed list: each scheduled ticker's sector and enabled flag. Disabling a ticker keeps its history; removing it deletes the history. |
 | `data/peer_profiles.json` | Yahoo industry and market cap per listing, with its date, for the valuation peers (section 4). Both workers write it: each save takes `peer_profiles.json.lock`, merges with the file and replaces it atomically. A cache: deleting it costs only lookups. |
 | `data/prediction_quarantine/<migration>/` | Stores moved out of the live tree by the ownership quarantine, with their `lineage.json`. Inside `data/`, so the nightly backup keeps them; outside the tree the evaluators walk. |
-| `data/portfolio/<user>/` | PortfolioStore: holdings/cash, advice and transaction JSONL, value history, dated digests, briefs and weekly reviews, `weekly_scorecard.jsonl` (one results row per ISO week, written once; section 7) and `exit_shadow.jsonl` (both exit rules' verdicts, one row per holding per review day, written once; section 6) and `cases/<SYMBOL>.jsonl` (each holding's investment case, every version appended, never edited; section 6). The nightly auditor's `advice_outcomes.jsonl` sits beside them. |
+| `data/portfolio/<user>/` | PortfolioStore: holdings/cash, advice and transaction JSONL, value history, dated digests, briefs and weekly reviews, `weekly_scorecard.jsonl` (one results row per ISO week, written once; section 7), `executable_prices.jsonl` (each autopilot trade's two real opens, one row per transaction, written once; section 7) and `exit_shadow.jsonl` (both exit rules' verdicts, one row per holding per review day, written once; section 6) and `cases/<SYMBOL>.jsonl` (each holding's investment case, every version appended, never edited; section 6). The nightly auditor's `advice_outcomes.jsonl` sits beside them. |
 | `data/ipo/` | Historical issue facts and captured demand snapshots; reports derive from these records. |
 | `data/market_cache/ipo.json` and EOD parquet | Cached IPO information and exchange price history; date, source and stale state matter. |
 | `data/events/` | The company-event feed (section 4): `<SYMBOL>.jsonl`, one event per source item, append-only; `state.json`, the day's news-search count and the items judged not about their company; `runs.jsonl`, one line per run; `ownership/<SYMBOL>.json`, each quarter's FII, DII and mutual-fund share read from its shareholding XBRL. Market facts only, with no user in them. The feed writes; `GET /events/{symbol}` reads. |
@@ -2503,7 +2503,10 @@ These scope differences need interpretation; a displayed total is not proof
 all prices are fresh or all history is included. Costs are charged and tax is
 estimated, but the bid-ask spread, slippage and market impact are not
 modelled, so these virtual results still do not establish executable net
-returns.
+returns. Trades are booked at the reviewed session's close, which nobody
+could trade at once the run has decided; the weekly scorecard shows the book
+again at the next session's open and at the open after the run (below),
+and books nothing differently.
 
 ### Report families
 
@@ -2571,6 +2574,7 @@ week whose sessions are not over is never stored.
 | Bought back | From the ledger alone: each stock bought again after a sale emptied its position (by any rule or by you), over the last 4 weeks and since the start, with the charges recorded on that sale and that buy; a round trip whose rows carry no charges (written before charges were recorded) is counted and said. A top-up of a position still held is not one. |
 | Exit rule test | From `exit_shadow.jsonl` (section 6): on how many decisions the price-path rule and the evidence rule disagreed (one per holding, on its first disagreeing day), in how many holding-days reviewed, and how many later days of the same disagreements were not counted; how often the evidence rule was right at 10 and 30 sessions and its mean result a decision against where the money went (how many against cash, how many against the Nifty), with the mean against the Nifty alone beside it; what is still pending, has no price, or has no result because a corporate action could not be ruled out or allowed for (naming those stocks); this week's look at the switch gate ("not worse" on a pass, plus "better" when it applies, or "cannot judge" when more decisions are set aside than the cap allows); and each decision set aside from the gate, with its decision day and why its result can never be known. The row stores the look, so the next week can tell whether the gate passed twice in a row. Shown once a row exists. |
 | What waiting cost | Shown with the exit rule test. For each decision (one per holding, a stock bought again being another) in which the evidence rule kept the stock and the price-path rule sold it: the lowest close in the sessions after the review day up to and including the 10th and the 30th, against the close the decision was made at, as a fall (0 when it never closed below it). The median and the worst, naming the stock, at each horizon. A horizon not yet ended is pending; no close after a horizon's day is read. The closes come from one daily series per stock (Yahoo's, adjusted for bonuses, splits and dividends), so the decision's close and the later ones are in one price basis and a dividend counts as received. A decision has no result at a horizon, said with its stock, when that series lacks the decision's close or any session's close in the window (a missing close could hide the lowest), or when NSE's list of its corporate actions could not be read, is empty, holds no dated row, starts after the decision, or lists a bonus, a split or another change of price basis inside the window, or the instrument registry records a demerger or relisting there. |
+| At prices that could be had | Every autopilot BUY and SELL again at two real prices, from `executable_prices.jsonl` (below): the open of the first session after the booked close's, and the open of the first session the run that booked it could still act at. The same trades, quantities and cost rates; each BUY pays and each SELL receives the real price, and the trades' cash difference moves the since-start valuation of "You vs the Nifty" (the Nifty side is unchanged). The line gives the paper book since the start at each price beside its figure at the booked closes, how much more buys cost and how much less sells brought on average at the next open, and the number of trades, with how many have no price or are still waiting at each price; each of those keeps its booked close. A price from a session after the week's end is still waiting in that week's row. |
 | Decision pace | Shown with the exit rule test. Decisions a week over the last 4 weeks, how many in all and since when, and the earliest week the switch gate could first pass at that pace and pass two weeks running, labelled arithmetic, not a forecast. Later decisions are taken to come evenly at the pace (the m-th, 7m ÷ pace days on, rounded up to a whole day). The gate needs 15 decisions past 30 sessions whose review days span 8 weeks, and decisions reach 30 sessions in the order they were made: the week is the one holding the 30th session after the first decision, from the 15th on, made 56 days or more after the first. Example: 6 decisions since 2 Oct, 4 of them in the last 4 weeks (1 a week), read on 29 Nov 2026: the 15th comes 9 weeks on, on 31 Jan 2027; its 30th session is 12 Mar, so the week of 8 Mar, and two passing weeks running the week of 15 Mar. With no decision in the last 4 weeks no date is given; once the decisions it needs have reached 30 sessions the line says the gate can judge. A pass is never assumed. |
 
 **Holdings that arrive without cash.** "Add holding" and a CSV import, on an
@@ -2612,6 +2616,43 @@ too, and the portfolio has to earn them back.
   unknown: those periods read "could not check", never the jump from cost to
   close as a gain.
 
+**Prices that could be had** (`core/portfolio/executable.py`).
+The 16:30 run on day T reviews session T−1 and books at its 15:30 close; its
+decision reads nothing from after that close, so the first price anyone could
+act on it at is T's open, and as the job runs, the open of the session after
+T. Before the Sunday row is built, each autopilot BUY and SELL without a row
+in `executable_prices.jsonl` is priced from NSE's daily bhavcopy (the EOD
+panel, section 8; raw prices, the equity series first, read under the NSE
+code its close is read under):
+
+- `open_next`: the open of the first session after the booked close's
+  session (the ledger row's `date`);
+- `open_as_run`: the open of the first session the run (the row's `ts`)
+  could still act at: its own day when it ran before the 09:00 pre-open
+  auction, else the next session, and never before `open_next`'s.
+
+So a real price never comes from a bar dated on or before the booked close.
+Each open is put into the booked close's price basis across every bonus or
+split ex between the two sessions, with the exit grading's fail-closed rules
+(section 6, `horizon_in_basis`, over NSE's list read then; the instrument
+registry's demergers and relistings). The booked close is first checked
+against the panel's close of its own session: within 1% it is that session's
+raw NSE close, so a split ex the next morning is converted (booked ₹100, a
+1:2 split, an open of ₹51 reads ₹102, +2%, not −49%). Otherwise it may have
+been read at the run already adjusted, and a bonus or split between its
+session and the run leaves the price unknown. A dividend that goes ex between
+the two is not added back: on such a trade the open is lower by about the
+dividend, which the book still receives.
+
+A price is "no price", for good, when the panel has no bar for the stock that
+session, the day's file has not arrived 7 days after it (the daily sync
+re-reads 7 days back), or the basis can never be established (an empty NSE
+list, a change no ratio converts, an unreadable split row). It is "waiting"
+while it may still come: the session is not over, the file may yet be synced,
+NSE's list could not be read. Nothing is guessed. A row is written once both
+of its prices are settled, keyed by transaction id; a stored row is never
+rewritten, and `transactions.jsonl` is never touched.
+
 The red flags are fixed constants in the module, set before any result was
 seen. A flag reports; it changes no decision.
 
@@ -2622,12 +2663,16 @@ seen. A flag reports; it changes no decision.
 | Selling on the price path | `thesis_break` caused more than 50% of the advisor's sales in the last 4 weeks. |
 | Behind the Nifty | The portfolio is more than 3 points behind the same money in the Nifty over the last 4 weeks. |
 | Selling too fast | The positions closed this week were held a median of under 10 sessions. |
+| Paper prices | Round trips lose more than 0.5 points of return on average at the next session's open (each leg at its real price, over at least 30 round trips with every leg priced), or the paper book's lead over the Nifty since the start changes sign at either price (over at least 30 trades priced at it). Set on 15 Nov 2026, before any price was read; the owner may change 0.5 before the first look. When it fires, the next step is a card to book trades at the next session's open; when it is clear, the sentence says "paper prices are close enough" with the numbers. Fewer cases read "too few to judge". |
 
 Missing data never reads as clear. A flag fires only if it is crossed with
 every missing member counted in the portfolio's favour. It reads clear only
 if it holds with all of them counted against the portfolio. Otherwise the
 email says "could not check", above everything but the red flags. A missing
 Nifty close or a week with no valuation reads "unavailable", never a flat 0%.
+"Paper prices" cannot bound a missing price, so it says how many: a round trip
+with a leg without a price is left out of the average, a trade without one
+keeps its booked close in the lead, and the line counts both.
 
 **Example:** 10 sales reached 30 sessions in the last 8 weeks. After 4 the
 stock beat the Nifty, after 3 it did not, and 3 have no grade. Skipping the 3

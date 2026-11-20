@@ -63,6 +63,19 @@ class EodStore:
             return None
         return date.fromisoformat(files[-1].stem)
 
+    def load_day(self, day: date) -> pd.DataFrame | None:
+        """That day's own file, or None when it is not on disk or cannot be
+        read. Never an earlier day's file (`load_window` takes the newest on
+        or before its end)."""
+        path = self._path(day)
+        if not path.exists():
+            return None
+        try:
+            return pd.read_parquet(path)
+        except Exception as exc:                          # corrupt file: skip, log
+            logger.warning("[eod_store] unreadable %s: %s", path.name, exc)
+            return None
+
     def load_window(self, end: date, sessions: int) -> pd.DataFrame:
         """Concatenate the newest `sessions` day-files with date <= end."""
         files = [

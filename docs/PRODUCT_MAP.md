@@ -196,7 +196,7 @@ behind (KT [prediction-store ownership](TECHNICAL_DESIGN.md#prediction-store-own
 Per-user portfolio plane, `data/portfolio/<user>/`: `portfolio.json`,
 `transactions.jsonl`, `advice_ledger.jsonl`, `value_history.jsonl`,
 `switch_evaluations.jsonl`, `identity_reconciliations.jsonl`,
-`weekly_scorecard.jsonl`, digests, briefs and weekly reviews
+`weekly_scorecard.jsonl`, `executable_prices.jsonl`, digests, briefs and weekly reviews
 ([AUTOPILOT_GUIDE](AUTOPILOT_GUIDE.md) section 2). The nightly auditor writes
 its graded rows to its own append-only store, `advice_outcomes.jsonl`.
 

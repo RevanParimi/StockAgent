@@ -82,7 +82,7 @@ def _latest_close(sym_win: pd.DataFrame) -> float:
 def run_deep_dives(
     candidates: list[DiscoveryCandidate], on: date, max_n: int | None = None,
     listing: dict | None = None, redive_room: int | None = None,
-    tally: dict | None = None,
+    tally: dict | None = None, evidence: dict | None = None,
 ) -> list[DeepDiveResult]:
     """Make at most max_n (default DISCOVERY_DEEP_DIVE_COUNT) analyst calls
     over the ranked candidates. Every call counts, a failed one included, so
@@ -114,7 +114,10 @@ def run_deep_dives(
     earlier analysis named for its idea) and runs that key's graph; another
     runs `graph_guess`'s graph and takes the answer, checked against the
     configured keys. The dive records how (`sector_reading`), and which
-    dive's analysis named the key (`named_on`, FIX-030)."""
+    dive's analysis named the key (`named_on`, FIX-030).
+
+    `evidence`, when given, receives each returned dive's data bundle by
+    symbol (PR-017: the bare judge reads the same evidence)."""
     limit = max_n or settings.DISCOVERY_DEEP_DIVE_COUNT
     try:
         tickers = [t for t in load_managed_tickers() if isinstance(t, dict)]
@@ -190,7 +193,8 @@ def run_deep_dives(
             idea = ideas.get(cand.symbol)
             known = known_key(cand.symbol, managed=managed_keys, idea=idea, keys=keys)
             route = known[0] or graph_guess(classified)
-            report = get_orchestrator(route).analyse(
+            orchestrator = get_orchestrator(route)
+            report = orchestrator.analyse(
                 cand.symbol, sector_question=sector_question(classified, keys))
             reading = read_answer(getattr(report, "sector_answer", None), keys, classified)
             sector, reading = decide_key(reading, known, on=on.isoformat(),
@@ -225,6 +229,8 @@ def run_deep_dives(
                 sector_reading=reading,
             )
             results.append(result)
+            if evidence is not None:
+                evidence[cand.symbol] = getattr(orchestrator, "_last_bundle", None)
             logger.info("[deep_dive] %s sector=%s (%s) conviction=%.2f verdict=%s",
                         cand.symbol, sector, reading.source, report.final_score, report.verdict)
             # Loud in the week's summary and the watchdog's sector_keys check;

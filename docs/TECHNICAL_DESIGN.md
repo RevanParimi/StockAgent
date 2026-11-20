@@ -239,6 +239,7 @@ evidence.
 | `data/peer_profiles.json` | Yahoo industry and market cap per listing, with its date, for the valuation peers (section 4). Both workers write it: each save takes `peer_profiles.json.lock`, merges with the file and replaces it atomically. A cache: deleting it costs only lookups. |
 | `data/prediction_quarantine/<migration>/` | Stores moved out of the live tree by the ownership quarantine, with their `lineage.json`. Inside `data/`, so the nightly backup keeps them; outside the tree the evaluators walk. |
 | `data/portfolio/<user>/` | PortfolioStore: holdings/cash, advice and transaction JSONL, value history, dated digests, briefs and weekly reviews, `weekly_scorecard.jsonl` (one results row per ISO week, written once; section 7), `executable_prices.jsonl` (each autopilot trade's two real opens, one row per transaction, written once; section 7) and `exit_shadow.jsonl` (both exit rules' verdicts, one row per holding per review day, written once; section 6) and `cases/<SYMBOL>.jsonl` (each holding's investment case, every version appended, never edited; section 6). The nightly auditor's `advice_outcomes.jsonl` sits beside them. |
+| `data/discovery/` | The weekly funnel (section 8): `shelf.json`, `shelf_events.jsonl`, the dive memo `dives.json` (each stock's latest dive for 30 days), `screens/<date>_screen.json`, and two append-only records the auditor's idea lanes grade (section 7): `dives.jsonl` (every dive as issued, one run row per run) and `bare_judgements.jsonl` (the bare model's answers). |
 | `data/ipo/` | Historical issue facts and captured demand snapshots; reports derive from these records. |
 | `data/market_cache/ipo.json` and EOD parquet | Cached IPO information and exchange price history; date, source and stale state matter. |
 | `data/events/` | The company-event feed (section 4): `<SYMBOL>.jsonl`, one event per source item, append-only; `state.json`, the day's news-search count and the items judged not about their company; `runs.jsonl`, one line per run; `ownership/<SYMBOL>.json`, each quarter's FII, DII and mutual-fund share read from its shareholding XBRL. Market facts only, with no user in them. The feed writes; `GET /events/{symbol}` reads. |
@@ -2516,7 +2517,7 @@ and books nothing differently.
 | Weekly results scorecard | One row per ISO week from the user's own ledgers: closed round trips, the auditor's grade of every advisor sale at 10 and 30 sessions, exit reasons, a money-weighted Nifty comparison, breadth, holding period and five predeclared red flags (below). | Closed-trade results are before costs; the portfolio screen's realized P/L is net of them. Forecast-suggestion cohorts are SA-019's. |
 | Monthly scorecard | Agent/control/simple-baseline lanes and previous-month comparisons. | Completeness, timing and denominators need repair. SA-018. |
 | Learning evidence | Retrospective adapted/base/uniform replay and lesson associations. | Not a prospective controlled experiment of the whole system. SA-020–SA-023. |
-| Nightly advice auditor | Issued advice, alert, shelf, switch and IPO lanes; default 10/30/60 trading-session horizons, and 1/5/21/63/126/252 from listing on the IPO lane. | Separate from weekly heuristics and actual account P/L. IPO rows are excluded from the rendered report. |
+| Nightly advice auditor | Issued advice, alert, shelf, switch and IPO lanes; default 10/30/60 trading-session horizons, and 1/5/21/63/126/252 from listing on the IPO lane. The idea lanes (dive, screen, bare) at 10/30/60/90/180 sessions, in a block of their own (below). | Separate from weekly heuristics and actual account P/L. IPO and idea rows are excluded from the advice figures. |
 | IPO history report | Subscription groups and issue-price returns at available horizons. | Descriptive associations with sample/feature gaps, not a validated prediction model. |
 
 [Audit rules](../core/audit/rules.py) judge HOLD/ADD correct when excess return
@@ -2550,6 +2551,70 @@ HOLD is incorrect under that relative-return rule despite a positive stock
 return. Every marksheet should identify its rule, horizon, matured sample
 count, missing data and excluded cases.
 
+### Every deep dive graded
+
+The idea lanes (`core/audit/idea_lanes.py`, report
+`core/audit/ideas.py`) ask whether the deep dive finds stocks that
+beat the Nifty, whether a higher conviction does better, and whether the dive
+adds anything over the cheap screen or over a plain model. They grade research,
+not advice: `correct` is unset, and their rows stay out of every advice figure
+of the audit report (hit rates, mean excess, the headline verdict, conviction
+calibration). The `shelf` lane above still runs and its rows are unchanged.
+
+| Lane | One reference per | Conviction and verdict | Source |
+|---|---|---|---|
+| `dive` | dive: `dive:<dive day>\|<symbol>` | as the dive issued them, whatever re-dives followed | `dives.jsonl` (section 8) |
+| `screen` | screen candidate: `screen:<run day>\|<symbol>` | none; the composite rank, and whether that week's run dived it | `screens/<date>_screen.json` |
+| `bare` | bare-model answer: `bare:<dive day>\|<symbol>` | the plain model's BUY or SKIP and its conviction | `bare_judgements.jsonl` (section 8) |
+
+- **Entry:** the open of the first session after the call's day, the first
+  price anyone could act at (a Saturday dive enters at Monday's open, a
+  Monday catch-up dive at Tuesday's). The close the dive read is kept beside
+  it. A call with no bar on that session is skipped and counted
+  (`no_entry_price`).
+- **Horizons:** `audit.idea_horizons_td`, 10, 30, 60, 90 and 180 sessions
+  counted from the call's day; the other lanes keep `audit.horizons_td`.
+- **Prices:** NSE's raw opens and closes from the EOD panel discovery keeps
+  (550 sessions). The horizon close is put into the entry open's price basis
+  across every bonus or split ex after the entry session, with the exit
+  grading's fail-closed rules (section 6, "Two exit rules"). Example: entered
+  at ₹500, a 1:1 bonus ex 20 sessions later, ₹260 at 30 sessions: ₹520 in the
+  entry's shares, +4%. A demerger or a list that could not be read leaves the
+  horizon ungraded (`no_exit_price`, or `pending` while a later read could
+  settle it).
+- **The Nifty** runs from the close of the session before the entry open to the
+  horizon close (the series holds closes only), so it includes one overnight
+  move the stock's return does not.
+- **Once:** idempotent per reference and horizon, like every lane. Only the
+  default user's store gets these rows (research is global). A night reads
+  NSE's corporate-action list for at most `audit.idea_max_symbol_reads` (200)
+  new stocks; the rest wait a night.
+
+The report, at each horizon, gives n, the mean and median excess in points and
+the share beating the Nifty for **BUY dives** (BUY or STRONG BUY at a
+conviction of at least the shelf's floor, 0.55), **rejected dives** (every
+other dive with a recorded verdict; an abstained one is only counted),
+**screen only** (candidates their week's run did not dive) and **the bare
+model's BUYs**, and BUY dives split by graph (native, generic). Under 30 a
+figure reads "too few to judge", and is still shown with its n. It also says
+how many recorded dives reached each horizon and have no grade (no price yet,
+or none to be had).
+
+**Example:** ABC dived on Saturday 3 Oct at 0.62 BUY, re-dived on 7 Nov at
+0.80. The 3 Oct dive is graded at 0.62 from Monday 5 Oct's open; the 7 Nov one
+at 0.80 from Monday 9 Nov's. The shelf lane grades ABC once, at 0.80 (the
+shelf's current value) from the close the first dive read.
+
+**What the record holds, and from when.** `dives.jsonl` records each dive at
+the dive from the first discovery run after it was deployed. That first run
+also seeds it from the dive memo (each stock's latest dive of the last month,
+verdict included), the shelf events (`added` and `redived`, conviction as
+written then, verdict only where the memo has the same day) and the shelf's
+graph. A seeded dive without its verdict is in no group and is counted. A
+screen counts its candidates as "screen only" only where a run row names the
+dives of that week; older screens are graded as "dived unknown". The bare
+lane cannot be backfilled: it starts with its first Saturday.
+
 ### Weekly results scorecard
 
 [results.py](../core/portfolio/results.py) answers, once a week and in plain
@@ -2570,6 +2635,7 @@ week whose sessions are not over is never stored.
 | Breadth | Holdings (for the latest week) and the invested share at the week's last valuation. |
 | Holding period | Median exchange sessions held by the positions closed this week. |
 | Idea quality | From the auditor's shelf lane: how many shelf ideas beat the Nifty 10 and 30 sessions after they were shelved, whether bought or not, with the median gap in points. Only grades matured by the week's end count. It measures the idea supply, not the portfolio, and it is a line, not a flag. |
+| Every deep dive | From the auditor's idea lanes (above): at 30 sessions from the next session's open, BUY dives, rejected dives, screen-only candidates and the bare model's BUYs against the Nifty, each with its mean and median gap in points, the share that beat it and its n ("too few to judge" under 30), and BUY dives by graph. Only grades matured by the week's end count. Paper research: it is a line, not a flag. |
 | By exit reason | The same round trips over the last 13 weeks and since the start, each under exactly one reason: the one its closing sale was made for. A SWITCH is "SWITCH sale" and a TRIM that sold the last share "TRIM", whatever their triggers. An EXIT is its first trigger in the order the advisor checks them: stop, case broken, price-path exit, shock, crisis, trailing stop (a trade sold on two is counted once, under the first, and the line says how many were); an EXIT on a code with no name here shows that code; one with no code is "other (no reason recorded)", never dropped. Your own sales are "sold by you". For each reason and in total: count, wins and average win, losses and average loss, and the mean result a trade, before costs. |
 | Bought back | From the ledger alone: each stock bought again after a sale emptied its position (by any rule or by you), over the last 4 weeks and since the start, with the charges recorded on that sale and that buy; a round trip whose rows carry no charges (written before charges were recorded) is counted and said. A top-up of a position still held is not one. |
 | Exit rule test | From `exit_shadow.jsonl` (section 6): on how many decisions the price-path rule and the evidence rule disagreed (one per holding, on its first disagreeing day), in how many holding-days reviewed, and how many later days of the same disagreements were not counted; how often the evidence rule was right at 10 and 30 sessions and its mean result a decision against where the money went (how many against cash, how many against the Nifty), with the mean against the Nifty alone beside it; what is still pending, has no price, or has no result because a corporate action could not be ruled out or allowed for (naming those stocks); this week's look at the switch gate ("not worse" on a pass, plus "better" when it applies, or "cannot judge" when more decisions are set aside than the cap allows); and each decision set aside from the gate, with its decision day and why its result can never be known. The row stores the look, so the next week can tell whether the gate passed twice in a row. Shown once a row exists. |
@@ -2767,6 +2833,20 @@ or more. The weekly run, in order:
    outranked), so the dive memo (`dives.json`) keeps it from taking the
    budget again. The memo keeps every answered dive, an abstained one too,
    in either gate mode; a failed call is not an answer and is tried again.
+   Before the memo and the shelf change, every answered dive is appended as
+   issued to `dives.jsonl` (conviction, verdict, graph, sector key, close,
+   band, gate, new or re-dive), with one run row naming the screen file the
+   run read and the stocks it dived; the first write seeds it from the memo
+   and the shelf events (`core/discovery/dive_record.py`).
+   Then **the bare judge** (`core/discovery/bare_judge.py`,
+   the owner's second judge) asks a plain model about each new dive, a
+   re-dive excepted: the same model as the analysis
+   (`LLM_MODEL_REASONING`), the dive's own data bundle less the dossier, and
+   one instruction, BUY or SKIP with a conviction. At most
+   `discovery.bare_judge_max_per_week` (20) calls in any 7 days, a failed
+   one included; answers go to `bare_judgements.jsonl`, and the run's summary
+   says how many were asked (`bare_judge`). Both are graded in section 7,
+   "Every deep dive graded".
    A managed stock takes no dive unless the autopilot sold it. A stock the
    autopilot sold leaves the managed list once no portfolio holds it and no
    user's own watchlist lists it (section 6); one that stays managed, an

@@ -57,6 +57,7 @@ from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from typing import Callable, Iterable, NamedTuple
 
+from core.audit.ideas import idea_block, idea_line
 from core.intelligence.rl.nse_calendar import trading_dates, trading_days_after
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,7 @@ NIFTY_WINDOW_WEEKS = 4
 MIN_HOLD_SESSIONS = 10          # median sessions held, positions closed this week
 
 IDEA_QUALITY_TD = (10, 30)      # shelf ideas against the Nifty (a line, not a flag; PR-004)
+IDEA_LINE_TD = 30               # every deep dive against the Nifty (a line, not a flag; PR-017)
 REASON_WEEKS = 13               # closed trades by exit reason over this many weeks (PR-013)
 BUYBACK_WEEKS = 4               # stocks bought back after a sale, over this many weeks (PR-013)
 # An EXIT's triggers in the order the advisor checks them (advisor.decide): a
@@ -1058,6 +1060,9 @@ def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
         "breadth": breadth(points, holdings, end, floor),
         "holding_period": held,
         "idea_quality": [idea_quality(audit_rows, h, as_of=end) for h in IDEA_QUALITY_TD],
+        # PR-017: every deep dive, the screen's other candidates and the bare
+        # model, graded from the next session's open (core/audit/ideas.py).
+        "idea_record": idea_block(audit_rows, (IDEA_LINE_TD,), as_of=end),
         "by_reason": {"last_13_weeks": results_by_reason(
                           trades, week.window_start(REASON_WEEKS), end),
                       "since_start": results_by_reason(trades, None, end)},
@@ -1290,6 +1295,9 @@ def scorecard_lines(row: dict) -> list[dict]:
     if row.get("idea_quality"):
         lines.append({"kind": "line", "label": "Idea quality",
                       "text": _ideas_line(row["idea_quality"])})
+    if row.get("idea_record"):
+        lines.append({"kind": "line", "label": "Every deep dive",
+                      "text": idea_line(row["idea_record"], IDEA_LINE_TD)})
     reasons = row["exit_reasons"]["last_4_weeks"]
     if reasons["sales"]:
         text = (f"{_plural(reasons['sales'], 'sale')} in the last {THESIS_WINDOW_WEEKS} "

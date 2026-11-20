@@ -17,6 +17,11 @@ the calls the new companies leave (`hygiene.redive_late`); one that gets none
 is reported in `hygiene.redive_deferred` and comes up again, oldest first, the
 following week. Example: budget 45, 2 IPO candidates, floor 15: at most 28
 re-dives go first; with 35 due, 7 wait behind the screen.
+
+PR-017: every dive is appended as issued to `dives.jsonl` (dive_record.py)
+before the memo and the shelf change, with one run row naming the screen it
+read; then the bare judge asks a plain model about the new ones
+(bare_judge.py, `bare_judge` in the summary). The auditor grades both.
 """
 from __future__ import annotations
 
@@ -25,7 +30,9 @@ from datetime import date
 
 # Re-exported collaborators — tests and callers patch these names HERE.
 from backend.shared.schemas.discovery import DiscoveryCandidate
+from core.discovery.bare_judge import judge as judge_bare
 from core.discovery.deep_dive import run_deep_dives
+from core.discovery.dive_record import DiveRecord
 from core.discovery.guards import GUARD_SOURCES
 from core.discovery.paper_lane import run_paper_reviews
 from core.discovery.screen import load_latest_screen, run_screen
@@ -42,7 +49,7 @@ from services.data.fetchers.ipo import refresh_ipo_cache
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "run_discovery_cycle", "run_deep_dives", "run_paper_reviews",
+    "run_discovery_cycle", "run_deep_dives", "run_paper_reviews", "DiveRecord", "judge_bare",
     "run_screen", "load_latest_screen", "ShelfStore", "autopilot_sales", "no_longer_held",
     "sync_recent", "refresh_bulk_block", "refresh_listing", "load_listing",
     "market_classification", "refresh_insider_trades",
@@ -176,9 +183,11 @@ def run_discovery_cycle(on: date | None = None) -> dict:
                      else c for c in new_cands]
     # PR-037: re-dives past the room wait behind the screen's ranks.
     calls: dict = {}
+    evidence: dict = {}
     try:
         dives = run_deep_dives(redive_cands + new_cands, on=on,
-                               redive_room=split["redive_room"], tally=calls)
+                               redive_room=split["redive_room"], tally=calls,
+                               evidence=evidence)
     except Exception as exc:
         logger.warning("[discovery] deep dives failed (non-fatal): %s", exc)
         errors.append(f"deep_dives failed: {exc}")
@@ -187,6 +196,21 @@ def run_discovery_cycle(on: date | None = None) -> dict:
     hygiene["redive"] = [s for s in hygiene["redive"] if s not in {*late, *deferred}]
     hygiene["redive_late"], hygiene["redive_deferred"] = late, deferred
     split = {**split, "made": calls.get("calls"), "redive_calls": calls.get("redive_calls")}
+    # PR-017: every dive as issued, before the memo and the shelf change; the
+    # first write seeds the record from them (core/discovery/dive_record.py).
+    redive_symbols = {c.symbol for c in redive_cands}
+    try:
+        DiveRecord().append_run(dives, on=on, screen_date=screen.screen_date,
+                                redives=redive_symbols)
+    except Exception as exc:
+        logger.warning("[discovery] dive record not written (non-fatal): %s", exc)
+        errors.append(f"dive record failed: {exc}")
+    try:
+        bare = judge_bare(dives, evidence, on=on, redives=redive_symbols)
+    except Exception as exc:
+        logger.warning("[discovery] bare judge failed (non-fatal): %s", exc)
+        bare = {"error": str(exc)}
+    evidence.clear()
     try:
         shelf_store.record_dives(dives, on=on)
     except Exception as exc:
@@ -201,7 +225,6 @@ def run_discovery_cycle(on: date | None = None) -> dict:
 
     redived: dict = {"refreshed": [], "dropped": {}, "capped": []}
     try:
-        redive_symbols = {c.symbol for c in redive_cands}
         new_dives = dives
         if redive_symbols:
             redived = shelf_store.apply_redives(
@@ -256,6 +279,7 @@ def run_discovery_cycle(on: date | None = None) -> dict:
         "hygiene": hygiene,
         "budget": split,
         "deep_dives": len(dives),
+        "bare_judge": bare,
         "sectors": sectors,
         "redived": redived,
         "shelf": shelf_summary,

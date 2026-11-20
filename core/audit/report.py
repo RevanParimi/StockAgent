@@ -13,6 +13,9 @@ from core.audit.metrics import (
     Rate, calibration_spread, coin_flip_p, conviction_calibration, hit_rate,
     mean_excess, per_trigger_precision,
 )
+from backend.shared.schemas.audit import IDEA_LANES
+from core.audit.idea_lanes import idea_horizons
+from core.audit.ideas import dive_coverage, horizon_text, idea_block
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +91,22 @@ def classify(
     return "UNPROVEN"
 
 
+def _ideas(everything: list) -> dict:
+    """The idea lanes' block, with how many recorded dives reached each
+    horizon and are not graded (PR-017). A dive record that cannot be read
+    leaves the coverage out, never the block."""
+    rows = [r for r in everything if r.lane in IDEA_LANES]
+    block = idea_block(rows, idea_horizons())
+    try:
+        from datetime import date
+        from core.discovery.dive_record import DiveRecord
+        block["coverage"] = dive_coverage(DiveRecord().dive_rows(), rows, idea_horizons(),
+                                          today=date.today())
+    except Exception as exc:
+        logger.warning("[audit] dive coverage unread (non-fatal): %s", exc)
+    return block
+
+
 def build_report(user_id: str | None = None, *, store=None, min_n: int | None = None) -> dict:
     """The payload every surface shares: nightly alerts, monthly email, API."""
     from core.audit.store import AuditOutcomeStore
@@ -101,7 +120,12 @@ def build_report(user_id: str | None = None, *, store=None, min_n: int | None = 
     # (1/5/21/63/126/252) miss this report's (10/30/60) and the blend is empty
     # by luck, but audit.ipo_horizons_td is a config edit away from 60 and that
     # edit must not be able to fold a dark model into the advice hit-rate.
-    rows = [r for r in store.load_all() if r.lane != "ipo"]
+    #
+    # PR-017: the idea lanes (dive, screen, bare) are research, not advice,
+    # and have a block of their own ("ideas"); left in here, their excess
+    # returns would move mean_excess_pct and the headline verdict.
+    everything = store.load_all()
+    rows = [r for r in everything if r.lane != "ipo" and r.lane not in IDEA_LANES]
     floor = int(min_n if min_n is not None else cfg("audit.min_n", fallback=30))
 
     from core.audit.attribution import attribution_distribution
@@ -146,6 +170,9 @@ def build_report(user_id: str | None = None, *, store=None, min_n: int | None = 
         "attribution": attribution_distribution(
             [r for r in rows if r.lane == "switch"],
             news_index=news_availability_index()),
+        # PR-017: every deep dive, the screen's other candidates and the bare
+        # model, at each idea horizon (core/audit/ideas.py).
+        "ideas": _ideas(everything),
     }
 
 
@@ -195,5 +222,12 @@ def render_section(report: dict) -> str:
         # a later reader will otherwise get wrong.
         lines.append("  Measures the decision rule over every pair it evaluated,")
         lines.append("  NOT the advice you were shown — see switch_taken for that.")
+        lines.append("")
+    ideas = report.get("ideas") or {}
+    if ideas.get("horizons"):
+        lines.append("Every deep dive, the screen's other candidates and a bare model "
+                     "(paper research, excess over the Nifty in points):")
+        for horizon in ideas["horizons"]:
+            lines.append("  " + horizon_text(ideas, int(horizon)))
         lines.append("")
     return "\n".join(lines)

@@ -99,6 +99,9 @@ class BaseSectorOrchestrator(ABC):
         # CLEAN-005: why the unified analyst returned nothing, for the run in
         # flight. Reset per run.
         self._last_analyst_failure: str | None = None
+        # PR-017: the run's data bundle, read by the deep dive's bare judge.
+        # Reset per run.
+        self._last_bundle = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -123,6 +126,7 @@ class BaseSectorOrchestrator(ABC):
             self._sector_question = None
             self._last_sector_answer = None
             self._last_analyst_failure = None
+            self._last_bundle = None
             logger.info("[%s] Async run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
 
             query = await asyncio.to_thread(self._resolve_ticker, user_input, run_id)
@@ -215,6 +219,7 @@ class BaseSectorOrchestrator(ABC):
             self._sector_question = sector_question
             self._last_sector_answer = None
             self._last_analyst_failure = None
+            self._last_bundle = None
             logger.info("[%s] Run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
 
             query = self._resolve_ticker(user_input, run_id=run_id)
@@ -609,6 +614,9 @@ class BaseSectorOrchestrator(ABC):
         from backend.shared.pipeline.unified_analyst import UnifiedAnalyst
 
         bundle = build_sector_bundle(query, self.SECTOR_NAME)
+        # PR-017: the evidence this run read, for the deep dive's bare judge
+        # (core/discovery/bare_judge.py); reset at the start of every run.
+        self._last_bundle = bundle
         logger.info(
             "[%s] unified bundle: api_calls=%s real_data=%s",
             self.SECTOR_NAME, bundle.api_calls_made, bundle.has_real_data,

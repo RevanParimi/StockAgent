@@ -452,7 +452,8 @@ def test_grade_due_runs_the_ipo_lane_and_survives_its_failure(tmp_path,
     survived = grade_due(date(2027, 6, 30), UID, base_dir=str(tmp_path),
                          bench=_Bench(), price_fn=_prices())
     assert "error" in survived["lanes"]["ipo"]
-    assert set(survived["lanes"]) == {"advice", "alert", "shelf", "switch", "ipo"}
+    assert set(survived["lanes"]) == {"advice", "alert", "shelf", "switch", "ipo",
+                                      "dive", "bare", "screen"}
 
 
 def test_ipo_is_a_declared_lane(tmp_path):

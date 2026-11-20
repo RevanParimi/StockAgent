@@ -81,7 +81,8 @@ def test_grade_due_sums_all_lanes(tmp_path):
         verdicts_dir=str(tmp_path / "ipo"),
     )
     assert result["graded"] == 1
-    assert set(result["lanes"]) == {"advice", "alert", "shelf", "switch", "ipo"}
+    assert set(result["lanes"]) == {"advice", "alert", "shelf", "switch", "ipo",
+                                    "dive", "bare", "screen"}
 
 
 def test_grade_due_never_raises_on_broken_lane(tmp_path):

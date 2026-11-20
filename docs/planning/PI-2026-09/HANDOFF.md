@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-20 (03debc1 deployed at 00:17; PR-037's catch-up run and PR-042-W0's read wait for you; in a push window PR-015 switches, outside one CLEAN-005)
+# Current handoff - 2026-11-20 (03debc1 deployed; CLEAN-005 implemented on story/CLEAN-005, its fresh review next; PR-037's catch-up run and PR-042-W0's read wait for you)
 
 ## Now
 
@@ -15,10 +15,12 @@
   and 11; how to keep both: [PR-005's review](evidence/PR-005-review.md), "Decision"), the full
   suite on the exact commit, push, check the deploy and `/health`, add `PR-015-W1`
   ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md)).
-- **Next `continue` outside a window:** CLEAN-005 (first ready in order). After today's 16:30
-  review: `FIX-017-W1` and `CLEAN-004-W1` (production reads, so your word or your command).
+- **Next `continue` outside a window:** CLEAN-005's fresh hard review (`REVIEW.md`) of
+  `story/CLEAN-005` (`b6744a6`, `e51b0c7`). After today's 16:30 review: `FIX-017-W1` and
+  `CLEAN-004-W1` (production reads, so your word or your command).
 - **PR-036 is live, ₹1 crore in** (06:34 IST 19 Nov; [receipt](evidence/PR-036.md), "Rollout").
-- **Git:** `story/PR-015` is local; merging it gives the same three KT conflicts as before.
+- **Git:** `story/PR-015` and `story/CLEAN-005` are local. PR-015's merge gives the same three
+  KT conflicts as before; CLEAN-005's touches KT sections 3 (the store table), 4, 9 and 11.
 
 ## Waits for you
 
@@ -98,6 +100,14 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 
 - **Autopilot `1119-1629-p1`**, no production read. 15 November deploys shaped and in the same
   probe (dry run: 2 passed); CLEAN-007 verified from `CLEAN-007-W1`; no November closure.
+
+## 20 Nov, morning (autopilot): CLEAN-005 implemented on `story/CLEAN-005`; its fresh review next
+
+- **Autopilot `1120-1045-p1`**, code-server, from about 10:46 IST; base `03debc1`.
+- **`b6744a6`, step 1:** a run that scores no dimension is no analysis: no verdict anywhere,
+  each caller skips the stock, `analyses_failed_today` counts it. **`e51b0c7`, step 2:**
+  the per-analyst layer and `langgraph` deleted. Suites: 6,999 passed / 0 failed; 6,858 passed / 0 failed.
+  [Receipt](evidence/CLEAN-005-implementation.md), with what the old prompts asked for.
 
 # START HERE — standing rules
 

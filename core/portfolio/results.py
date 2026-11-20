@@ -22,6 +22,11 @@ red line? Every figure comes from a ledger the system already keeps:
 - **Idea quality** from the auditor's shelf-lane grades: how discovery's
   ideas did against the Nifty 10 and 30 sessions after they were shelved,
   whether or not the portfolio bought them. It measures the idea supply.
+- **By exit reason** (PR-013) from the same round trips: each closed trade
+  under exactly one reason, the one its closing sale was made for, over the
+  last 13 weeks and since the start.
+- **Bought back** (PR-013) from the ledger alone: a stock bought again after
+  a sale emptied its position, and the charges on that sale and that buy.
 
 The red-flag rules below were predeclared on 11-12 Oct 2026, before any
 scorecard existed. Changing one is a reviewed code change, never a setting
@@ -65,6 +70,20 @@ NIFTY_WINDOW_WEEKS = 4
 MIN_HOLD_SESSIONS = 10          # median sessions held, positions closed this week
 
 IDEA_QUALITY_TD = (10, 30)      # shelf ideas against the Nifty (a line, not a flag; PR-004)
+REASON_WEEKS = 13               # closed trades by exit reason over this many weeks (PR-013)
+BUYBACK_WEEKS = 4               # stocks bought back after a sale, over this many weeks (PR-013)
+# An EXIT's triggers in the order the advisor checks them (advisor.decide): a
+# trade whose closing EXIT carries more than one counts once, under the first.
+EXIT_REASONS = (
+    ("stop_breach", "stop"),
+    ("case_broken", "case broken"),
+    ("thesis_break", "price-path exit"),
+    ("shock_reforecast", "shock"),
+    ("crisis_regime_bearish", "crisis"),
+    ("trailing_stop_breach", "trailing stop"),
+)
+REASON_LABELS = dict(EXIT_REASONS, switch="SWITCH sale", trim="TRIM", manual="sold by you",
+                     other="other (no reason recorded)")
 
 SELL_VERDICTS = ("EXIT", "SWITCH", "TRIM")
 _FLAT_QTY = 1e-9
@@ -120,6 +139,8 @@ class Trade:
     realized: float
     cost: float | None       # cost of every share sold; None when a sale carried none
     source: str
+    verdict: str = ""        # the closing sale's: EXIT / SWITCH / TRIM; "" for your own
+    triggers: tuple[str, ...] = ()   # the closing sale's trigger codes, as recorded
 
     @property
     def pnl_pct(self) -> float | None:
@@ -161,7 +182,8 @@ def closed_trades(txns: Iterable) -> list[Trade]:
         if float(t.holding_qty_after) <= _FLAT_QTY:
             out.append(Trade(symbol=t.symbol, opened=pos["opened"], closed=_day(t.date),
                              realized=pos["realized"], cost=pos["cost"],
-                             source=t.source))
+                             source=t.source, verdict=t.verdict or "",
+                             triggers=tuple(t.triggers or ())))
             del open_positions[t.symbol]
     return out
 
@@ -318,6 +340,94 @@ def exit_reasons(all_sales: Iterable[Sale], start: date, end: date) -> dict:
     return {"from": start.isoformat(), "to": end.isoformat(), "sales": n,
             "reasons": [{"code": c, "label": _trigger_label(c), "count": k}
                         for c, k in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]}
+
+
+def trade_reason(trade: Trade) -> str:
+    """The one reason a closed trade is counted under (PR-013): the reason its
+    closing sale was made for. A SWITCH is "switch" and a TRIM that sold the
+    last share "trim", whatever their triggers. An EXIT is its first trigger
+    in EXIT_REASONS (the advisor's order of checks); an EXIT with none of them
+    is the first of its codes in alphabetical order, so a rule without a name
+    here still shows, and one with no code at all is "other". The order the
+    codes were recorded in never matters. A sale you made is "manual"; any
+    other sale with no advisor verdict is "other". Never two reasons, never
+    none."""
+    verdict = (trade.verdict or "").strip().upper()
+    if verdict == "SWITCH":
+        return "switch"
+    if verdict == "TRIM":
+        return "trim"
+    codes = [str(c) for c in trade.triggers if c]
+    if verdict == "EXIT":
+        return next((code for code, _ in EXIT_REASONS if code in codes),
+                    min(codes) if codes else "other")
+    return "manual" if trade.source == "manual" else "other"
+
+
+def _exit_codes(trade: Trade) -> int:
+    """How many named exit reasons a trade's closing EXIT carries (0 for any
+    other sale: a SWITCH or TRIM is counted under its verdict)."""
+    if (trade.verdict or "").strip().upper() != "EXIT":
+        return 0
+    known = dict(EXIT_REASONS)
+    return sum(1 for c in set(trade.triggers) if c in known)
+
+
+def reason_label(code: str) -> str:
+    return REASON_LABELS.get(code, str(code).replace("_", " "))
+
+
+def results_by_reason(trades: Iterable[Trade], start: date | None, end: date) -> dict:
+    """Closed trades in [start, end] (from the first when `start` is None),
+    in total and per reason (`trade_reason`), each with trade_stats' count,
+    wins and average win, losses and average loss, and mean result.
+    `several_triggers` counts the trades whose closing EXIT named more than
+    one exit reason: each is counted once, under the first."""
+    window = [t for t in trades if (start is None or start <= t.closed) and t.closed <= end]
+    groups: dict[str, list[Trade]] = defaultdict(list)
+    for t in window:
+        groups[trade_reason(t)].append(t)
+    reasons = [{"code": code, "label": reason_label(code), **trade_stats(ts)}
+               for code, ts in groups.items()]
+    reasons.sort(key=lambda r: (-r["count"], r["label"].lower()))
+    return {"from": start.isoformat() if start else None, "to": end.isoformat(),
+            "all": trade_stats(window), "reasons": reasons,
+            "several_triggers": sum(1 for t in window if _exit_codes(t) > 1)}
+
+
+def buy_backs(txns: Iterable) -> list[dict]:
+    """Every stock bought again after a sale emptied its position (PR-013),
+    from the ledger alone: the BUY that reopened it and the SELL that closed
+    it before. A round trip's charges are those two rows' recorded costs;
+    None when either row carries none (written before costs were charged).
+    A top-up of a position still held is not a buy-back."""
+    closing: dict[str, object] = {}
+    out: list[dict] = []
+    for t in _in_order(txns):
+        if t.side == "SELL" and float(t.holding_qty_after) <= _FLAT_QTY:
+            closing[t.symbol] = t
+        elif t.side == "BUY" and t.symbol in closing:
+            sold = closing.pop(t.symbol)
+            charges = None
+            if sold.costs is not None and t.costs is not None:
+                charges = float(sold.costs.total) + float(t.costs.total)
+            out.append({"symbol": t.symbol, "sold_on": _day(sold.date).isoformat(),
+                        "bought_on": _day(t.date).isoformat(), "charges": charges,
+                        "sold_by": "you" if sold.source == "manual" else (sold.verdict or "")})
+    return out
+
+
+def buy_back_summary(backs: Iterable[dict], start: date | None, end: date) -> dict:
+    """Buy-backs whose BUY is in [start, end] (from the first when `start` is
+    None): how many, how many stocks, and the charges known on them."""
+    window = [b for b in backs
+              if (start is None or start <= _day(b["bought_on"])) and _day(b["bought_on"]) <= end]
+    known = [b["charges"] for b in window if b["charges"] is not None]
+    return {"from": start.isoformat() if start else None, "to": end.isoformat(),
+            "count": len(window), "stocks": len({b["symbol"] for b in window}),
+            "charges": sum(known) if known else None,
+            "no_charges": len(window) - len(known),
+            "round_trips": window}
 
 
 # -- You vs the Nifty (money-weighted) ----------------------------------------------
@@ -853,7 +963,8 @@ def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
               exit_shadow_rows: Iterable[dict] | None = None,
               previous_exit_look: dict | None = None,
               stock_quote_on: Callable[[str, date], object] | None = None,
-              corp_actions: Callable[[str], object] | None = None) -> dict:
+              corp_actions: Callable[[str], object] | None = None,
+              stock_series_on: Callable[[str, date], object] | None = None) -> dict:
     """The scorecard row for `week` from the user's own ledgers. Facts dated
     after the week are ignored, so a late rebuild describes the week as it was.
     `stock_close_on(symbol, day)` values the holdings that arrived without
@@ -864,7 +975,13 @@ def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
     (core/portfolio/exit_shadow.py); `previous_exit_look` is the look stored
     with the week before. The disagreements are graded at
     `stock_quote_on(symbol, day)` (the close with its bar and source) in the
-    price basis `corp_actions(symbol)` establishes (FIX-016)."""
+    price basis `corp_actions(symbol)` establishes (FIX-016).
+
+    PR-013: the row also gains the closed trades by exit reason and the
+    stocks bought back after a sale, from the ledger; and, with
+    `exit_shadow_rows`, `waiting_cost` (the fall each stock the evidence rule
+    kept went through, from `stock_series_on(symbol, since)`'s daily closes)
+    and `gate_pace`. Reports: they change no decision."""
     end = week.sunday
     txns = [t for t in txns if (_day(t.date) or date.max) <= end]
     points = [p for p in points if (_day(p.get("date")) or date.max) <= end]
@@ -924,13 +1041,25 @@ def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
         "breadth": breadth(points, holdings, end, floor),
         "holding_period": held,
         "idea_quality": [idea_quality(audit_rows, h, as_of=end) for h in IDEA_QUALITY_TD],
+        "by_reason": {"last_13_weeks": results_by_reason(
+                          trades, week.window_start(REASON_WEEKS), end),
+                      "since_start": results_by_reason(trades, None, end)},
     }
+    backs = buy_backs(txns)
+    row["bought_back"] = {"last_4_weeks": buy_back_summary(
+                              backs, week.window_start(BUYBACK_WEEKS), end),
+                          "since_start": buy_back_summary(backs, None, end)}
     if exit_shadow_rows is not None:
-        from core.portfolio.exit_shadow import scorecard_block
+        from core.portfolio.exit_shadow import gate_pace, scorecard_block, waiting_cost
+        exit_shadow_rows = list(exit_shadow_rows)
         row["exit_rule"] = scorecard_block(
             exit_shadow_rows, as_of=end, stock_quote_on=stock_quote_on,
             bench_close_on=close_on, corp_actions=corp_actions,
             previous_look=previous_exit_look)
+        row["waiting_cost"] = waiting_cost(
+            exit_shadow_rows, as_of=end, stock_series=stock_series_on,
+            corp_actions=corp_actions)
+        row["gate_pace"] = gate_pace(exit_shadow_rows, week_monday=week.monday, as_of=end)
     row = _rounded(row)
     row["lines"] = scorecard_lines(row)
     return row
@@ -1016,6 +1145,110 @@ def _money_part(label: str, m: dict) -> str:
     return f"{label} {_pct(m['portfolio_pct'])} against {_pct(m['nifty_pct'])} ({side})"
 
 
+def _reason_part(r: dict) -> str:
+    """One reason (or the total) as "-2.2% a trade (4 won, average +7.5%; 4
+    lost, average -11.9%)"."""
+    if not r["known"]:
+        return "no recorded cost"
+    bits = [f"{r['wins']} won" + (f", average {_pct(r['avg_win_pct'])}"
+                                  if r["avg_win_pct"] is not None else "")]
+    bits.append(f"{r['losses']} lost" + (f", average {_pct(r['avg_loss_pct'])}"
+                                        if r["avg_loss_pct"] is not None else ""))
+    text = f"{_pct(r['expectancy_pct'])} a trade ({'; '.join(bits)})"
+    if r["unknown"]:
+        text += f", {r['unknown']} with no recorded cost"
+    return text
+
+
+def _by_reason_text(label: str, block: dict) -> str:
+    total = block["all"]
+    if not total["count"]:
+        return f"{label}: no closed trades."
+    text = (f"{label}: {_plural(total['count'], 'closed trade')}, "
+            f"{_reason_part(total)}. By reason: "
+            + "; ".join(f"{r['label']} {r['count']}, {_reason_part(r)}"
+                        for r in block["reasons"]) + ".")
+    if block.get("several_triggers"):
+        n = block["several_triggers"]
+        text += (f" {n} {'was' if n == 1 else 'were'} sold on more than one reason, "
+                 "counted once, under the first the advisor checks.")
+    return text
+
+
+def _by_reason_line(block: dict) -> str:
+    recent, start = block["last_13_weeks"], block["since_start"]
+    if not start["all"]["count"]:
+        return "No closed trades yet."
+    text = _by_reason_text(f"Last {REASON_WEEKS} weeks", recent)
+    if start["all"]["count"] == recent["all"]["count"]:
+        text += " Since the start: the same trades."
+    else:
+        text += " " + _by_reason_text("Since the start", start)
+    return text + " Before costs."
+
+
+def _bought_back_line(block: dict) -> str:
+    recent, start = block["last_4_weeks"], block["since_start"]
+    if not start["count"]:
+        return "No stock has been bought again after a sale emptied its position."
+    from core.portfolio.sizing import inr
+
+    def part(b: dict) -> str:
+        if not b["count"]:
+            return "none"
+        text = str(b["count"])
+        if b["stocks"] != b["count"]:
+            text += f" ({_plural(b['stocks'], 'stock')})"
+        if b["charges"] is not None:
+            text += f", {inr(b['charges'])} of charges on those sales and buys back"
+        if b["no_charges"]:
+            text += f", {b['no_charges']} with none recorded"
+        return text
+    return (f"Last {BUYBACK_WEEKS} weeks: {part(recent)}. Since the start: {part(start)}. "
+            "Each is a stock bought again after a sale emptied its position.")
+
+
+def _waiting_line(block: dict) -> str:
+    if not block["kept"]:
+        return ("No decision yet in which the evidence rule kept a stock the price-path "
+                "rule sold.")
+    bits, extra = [], []
+    for h in block["horizons"]:
+        if h["graded"]:
+            bits.append(f"within {h['horizon_td']} sessions, median {_pct(h['median_fall_pct'])}"
+                        f" and worst {_pct(h['worst_fall_pct'])} ({h['worst_symbol']}), "
+                        f"over {h['graded']}")
+        else:
+            bits.append(f"within {h['horizon_td']} sessions none graded yet")
+        if h["pending"]:
+            extra.append(f"{h['pending']} short of {h['horizon_td']} sessions")
+        if h["no_result"]:
+            extra.append(f"{h['no_result']} with no result at {h['horizon_td']} sessions "
+                         f"(a close missing or a corporate action: "
+                         f"{', '.join(h['no_result_symbols'])})")
+    text = (f"The evidence rule kept {_plural(block['kept'], 'holding')} the price-path rule "
+            "sold. Their lowest close after the decision, against its close: "
+            + "; ".join(bits) + ".")
+    if extra:
+        joined = "; ".join(extra)
+        text += " " + joined[0].upper() + joined[1:] + "."
+    return text
+
+
+def _pace_line(p: dict) -> str:
+    text = (f"{p['per_week']:g} decision{'' if p['per_week'] == 1 else 's'} a week over the "
+            f"last {p['weeks']} weeks ({p['recent']}); {p['decisions']} in all")
+    text += f" since {_short_day(p['first'])}." if p.get("first") else "."
+    if p.get("already"):
+        return text + " The gate already has the decisions it needs to judge."
+    if not p.get("first_pass_week"):
+        return text + " No decision in the last 4 weeks, so no date can be given."
+    first, rec = _day(p["first_pass_week"]), _day(p["recommend_week"])
+    return (text + f" At this pace the gate can first pass in the week of "
+            f"{first.day} {first.strftime('%b %Y')}, and two weeks running in the week of "
+            f"{rec.day} {rec.strftime('%b %Y')} (arithmetic, not a forecast).")
+
+
 def scorecard_lines(row: dict) -> list[dict]:
     """The scorecard as labelled sentences, red flags first. The email text
     and the app render these same lines, so they cannot disagree."""
@@ -1030,6 +1263,9 @@ def scorecard_lines(row: dict) -> list[dict]:
     lines.append({"kind": "line", "label": "Closed trades",
                   "text": _trades_line("This week", ct["week"]) + " "
                   + _trades_line("Since the start", ct["since_start"])})
+    if row.get("by_reason"):
+        lines.append({"kind": "line", "label": "By exit reason",
+                      "text": _by_reason_line(row["by_reason"])})
     lines.append({"kind": "line", "label": "Sold too early",
                   "text": _sold_line(row["sold_too_early"]["since_start"])})
     if row.get("idea_quality"):
@@ -1043,11 +1279,20 @@ def scorecard_lines(row: dict) -> list[dict]:
     else:
         text = f"No sales in the last {THESIS_WINDOW_WEEKS} weeks."
     lines.append({"kind": "line", "label": "Why we sold", "text": text})
+    if row.get("bought_back"):
+        lines.append({"kind": "line", "label": "Bought back",
+                      "text": _bought_back_line(row["bought_back"])})
     exit_rule = row.get("exit_rule")
     if isinstance(exit_rule, dict) and exit_rule.get("rows"):
         from core.portfolio.exit_shadow import scorecard_text
         lines.append({"kind": "line", "label": "Exit rule test",
                       "text": scorecard_text(exit_rule)})
+        if row.get("waiting_cost"):
+            lines.append({"kind": "line", "label": "What waiting cost",
+                          "text": _waiting_line(row["waiting_cost"])})
+        if row.get("gate_pace"):
+            lines.append({"kind": "line", "label": "Decision pace",
+                          "text": _pace_line(row["gate_pace"])})
     money = row["vs_nifty"]
     text = ("Same deposits on the same days, cash included: "
             + "; ".join([_money_part("this week", money["week"]),
@@ -1200,12 +1445,40 @@ def corp_actions_fn() -> Callable[[str], object]:
     return lookup
 
 
+def stock_series_fn() -> Callable[[str, date], list[tuple[date, float]]]:
+    """A stock's daily closes from `since`, for the "what waiting cost" line
+    (PR-013): one Yahoo download per symbol for one scorecard
+    (indicators.fetcher.get_price_history), adjusted for bonuses, splits and
+    dividends, so every close in it is in one price basis. A failed or empty
+    download is an empty series: the line then says it has no result."""
+    held: dict[str, list[tuple[date, float]]] = {}
+
+    def lookup(symbol: str, since: date) -> list[tuple[date, float]]:
+        if symbol not in held:
+            from core.intelligence.algorithms.indicators.fetcher import get_price_history
+            years = max(1, (_today() - since).days // 365 + 1)
+            out: list[tuple[date, float]] = []
+            try:
+                df = get_price_history(symbol, years=years)
+                close = df["Close"] if len(df) else None
+                if close is not None and hasattr(close, "columns"):
+                    close = close.iloc[:, 0]
+                if close is not None:
+                    out = [(d.date(), float(c)) for d, c in close.dropna().items()]
+            except Exception as exc:
+                logger.warning("[results] price series unread for %s: %s", symbol, exc)
+            held[symbol] = out
+        return [(d, c) for d, c in held[symbol] if d >= since]
+    return lookup
+
+
 def weekly_scorecard(user_id: str, on: date, *, store=None, audit_store=None,
                      close_on: Callable[[date], float] | None = None,
                      today: date | None = None,
                      stock_close_on: Callable[[str, date], float] | None = None,
                      stock_quote_on: Callable[[str, date], object] | None = None,
-                     corp_actions: Callable[[str], object] | None = None) -> dict:
+                     corp_actions: Callable[[str], object] | None = None,
+                     stock_series_on: Callable[[str, date], object] | None = None) -> dict:
     """The row for the week `on` covers, stored once per week key.
 
     An existing row for the week is returned untouched: a re-run rewrites
@@ -1240,6 +1513,7 @@ def weekly_scorecard(user_id: str, on: date, *, store=None, audit_store=None,
         previous_exit_look=previous_week_look(store.load_scorecards(), week.monday),
         stock_quote_on=stock_quote_on or stock_quote_fn(),
         corp_actions=corp_actions or corp_actions_fn(),
+        stock_series_on=stock_series_on or stock_series_fn(),
     )
     if today < week.saturday:
         row["provisional"] = True

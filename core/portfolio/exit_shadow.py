@@ -80,6 +80,8 @@ since the dive, or not at all (`level_in_basis`).
 from __future__ import annotations
 
 import logging
+import math
+import statistics
 from collections import Counter
 from datetime import date, datetime, timedelta
 from typing import Callable, Iterable
@@ -89,11 +91,11 @@ from backend.shared.pipeline import decision_gate as dg
 from backend.shared.schemas.portfolio import ExitShadowRow
 from core.audit.rules import excess, is_correct, pct_change
 from core.discovery.shelf import close_before_dive
-from core.intelligence.rl.nse_calendar import (IST, session_close_at, trading_days_after,
-                                               trading_days_ago)
+from core.intelligence.rl.nse_calendar import (IST, session_close_at, trading_dates,
+                                               trading_days_after, trading_days_ago)
 from core.portfolio.advisor import CASE_EVENT_SOURCES, ExitEvidence, case_broken_reasons
 from core.portfolio.cases import challenged_pillars
-from core.portfolio.results import sessions_held
+from core.portfolio.results import sessions_held, week_of
 from core.portfolio.sizing import entry_check
 
 logger = logging.getLogger(__name__)
@@ -126,6 +128,7 @@ GATE_MAX_SET_ASIDE = 2             # decisions set aside
 GATE_MAX_SET_ASIDE_PCT = 10.0      # of the decisions past 30 sessions
 
 PASS, FAIL, NOT_ENOUGH, CANNOT_JUDGE = "pass", "fail", "not_enough", "cannot_judge"
+PACE_WEEKS = 4                     # PR-013: the decision pace is read over this many weeks
 # Why a grade has no result: a cause no later read can change, or one it may (`horizon_in_basis`).
 LASTING, TEMPORARY = "lasting", "temporary"
 _RESULT_UNITS = 10_000             # results are kept to 4 decimals; summed exactly in these units
@@ -961,6 +964,177 @@ def scorecard_block(rows: Iterable[dict], *, as_of: date,
     return {"rows": len(rows), "decisions": len(decisions), "repeat_days": later,
             "tally": [tally(grades, h) for h in GRADE_HORIZONS_TD],
             "gate": look, "recommend": recommends(look, previous_look)}
+
+
+# -- PR-013: what waiting cost, and the decision pace (reports; they change nothing) ---
+
+def kept_decisions(rows: Iterable[dict]) -> list[dict]:
+    """The decisions (`first_disagreements`) in which the evidence rule kept
+    the stock and the price-path rule sold it."""
+    decisions, _later = first_disagreements(rows)
+    return [r for r in decisions
+            if sells(r.get("legacy_verdict")) and not sells(r.get("evidence_verdict"))]
+
+
+def _series_gap(record, symbol: str, start: date, until: date) -> str:
+    """Why closes of `symbol` from `start` to `until` may not be in one price
+    basis ("" when nothing says so): NSE's list of its corporate actions
+    could not be read, is empty, holds no dated row or starts after `start`,
+    or lists a bonus, a split, a row not read as a ratio or a change no ratio
+    converts ex after `start` and on or before `until`; or the instrument
+    registry records a demerger or relisting between them."""
+    since, last = start.isoformat(), until.isoformat()
+    if record is None:
+        return "NSE's list of its corporate actions could not be read"
+    if not record.covers_from:
+        return ("NSE's list of its corporate actions holds no dated row" if record.rows
+                else "NSE's list of its corporate actions is empty")
+    if record.covers_from > since:
+        return f"NSE's list of its corporate actions starts {record.covers_from}, after {since}"
+    ex = sorted([(a.ex_date, a.kind) for a in record.actions if a.kind in SHARE_COUNT_KINDS]
+                + [(d, "bonus or split") for d in record.unparsed]
+                + list(record.basis_changes))
+    inside = [(d, kind) for d, kind in ex if since < d <= last]
+    if inside:
+        return f"NSE lists a {inside[0][1]} ex {inside[0][0]}"
+    return registry_break(symbol, start, until)
+
+
+def waiting_cost(rows: Iterable[dict], *, as_of: date,
+                 stock_series: Callable[[str, date], object] | None,
+                 corp_actions: Callable[[str], object] | None,
+                 horizons: Iterable[int] = GRADE_HORIZONS_TD) -> dict:
+    """What waiting cost (PR-013): for each decision decided by `as_of` in
+    which the evidence rule kept the stock the price-path rule sold
+    (`kept_decisions`), the lowest close in the sessions after the review day
+    up to and including the horizon's day, against the close the decision
+    was made at (`price_bar_date`'s, else the review day's), as a fall: 0
+    when it never closed below it. A horizon that ends after `as_of` is
+    pending; no close after the horizon's day is read.
+
+    `stock_series(symbol, since)` gives the stock's daily closes from `since`
+    as (day, close) pairs, all from one series, so the decision's close and
+    the later closes are in one price basis (a dividend counts as received).
+    A decision has no result at a horizon when that series lacks the
+    decision's close or any session's close in the window, or when a bonus,
+    a split or another change of price basis could fall inside it
+    (`_series_gap`): a missing close could hide the lowest one."""
+    rows = [r for r in rows if (_day(r.get("date")) or date.max) <= as_of]
+    kept = kept_decisions(rows)
+
+    def priced(row: dict) -> date:
+        decided, start = _day(row.get("date")), _day(row.get("price_bar_date"))
+        return decided if start is None or start > decided else start
+    since: dict[str, date] = {}               # each symbol's series is read once, from its first
+    for row in kept:
+        symbol = str(row.get("symbol") or "")
+        since[symbol] = min(since.get(symbol, date.max), priced(row))
+    series: dict[str, object] = {}
+    per_h = {h: {"horizon_td": h, "kept": len(kept), "graded": 0, "pending": 0,
+                 "no_result": 0, "never_below": 0, "median_fall_pct": None,
+                 "worst_fall_pct": None, "worst_symbol": "", "no_result_symbols": [],
+                 "falls": []}
+             for h in horizons}
+    for row in kept:
+        decided, start = _day(row.get("date")), priced(row)
+        symbol = str(row.get("symbol") or "")
+        for h, out in per_h.items():
+            matured = trading_days_after(decided, h)
+            if matured > as_of:
+                out["pending"] += 1
+                continue
+            fall, why = None, ""
+            try:
+                gap = _series_gap(_actions(corp_actions, symbol), symbol, start, matured)
+                if gap:
+                    raise ValueError(gap)
+                if stock_series is None:
+                    raise ValueError("no price series")
+                if symbol not in series:
+                    series[symbol] = {d: float(c) for d, c in stock_series(symbol, since[symbol])
+                                      if c is not None and float(c) > 0}
+                closes = series[symbol]
+                if start not in closes:
+                    raise ValueError(f"no close on {start.isoformat()}")
+                window = trading_dates(decided + timedelta(days=1), matured)
+                missing = [d for d in window if d not in closes]
+                if missing:
+                    raise ValueError(f"no close on {missing[0].isoformat()}"
+                                     + (f" and {len(missing) - 1} more sessions"
+                                        if len(missing) > 1 else ""))
+                lowest = min(closes[d] for d in window)
+                fall = min(0.0, round(pct_change(closes[start], lowest), 4))
+            except Exception as exc:
+                why = str(exc)
+            if fall is None:
+                logger.info("[exit_shadow] waiting cost %s %s @%dtd: no result (%s)",
+                            symbol, decided, h, why)
+                out["no_result"] += 1
+                out["no_result_symbols"].append(symbol)
+                continue
+            out["graded"] += 1
+            out["never_below"] += fall == 0.0
+            out["falls"].append({"symbol": symbol, "date": decided.isoformat(),
+                                 "fall_pct": fall})
+    for out in per_h.values():
+        falls = [f["fall_pct"] for f in out["falls"]]
+        if falls:
+            worst = min(out["falls"], key=lambda f: (f["fall_pct"], f["date"], f["symbol"]))
+            out.update(median_fall_pct=statistics.median(falls),
+                       worst_fall_pct=worst["fall_pct"], worst_symbol=worst["symbol"])
+        out["no_result_symbols"] = sorted(set(out["no_result_symbols"]))
+    return {"kept": len(kept), "horizons": list(per_h.values())}
+
+
+def gate_pace(rows: Iterable[dict], *, week_monday: date, as_of: date) -> dict:
+    """The decision pace and the earliest week the switch gate could pass at
+    it (PR-013): arithmetic, not a forecast. The pace is the decisions
+    (`first_disagreements`) whose review day is in the PACE_WEEKS weeks
+    ending `as_of`, a week. Later decisions are taken to come evenly at that
+    pace after `as_of`, the m-th ceil(7m / pace) days on.
+
+    With the gate's constants: a look judges the decisions whose
+    GATE_HORIZON_TD sessions have ended, and needs GATE_MIN_MATURED of them
+    whose review days span GATE_MIN_SPAN_DAYS. Decisions mature in the order
+    they were made, so the first look that can pass is the week of the 30th
+    session after the k-th decision, for the smallest k >= GATE_MIN_MATURED
+    whose review day is GATE_MIN_SPAN_DAYS after the first's; a
+    recommendation needs GATE_LOOKS passing looks in a row, so it can come
+    GATE_LOOKS - 1 weeks later. Example: 6 decisions, the first on 1 Dec, at
+    one a week: the 15th comes 9 weeks after `as_of`, and its 30th session
+    sets the week. A pass is not assumed; this is the earliest it can be."""
+    rows = [r for r in rows if (_day(r.get("date")) or date.max) <= as_of]
+    decisions, _later = first_disagreements(rows)
+    days = sorted(_day(r.get("date")) for r in decisions)
+    since = week_monday - timedelta(weeks=PACE_WEEKS - 1)
+    recent = sum(1 for d in days if since <= d <= as_of)
+    pace = recent / PACE_WEEKS
+    out = {"weeks": PACE_WEEKS, "from": since.isoformat(), "recent": recent,
+           "per_week": pace, "decisions": len(days),
+           "first": days[0].isoformat() if days else None,
+           "first_pass_week": None, "recommend_week": None, "already": False}
+
+    def nth(k: int) -> date | None:            # the k-th decision, 1-based
+        if k <= len(days):
+            return days[k - 1]
+        if pace <= 0:
+            return None
+        return as_of + timedelta(days=math.ceil(7 * (k - len(days)) / pace))
+
+    k = GATE_MIN_MATURED
+    first = nth(1)
+    while first is not None:
+        kth = nth(k)
+        if kth is None:
+            break
+        if (kth - first).days >= GATE_MIN_SPAN_DAYS:
+            look = week_of(trading_days_after(kth, GATE_HORIZON_TD))
+            out.update(first_pass_week=look.monday.isoformat(),
+                       recommend_week=(look.monday + timedelta(weeks=GATE_LOOKS - 1)).isoformat(),
+                       already=look.monday <= week_monday)
+            break
+        k += 1
+    return out
 
 
 def _n(count: int, word: str) -> str:

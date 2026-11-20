@@ -14,6 +14,19 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 20 Nov, afternoon (autopilot): PR-013 → ACCEPTED (light lane)
+
+- **Autopilot `1120-1154-p3`**, a `continue` on the code-server from about 11:54 IST, outside a
+  push window. `main` = `517dd2f`, 6 commits ahead of `origin/main` `03debc1`. No production read.
+- **The Sunday scorecard gains four lines:** "By exit reason" (each closed trade under one
+  reason, its closing sale's, over 13 weeks and since the start), "Bought back" (round trips and
+  their recorded charges), "What waiting cost" (the fall a stock the evidence rule kept went
+  through within 10 and 30 sessions: median and worst) and "Decision pace" (decisions a week and
+  the earliest week the gate can pass, as arithmetic). Reports only.
+- **Tests:** 25, the pace checked against the real gate week by week; mutants 16 of 16. New
+  check `PR-013-W1`. BACKLOG B-12 left for after PR-015's merge. Push pending to Sat 21 Nov
+  00:10. [Receipt](evidence/PR-013.md).
+
 ## 20 Nov, midday (autopilot): CLEAN-005 → ACCEPTED (fresh review); merged into `main`
 
 - **Autopilot session `1120-1139-p2`**, a `continue` on the code-server from about 11:39 IST,

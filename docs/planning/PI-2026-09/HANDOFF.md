@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-20 (CLEAN-005 accepted and merged, push pending to Sat 21 Nov 00:10; in a push window PR-015 switches, outside one PR-013; PR-037's catch-up run and PR-042-W0's read wait for you)
+# Current handoff - 2026-11-20 (PR-013 accepted, push pending to Sat 21 Nov 00:10; in a push window PR-015 switches, outside one PR-016; PR-037's catch-up run and PR-042-W0's read wait for you)
 
 ## Now
 
@@ -9,24 +9,24 @@
 - **Refused by the permission check** in autopilot `1120-1045-p1` (an unattended session):
   PR-037's catch-up run (a production trigger) and the container read of `PR-042-W0` (a
   production read). Both wait for you; commands below.
-- **CLEAN-005 is done** ([review](evidence/CLEAN-005-review.md)), merged as `f6b2055`: a
-  failed analysis is no analysis (no verdict, the stock skipped, `analyses_failed_today` counts
-  it) and the per-analyst layer and `langgraph` are gone; ships with the next push, whose image
-  is built without `langgraph`. `CLEAN-005-W1` reads the build, the status field and the first
-  16:30 review after it. Follow-ups: BACKLOG B-27 (low and nits).
+- **CLEAN-005 is done** ([review](evidence/CLEAN-005-review.md)), merged as `f6b2055`; ships
+  with the next push (an image without `langgraph`); `CLEAN-005-W1` reads it. BACKLOG B-27.
+- **PR-013 is done** (light; [receipt](evidence/PR-013.md)): the Sunday scorecard adds "By exit
+  reason", "Bought back", "What waiting cost" and "Decision pace"; reports only. Ships with the
+  next push; `PR-013-W1` reads the first Sunday's lines. BACKLOG B-12 waits for PR-015's merge.
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
   Mondays; the next opens Sat 21 Nov 00:10): after the runner's push, **PR-015's switch** (your
   word, 18 Nov about 07:05 IST): merge `story/PR-015` (`12b7901`) into `main` (four KT conflict
   hunks, sections 1, 3, 4 and 11, the same as before CLEAN-005's merge; how to keep both:
   [PR-005's review](evidence/PR-005-review.md), "Decision"), the full suite on the exact commit,
   push, check the deploy and `/health`, add `PR-015-W1`
-  ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md)).
-- **Next `continue` outside a window:** PR-015 waits for one, so **PR-013** (first ready in
-  order). After today's 16:30 review: `FIX-017-W1` and `CLEAN-004-W1` (production reads, so
+  ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md)); then BACKLOG B-12.
+- **Next `continue` outside a window:** PR-015 waits for one, so **PR-016** (first ready in
+  order; decision path). After today's 16:30 review: `FIX-017-W1` and `CLEAN-004-W1` (production reads, so
   your word or your command).
 - **PR-036 is live, ₹1 crore in** (06:34 IST 19 Nov; [receipt](evidence/PR-036.md), "Rollout").
-- **Git:** `origin/main` = `03debc1`; `main` is 6 commits ahead (records, CLEAN-005's two
-  commits and its merge), push pending to Sat 21 Nov 00:10. `story/PR-015` is local.
+- **Git:** `origin/main` = `03debc1`; `main` is 7 commits ahead (records, CLEAN-005's two
+  commits and its merge, PR-013), push pending to Sat 21 Nov 00:10. `story/PR-015` is local.
 
 ## Waits for you
 
@@ -57,6 +57,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Fri 20 Nov | `CLEAN-004-W1` | after the 16:30 review: no prompt job, no control call or log |
 | Sat 21 Nov | `CLEAN-005-W1` | after the 00:10 push: the build without `langgraph`, `analyses_failed_today`; Mon 23 Nov: the 16:30 review's log |
 | Sat 21 Nov | `PR-038-R1` | the PR-038 re-read |
+| Sun 22 Nov | `PR-013-W1` | after the weekly review: the scorecard's four new lines |
 | Sat 21 Nov | `PR-043-W1` | the first Saturday's shadow rows |
 | Tue 24 Nov | `FIX-032-W1` | your re-run of FIX-032's probe |
 | Wed 25 Nov‡ | `PR-005-W1` | the first cases written at purchase, and any price retried |

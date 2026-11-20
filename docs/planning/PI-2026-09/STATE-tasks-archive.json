@@ -2590,6 +2590,13 @@
       "fields": {
         "sequencing_note": "After CLEAN-004 (the Prompt Lab reads the prompt files this card deletes). Step 1 turns a failed analysis into 'no analysis'; step 2 deletes about 4,400 lines."
       }
+    },
+    {
+      "id": "PR-013",
+      "moved": "2026-11-20",
+      "fields": {
+        "sequencing_note": "Owner decision 2026-11-14: moved ahead of PR-005, so the losses are visible by exit reason first; PR-005 adds its own exit reason to the counts when it is built. Earlier, owner decision 2026-10-24: placed after PR-005 so its case-based exits are in the counts (an order, not a dependency). Report only, it changes no decision. Covers exit follow-ups 1 and 2 (average loss by exit reason; the fall the evidence rule sits through when it keeps a stock) and 8's re-estimate (decision pace and the earliest gate week, as arithmetic)."
+      }
     }
   ]
 }

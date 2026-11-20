@@ -1442,8 +1442,9 @@ included, is the same code under both
   company's own primary disclosure, so a routine filing the model labels high
   negative still sells, whether or not it contradicts a pillar of the
   holding's investment case: a challenged pillar is recorded, and narrowing
-  the rule to the filings that contradict one waits for PR-013's losses by
-  exit reason. A news event can mark a pillar challenged, never sell.
+  the rule to the filings that contradict one waits for what the weekly
+  scorecard's "By exit reason" line shows for "case broken" (section 7). A
+  news event can mark a pillar challenged, never sell.
   **Planned:** PR-012's label-accuracy bench measures that reading (no
   routine filing may read as high negative).
 
@@ -1724,8 +1725,10 @@ horizon would flatter one rule. The scorecard recommends; the owner switches
 rule. **Planned, after a switch:** the price-path verdict stays recorded for
 one month, then the thesis-review exit path is retired (PR-009's rollout).
 
-**Planned:** PR-013 adds the average loss by exit reason, the fall the evidence rule sits
-through and the decision pace to the scorecard.
+The weekly scorecard also shows, beside the exit rule test, the fall the
+stocks the evidence rule kept went through, and the decision pace with the
+earliest week the gate could pass at it (section 7, "What waiting cost" and
+"Decision pace").
 
 **Limits.**
 
@@ -2564,7 +2567,11 @@ week whose sessions are not over is never stored.
 | Breadth | Holdings (for the latest week) and the invested share at the week's last valuation. |
 | Holding period | Median exchange sessions held by the positions closed this week. |
 | Idea quality | From the auditor's shelf lane: how many shelf ideas beat the Nifty 10 and 30 sessions after they were shelved, whether bought or not, with the median gap in points. Only grades matured by the week's end count. It measures the idea supply, not the portfolio, and it is a line, not a flag. |
+| By exit reason | The same round trips over the last 13 weeks and since the start, each under exactly one reason: the one its closing sale was made for. A SWITCH is "SWITCH sale" and a TRIM that sold the last share "TRIM", whatever their triggers. An EXIT is its first trigger in the order the advisor checks them: stop, case broken, price-path exit, shock, crisis, trailing stop (a trade sold on two is counted once, under the first, and the line says how many were); an EXIT on a code with no name here shows that code; one with no code is "other (no reason recorded)", never dropped. Your own sales are "sold by you". For each reason and in total: count, wins and average win, losses and average loss, and the mean result a trade, before costs. |
+| Bought back | From the ledger alone: each stock bought again after a sale emptied its position (by any rule or by you), over the last 4 weeks and since the start, with the charges recorded on that sale and that buy; a round trip whose rows carry no charges (written before charges were recorded) is counted and said. A top-up of a position still held is not one. |
 | Exit rule test | From `exit_shadow.jsonl` (section 6): on how many decisions the price-path rule and the evidence rule disagreed (one per holding, on its first disagreeing day), in how many holding-days reviewed, and how many later days of the same disagreements were not counted; how often the evidence rule was right at 10 and 30 sessions and its mean result a decision against where the money went (how many against cash, how many against the Nifty), with the mean against the Nifty alone beside it; what is still pending, has no price, or has no result because a corporate action could not be ruled out or allowed for (naming those stocks); this week's look at the switch gate ("not worse" on a pass, plus "better" when it applies, or "cannot judge" when more decisions are set aside than the cap allows); and each decision set aside from the gate, with its decision day and why its result can never be known. The row stores the look, so the next week can tell whether the gate passed twice in a row. Shown once a row exists. |
+| What waiting cost | Shown with the exit rule test. For each decision (one per holding, a stock bought again being another) in which the evidence rule kept the stock and the price-path rule sold it: the lowest close in the sessions after the review day up to and including the 10th and the 30th, against the close the decision was made at, as a fall (0 when it never closed below it). The median and the worst, naming the stock, at each horizon. A horizon not yet ended is pending; no close after a horizon's day is read. The closes come from one daily series per stock (Yahoo's, adjusted for bonuses, splits and dividends), so the decision's close and the later ones are in one price basis and a dividend counts as received. A decision has no result at a horizon, said with its stock, when that series lacks the decision's close or any session's close in the window (a missing close could hide the lowest), or when NSE's list of its corporate actions could not be read, is empty, holds no dated row, starts after the decision, or lists a bonus, a split or another change of price basis inside the window, or the instrument registry records a demerger or relisting there. |
+| Decision pace | Shown with the exit rule test. Decisions a week over the last 4 weeks, how many in all and since when, and the earliest week the switch gate could first pass at that pace and pass two weeks running, labelled arithmetic, not a forecast. Later decisions are taken to come evenly at the pace (the m-th, 7m ÷ pace days on, rounded up to a whole day). The gate needs 15 decisions past 30 sessions whose review days span 8 weeks, and decisions reach 30 sessions in the order they were made: the week is the one holding the 30th session after the first decision, from the 15th on, made 56 days or more after the first. Example: 6 decisions since 2 Oct, 4 of them in the last 4 weeks (1 a week), read on 29 Nov 2026: the 15th comes 9 weeks on, on 31 Jan 2027; its 30th session is 12 Mar, so the week of 8 Mar, and two passing weeks running the week of 15 Mar. With no decision in the last 4 weeks no date is given; once the decisions it needs have reached 30 sessions the line says the gate can judge. A pass is never assumed. |
 
 **Holdings that arrive without cash.** "Add holding" and a CSV import, on an
 account with cash accounting, raise `capital_in` by the holding's cost (the
@@ -2632,7 +2639,7 @@ Horizons count exchange sessions on the NSE calendar, as the auditor's do.
 Nifty closes come from the auditor's benchmark series, so the known limit
 above on carried-forward closes applies. The nightly auditor grades the
 default user's calls only. Members' sales are their own, so they appear under
-"Why we sold" and are not graded.
+"Why we sold" and "By exit reason" and are not graded.
 
 ## 8. Discovery and IPO functionality
 
@@ -4079,7 +4086,7 @@ section 10) are part of the current design.
 | [FIX-014](planning/PI-2026-09/stories/FIX-014.md) | Above the 75% cap, a promoter wash must not score as insider buying | Open | 8 Discovery | PR-011 |
 | [FIX-015](planning/PI-2026-09/stories/FIX-015.md) | The shock exit reads the re-forecast's trigger, not its sentence | Done | 6 Portfolio | PR-009 |
 | [FIX-016](planning/PI-2026-09/stories/FIX-016.md) | Fix the evidence exit's inputs and its switch gate before the shadow starts | Done | 6 Portfolio; 7 Marksheets | PR-009 |
-| [PR-013](planning/PI-2026-09/stories/PR-013.md) | Show where losses come from and what waiting costs | Open | 7 Marksheets | PR-002, PR-009 |
+| [PR-013](planning/PI-2026-09/stories/PR-013.md) | Show where losses come from and what waiting costs | Done | 7 Marksheets | PR-002, PR-009 |
 | [PR-014](planning/PI-2026-09/stories/PR-014.md) | Switch idle-cash deployment on, then read what it does | Done | 1 Production state; 6 Portfolio | FIX-030, FIX-031 |
 | [PR-015](planning/PI-2026-09/stories/PR-015.md) | The evidence exit rule acts | Open | 1 Production state; 6 Portfolio | FIX-015, PR-014 |
 | [PR-035](planning/PI-2026-09/stories/PR-035.md) | Read why the buy list offered 2 of 20 ideas, and what 25 to 30 holdings need | Done | 6 Portfolio; 8 Discovery | None |

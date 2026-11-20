@@ -184,8 +184,9 @@ dated table, with each control's evidence, is
 
 The nightly auditor, the monthly replay and the weekly results scorecard are
 different measurements, and none alone demonstrates the benefit of adaptation.
-The scorecard reads the auditor's grades and the account's own ledgers; it
-reports and changes no decision. The
+The scorecard reads the auditor's grades and the account's own ledgers, and
+NSE's daily opens for the book at prices that could be had; it reports and
+changes no decision. The
 watchdog checks operational milestones, not stock prediction correctness.
 
 ## Planned architecture

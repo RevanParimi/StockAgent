@@ -27,10 +27,15 @@ red line? Every figure comes from a ledger the system already keeps:
   last 13 weeks and since the start.
 - **Bought back** (PR-013) from the ledger alone: a stock bought again after
   a sale emptied its position, and the charges on that sale and that buy.
+- **At prices that could be had** (PR-016) from executable_prices.jsonl: the
+  book again with each autopilot trade at the next session's open and at the
+  open after the run that booked it (core/portfolio/executable.py).
 
 The red-flag rules below were predeclared on 11-12 Oct 2026, before any
-scorecard existed. Changing one is a reviewed code change, never a setting
-tuned after seeing a result. A flag reports; it changes no decision.
+scorecard existed; `paper_prices` (executable.rule_flag) on PR-016's card on
+15 Nov 2026, before any executable price was read. Changing one is a reviewed
+code change, never a setting tuned after seeing a result. A flag reports; it
+changes no decision.
 
 Missing data never reads as "clear". Where a flag's population has members
 with no figure (a matured sale with no grade, a closed position with no
@@ -964,7 +969,8 @@ def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
               previous_exit_look: dict | None = None,
               stock_quote_on: Callable[[str, date], object] | None = None,
               corp_actions: Callable[[str], object] | None = None,
-              stock_series_on: Callable[[str, date], object] | None = None) -> dict:
+              stock_series_on: Callable[[str, date], object] | None = None,
+              executable_rows: Iterable[dict] | None = None) -> dict:
     """The scorecard row for `week` from the user's own ledgers. Facts dated
     after the week are ignored, so a late rebuild describes the week as it was.
     `stock_close_on(symbol, day)` values the holdings that arrived without
@@ -981,7 +987,12 @@ def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
     stocks bought back after a sale, from the ledger; and, with
     `exit_shadow_rows`, `waiting_cost` (the fall each stock the evidence rule
     kept went through, from `stock_series_on(symbol, since)`'s daily closes)
-    and `gate_pace`. Reports: they change no decision."""
+    and `gate_pace`. Reports: they change no decision.
+
+    PR-016: with `executable_rows` (the side file's rows,
+    core/portfolio/executable.py), the row gains `executable`, the book at
+    prices that could be had, and the red flag `paper_prices`, its
+    predeclared rule. A report: it changes no trade or price."""
     end = week.sunday
     txns = [t for t in txns if (_day(t.date) or date.max) <= end]
     points = [p for p in points if (_day(p.get("date")) or date.max) <= end]
@@ -1021,6 +1032,12 @@ def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
         behind_nifty_flag(money["last_4_weeks"], stale, last_valuation is not None),
         holding_period_flag(held),
     ]
+    executable = None
+    if executable_rows is not None:
+        from core.portfolio.executable import rule_flag, scorecard_block
+        executable = scorecard_block(txns, executable_rows, end=end,
+                                     since_start=money["since_start"])
+        flags.append(rule_flag(executable))
     sessions = trading_dates(week.monday, end)
     row = {
         "week": week.key,
@@ -1045,6 +1062,8 @@ def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
                           trades, week.window_start(REASON_WEEKS), end),
                       "since_start": results_by_reason(trades, None, end)},
     }
+    if executable is not None:
+        row["executable"] = executable
     backs = buy_backs(txns)
     row["bought_back"] = {"last_4_weeks": buy_back_summary(
                               backs, week.window_start(BUYBACK_WEEKS), end),
@@ -1302,6 +1321,10 @@ def scorecard_lines(row: dict) -> list[dict]:
                  (f"; the last was on {_short_day(row['valuation_date'])}."
                   if row.get("valuation_date") else "."))
     lines.append({"kind": "line", "label": "You vs the Nifty", "text": text})
+    if row.get("executable"):
+        from core.portfolio.executable import line_text
+        lines.append({"kind": "line", "label": "At prices that could be had",
+                      "text": line_text(row["executable"])})
     b = row["breadth"]
     parts = []
     if b["holdings"] is not None:
@@ -1478,12 +1501,18 @@ def weekly_scorecard(user_id: str, on: date, *, store=None, audit_store=None,
                      stock_close_on: Callable[[str, date], float] | None = None,
                      stock_quote_on: Callable[[str, date], object] | None = None,
                      corp_actions: Callable[[str], object] | None = None,
-                     stock_series_on: Callable[[str, date], object] | None = None) -> dict:
+                     stock_series_on: Callable[[str, date], object] | None = None,
+                     panel_on: Callable[[str, date], object] | None = None) -> dict:
     """The row for the week `on` covers, stored once per week key.
 
     An existing row for the week is returned untouched: a re-run rewrites
     nothing and appends nothing. A week whose sessions are not over yet (a
-    future `on`) is computed but never stored, and says so."""
+    future `on`) is computed but never stored, and says so.
+
+    PR-016: before the row is built, every autopilot trade without a row in
+    executable_prices.jsonl is priced at the real opens (`panel_on(symbol,
+    day)`, the EOD panel; executable.refresh), and the settled ones are
+    written once. A failure there leaves the stored rows to the line."""
     from core.audit.store import AuditOutcomeStore
     from core.portfolio.store import PortfolioStore
 
@@ -1499,10 +1528,21 @@ def weekly_scorecard(user_id: str, on: date, *, store=None, audit_store=None,
         close_on = BenchmarkSeries().close_on
     today = today or _today()
     latest = covered_week(today).key == week.key
+    from core.portfolio import executable
     from core.portfolio.exit_shadow import previous_week_look
+    corp_actions = corp_actions or corp_actions_fn()
+    txns = store.load_transactions(limit=1_000_000)
+    try:
+        executable_rows = executable.refresh(
+            store, txns, panel=panel_on or executable.panel_fn(),
+            corp_actions=corp_actions, today=today)
+    except Exception as exc:
+        logger.warning("[results] executable prices not refreshed for %s: %s",
+                       store.user_id, exc)
+        executable_rows = store.load_executable_prices()
     row = build_row(
         week=week,
-        txns=store.load_transactions(limit=1_000_000),
+        txns=txns,
         points=store.load_value_history(limit=1_000_000),
         audit_rows=audit_store.load_all(),
         close_on=close_on,
@@ -1512,8 +1552,9 @@ def weekly_scorecard(user_id: str, on: date, *, store=None, audit_store=None,
         exit_shadow_rows=store.load_exit_shadow(),
         previous_exit_look=previous_week_look(store.load_scorecards(), week.monday),
         stock_quote_on=stock_quote_on or stock_quote_fn(),
-        corp_actions=corp_actions or corp_actions_fn(),
+        corp_actions=corp_actions,
         stock_series_on=stock_series_on or stock_series_fn(),
+        executable_rows=executable_rows,
     )
     if today < week.saturday:
         row["provisional"] = True

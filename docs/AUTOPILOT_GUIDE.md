@@ -104,6 +104,8 @@ data/portfolio/<user>/
   advice_outcomes.jsonl           the nightly auditor's graded rows
   weekly_scorecard.jsonl          one results row per ISO week, written once
   weekly_scorecard.lock           guards its write-once append
+  executable_prices.jsonl         each autopilot trade's two real opens, one row per txn_id, written once
+  executable_prices.lock          guards its write-once append
   digests/<date>.json, briefs/, weekly/
   portfolio.json.corrupt-<time>   a corrupt file moved aside (section 8)
   portfolio.json.pre-identity-<time>  copy taken before a reconciliation apply
@@ -626,6 +628,18 @@ and losses carried to later years are not modelled.
 ₹225.57 and ₹250.85. The realized +₹37,548.93 is +₹37,072.51 net of costs,
 and the short-term tax estimate is ₹7,797.82: about ₹29,275 in hand.
 
+**The booking price.** Every trade is booked at the close the advisor used:
+the reviewed session's 15:30 close. Nobody could trade at it once the run has
+decided, so the weekly scorecard shows the same trades again at prices that
+could be had: the open of the session after the booked close's, and the open
+after the run, each in the booked close's price basis, with the same
+quantities and cost rates (`core/portfolio/executable.py`,
+`executable_prices.jsonl`). A predeclared red flag says when the gap is large
+enough to book trades at the next open instead. It is a report: no trade,
+price or decision changes. Example: Monday closes at ₹100, Tuesday opens at
+₹102, Wednesday at ₹104; Tuesday's run books a BUY at ₹100; the line counts
+it at ₹102 at the next open and ₹104 as the job runs.
+
 The KT's [section 7](TECHNICAL_DESIGN.md#virtual-pl) gives the report families
 and the Nifty comparison: the same deposits in the Nifty 50, on the portfolio
 screen and in the weekly scorecard.
@@ -837,6 +851,7 @@ run is hermetic (KT section 13). A quick loop:
 | `test_regime_inputs_fix023.py` | The regime deployment trusts: inputs read as of the review session, a missing input with no value, a day whose label the live inputs do not establish opening nothing (the reason names the inputs), the hysteresis on dark days, a detector exception; and no position opened at a close from before its idea's latest dive, in either gate mode |
 | `test_autopilot_pipeline.py`, `test_portfolio_pipeline.py`, `test_scheduler_portfolio_hook.py` | The pipeline steps, digest trades and the `switch_buy_skipped` alert |
 | `test_autopilot_isolation.py` | Executor writes stay inside `data/portfolio/<user>/` |
+| `test_executable_prices_pr016.py` | Prices that could be had: never a bar on or before the booked close (a random-ledger property test), the run's own open, a split on the next session, a booked close that may already be adjusted, no price and waiting, once per transaction, the ledger's bytes, the book and its line worked by hand, charged costs at the real price, and the predeclared rule at 29, 30 and exactly 0.5 |
 | `test_every_door_fix029.py` | Every door reads the same facts: the day's regime over every label with or without an entry of its own, the newest analysis before the close from the real score store, one sale rule against an oracle over three weeks (the Saturday after an autopilot sale for the watchlist), a SWITCH that takes its next-best idea through the real pipeline, no buy of an idea not rated BUY |
 | `test_sold_stock_leaves_review_fix028.py` | The managed list follows the holdings, through the real executor and a real managed file: a full exit and a last-share TRIM release, while a partial TRIM, another portfolio's holding, a user's own watchlist and an original entry do not; a stock sold earlier leaves on the next run; a re-buy re-enables the old sector; a sale's room before the same run's buy; a capped buy named in the digest, its text and the brief on every run until it gets an entry; an unreadable portfolio, no managed file, the lock and a failed save |
 | `test_autopilot_wave1.py`, `test_portfolio_locking.py`, `test_portfolio_reconcile.py` | Locking with a fresh reload, future-date refusal, reconciliation |

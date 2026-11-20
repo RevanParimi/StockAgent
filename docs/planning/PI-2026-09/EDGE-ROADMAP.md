@@ -163,7 +163,8 @@ conditions are now met and asks the owner which to promote. A promoted card's sc
 | Open questions on held stocks researched on the web | `core/intelligence/rl/agents/question_researcher.py` | Managed stocks only |
 | A bear condition in the analysis | `unified_analyst.py` (`key_risks`, `bear_case_if` per dimension) | The same model in the same call; nothing can lower the score |
 | Why SWITCH decisions went wrong | `core/audit/attribution.py`, `switch_evaluations.jsonl` | SWITCH only |
-| Trading costs and a tax estimate | `core/portfolio/costs.py` | Spread, slippage and the stale booking price are not modelled |
+| Trading costs and a tax estimate | `core/portfolio/costs.py` | Spread and slippage are not modelled; the stale booking price is measured, not changed (PR-016) |
+| The book at prices that could be had: each autopilot trade at the next session's open and at the open after the run, with a predeclared rule, on the scorecard (PR-016) | `core/portfolio/executable.py`, `executable_prices.jsonl` | Opens from NSE's bhavcopy, not the price an order would get inside the auction; autopilot trades only; a trade without a price keeps its booked close |
 | A replay of recorded forecasts | `core/intelligence/rl/eval/harness.py` | Measures the frozen learner, not the portfolio's rules |
 | Compliance checklist (SEBI, data protection, licensing) | `docs/LEGAL_AND_COMPLIANCE.md` | A lawyer's review is still the gate before any stranger or payment |
 

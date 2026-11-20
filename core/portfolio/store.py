@@ -269,6 +269,51 @@ class PortfolioStore:
                 logger.warning("[PortfolioStore] skipping bad switch-eval line: %s", exc)
         return out
 
+    def _executable_prices_path(self) -> Path:
+        return self._dir / "executable_prices.jsonl"
+
+    def append_executable_prices_once(self, rows: list[dict]) -> int:
+        """PR-016: append the rows whose txn_id is not stored yet, each stamped
+        `written_at`; a stored row wins, so a re-run adds nothing. The check
+        and the append share one lock. The ledger is not touched. Returns how
+        many were appended."""
+        if not rows:
+            return 0
+        with FileLock(str(self._dir / "executable_prices.lock"), timeout=30):
+            seen = {r.get("txn_id") for r in self.load_executable_prices()}
+            new = []
+            for row in rows:
+                key = row.get("txn_id")
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                new.append({**row, "written_at": datetime.now(timezone.utc).isoformat()})
+            if new:
+                with open(self._executable_prices_path(), "a", encoding="utf-8") as fh:
+                    for row in new:
+                        fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+            return len(new)
+
+    def load_executable_prices(self) -> list[dict]:
+        """Every stored executable-price row (PR-016), file order. A corrupt
+        line is skipped and logged."""
+        path = self._executable_prices_path()
+        if not path.exists():
+            return []
+        rows: list[dict] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError as exc:
+                logger.warning("[PortfolioStore] skipping bad executable-price line: %s", exc)
+                continue
+            if isinstance(row, dict):
+                rows.append(row)
+        return rows
+
     def _exit_shadow_path(self) -> Path:
         return self._dir / "exit_shadow.jsonl"
 

@@ -595,8 +595,8 @@ def test_pace_says_already_once_the_gate_has_its_decisions():
 def test_a_member_sees_only_their_own_round_trips_and_the_lines_write_only_the_scorecard(tmp_path):
     """The owner's ledger has a stop-loss trade and a buy-back; the member's
     has one trade sold by hand. Each scorecard counts its own only, and
-    building it changes no ledger: the only file that changes is the
-    scorecard's own."""
+    building it changes no ledger: the only files that change are the
+    scorecard's own and, since PR-016, the executable-price side file."""
     owner = PortfolioStore(user_id="primary", base_dir=str(tmp_path))
     for t in (buy("2026-01-05", "OWN", costs=10.0, user="primary"),
               sell("2026-02-02", "OWN", -8.0, triggers=("stop_breach",), costs=12.0,
@@ -623,5 +623,6 @@ def test_a_member_sees_only_their_own_round_trips_and_the_lines_write_only_the_s
     assert mine["bought_back"]["since_start"]["count"] == 0
     after = snapshot()
     changed = {p for p in after if before.get(p) != after[p]}
-    assert changed and all(p.name.startswith("weekly_scorecard.") for p in changed)
+    assert changed and all(p.name.startswith(("weekly_scorecard.", "executable_prices."))
+                           for p in changed)
     assert all(before[p] == after[p] for p in before)

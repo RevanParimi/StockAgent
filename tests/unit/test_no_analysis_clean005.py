@@ -268,8 +268,10 @@ def test_an_answer_missing_one_dimension_is_still_an_analysis(failing):
     assert _failure_rows() == []
 
 
-def test_the_backup_analysis_is_off_by_default():
-    assert settings.UNIFIED_ANALYST_FALLBACK_LEGACY is False
+def test_there_is_no_backup_analysis_to_switch_on():
+    """CLEAN-005 step 2: the setting and the worker pool are gone."""
+    assert not hasattr(settings, "UNIFIED_ANALYST_FALLBACK_LEGACY")
+    assert not hasattr(bo_mod.BaseSectorOrchestrator, "_run_via_graph")
 
 
 # ---------------------------------------------------------------------------
@@ -551,3 +553,81 @@ def test_the_status_page_shows_the_count_in_the_fallback_slot(monkeypatch):
     src = inspect.getsource(scheduler_api)
     assert '"analyses_failed_today":    failed_count_today()' in src
     assert "fallback_events_today" not in src
+
+
+# ---------------------------------------------------------------------------
+# Step 2: the layer is gone and nothing reaches for it
+# ---------------------------------------------------------------------------
+
+REPO = Path(__file__).resolve().parents[2]
+
+DELETED_MODULES = (
+    "backend.shared.pipeline.graphs",
+    "backend.shared.pipeline.base_agent",
+    "backend.shared.agents",
+    "core.pipeline.base_agent",
+    "services.data.context.builder",
+    "services.data.stores.fallback_events",
+    "backend.sectors.generic.prompts.dimensions",
+    "langgraph",
+) + tuple(f"backend.sectors.{s}.agents" for s in
+          ("automobile", "banking_bfsi", "it_sector", "renewable_energy")) \
+  + tuple(f"backend.sectors.{s}.config.registry" for s in
+          ("automobile", "banking_bfsi", "it_sector", "renewable_energy"))
+
+
+def _tracked_python() -> list[Path]:
+    import subprocess
+    out = subprocess.run(["git", "ls-files", "*.py"], cwd=REPO, capture_output=True,
+                         text=True, check=True).stdout.split()
+    return [REPO / p for p in out]
+
+
+def test_no_tracked_file_imports_a_deleted_module():
+    import ast
+    hits = []
+    for path in _tracked_python():
+        if not path.exists():
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        for node in ast.walk(tree):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                names = [node.module] + [f"{node.module}.{a.name}" for a in node.names]
+            for name in names:
+                if any(name == m or name.startswith(m + ".") for m in DELETED_MODULES):
+                    hits.append(f"{path.relative_to(REPO)}:{node.lineno} {name}")
+    assert hits == []
+
+
+def test_the_per_analyst_prompts_are_gone_and_the_one_prompt_per_path_stays():
+    sectors = REPO / "src" / "backend" / "sectors"
+    for path in ("automobile", "banking_bfsi", "it_sector", "renewable_energy", "generic"):
+        prompts = {p.name for p in (sectors / path / "prompts").glob("*.py")}
+        assert prompts == {"__init__.py", "unified.py"}, path
+        assert not (sectors / path / "agents").exists()
+
+
+def test_langgraph_is_not_a_requirement():
+    for name in ("requirements.txt", "requirements-test.txt", "pyproject.toml"):
+        text = (REPO / name).read_text(encoding="utf-8").lower()
+        assert "langgraph" not in text, name
+
+
+def test_every_path_builds_and_routes_to_the_one_call(monkeypatch):
+    """Each registered path constructs with no analyst team and has a spec
+    in SECTOR_SPECS, so a run can only be the one call or no analysis."""
+    from backend.sectors.registry import _BACKEND_LOADERS
+    from backend.shared.pipeline.unified_analyst import SECTOR_SPECS
+    monkeypatch.setattr(bo_mod, "get_llm_client", lambda: MagicMock())
+    monkeypatch.setattr(sa_mod, "get_llm_client", lambda: MagicMock())
+    names = set()
+    for key, load in _BACKEND_LOADERS.items():
+        cls = load()
+        orch = cls()
+        assert orch.SECTOR_NAME in SECTOR_SPECS, key
+        assert not hasattr(orch, "_sub_agents")
+        names.add(orch.SECTOR_NAME)
+    assert names == set(SECTOR_SPECS)

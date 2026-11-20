@@ -401,7 +401,7 @@ def test_an_unresolved_symbol_abstains(market, fresh_db, monkeypatch, tmp_path, 
 
 
 def test_a_run_without_a_bundle_abstains(monkeypatch, gate_mode):
-    """The legacy worker-pool path builds no bundle: nothing to verify."""
+    """A run whose bundle was not described has nothing to verify against."""
     import backend.shared.pipeline.base_orchestrator as bo_mod
     gate_mode("enforce")
     with patch.object(bo_mod, "get_llm_client", return_value=MagicMock()):
@@ -409,10 +409,10 @@ def test_a_run_without_a_bundle_abstains(monkeypatch, gate_mode):
     orch._last_gate_inputs = None
     report = FinalReport(ticker="X", company_name="X", final_score=0.8, verdict="BUY",
                          weighted_agent_scores={})
-    orch._apply_decision_gate(report, "X", "legacy-run")
+    orch._apply_decision_gate(report, "X", "undescribed-run")
     assert report.verdict == "INSUFFICIENT DATA"
-    assert report.decision_gate.run_id == "legacy-run"
-    assert "legacy worker pool" in report.decision_gate.reasons[0]
+    assert report.decision_gate.run_id == "undescribed-run"
+    assert "no structured provenance" in report.decision_gate.reasons[0]
 
 
 def test_a_failing_gate_abstains_rather_than_passes(monkeypatch, gate_mode):

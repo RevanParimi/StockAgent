@@ -82,7 +82,7 @@ def get_serper_key(sector: str) -> str:
     Return the Serper API key for the given sector.
 
     Single paid key now serves all sectors — `sector` is kept for call-site
-    compatibility (bundle_builder, ContextBuilder both pass it) but no longer
+    compatibility (bundle_builder passes it) but no longer
     affects which key is returned.
     """
     return SERPER_API_KEY
@@ -838,23 +838,13 @@ CLOSE_VERIFY_ENABLED: bool = cfg("rl.close_verify_enabled", env="CLOSE_VERIFY_EN
 CLOSE_VERIFY_TOLERANCE_PCT: float = cfg("rl.close_verify_tolerance_pct", env="CLOSE_VERIFY_TOLERANCE_PCT", fallback=1.0)
 
 # ---------------------------------------------------------------------------
-# Unified Sector Analyst (2026-06-12 redesign) — one data bundle + one
-# reasoning-model call replaces the per-sector parallel agent fan-out.
-# CSV of sector names on the unified path; "" disables it everywhere.
+# The analysis: one data bundle + one reasoning-model call per stock, on every
+# path. There is no switch back to the per-analyst method and no backup
+# analysis (CLEAN-005 removed both, with their two settings).
 # ---------------------------------------------------------------------------
-UNIFIED_ANALYST_SECTORS: str = cfg(
-    "unified_analyst.sectors", env="UNIFIED_ANALYST_SECTORS",
-    fallback="automobile,banking_bfsi,it_sector,renewable_energy,generic",
-)
-UNIFIED_ANALYST_FALLBACK_LEGACY: bool = cfg("unified_analyst.fallback_legacy", env="UNIFIED_ANALYST_FALLBACK_LEGACY", fallback=False)
 UNIFIED_ANALYST_MAX_TOKENS: int = cfg("unified_analyst.max_tokens", env="UNIFIED_ANALYST_MAX_TOKENS", fallback=6000)
 UNIFIED_SECTION_MAX_CHARS: int = cfg("unified_analyst.section_max_chars", env="UNIFIED_SECTION_MAX_CHARS", fallback=2500)
 UNIFIED_BUNDLE_MAX_CHARS: int = cfg("unified_analyst.bundle_max_chars", env="UNIFIED_BUNDLE_MAX_CHARS", fallback=18000)
-
-
-def unified_analyst_sectors() -> set[str]:
-    """Parsed UNIFIED_ANALYST_SECTORS; empty set when disabled."""
-    return {s.strip() for s in UNIFIED_ANALYST_SECTORS.split(",") if s.strip()}
 
 
 # ---------------------------------------------------------------------------

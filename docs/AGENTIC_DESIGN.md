@@ -23,7 +23,7 @@ Research (on demand, monthly forecast, daily-review re-runs, discovery deep dive
 ├── Sector routing            [STATIC] registry: 4 native graphs + generic             section 5
 ├── Sector data bundle        [STATIC] 10 typed sections, one fetch pass               section 6
 ├── Unified analyst           [LLM reasoning] one call scores every dimension         section 7
-│   └── legacy per-dimension pool  [LLM bulk] fallback on total failure only         section 11
+│   └── no analysis when it scores nothing (no backup method)                       section 11
 ├── Signal aggregator         [STATIC composite + LLM reasoning narrative]             section 9
 └── Decision gate             [STATIC] actionable / degraded / abstain                 section 10
 
@@ -64,7 +64,7 @@ production can differ. All calls go through OpenRouter.
 |---|---|---|
 | Fast | `deepseek/deepseek-v4.1-flash-1017` | Chat tool loop; pre-open shock rating |
 | Reasoning | `xiaomi/mimo-v2.6-pro` | Unified analyst; aggregator narrative; FeedbackAgent; ThesisReviewer; chat retry after a rate limit or server error |
-| Bulk | `deepseek/deepseek-v4-flash` | Ticker resolution; legacy per-dimension agents; forecast profile; prompt-enhancer fallback; dossier curator and distillation; event ingestion; research loop; macro reviewer; portfolio narrator; brief and weekly headlines; IPO extraction and narration |
+| Bulk | `deepseek/deepseek-v4-flash` | Ticker resolution; forecast profile; prompt-enhancer fallback; dossier curator and distillation; event ingestion; research loop; macro reviewer; portfolio narrator; brief and weekly headlines; IPO extraction and narration |
 
 Shared defaults: temperature 0.2 (`llm.temperature`), 2,048 output tokens
 (`llm.max_tokens`) and a 60-second timeout. Components that set their own
@@ -87,9 +87,8 @@ run the same steps for every graph:
    read-only by everything after it. TATAMOTORS is skipped by a symbol
    override, because the announcements endpoint returns nothing for it.
 4. **Score.** The unified analyst scores every dimension from one data bundle
-   (sections 6 and 7). On a total failure with
-   `unified_analyst.fallback_legacy` on, the legacy pool runs instead and the
-   fallback is counted (section 11).
+   (sections 6 and 7). A call that scores nothing is no analysis: the run
+   stops here and the caller skips the stock (section 11).
 5. **Aggregate** into a composite, a bound verdict and a narrative
    (section 9).
 6. **Gate** the report (section 10) before anything logs or returns its
@@ -235,17 +234,15 @@ sector's graph from the rendered bundle. Each graph's prompt module
 (`prompts/unified.py`) defines its dimensions, sub-scores and scoring anchors.
 
 - Each dimension comes back as the graph's own `AgentOutput` subclass, the
-  same shape the legacy agents produce, so the aggregator, the learning loop,
-  the UI and chat read either path alike.
+  shape the aggregator, the learning loop, the UI and chat read.
 - A truncated response is salvaged: complete dimensions are kept.
 - A missing or unparseable dimension gets a neutral 0.5 with an `error`, which
   the aggregator excludes and the data-health row counts as missing.
-- Total failure returns nothing and never raises. The health row still
-  records the hollow attempt; with the fallback on, the legacy pool then
-  scores the run, and that report carries no health row and no bundle
-  provenance, so its gate abstains (section 10).
+- Total failure returns nothing and never raises; the analyst keeps the
+  reason in plain words. The health row still records the hollow attempt,
+  and the orchestrator turns the run into no analysis (section 11).
 
-`unified_analyst.sectors` lists the graphs on this path; all five are on it.
+All five graphs are on this path, and no setting routes a graph elsewhere.
 
 ## 8. Dimensions and default weights
 
@@ -318,7 +315,7 @@ row:
 - **abstain** when an essential section (fundamentals, technicals,
   peers_valuation) is not `ok` or `cache_hit`; when fewer than half the
   graph's dimensions were scored (`decision_gate.min_dimensions_fraction`);
-  when the run has no bundle (the legacy pool); or when the ticker's identity
+  when the run's bundle was not described (no provenance); or when the ticker's identity
   for today is unresolved, or its price history came from another symbol;
 - **degraded** when it may act but an ordinary enrichment is missing;
 - **actionable** when nothing is missing.
@@ -333,31 +330,28 @@ and [instrument identity](TECHNICAL_DESIGN.md#instrument-identity) sections
 give the examples; RL_DESIGN §6 and the [autopilot guide](AUTOPILOT_GUIDE.md)
 section 4 describe what each consumer refuses.
 
-## 11. Legacy per-dimension fallback
+## 11. When the analysis fails
 
-The pre-unified path remains as the fallback for a total analyst failure.
+There is no backup method. A run whose analysis call scores no dimension (the
+model timed out or failed on every attempt, the answer was not readable JSON,
+or it named none of the graph's dimensions) is **no analysis**:
+`base_orchestrator.py` raises `AnalysisUnavailable`
+(`src/backend/shared/pipeline/no_analysis.py`) before the aggregator, so no
+verdict, score row, analysis log or gate decision is written.
 
-- **Agents.** Automobile, banking, IT and renewables keep one `BaseAgent`
-  subclass per dimension, under `src/backend/sectors/<sector>/agents/`; the
-  generic graph builds eight `UniversalAgent`s from its dimension prompts.
-  Each agent makes its own bulk-tier call (default temperature and tokens,
-  three attempts with back-off on rate limits and timeouts) and, on failure,
-  returns a neutral 0.5 with an `error`.
-- **Context.** Each agent fetches its own context through
-  [ContextBuilder](../services/data/context/builder.py): a sector-specific
-  builder method when one exists, else a generic one, with static search
-  queries. The dossier digest is appended to its system prompt.
-- **Graph.** A LangGraph fan-out runs the agents in parallel, with three
-  non-blocking rails: an input check, a clamp on each output, and a conflict
-  flag at aggregation.
+- **Scheduled callers skip the stock** and carry on: the 16:30 review returns
+  `no_analysis` before any write of the stock's records (counted as skipped);
+  the forecast and re-forecast write no envelope; the deep dive mints no idea.
+- **On-demand callers say so plainly.** `POST /analyse` answers 503, and the
+  stream and the chat tool say "Today's analysis of TICKER could not be
+  produced", with no verdict and no score.
+- **Counted once.** One warning names the stock and the reason, a row goes to
+  `data/rl/analysis_failures.jsonl`, and `GET /scheduler/status` reports the
+  day's count (IST) as `analyses_failed_today`. Ten consecutive failed model
+  calls also raise the model-failure alert (`ops_alerts.record_llm_result`).
 
-A fallback run makes one search per agent query instead of at most three per
-run (the code estimates 6 to 8 times the news-search credits), and builds no
-bundle, so its report has no section provenance and its gate abstains. Each
-fallback is recorded in the fallback-event store, and `/scheduler/status`
-reports the day's count. **Planned:**
-measure actual provider calls (SA-025) and retire the fallback once the
-replacement is measured (SA-027).
+An answer that scores some dimensions and misses others is still an analysis;
+the decision gate judges it (section 10).
 
 ## 12. Narration and feed agents
 
@@ -397,7 +391,6 @@ above.
 | Sector routing | Static | `sectors/registry.py` | Unknown → generic |
 | Bundle sections and statuses | Static | `services/data/context/bundle_builder.py` | Typed results |
 | Unified analyst | LLM reasoning, temperature 0.2 | `shared/pipeline/unified_analyst.py` | One call per analysis |
-| Legacy dimension agents | LLM bulk | `sectors/*/agents/`, `shared/agents/universal.py` | Fallback only |
 | Composite, conflicts, binding | Static | `shared/pipeline/signal_aggregator.py` | Bands from `score_thresholds` |
 | Aggregator narrative | LLM reasoning | same | Verdict overridden by binding |
 | Decision gate | Static | `shared/pipeline/decision_gate.py` | Section 10 |

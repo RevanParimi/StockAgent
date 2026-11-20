@@ -70,16 +70,10 @@ logger = logging.getLogger(__name__)
 # `sub_scores: <Sector>SubScores | None` field — unchanged from before this
 # refactor.
 #
-# banking_bfsi / it_sector / renewable_energy: on the LEGACY path these
-# dimensions are produced by `UniversalAgent._parse_output` (5-7 of the
-# dimensions) or a sector-specific custom agent (BFSIUniverseAgent,
-# ITTranscriptNLPAgent, REBusinessAgent) — see
-# src/backend/shared/agents/universal/agent.py:70-79 and the three custom
-# agent modules. ALL of these return the BASE `AgentOutput` class,
-# parameterized with `agent=<dimension name>`; none of them declare a
-# `sub_scores` field on the base class (custom agents pass a `sub_scores={...}`
-# dict kwarg, but pydantic v2's default `extra="ignore"` silently drops it —
-# i.e. legacy sub_scores are effectively absent for these 20 dimensions too).
+# banking_bfsi / it_sector / renewable_energy: the per-analyst method these
+# dimensions came from before (removed by CLEAN-005) returned the BASE
+# `AgentOutput` class, parameterized with `agent=<dimension name>`, with no
+# usable `sub_scores` field.
 #
 # To keep `_parse_dimension`/`_missing_output`/`_error_output` working
 # unchanged (they read `output_cls.model_fields["agent"].default` and resolve

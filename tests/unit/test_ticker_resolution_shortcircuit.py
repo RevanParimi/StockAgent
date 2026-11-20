@@ -23,17 +23,8 @@ from backend.shared.pipeline.base_orchestrator import BaseSectorOrchestrator
 from backend.shared.schemas.pipeline import AgentOutput
 
 
-class _DummyAgent:
-    def run(self, query, run_id):  # pragma: no cover - never invoked
-        return AgentOutput(agent="dummy", ticker=query.ticker, overall_score=0.5)
-
-
 class _RenewableTestOrchestrator(BaseSectorOrchestrator):
     SECTOR_NAME = "renewable_energy"
-
-    def __init__(self) -> None:
-        self._sub_agents = {"dummy": _DummyAgent()}
-        super().__init__()
 
 
 @pytest.fixture

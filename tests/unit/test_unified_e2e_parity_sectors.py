@@ -6,7 +6,7 @@ End-to-end FinalReport contract parity for the Unified Sector Analyst
 
 Mirrors tests/unit/test_unified_e2e_parity.py (automobile) but covers the
 three newly-enabled sectors. Runs the REAL <sector>AgentOrchestrator + REAL
-SignalAggregator code with UNIFIED_ANALYST_SECTORS set to the sector under
+SignalAggregator code for the sector under
 test. Only LLM calls and fetchers are mocked (no network):
   - _resolve_ticker            -> StockQuery(ticker=<sector ticker>, ...)
   - _prefetch_nse_data          -> no-op
@@ -120,8 +120,6 @@ def _make_llm_response(content: str) -> MagicMock:
 def test_unified_e2e_final_report_contract_parity(
     monkeypatch, sector, orchestrator_module, orchestrator_cls, ticker, company_name, news,
 ):
-    monkeypatch.setattr(bo_mod.settings, "UNIFIED_ANALYST_SECTORS", sector)
-    monkeypatch.setattr(bo_mod.settings, "UNIFIED_ANALYST_FALLBACK_LEGACY", True)
     # The run log's live price lookup (yfinance) stays in-process: {} is the
     # logger's own answer when the lookup fails (SA-005).
     import services.data.stores.analysis_logger as analysis_logger_mod

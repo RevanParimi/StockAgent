@@ -495,10 +495,6 @@ class _Orchestrator:
         class _IT(BaseSectorOrchestrator):
             SECTOR_NAME = "it_sector"
 
-            def __init__(self):
-                self._sub_agents = {"dummy": MagicMock()}   # the graph is never built
-                super().__init__()
-
         with patch("backend.shared.pipeline.base_orchestrator.get_llm_client", return_value=MagicMock()):
             orch = _IT()
         orch._aggregator = MagicMock()

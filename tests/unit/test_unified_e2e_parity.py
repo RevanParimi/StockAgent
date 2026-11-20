@@ -4,8 +4,8 @@ tests/unit/test_unified_e2e_parity.py
 End-to-end FinalReport contract parity for the Unified Sector Analyst
 (Task 7, 2026-06-12 redesign).
 
-Runs the REAL AutomobileAgentOrchestrator + REAL SignalAggregator code with
-UNIFIED_ANALYST_SECTORS="automobile". Only LLM calls and fetchers are
+Runs the REAL AutomobileAgentOrchestrator + REAL SignalAggregator code (one
+analysis path since CLEAN-005). Only LLM calls and fetchers are
 mocked (no network):
   - _resolve_ticker            -> StockQuery(ticker="MARUTI", ...)
   - _prefetch_nse_data          -> no-op
@@ -114,8 +114,6 @@ def _make_llm_response(content: str) -> MagicMock:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("run_mode", ["sync", "async"])
 async def test_unified_e2e_final_report_contract_parity(monkeypatch, run_mode):
-    monkeypatch.setattr(bo_mod.settings, "UNIFIED_ANALYST_SECTORS", "automobile")
-    monkeypatch.setattr(bo_mod.settings, "UNIFIED_ANALYST_FALLBACK_LEGACY", True)
     # The run log's live price lookup (yfinance) stays in-process: {} is the
     # logger's own answer when the lookup fails (SA-005).
     import services.data.stores.analysis_logger as analysis_logger_mod

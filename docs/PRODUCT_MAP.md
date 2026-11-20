@@ -146,7 +146,6 @@ its own data, and the typed result says how (KT section 4).*
 | Macro news feed | `services/background/macro_news_fetcher.py`, `macro_news_cache.py` | Market and policy headlines reviewed by the bulk model, one file a day |
 | Fetch result | `services/data/context/fetch_result.py` | The typed status every section producer returns |
 | Bundle builder | `services/data/context/bundle_builder.py` | One fetch pass for the unified analyst (595 lines) |
-| Context builder | `services/data/context/builder.py` | Per-agent context for the legacy fallback (868 lines) |
 | Technical indicators | `core/intelligence/algorithms/indicators/fetcher.py` | Price history, indicators, sector benchmarks |
 
 **The instructive failure in this layer.** News searches once had no recency
@@ -176,7 +175,7 @@ parquet for EOD panels. KT section 3 lists every record and its writer.*
 | EOD store | `services/data/stores/eod_store.py` | Parquet, one file per trading day |
 | Chat sessions | `services/data/stores/chat_session_store.py` | `chat_sessions.db` |
 | Analysis and run loggers | `services/data/stores/analysis_logger.py`, `run_logger.py` | Per-run output; every LLM call |
-| Job outcomes, fallback events | `services/data/stores/job_outcomes.py`, `fallback_events.py` | Last result per job, with per-ticker review outcomes; legacy-pool engagements |
+| Job outcomes, failed analyses | `services/data/stores/job_outcomes.py`, `analysis_failures.py` | Last result per job, with per-ticker review outcomes; analyses that scored nothing |
 | Verdict store | `services/data/verdict_store.py` | **The plane boundary**: the user plane's only read path into prediction stores |
 | Backup, restore, off-site | `services/data/backup.py`, `restore.py`, `offsite.py` | Nightly archive, restore drill, encrypted off-site copy |
 
@@ -218,16 +217,20 @@ and a decision gate.* Design: [AGENTIC_DESIGN](AGENTIC_DESIGN.md).
   list or instrument registry) resolves to itself with no model call; free
   text goes to the bulk model.
 
-### 5.2 The two execution paths — the critical distinction
+### 5.2 One execution path, and what happens when it fails
 
 | Path | Entry | Cost |
 |---|---|---|
-| **Unified analyst** (live, all five graphs) | `src/backend/shared/pipeline/unified_analyst.py` | One data bundle, **one** reasoning call for every dimension |
-| **Legacy worker pool** (fallback) | `src/backend/shared/pipeline/graphs/`, `base_agent.py`, `shared/agents/universal.py` | LangGraph fan-out, one bulk call per dimension |
+| **Unified analyst** (all five graphs) | `src/backend/shared/pipeline/unified_analyst.py` | One data bundle, **one** reasoning call for every dimension |
 
-`base_orchestrator.py` chooses the path, records the data-health row and
-applies the decision gate. Fallback engagements are counted in
-`fallback_events.py`.
+There is no second method. When the call scores no dimension (timeout,
+unreadable answer, no dimension named, retries exhausted) the run is **no
+analysis**: `base_orchestrator.py` raises `AnalysisUnavailable`
+(`no_analysis.py`) before the aggregator, every caller skips the stock, and the
+on-demand routes say today's analysis could not be produced. The day's count is
+`analyses_failed_today` on `GET /scheduler/status` (`analysis_failures.py`).
+`base_orchestrator.py` also records the data-health row and applies the
+decision gate.
 
 ### 5.3 Per-sector dimensions
 
@@ -711,7 +714,6 @@ is the current baseline; [audit/LEDGER.md](audit/LEDGER.md) records every
 |---|---|
 | 17 shim files | The half-finished restructure ([§0](#0-orientation)) |
 | `src/backend/shared/prompts/feedback_agent.py` | An old copy; the live prompt is `core/config/prompts/shared/feedback_agent.py` |
-| Legacy LangGraph worker pool | Fallback only; engagements counted |
 
 ---
 

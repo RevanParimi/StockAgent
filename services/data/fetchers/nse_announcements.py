@@ -3,9 +3,8 @@ services/data/fetchers/nse_announcements.py
 ============================================
 NseIndiaApi pre-fetch for per-ticker company data.
 
-Called ONCE per analysis run before LangGraph fan-out.
-Result stored in StockQuery.nse_data and shared read-only
-across all 8 parallel agents via ContextBuilder.
+Called ONCE per analysis run, before the data bundle is built.
+Result stored in StockQuery.nse_data, read-only.
 
 Key-mapping design
 ------------------

@@ -7,8 +7,6 @@ All LLM calls are mocked — no real API calls or network access needed.
 What is tested:
   - Ticker resolution falls back to raw input when LLM resolution fails
   - Sync analyse() wiring returns the aggregator's FinalReport
-  - A single agent failure is contained by the worker-pool node (swarm
-    fallback) instead of crashing the pipeline
 """
 
 from unittest.mock import MagicMock, patch
@@ -66,33 +64,3 @@ class TestOrchestratorTickerResolution:
         orch._llm = mock_llm
         query = orch._resolve_ticker("TATAMOTORS")
         assert query.ticker == "TATAMOTORS"
-
-
-class TestOrchestratorAgentFailure:
-    def test_single_agent_failure_does_not_crash(self):
-        """If one agent raises, the worker-pool node replaces it with a neutral
-        output rather than crashing the pipeline (swarm fallback). Drives the
-        real compiled LangGraph over two stub agents — no network, no LLM."""
-        from core.schemas.pipeline import AgentOutput, StockQuery
-
-        failing = MagicMock()
-        failing.run.side_effect = RuntimeError("Simulated agent crash")
-        healthy = MagicMock()
-        healthy.run.return_value = AgentOutput(agent="b", ticker="MARUTI", overall_score=0.6)
-
-        with patch(
-            "backend.sectors.automobile.pipeline.orchestrator._SUB_AGENTS",
-            {"a": failing, "b": healthy},
-        ), patch(
-            "backend.shared.pipeline.base_orchestrator.get_llm_client",
-            return_value=MagicMock(),
-        ), patch("backend.shared.pipeline.base_orchestrator.SignalAggregator"):
-            orch = AutomobileAgentOrchestrator()
-
-        query = StockQuery(ticker="MARUTI", company_name="Maruti Suzuki India Ltd")
-        outputs = orch._run_via_graph(query, run_id="r1")  # must not raise
-
-        assert set(outputs) == {"a", "b"}
-        assert outputs["a"].error  # failing agent → neutral fallback carries error context
-        assert outputs["a"].overall_score == 0.5
-        assert outputs["b"].overall_score == 0.6

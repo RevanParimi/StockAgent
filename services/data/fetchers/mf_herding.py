@@ -9,8 +9,8 @@ accumulation or distribution before it shows up in price moves.
 Architecture
 ------------
 Weekly cache (ISO week key) — NAV changes daily but the trend signal is
-stable across 7 days. ContextBuilder.build() calls get_sector_mf_herding()
-once per sector; no per-agent re-fetch.
+stable across 7 days. The analysis's data bundle (bundle_builder) calls
+get_sector_mf_herding() once per sector.
 
 Signal value
 ------------

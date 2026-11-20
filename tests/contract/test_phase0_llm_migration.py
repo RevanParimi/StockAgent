@@ -8,7 +8,7 @@ Verifies that:
   - All agents use the OpenAI-compatible client pointed at OpenRouter
   - settings.py exposes OPENROUTER_API_KEY and OPENROUTER_BASE_URL
   - The model is a Qwen variant (accuracy-first selection)
-  - BaseAgent, orchestrator, signal_aggregator, feedback_agent all
+  - The orchestrator, signal_aggregator and feedback_agent all
     instantiate OpenAI (not Groq) clients
   - No GROQ_API_KEY references remain in settings
 
@@ -91,41 +91,6 @@ class TestOpenRouterSettings:
 
 
 # ---------------------------------------------------------------------------
-# 3. BaseAgent uses OpenAI client with OpenRouter base_url
-# ---------------------------------------------------------------------------
-
-class TestBaseAgentUsesOpenAI:
-    @patch("services.clients.llm_client.OpenAI")
-    def test_base_agent_instantiates_openai(self, mock_openai_cls):
-        mock_openai_cls.return_value = MagicMock()
-        from backend.sectors.automobile.agents.sales_demand import SalesDemandAgent
-        # Re-import to trigger __init__
-        agent = SalesDemandAgent.__new__(SalesDemandAgent)
-        agent.__init__()
-        mock_openai_cls.assert_called_once()
-
-    @patch("services.clients.llm_client.OpenAI")
-    def test_base_agent_passes_openrouter_base_url(self, mock_openai_cls):
-        from core.config import settings
-        mock_openai_cls.return_value = MagicMock()
-        from backend.sectors.automobile.agents.sales_demand import SalesDemandAgent
-        SalesDemandAgent()
-        _, kwargs = mock_openai_cls.call_args
-        assert kwargs.get("base_url") == settings.OPENROUTER_BASE_URL, (
-            f"Expected OpenRouter base_url, got: {kwargs.get('base_url')}"
-        )
-
-    @patch("services.clients.llm_client.OpenAI")
-    def test_base_agent_passes_openrouter_api_key(self, mock_openai_cls):
-        from core.config import settings
-        mock_openai_cls.return_value = MagicMock()
-        from backend.sectors.automobile.agents.sales_demand import SalesDemandAgent
-        SalesDemandAgent()
-        _, kwargs = mock_openai_cls.call_args
-        assert kwargs.get("api_key") == settings.OPENROUTER_API_KEY
-
-
-# ---------------------------------------------------------------------------
 # 4. Orchestrator uses OpenAI client
 # ---------------------------------------------------------------------------
 
@@ -134,8 +99,7 @@ class TestOrchestratorUsesOpenAI:
     # base_orchestrator), which constructs services.clients.llm_client.OpenAI
     # uncached — so patching OpenAI there still intercepts self._llm. The
     # aggregator now lives in base_orchestrator, so it (not the migration shim)
-    # is the seam to stub out. Sub-agents are module-level singletons built at
-    # import time, so they never call the patched OpenAI during __init__.
+    # is the seam to stub out.
     @patch("services.clients.llm_client.OpenAI")
     @patch("backend.shared.pipeline.base_orchestrator.SignalAggregator")
     def test_orchestrator_instantiates_openai(self, mock_agg, mock_openai_cls):
@@ -209,42 +173,3 @@ class TestProgressCallback:
         sig = inspect.signature(AutomobileAgentOrchestrator.analyse)
         default = sig.parameters["progress_callback"].default
         assert default is None
-
-    def test_progress_callback_called_per_agent(self):
-        """
-        Legacy worker-pool path: the progress callback fires once per agent
-        that completes.
-
-        Automobile runs the unified analyst in production, so this pins the
-        orchestrator to the legacy fan-out (still live as the unified-failure
-        fallback path) by building it over two stub agents and driving
-        _run_via_graph directly through the real compiled LangGraph — no
-        network, no LLM.
-        """
-        from core.schemas.pipeline import AgentOutput, StockQuery
-
-        agent_a = MagicMock()
-        agent_a.run.return_value = AgentOutput(agent="a", ticker="MARUTI", overall_score=0.7)
-        agent_b = MagicMock()
-        agent_b.run.return_value = AgentOutput(agent="b", ticker="MARUTI", overall_score=0.6)
-
-        with patch(
-            "backend.sectors.automobile.pipeline.orchestrator._SUB_AGENTS",
-            {"a": agent_a, "b": agent_b},
-        ), patch(
-            "backend.shared.pipeline.base_orchestrator.get_llm_client",
-            return_value=MagicMock(),
-        ), patch("backend.shared.pipeline.base_orchestrator.SignalAggregator"):
-            from core.pipeline.orchestrator import AutomobileAgentOrchestrator
-            orch = AutomobileAgentOrchestrator()
-
-        query = StockQuery(ticker="MARUTI", company_name="Maruti Suzuki India Ltd")
-        fired: list[tuple[str, float]] = []
-        orch._run_via_graph(
-            query, run_id="r1",
-            progress_callback=lambda name, score: fired.append((name, score)),
-        )
-
-        assert len(fired) == 2
-        assert {name for name, _ in fired} == {"a", "b"}
-        assert all(isinstance(score, float) for _, score in fired)

@@ -428,9 +428,8 @@ rl:
   close_verify_tolerance_pct: 1.0
 
 unified_analyst:
-  # CSV of sectors on the unified one-call path; "" disables everywhere.
-  sectors: "automobile,banking_bfsi,it_sector,renewable_energy,generic"
-  fallback_legacy: false   # CLEAN-005 step 1: a failed analysis is no analysis
+  # One data bundle + one call per stock on every path. A call that scores
+  # nothing is "no analysis"; there is no backup method (CLEAN-005).
   max_tokens: 6000
   section_max_chars: 2500
   bundle_max_chars: 18000
@@ -882,7 +881,7 @@ decision_gate:
   # an essential section above (observability.data_health_essential_sections)
   # is not ok/cache_hit, when fewer than min_dimensions_fraction of the
   # sector's dimensions were scored, or when the run has no structured
-  # provenance (the legacy worker-pool fallback).
+  # provenance (its data bundle was not described).
   #
   # record  = compute the gate everywhere and record, in
   #           data/logs/decision_gate.jsonl and on the report, forecast rows and

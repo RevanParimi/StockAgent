@@ -706,7 +706,6 @@ def _quiet_orchestrator(monkeypatch, block):
     orch._aggregator.run.side_effect = lambda **kw: FinalReport(
         ticker="NEWDRUG", company_name="New Drug Ltd", final_score=0.7, verdict="BUY",
         weighted_agent_scores={})
-    monkeypatch.setattr(bo.settings, "UNIFIED_ANALYST_SECTORS", "generic")
     return orch, seen
 
 

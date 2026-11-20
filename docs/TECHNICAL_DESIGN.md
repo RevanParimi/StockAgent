@@ -321,8 +321,8 @@ time, so an unchanged tree always gives the same digest.
 | Class | Store it picks | Code |
 |---|---|---|
 | `managed` | `<managed sector>/<TICKER>` | The monthly forecast and daily review ([scheduler](../services/scheduler/python/scheduler.py)), startup self-heal, event ingest, weekly ledger cleanup, RL monitor and scheduler API. |
-| `analysis_graph` | `<graph sector>/<TICKER>` | An analysis's learned-weight read ([base_orchestrator](../src/backend/shared/pipeline/base_orchestrator.py)) and its agents' dossier reads. For a pharma ticker that is `generic/<TICKER>`, while its RL store is `pharma/<TICKER>`. |
-| `automobile_default` | `automobile/<TICKER>` when no sector is passed | Manual CLIs (`run_schedule forecast` and `daily-review`, `generate_forecast`'s own main), the bundle builder's and base agent's fallbacks, the UI's last fallback. |
+| `analysis_graph` | `<graph sector>/<TICKER>` | An analysis's learned-weight read ([base_orchestrator](../src/backend/shared/pipeline/base_orchestrator.py)) and its dossier read. For a pharma ticker that is `generic/<TICKER>`, while its RL store is `pharma/<TICKER>`. |
+| `automobile_default` | `automobile/<TICKER>` when no sector is passed | Manual CLIs (`run_schedule forecast` and `daily-review`, `generate_forecast`'s own main), the bundle builder's fallback, the UI's last fallback. |
 | `discovery` | every `<dir>/<dir>` pair | Scorecard, eval harness, learning evidence, analytics and universe walk the whole tree; the UI scans it for an unmanaged ticker. |
 | `flat_cli` | `<TICKER>/` | `run_schedule feedback-status`. Discovery misreads such a directory as a sector. |
 
@@ -390,10 +390,10 @@ section 1.
    and company knowledge. NSE prefetch data is shared. Each section reports a
    typed status: it may be verified, cached, stale, a fallback, empty, not
    applicable or failed.
-4. The preferred unified analyst scores the sector dimensions together. The
-   legacy per-dimension pool remains a fallback. A whole research request can
-   involve resolution, aggregation, retries and extra provider calls; it is
-   not necessarily one LLM call.
+4. One analysis call scores the sector's dimensions together. There is no
+   second method behind it: a call that scores no dimension gives no analysis
+   (below). A whole research request can involve resolution, aggregation,
+   retries and extra provider calls; it is not necessarily one LLM call.
 5. The aggregator combines weighted scores, excludes errored contributions
    and normalizes surviving weights. With no surviving weight it falls back
    to a neutral composite. An LLM produces narrative and report fields.
@@ -409,6 +409,37 @@ section 1.
 `0.8 × 0.75 + 0.4 × 0.25 = 0.70`. The configured band containing 0.70 gives
 the bound verdict. A different LLM `final_score` is a different field, not
 necessarily an arithmetic error.
+
+### When the analysis fails
+
+The analysis call can come back with no scored dimension: the model timed out
+or failed on all three attempts, its answer was not readable JSON, or it named
+none of the sector's dimensions. That run is **no analysis**. The orchestrator
+raises `AnalysisUnavailable` (`src/backend/shared/pipeline/no_analysis.py`)
+before the aggregator, so nothing a verdict feeds is written: no aggregator
+call, no score-history row, no analysis log, no run summary, no gate decision.
+The run's data-health row and its API spend stay on record.
+
+| Caller | What it does with no analysis |
+|---|---|
+| The 16:30 review's re-analysis | Skips the stock for that session, before any write of its records: status `no_analysis`, counted as `skipped` (section 9). Nothing is graded, learned or advised from that session for the stock. |
+| Monthly forecast, re-forecast, paper lane | No envelope is written; a re-forecast leaves the current envelope as it is. |
+| Weekly deep dive | No shelf idea and no memo entry, so a later run can dive the stock again. The call still counts against the budget. |
+| `POST /analyse`, the stream, the chat tool | Say "Today's analysis of TICKER could not be produced", with no verdict and no score (`/analyse` answers 503). |
+
+Each failure is logged once, as a warning naming the stock and the reason,
+and recorded in `data/rl/analysis_failures.jsonl`. `GET /scheduler/status`
+reports the day's count (IST) as `analyses_failed_today`. Ten consecutive
+failed model calls also raise the existing model-failure alert
+([ops_alerts](../core/delivery/ops_alerts.py) `record_llm_result`).
+
+An answer that scores some dimensions and misses others is still an analysis;
+the decision gate judges it (below).
+
+**Example:** the model provider is down at 16:30. A held stock's review re-runs
+the analysis, gets nothing, and stops there: no feedback row, no weight
+change, and the advisor acts on nothing new for that stock. The status page
+shows `analyses_failed_today: 1`.
 
 ### Data health
 
@@ -522,7 +553,7 @@ only rows issued after a reading rule changes.
 The technicals section shows the stock's correlation and beta against an
 index chosen for its sector:
 
-- the bundle and the legacy agents pass the run's sector, and
+- the bundle passes the run's sector, and
   `settings.SECTOR_BENCHMARKS` names its index: automobile `^CNXAUTO` (Nifty
   Auto), banking/BFSI `^NSEBANK` (Nifty Bank), IT `^CNXIT` (Nifty IT) and
   renewable energy `^CNXENERGY` (Nifty Energy). `get_peer_correlation` in
@@ -615,8 +646,8 @@ of 9.
 
 - **abstain** when an essential section (`observability.data_health_essential_sections`)
   is not `ok`/`cache_hit`, when fewer than half the sector's dimensions were
-  scored (`decision_gate.min_dimensions_fraction: 0.5`), when the run has no
-  bundle at all (the legacy worker-pool fallback has no provenance), or when
+  scored (`decision_gate.min_dimensions_fraction: 0.5`), when the run's bundle
+  was not described (no provenance), or when
   the ticker's identity fails (below). An unresolved symbol lands here too:
   no provider knows it, so its essential sections are empty.
 - **degraded** when it may act but an ordinary enrichment (news, macro, flows,
@@ -3135,7 +3166,8 @@ therefore gives each enabled ticker exactly one outcome:
   stopped, as `record` mode lists them. A graded row with unknown provenance
   reads `degraded`;
 - `data_gated`: the gate stopped it before any write (`enforce` mode);
-- `skipped`: no envelope, no forecast row for the session, or no close;
+- `skipped`: no envelope, no forecast row for the session, no close, or no
+  analysis (`no_analysis`: the session's re-analysis scored nothing, section 4);
 - `failed`: it raised, returned a malformed result (an unknown status, or a
   result for another ticker or date), or was still running when the harvest
   budget ran out.
@@ -3758,8 +3790,8 @@ production observations as well.
 decides from the results read after idle-cash deployment is switched on
 (section 12).
 
-All five graphs already run one bundle and one reasoning-model call; the
-LangGraph pool is only a fallback. They differ mainly in five scoring schemes
+All five graphs already run one bundle and one reasoning-model call, with no
+second method behind it. They differ mainly in five scoring schemes
 (37 dimension slots under 24 names), and the LLM re-scores numbers the code
 has already computed. Missing data is scored 0.5. The
 [one-engine design](superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md),

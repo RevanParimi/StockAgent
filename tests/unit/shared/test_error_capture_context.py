@@ -507,20 +507,11 @@ class TestConfigureLogging:
 _ONE_SCORED = {"technical": AgentOutput(agent="technical", ticker="SUZLON", overall_score=0.6)}
 
 
-class _DummyAgent:
-    def run(self, query, run_id):  # pragma: no cover - graph is never invoked
-        return AgentOutput(agent="dummy", ticker=query.ticker, overall_score=0.5)
-
-
 def _orchestrator():
     from backend.shared.pipeline.base_orchestrator import BaseSectorOrchestrator
 
     class _TestOrchestrator(BaseSectorOrchestrator):
         SECTOR_NAME = "renewable_energy"
-
-        def __init__(self) -> None:
-            self._sub_agents = {"dummy": _DummyAgent()}
-            super().__init__()
 
     with patch("backend.shared.pipeline.base_orchestrator.get_llm_client",
                return_value=MagicMock()):
@@ -586,7 +577,6 @@ class TestOrchestratorOpensTheRunContext:
             return _ONE_SCORED
 
         monkeypatch.setattr(quiet_orchestrator, "_run_agents", _agents)
-        monkeypatch.setattr(quiet_orchestrator, "_unified_enabled", lambda: True)
         asyncio.run(quiet_orchestrator.analyse_async("suzlon"))
 
         assert seen["run_id"] and seen["ticker"] == "SUZLON"

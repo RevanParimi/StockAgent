@@ -94,9 +94,9 @@ Final score + Verdict + Investment thesis + Conviction drivers + Top risks
 
 This unified flow is the default for **all four sectors** (Banking/BFSI scores 6
 dimensions, IT 8, Renewable Energy 6 — same mechanics, sector-specific prompts and
-data bundle). If the unified analyst call ever fails outright, the sector
-automatically falls back to the legacy multi-agent path (parallel per-dimension
-agents, each with its own data fetch and LLM call) so a report is always produced.
+data bundle). If the analysis call fails outright (no dimension scored), there is
+no analysis that day: no verdict or score is shown, and scheduled jobs skip the
+stock and carry on with the others.
 
 **Verdict scale:**
 

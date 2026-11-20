@@ -235,3 +235,17 @@ owner's word of 19 Nov about 07:25 IST ("go ahead on pr 37"; STATE card `owner_w
    SUCCESS, the first `continue` on a weekday 09:30–14:00 IST makes the catch-up run (step 2,
    first chance Fri 20 Nov) before its own phase. `PR-037-W2` keeps Tue 1 Dec if both happen by
    Fri 20 Nov; a later deploy moves it by as many weeks.
+
+## Rollout, Fri 20 Nov: deployed; the catch-up run waits for the owner
+
+Autopilot `1120-1045-p1`, code-server, from about 10:46 IST (a weekday, inside 09:30–14:00).
+
+1. **The deploy** [measured]: `03debc1` (with `ab18c77`), pushed by the runner at about 00:17
+   IST after the full suite on that commit; deployment `0ac3c914` SUCCESS; `/health` 200 at
+   10:47 IST.
+2. **The catch-up run: not made.** The machine call to `POST /discovery/run` inside the
+   container (the key read there, never printed) was refused by the session's permission check
+   at about 10:50 IST as a production action from an unattended session. It was not retried by
+   another route. It waits for the owner on a weekday 09:30–14:00 IST: the command is in
+   HANDOFF "Waits for you". Saturday's 12:30 run goes ahead either way; without the catch-up the
+   shelf is about one Saturday behind (the table above).

@@ -1,58 +1,40 @@
-# Current handoff - 2026-11-19 (PR-040 accepted; push pending to Fri 20 Nov 00:10; in a push window PR-015 switches, outside one CLEAN-005; PR-033's probe run waits for your word)
-
-**Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
-
-- **The story's receipt** (`evidence/<ID>.md`) holds the detail of a phase: tests, manifest,
-  digests, findings and commands.
-- **This section** says what is true now and what comes next, in at most 8 KB: the next step, what
-  is uncommitted or held, what is watched and from when, what waits for the owner, and the dated
-  entries of stories not yet accepted, as written on their date (where they differ, "Now" holds).
-  When a story is accepted, its dated entry moves word for word to the top of
-  [HANDOFF-archive.md](HANDOFF-archive.md).
-- **[STATE.json](STATE.json)** holds the status fields and one line of history per event.
-  `next_phase` is at most 600 characters: the next first step and a pointer here. History older
-  than 14 days and passed production checks move word for word to
-  [STATE-history-archive.json](STATE-history-archive.json). A `done` story keeps its card in
-  STATE; the rest of its entry moves word for word to
-  [STATE-tasks-archive.json](STATE-tasks-archive.json) with `scripts/docs/archive_done_tasks.py`.
-- **The archives** are read only when a card points there. The standing rules follow this section.
+# Current handoff - 2026-11-20 (03debc1 deployed at 00:17; PR-037's catch-up run and PR-042-W0's read wait for you; in a push window PR-015 switches, outside one CLEAN-005)
 
 ## Now
 
-- **The 00:10 push ships** (`main` 30 commits ahead of origin `3f26ae5`): PR-037
-  (`ab18c77`; then the first `continue` on a weekday 09:30-14:00 IST makes its one catch-up run
-  first, [receipt](evidence/PR-037-implementation.md) "Rollout"); PR-005 (`40d04d5`,
-  [review](evidence/PR-005-review.md); the backfill waits for your word); PR-042
-  ([receipt](evidence/PR-042.md): `DECISION_GATE_MODE=enforce`, an analysis missing data cannot
-  buy, exits never blocked); PR-043 ([receipt](evidence/PR-043.md): the search also to Parallel
-  and Exa, recorded, never read); FIX-017 (`9c582e0`, [review](evidence/FIX-017-review.md): the
-  holding sync asks NSE under its own code); CLEAN-004 and PR-040 (below).
-- **CLEAN-004 and PR-040 are done** ([CLEAN-004](evidence/CLEAN-004.md),
-  [PR-040](evidence/PR-040.md)). A member now sees Today, Portfolio and Ask and downloads 46%
-  less; operator code loads only for the owner. Found: the Agents page's saved weights reach no
-  analysis (BACKLOG B-25).
+- **Deployed:** `03debc1` at about 00:17 IST Fri 20 Nov (the runner, after the full suite;
+  deployment `0ac3c914` SUCCESS; `/health` 200 at 10:47). Live: PR-037, PR-005 (the backfill
+  waits for your word), PR-042 (`DECISION_GATE_MODE=enforce`), PR-043, FIX-017, CLEAN-004 and
+  PR-040. Each card reads `pending_observation`.
+- **Refused by the permission check** in autopilot `1120-1045-p1` (an unattended session):
+  PR-037's catch-up run (a production trigger) and the container read of `PR-042-W0` (a
+  production read). Both wait for you; commands below.
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
-  Mondays; the next opens Fri 20 Nov 00:10): **PR-015's switch** (your word, 18 Nov about 07:05
-  IST): merge `story/PR-015` (`12b7901`) into `main` (three KT conflicts, sections 1, 4 and 11;
-  how to keep both: [PR-005's review](evidence/PR-005-review.md), "Decision"), the full suite on
-  the exact commit, push, check the deploy and `/health`, add `PR-015-W1`
+  Mondays; the next opens Sat 21 Nov 00:10): **PR-015's switch** (your word, 18 Nov about
+  07:05 IST): merge `story/PR-015` (`12b7901`) into `main` (three KT conflicts, sections 1, 4
+  and 11; how to keep both: [PR-005's review](evidence/PR-005-review.md), "Decision"), the full
+  suite on the exact commit, push, check the deploy and `/health`, add `PR-015-W1`
   ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md)).
-- **Next `continue` outside a window:** PR-015 waits for one, so CLEAN-005 (first ready in
-  order). PR-033's probe run waits for your word.
+- **Next `continue` outside a window:** CLEAN-005 (first ready in order). After today's 16:30
+  review: `FIX-017-W1` and `CLEAN-004-W1` (production reads, so your word or your command).
 - **PR-036 is live, ₹1 crore in** (06:34 IST 19 Nov; [receipt](evidence/PR-036.md), "Rollout").
-  Next, read-only: today's 16:30 `deployment` record (step 4).
 - **Git:** `story/PR-015` is local; merging it gives the same three KT conflicts as before.
 
 ## Waits for you
 
+- **PR-037's catch-up run**, a weekday 09:30–14:00 IST (the next is Mon 23 Nov if not today):
+  say "run the PR-037 catch-up" in a session and allow it, or run from the StockAgent folder:
+  `railway ssh 'python -c "import os,urllib.request as u;r=u.Request(\"http://127.0.0.1:\"+os.environ.get(\"PORT\",\"8000\")+\"/discovery/run\",method=\"POST\",headers={\"X-Scheduler-Key\":os.environ.get(\"SCHEDULER_KEY\",\"\")});print(u.urlopen(r,timeout=30).status)"'`
+  (prints 202; the key never leaves the container).
+- **`PR-042-W0`'s read** (read-only): `railway ssh 'printenv DECISION_GATE_MODE; python -c "import json,os,collections;p=os.path.join(os.environ.get(\"LOGS_DIR\",\"data/logs\"),\"decision_gate.jsonl\");print(dict(collections.Counter((r.get(\"mode\"),r.get(\"enforced\")) for r in map(json.loads,open(p)) if r.get(\"ts\",\"\")>=\"2026-11-19T18:47\")))"'`.
+  Pass: `enforce`, and rows since the deploy read `('enforce', True)`.
 - **PR-033's probe run:** say "run the PR-033 probe" (read-only; the command is in its receipt),
   and confirm the closure list: SA-001 alone.
-- **PR-005's backfill**, after its deploy: say "run the PR-005 backfill" (a dry
-  run, then `--apply`: one model call per holding; the command is in its receipt).
-- **PR-038's re-read** (Sat 21 Nov, `PR-038-R1`): your word in that session, or you run it.
-- **PR-040's walk-through** after the deploy (`PR-040-W1`, guide 11-M).
-- **Optional:** the weekly watchdog line "No off-site copy has ever been confirmed" stays while it
-  is true; removing it is a registry edit you approve separately.
+- **PR-005's backfill:** say "run the PR-005 backfill" (a dry run, then `--apply`).
+- **PR-038's re-read** (Sat 21 Nov, `PR-038-R1`) and **PR-040's walk-through** (`PR-040-W1`,
+  guide 11-M).
+- **Optional:** the weekly watchdog line "No off-site copy has ever been confirmed"; removing it
+  is a registry edit you approve separately.
 
 ## Watched, and from when
 
@@ -61,29 +43,26 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 
 | From | Row | What |
 |---|---|---|
-| Fri 20 Nov | `PR-042-W0` | after the 00:10 deploy: the gate reads enforce |
-| Fri 20 Nov | `PR-040-W1` | after the deploy: your walk-through (11-M) |
-| Fri 20 Nov§ | `FIX-017-W1` | after the 16:30 review: the sync's data-health lines and applied ratios |
-| Fri 20 Nov§ | `CLEAN-004-W1` | after the 16:30 review: no prompt job, no control call or log |
+| Fri 20 Nov | `PR-042-W0` | the gate reads enforce: deploy and `/health` pass; the read waits for you |
+| Fri 20 Nov | `PR-040-W1` | your walk-through (11-M) |
+| Fri 20 Nov | `FIX-017-W1` | after the 16:30 review: the sync's data-health lines and applied ratios |
+| Fri 20 Nov | `CLEAN-004-W1` | after the 16:30 review: no prompt job, no control call or log |
 | Sat 21 Nov | `PR-038-R1` | the PR-038 re-read |
-| Sat 21 Nov§ | `PR-043-W1` | the first Saturday's shadow rows |
+| Sat 21 Nov | `PR-043-W1` | the first Saturday's shadow rows |
 | Tue 24 Nov | `FIX-032-W1` | your re-run of FIX-032's probe |
 | Wed 25 Nov‡ | `PR-005-W1` | the first cases written at purchase, and any price retried |
-| Thu 26 Nov* | `PR-036-W5` | share invested and holdings, 5 sessions after the deposit |
+| Thu 26 Nov | `PR-036-W5` | share invested and holdings, 5 sessions after the deposit |
 | Fri 27 Nov | `PR-042-W1` | a week of enforce: what it stopped; no exit or trim stopped |
 | Tue 1 Dec | `PR-014-D1` | the door read: what the buy list offered and refused (and BACKLOG B-13) |
 | Tue 1 Dec | `FIX-015-W1` | every shock sale since the deploy, read with `PR-014-D1` |
-| Thu 3 Dec* | `PR-036-W10` | share invested and holdings, 10 sessions after the deposit |
-| Tue 1 Dec† | `PR-037-W2` | the shelf, ideas offered a day and holdings after two Saturdays; BACKLOG B-14 |
-| Fri 4 Dec§ | `PR-043-W2` | two engines beside Serper: which one PR-044 reads |
+| Tue 1 Dec | `PR-037-W2` | the shelf, ideas offered a day and holdings after two Saturdays; BACKLOG B-14 |
+| Thu 3 Dec | `PR-036-W10` | share invested and holdings, 10 sessions after the deposit |
+| Fri 4 Dec | `PR-043-W2` | two engines beside Serper: which one PR-044 reads |
 | by Thu 10 Dec | `PR-001-E1` | needs your eyes: member screens (guide 11-H, 11-I, 11-J) |
 | Mon 14 Dec | `PR-014-R1` | results at 4 weeks; which paused cards to promote |
 | Mon 11 Jan 2027 | `PR-014-R2` | results at 8 weeks; whether to promote CLEAN-006 |
 
-\* If the deposit is recorded on Thu 19 Nov; a later deposit moves both. † If PR-037 is deployed
-and its catch-up run made by Fri 20 Nov; a later deploy moves it by as many weeks. ‡ If PR-005
-is deployed by Fri 20 Nov and that day's review opens a position; a later first buy moves it.
-§ For a Fri 20 Nov deploy; a later one moves them. `PR-014-D1`, `R1` and
+‡ If that day's review opens a position; a later first buy moves it. `PR-014-D1`, `R1` and
 `R2` keep their dates; their baseline note says capital changes on the deposit day.
 
 ## 18 Nov, night (autopilot): PR-015 prepared on `story/PR-015`; the switch waits for your word
@@ -123,6 +102,24 @@ is deployed by Fri 20 Nov and that day's review opens a position; a later first 
 # START HERE — standing rules
 
 These opened the old "START HERE — resume checklist, in order"; its dated entries are in the archive.
+
+**Which file holds what** (AGENTS.md, "Continuing the active PI", step 5):
+
+- **The story's receipt** (`evidence/<ID>.md`) holds the detail of a phase: tests, manifest,
+  digests, findings and commands.
+- **The current section** (the first `#` section, above these rules) says what is true now and
+  what comes next, in at most 8 KB: the next step, what
+  is uncommitted or held, what is watched and from when, what waits for the owner, and the dated
+  entries of stories not yet accepted, as written on their date (where they differ, "Now" holds).
+  When a story is accepted, its dated entry moves word for word to the top of
+  [HANDOFF-archive.md](HANDOFF-archive.md).
+- **[STATE.json](STATE.json)** holds the status fields and one line of history per event.
+  `next_phase` is at most 600 characters: the next first step and a pointer here. History older
+  than 14 days and passed production checks move word for word to
+  [STATE-history-archive.json](STATE-history-archive.json). A `done` story keeps its card in
+  STATE; the rest of its entry moves word for word to
+  [STATE-tasks-archive.json](STATE-tasks-archive.json) with `scripts/docs/archive_done_tasks.py`.
+- **The archives** are read only when a card points there.
 
 **Working from another device** (the owner, 7 and 17 Nov: a `continue` may start on another laptop or in a cloud
 session). Pull `main` first. Git carries the code, the docs, STATE, this file, every card and every receipt, so

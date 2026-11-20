@@ -35,7 +35,15 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs `2e995fe`. The code-server's autopilot pushed it at about 05:25
+Production runs `03debc1`. The code-server's autopilot runner pushed it at about
+00:17 IST on 20 November 2026, after the full suite passed on that commit
+(deployment `0ac3c914` SUCCESS; `/health` answered 200 at 10:47 IST). Against
+`2e995fe` it adds PR-037's idea supply (section 8), PR-005's investment case at
+purchase (section 6), PR-043's search shadow (section 4), FIX-017's
+corporate-action reading (section 6), CLEAN-004's removals and PR-040's member
+screens (section 10). The variable `DECISION_GATE_MODE=enforce`, set on 19
+November without a deploy, applies from this deploy; it has not yet been read
+back in the container. `2e995fe` was pushed by the autopilot at about 05:25
 IST on 19 November 2026, after the full suite passed on that commit (the
 deployment list showed it SUCCESS; `/health` answered 200 at 06:30). Against
 `8422a23` it adds PR-036's configuration, the ₹1 crore book of section 6, and

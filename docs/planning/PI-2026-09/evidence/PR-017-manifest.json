@@ -1,0 +1,114 @@
+{
+  "story": "PR-017",
+  "baseline": "7293fb4",
+  "revision": "1b01f807f15594ef09d1fd7ecb5dcc90fb637646",
+  "branch": "story/PR-017",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "febb65004139f573d62637f3a9027c12677201e0",
+      "sha256": "a0beaa76691f41999e37ac701fb1c52933b349dd159b8eec16f358d284a50ec4"
+    },
+    {
+      "path": "config.yaml",
+      "git_blob": "84c3ecab3b78cf51fa8658632997cc7d916da854",
+      "sha256": "35b6d5735cbac32d60a03f7c7d15ea06f809d5a47ea5b49658533821a773ec33"
+    },
+    {
+      "path": "core/audit/idea_lanes.py",
+      "git_blob": "a53a4fafc49a9f80a84e0b06adbaa81d6eafd0d3",
+      "sha256": "1aff89be25708c45d3d4d9cd264304ca6b12abca7a0d315148e09c85b7bc5a2d"
+    },
+    {
+      "path": "core/audit/ideas.py",
+      "git_blob": "f0b24674e9302ace3fc230a6e44a459faa7e039d",
+      "sha256": "965949ccd585758c3ef58111639ec6ae12e0450fe44b38df0e8ce6e6c8ce7a28"
+    },
+    {
+      "path": "core/audit/outcomes.py",
+      "git_blob": "735dbf7f757c6833412a25c74197b8bd98e15301",
+      "sha256": "bf92562030b70d18658301c4520566a330be4b05701f1c5b8896310e5c547d01"
+    },
+    {
+      "path": "core/audit/report.py",
+      "git_blob": "0283ab607392f644693bd9f6532c7a11deecb8c5",
+      "sha256": "69a3c860f2a52fcce52b91b65e89a8d98516153200ab4d3a0d66492580cca67c"
+    },
+    {
+      "path": "core/audit/store.py",
+      "git_blob": "6ae69d479d8c9a63066a6e3951baac4fa4142c57",
+      "sha256": "e9967913bfac45047d1ff19627e3b46569a8873a7201431338cf02ac9bd4d03a"
+    },
+    {
+      "path": "core/discovery/__init__.py",
+      "git_blob": "3dc46231c220c6f18d0a86227052c91f8cdf862d",
+      "sha256": "752e4006cfda3bdbb04e1adcb76873679f5200e41bb2f21023de6403dc58850f"
+    },
+    {
+      "path": "core/discovery/bare_judge.py",
+      "git_blob": "c6b2742a052f914953a6dd97ccfc207fdeedf76d",
+      "sha256": "4a3e98ab8bec41c7746405e23e80a0001c6ed08352ece878048f1776ceb5d0f5"
+    },
+    {
+      "path": "core/discovery/deep_dive.py",
+      "git_blob": "1ecda4057c35a12d10279058c5a74d40ee688e96",
+      "sha256": "0ec4b24847cebb9c9f775e47dbd8e528ddb6fdf299a7a74eb8f48d3a1c929882"
+    },
+    {
+      "path": "core/discovery/dive_record.py",
+      "git_blob": "cc3100b628af7cc619fd04035a2fcb611b1cea32",
+      "sha256": "5186c726d1b0ad4906fb7d07733f6f98370a8d17247ae91ba4ecad895ee5e027"
+    },
+    {
+      "path": "core/discovery/screen.py",
+      "git_blob": "a996d5634551830b7377afb738ab7844e8444f6a",
+      "sha256": "3c250b3a2d27cdc0014492053db7c99c8764ce6bcc0fc4e382d602ee320e9923"
+    },
+    {
+      "path": "core/portfolio/results.py",
+      "git_blob": "9196c58c2f77cb9206c1f86cfe5318b47560a472",
+      "sha256": "a6bbc5546c89fb2bfe887412419196eec2596325effaef18245ae60551cda3cd"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "319cd83fae96718ed15367ace4b89d26d80a4d1b",
+      "sha256": "f14d5dcdf4b40aceec3f16160161393224fafe47445845038fad263d2c723c83"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "eed87f27a777c83c1b07f74c0bb12c122de99959",
+      "sha256": "ea44bdbd4566a5f5f60fab7a09831389eba653bee9ab076db6f90d5352c7a8ce"
+    },
+    {
+      "path": "src/backend/shared/pipeline/base_orchestrator.py",
+      "git_blob": "111e54aaa0b5b52c64925bb63e2a2ac935e66ade",
+      "sha256": "63a32ed369020c70c21d7ea569ef15db87650f49a49d86f45d0fe249ddab0b57"
+    },
+    {
+      "path": "src/backend/shared/schemas/audit.py",
+      "git_blob": "74d920b2684e31167af95e1529f1af73a61a79ba",
+      "sha256": "0e5b3e2f3baed6a7a3e6b99ae45ed4c2698973915f35cc04cc1da2fc8f8f6e69"
+    },
+    {
+      "path": "src/backend/shared/schemas/discovery.py",
+      "git_blob": "07ecca3a6f7d4e3b80afa6776836802f2e1f66ce",
+      "sha256": "05b6d6bb4e376151bb8dbb2da06d4630133de0c794f724828becafda01af0463"
+    },
+    {
+      "path": "tests/unit/audit/test_audit_ipo_lane.py",
+      "git_blob": "6dd4930d8c04b01b4bdc0f2a564fdaf00bd7b524",
+      "sha256": "14c96d60d99979c6b12494db489cab3b5591034bffa21843353ebf0cba005e5e"
+    },
+    {
+      "path": "tests/unit/audit/test_audit_lanes.py",
+      "git_blob": "9d6501163d54cc73e2402f42e6efa6e80e5fe996",
+      "sha256": "9fa11f0d821817dc7a9420340f64c110c482f8efcecdbf71d37ebfc56a10030a"
+    },
+    {
+      "path": "tests/unit/test_idea_lanes_pr017.py",
+      "git_blob": "650da9952667e34d7a30572a6291875f10742499",
+      "sha256": "ea73af1ffbd0c7286db24c27c1a200bb90df459eaaa5738bf61a2e38262405f5"
+    }
+  ]
+}

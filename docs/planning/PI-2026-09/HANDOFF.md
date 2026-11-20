@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-20 (PR-016 accepted and merged; push pending to Sat 21 Nov 00:10; in a push window PR-015 switches, outside one PR-017; PR-037's catch-up run and PR-042-W0's read wait for you)
+# Current handoff - 2026-11-20 (PR-017 implemented on `story/PR-017`, awaiting its fresh review; push pending to Sat 21 Nov 00:10, where PR-015 switches first; PR-037's catch-up run and PR-042-W0's read wait for you)
 
 ## Now
 
@@ -8,24 +8,21 @@
   PR-040. Each card reads `pending_observation`.
 - **Refused to unattended sessions:** PR-037's catch-up run and `PR-042-W0`'s read (below).
 - **Done today, shipping with the next push:** CLEAN-005 ([review](evidence/CLEAN-005-review.md),
-  merged as `f6b2055`, an image without `langgraph`; `CLEAN-005-W1`; BACKLOG B-27), PR-013
-  (light; [receipt](evidence/PR-013.md); `PR-013-W1`; BACKLOG B-12 waits for PR-015's merge)
-  and PR-016 ([review](evidence/PR-016-review.md), merged as `f0ab71c`; `PR-016-W1`; BACKLOG
-  B-28, B-29).
+  `f6b2055`; B-27), PR-013 ([receipt](evidence/PR-013.md); B-12 waits for PR-015's merge) and
+  PR-016 ([review](evidence/PR-016-review.md), `f0ab71c`; B-28, B-29).
+- **Awaiting its fresh review:** PR-017 on `story/PR-017` (`1b01f80`,
+  [receipt](evidence/PR-017-implementation.md), B-30); not on `main`.
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
-  Mondays; the next opens Sat 21 Nov 00:10): after the runner's push, **PR-015's switch** (your
-  word, 18 Nov about 07:05 IST): merge `story/PR-015` (`12b7901`) into `main` (four KT conflict
-  hunks, sections 1, 3, 4 and 11, the same as before CLEAN-005's merge; how to keep both:
-  [PR-005's review](evidence/PR-005-review.md), "Decision"), the full suite on the exact commit,
-  push, check the deploy and `/health`, add `PR-015-W1`
-  ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md)); then BACKLOG B-12.
-- **Next `continue` outside a window:** **PR-017** (decision path: grade every deep dive at the
-  conviction it was issued with). After
-  today's 16:30 review: `FIX-017-W1` and `CLEAN-004-W1` (production reads, so your word or your
-  command).
-- **Git:** `origin/main` = `03debc1`; `main` is 11 commits ahead (records, CLEAN-005's two
-  commits and its merge, PR-013, PR-016's commit, its merge and records), push pending to Sat
-  21 Nov 00:10. `story/PR-015` is local.
+  Mondays; next Sat 21 Nov 00:10): after the runner's push, **PR-015's switch** (your word, 18
+  Nov): merge `story/PR-015` (`12b7901`; four KT conflict hunks, sections 1, 3, 4 and 11: keep
+  both as in [PR-005's review](evidence/PR-005-review.md), "Decision"), the full suite on the
+  exact commit, push, deploy and `/health`, `PR-015-W1`
+  ([rollout](evidence/PR-015-rollout.md)); then BACKLOG B-12.
+- **Next `continue` outside a window:** **PR-017's fresh hard review** (`REVIEW.md`, against the
+  receipt's digest and manifest). After today's 16:30 review: `FIX-017-W1` and `CLEAN-004-W1`
+  (production reads, so your word or your command).
+- **Git:** `origin/main` = `03debc1`; `main` 12 commits ahead, push pending to Sat 21 Nov
+  00:10. `story/PR-015` and `story/PR-017` are local.
 
 ## Waits for you
 
@@ -74,6 +71,14 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 
 ‡ If that day's review opens a position; a later first buy moves it. `PR-014-D1`, `R1` and
 `R2` keep their dates; their baseline note says capital changes on the deposit day.
+
+## 20 Nov, afternoon (autopilot): PR-017 implemented; its fresh review is next
+
+- **Autopilot `1120-1454-p6`**, from about 14:54 IST, on `7293fb4`. **`1b01f80`:** every dive
+  kept as issued (`dives.jsonl`, seeded once on the first Saturday after the deploy); the bare
+  judge (20 a week); lanes `dive`, `screen`, `bare` from the next open, 10 to 180 sessions; an
+  "ideas" report block and a scorecard line. To weigh: the automatic seed, and the Nifty leg
+  from the close before the entry open.
 
 ## 18 Nov, night (autopilot): PR-015 prepared on `story/PR-015`; the switch waits for your word
 

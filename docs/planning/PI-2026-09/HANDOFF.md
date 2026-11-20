@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-20 (03debc1 deployed; CLEAN-005 implemented on story/CLEAN-005, its fresh review next; PR-037's catch-up run and PR-042-W0's read wait for you)
+# Current handoff - 2026-11-20 (CLEAN-005 accepted and merged, push pending to Sat 21 Nov 00:10; in a push window PR-015 switches, outside one PR-013; PR-037's catch-up run and PR-042-W0's read wait for you)
 
 ## Now
 
@@ -9,18 +9,24 @@
 - **Refused by the permission check** in autopilot `1120-1045-p1` (an unattended session):
   PR-037's catch-up run (a production trigger) and the container read of `PR-042-W0` (a
   production read). Both wait for you; commands below.
+- **CLEAN-005 is done** ([review](evidence/CLEAN-005-review.md)), merged as `f6b2055`: a
+  failed analysis is no analysis (no verdict, the stock skipped, `analyses_failed_today` counts
+  it) and the per-analyst layer and `langgraph` are gone; ships with the next push, whose image
+  is built without `langgraph`. `CLEAN-005-W1` reads the build, the status field and the first
+  16:30 review after it. Follow-ups: BACKLOG B-27 (low and nits).
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
-  Mondays; the next opens Sat 21 Nov 00:10): **PR-015's switch** (your word, 18 Nov about
-  07:05 IST): merge `story/PR-015` (`12b7901`) into `main` (three KT conflicts, sections 1, 4
-  and 11; how to keep both: [PR-005's review](evidence/PR-005-review.md), "Decision"), the full
-  suite on the exact commit, push, check the deploy and `/health`, add `PR-015-W1`
+  Mondays; the next opens Sat 21 Nov 00:10): after the runner's push, **PR-015's switch** (your
+  word, 18 Nov about 07:05 IST): merge `story/PR-015` (`12b7901`) into `main` (four KT conflict
+  hunks, sections 1, 3, 4 and 11, the same as before CLEAN-005's merge; how to keep both:
+  [PR-005's review](evidence/PR-005-review.md), "Decision"), the full suite on the exact commit,
+  push, check the deploy and `/health`, add `PR-015-W1`
   ([evidence/PR-015-rollout.md](evidence/PR-015-rollout.md)).
-- **Next `continue` outside a window:** CLEAN-005's fresh hard review (`REVIEW.md`) of
-  `story/CLEAN-005` (`b6744a6`, `e51b0c7`). After today's 16:30 review: `FIX-017-W1` and
-  `CLEAN-004-W1` (production reads, so your word or your command).
+- **Next `continue` outside a window:** PR-015 waits for one, so **PR-013** (first ready in
+  order). After today's 16:30 review: `FIX-017-W1` and `CLEAN-004-W1` (production reads, so
+  your word or your command).
 - **PR-036 is live, ₹1 crore in** (06:34 IST 19 Nov; [receipt](evidence/PR-036.md), "Rollout").
-- **Git:** `story/PR-015` and `story/CLEAN-005` are local. PR-015's merge gives the same three
-  KT conflicts as before; CLEAN-005's touches KT sections 3 (the store table), 4, 9 and 11.
+- **Git:** `origin/main` = `03debc1`; `main` is 6 commits ahead (records, CLEAN-005's two
+  commits and its merge), push pending to Sat 21 Nov 00:10. `story/PR-015` is local.
 
 ## Waits for you
 
@@ -49,6 +55,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Fri 20 Nov | `PR-040-W1` | your walk-through (11-M) |
 | Fri 20 Nov | `FIX-017-W1` | after the 16:30 review: the sync's data-health lines and applied ratios |
 | Fri 20 Nov | `CLEAN-004-W1` | after the 16:30 review: no prompt job, no control call or log |
+| Sat 21 Nov | `CLEAN-005-W1` | after the 00:10 push: the build without `langgraph`, `analyses_failed_today`; Mon 23 Nov: the 16:30 review's log |
 | Sat 21 Nov | `PR-038-R1` | the PR-038 re-read |
 | Sat 21 Nov | `PR-043-W1` | the first Saturday's shadow rows |
 | Tue 24 Nov | `FIX-032-W1` | your re-run of FIX-032's probe |
@@ -100,14 +107,6 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 
 - **Autopilot `1119-1629-p1`**, no production read. 15 November deploys shaped and in the same
   probe (dry run: 2 passed); CLEAN-007 verified from `CLEAN-007-W1`; no November closure.
-
-## 20 Nov, morning (autopilot): CLEAN-005 implemented on `story/CLEAN-005`; its fresh review next
-
-- **Autopilot `1120-1045-p1`**, code-server, from about 10:46 IST; base `03debc1`.
-- **`b6744a6`, step 1:** a run that scores no dimension is no analysis: no verdict anywhere,
-  each caller skips the stock, `analyses_failed_today` counts it. **`e51b0c7`, step 2:**
-  the per-analyst layer and `langgraph` deleted. Suites: 6,999 passed / 0 failed; 6,858 passed / 0 failed.
-  [Receipt](evidence/CLEAN-005-implementation.md), with what the old prompts asked for.
 
 # START HERE — standing rules
 

@@ -14,6 +14,28 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 20 Nov, midday (autopilot): CLEAN-005 → ACCEPTED (fresh review); merged into `main`
+
+- **Autopilot session `1120-1139-p2`**, a `continue` on the code-server from about 11:39 IST,
+  outside a push window. `main` = `7ad7fad`, 2 commits ahead of `origin/main` `03debc1`. No
+  production read.
+- **Input verified:** `story/CLEAN-005` = `e51b0c7`; digest `2ffb7453…` = the implementation
+  receipt. Every `analyse` caller traced (seven call sites); a skipped review leaves the advisor
+  what a gated day does, no exit blocked. Reviewer cases RV1–RV7 passed (four paths, more
+  failure shapes); reviewer mutants 14 of 16; full suite 6,858 passed / 0 failed.
+- **Low, to BACKLOG B-27:** a provider error that is not retried is recorded as "after 3
+  attempts"; nits: two test gaps (the IST count, the deep dive's single log) and stale comments.
+- **Merged** as `f6b2055`, code byte-identical to `e51b0c7`; push pending to Sat 21 Nov 00:10.
+  New check `CLEAN-005-W1`. [Review receipt](evidence/CLEAN-005-review.md).
+
+## 20 Nov, morning (autopilot): CLEAN-005 implemented on `story/CLEAN-005`; its fresh review next
+
+- **Autopilot `1120-1045-p1`**, code-server, from about 10:46 IST; base `03debc1`.
+- **`b6744a6`, step 1:** a run that scores no dimension is no analysis: no verdict anywhere,
+  each caller skips the stock, `analyses_failed_today` counts it. **`e51b0c7`, step 2:**
+  the per-analyst layer and `langgraph` deleted. Suites: 6,999 passed / 0 failed; 6,858 passed / 0 failed.
+  [Receipt](evidence/CLEAN-005-implementation.md), with what the old prompts asked for.
+
 ## 19 Nov, night (autopilot): PR-040 → ACCEPTED (light lane)
 
 - **Autopilot `1119-2247-p6`**, a `continue` on the code-server from about 22:47 IST, outside a

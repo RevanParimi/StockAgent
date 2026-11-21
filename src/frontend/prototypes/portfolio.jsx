@@ -1,4 +1,4 @@
-// Portfolio page — beginner-friendly view of holdings, P/L, agent take, recent activity, learnings
+// Portfolio page — beginner-friendly view of holdings, P/L, agent take, trade history, learnings
 const { useState: useStatePf, useEffect: useEffectPf, useRef: useRefPf } = React;
 
 // ── Live data ──────────────────────────────────────────────────────────────
@@ -430,12 +430,16 @@ function PortfolioPage({ onNav, openChat }) {
               <HoldingsTable holdings={holdings} digest={live.digest} isLive={isLive}
                 onAdd={()=>setAddOpen(true)} onRemoved={live.reload}/>
             )}
+            {/* PR-045: what the last review bought and why nothing more, then
+                every trade with its price, result and reason, ahead of the
+                analysis verdicts, which are not trades. */}
+            {isLive && live.digest?.deployment && <LastBuysCard digest={live.digest}/>}
+            {isLive && live.txns.length > 0 && <TradeHistoryCard txns={live.txns}/>}
             {isLive && cashLive && perf.closed_trades && <TradeRecordCard stats={perf.closed_trades}/>}
+            {isDemo && <ActivityCard items={demo.recentActivity}/>}
             {(isDemo || window.__learningsLive) && window.PORTFOLIO_LEARNINGS && (
               <LearningsSection learnings={window.PORTFOLIO_LEARNINGS} openChat={openChat}/>
             )}
-            {isDemo && <ActivityCard items={demo.recentActivity}/>}
-            {isLive && live.txns.length > 0 && <LiveActivityCard txns={live.txns}/>}
           </div>
 
           {/* Right rail */}
@@ -856,52 +860,235 @@ function ActivityCard({ items }) {
   );
 }
 
-function LiveActivityCard({ txns }) {
+// ── PR-045: the trades and the last review's buying ───────────────────────
+// Every trade from /portfolio/transactions (newest first) with its price, its
+// result and its reason in view, and the day's idle-cash record from the
+// latest digest: what the review bought and why it bought nothing more.
+
+// The ledger's verdict codes in the screen's words; any other code shows as is.
+const TRADE_KINDS = {
+  DEPLOY: 'new position from idle cash', ADD: 'top-up', TRIM: 'trim',
+  EXIT: 'exit', SWITCH: 'switch',
+};
+
+function tradeKind(t) {
+  if (t.source === 'manual' || t.source === 'seed') return 'by you';
+  return TRADE_KINDS[t.verdict] || t.verdict || t.source || '';
+}
+
+// The trade's own reason, or an honest line when none was kept with it.
+function tradeWhy(t) {
+  const r = String(t.reason || '').trim();
+  if (r) return r;
+  if (t.source === 'manual' || t.source === 'seed') return 'Your own trade.';
+  return 'No reason was recorded with this trade.';
+}
+
+const pfClamp = (lines) => ({ display:'-webkit-box', WebkitLineClamp:lines,
+                              WebkitBoxOrient:'vertical', overflow:'hidden' });
+
+const pfLinkBtn = { background:'none', border:'none', padding:0, cursor:'pointer',
+                    fontSize:11, fontWeight:600, color:'var(--violet)' };
+
+function TradeRow({ t, onPick }) {
+  const [open, setOpen] = useStatePf(false);
+  // When the review made the trade (IST); the price's own date is the session
+  // it was booked at. In the row, not a right-hand column the phone layout hides.
+  const made = t.ts ? `made ${fmtIST(t.ts, '')}` : '';
+  const shell = (kind, body) => {
+    const m = {
+      buy:  { icon:<Icon.Plus size={14}/>,      bg:'var(--buy-soft)',    fg:'var(--buy-strong)' },
+      sell: { icon:<Icon.TrendDown size={14}/>, bg:'var(--sell-soft)',   fg:'var(--sell-strong)' },
+      cash: { icon:<Icon.Plus size={14}/>,      bg:'var(--violet-soft)', fg:'var(--violet)' },
+    }[kind];
+    return (
+      <div className="sa-trade" style={{ display:'grid', gridTemplateColumns:'auto 1fr', gap:14,
+        alignItems:'start', padding:'12px 14px', background:'var(--bg-base)', borderRadius:10 }}>
+        <span style={{ width:30, height:30, borderRadius:8, background:m.bg, color:m.fg,
+          display:'grid', placeItems:'center' }}>{m.icon}</span>
+        <div style={{ minWidth:0 }}>{body}</div>
+      </div>
+    );
+  };
+  const symBtn = (
+    <button onClick={() => onPick(t.symbol)} title={`Show only ${t.symbol}'s trades`} className="mono"
+      style={{ background:'none', border:'none', padding:0, cursor:'pointer', font:'inherit',
+               fontWeight:700, color:'var(--ink-1)', textDecoration:'underline dotted' }}>{t.symbol}</button>
+  );
+
+  // SA-049: paper capital the owner added; cash and capital in rose by it.
+  if (t.side === 'DEPOSIT') {
+    return shell('cash', <>
+      <div style={{ fontSize:13, fontWeight:600 }}>Paper capital added <span className="mono">{fmtInr(t.value)}</span>
+        {t.date && <span style={{ color:'var(--ink-3)', fontWeight:500 }}> on {fmtDay(t.date, true)}</span>}</div>
+      <div style={{ fontSize:12, color:'var(--ink-3)', marginTop:2 }}>{[t.note, made].filter(Boolean).join(' · ')}</div>
+    </>);
+  }
+  if (t.side === 'DIV') {
+    return shell('cash', <>
+      <div style={{ fontSize:13, fontWeight:600 }}>Dividend {symBtn} <span className="mono">{fmtInr(t.value)}</span>
+        {t.date && <span style={{ color:'var(--ink-3)', fontWeight:500 }}> on {fmtDay(t.date, true)}</span>}</div>
+      <div style={{ fontSize:12, color:'var(--ink-3)', marginTop:2 }}>{[t.note, made].filter(Boolean).join(' · ')}</div>
+    </>);
+  }
+
+  const isSell = t.side === 'SELL';
+  const buyPx = isSell
+    ? (t.cost_basis != null ? t.cost_basis
+       : (t.realized_pnl != null && t.qty ? t.price - t.realized_pnl / t.qty : null))
+    : null;
+  const approx = isSell && t.cost_basis == null && buyPx != null;
+  const pnl = isSell && t.realized_pnl != null ? t.realized_pnl : null;
+  const pnlPct = isSell
+    ? (t.pnl_pct != null ? t.pnl_pct : (buyPx ? (t.price / buyPx - 1) * 100 : null))
+    : null;
+  const pnlWord = pnl == null ? '' : Math.round(pnl) > 0 ? 'Profit' : Math.round(pnl) < 0 ? 'Loss' : 'Break-even';
+  const why = tradeWhy(t);
+  const long = why.length > 180 || !!t.note;
+  // SA-048: the trade's charges; a trade from before they were charged shows
+  // them estimated, never as none.
+  const costLine = t.costs && t.costs.total > 0
+    ? `costs ${fmtInr(t.costs.total)}${t.costs.estimated ? ' (estimated)' : ''}` : '';
+  return shell(isSell ? 'sell' : 'buy', <>
+    <div style={{ fontSize:13, fontWeight:600 }}>
+      {isSell ? 'Sold' : 'Bought'} {symBtn}
+      <span style={{ color:'var(--ink-3)', fontWeight:500 }}>
+        {' · '}{t.qty} @ ₹{t.price.toLocaleString('en-IN', { minimumFractionDigits:2 })}
+        {t.date && ` on ${fmtDay(t.date, true)}`}
+        {buyPx != null && ` (average cost ${approx ? '≈' : ''}₹${buyPx.toLocaleString('en-IN', { maximumFractionDigits:2 })})`}
+      </span>
+    </div>
+    {pnl != null && (
+      <div className="sa-trade-result" style={{ fontSize:13, fontWeight:700, marginTop:2,
+        color: Math.round(pnl) > 0 ? 'var(--buy-strong)' : Math.round(pnl) < 0 ? 'var(--sell-strong)' : 'var(--ink-2)' }}>
+        {pnlWord} {fmtSignedInr(pnl)}{pnlPct != null && ` (${fmtSigned(pnlPct)})`}
+        <span style={{ fontWeight:500, color:'var(--ink-3)' }}> before costs</span>
+      </div>
+    )}
+    <div style={{ fontSize:12, color:'var(--ink-3)', marginTop:2 }}>
+      {[tradeKind(t), costLine, made].filter(Boolean).join(' · ')}
+    </div>
+    <div className="sa-trade-why" style={{ fontSize:12, color:'var(--ink-2)', marginTop:6, lineHeight:1.5,
+      ...(open ? {} : pfClamp(3)) }}>
+      <b>{isSell ? 'Why sold' : 'Why bought'}:</b> {why}
+    </div>
+    {open && t.note && (
+      <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:4, lineHeight:1.5 }}>Rule notes: {t.note}</div>
+    )}
+    {long && <button onClick={() => setOpen(v => !v)} style={{ ...pfLinkBtn, marginTop:4 }}>
+      {open ? 'less' : 'more'}</button>}
+  </>);
+}
+
+function TradeHistoryCard({ txns }) {
   const [showAll, setShowAll] = useStatePf(false);
-  const items = (showAll ? txns : txns.slice(0, 10)).map(t => {
-    // SA-049: paper capital the owner added; cash and capital in rose by it.
-    if (t.side === 'DEPOSIT') {
-      return { kind: 'cash', sym: fmtInr(t.value), qty: null, price: null,
-               text: t.note, reason: '', t: fmtIST(t.ts, t.date) };
-    }
-    const isSell = t.side === 'SELL';
-    const buyPx = isSell
-      ? (t.cost_basis != null ? t.cost_basis
-         : (t.realized_pnl != null && t.qty ? t.price - t.realized_pnl / t.qty : null))
-      : null;
-    const approx = isSell && t.cost_basis == null && buyPx != null;
-    const pnlPct = isSell
-      ? (t.pnl_pct != null ? t.pnl_pct
-         : (buyPx ? (t.price / buyPx - 1) * 100 : null))
-      : null;
-    return {
-      kind: isSell ? 'sell' : 'buy',
-      sym: t.symbol, qty: t.qty, price: t.price,
-      priceDate: t.date,          // the trade's price is that day's (SA-051)
-      buyPx, approx,
-      text: [t.verdict || t.source,
-             isSell && t.realized_pnl != null
-               ? `realized ${t.realized_pnl >= 0 ? '+' : ''}₹${Math.abs(t.realized_pnl).toLocaleString('en-IN')}`
-                 + (pnlPct != null ? ` (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%)` : '')
-               : '',
-             // SA-048: the trade's charges; a trade from before they were
-             // charged shows them estimated, never as none.
-             t.costs && t.costs.total > 0
-               ? `costs ${fmtInr(t.costs.total)}${t.costs.estimated ? ' (estimated)' : ''}` : '',
-             t.note].filter(Boolean).join(' · '),
-      reason: t.reason || '',
-      t: fmtIST(t.ts, t.date),
-    };
-  });
+  const [only, setOnly] = useStatePf('');
+  const rows = only ? txns.filter(t => t.symbol === only) : txns;
+  const shown = showAll || only ? rows : rows.slice(0, 10);
+  const sales = rows.filter(t => t.side === 'SELL' && t.realized_pnl != null);
+  const realized = sales.reduce((s, t) => s + t.realized_pnl, 0);
   return (
-    <div>
-      <ActivityCard items={items}/>
-      {txns.length > 10 && (
-        <button onClick={()=>setShowAll(v=>!v)} style={{ marginTop:8, padding:'8px 14px',
+    <div className="card pf-card-body sa-trade-history">
+      <div className="eyebrow" style={{ marginBottom:4 }}>Trade history</div>
+      <div style={{ fontSize:12, color:'var(--ink-3)', lineHeight:1.5, marginBottom:12 }}>
+        Every buy and sale, newest first, with its price, its result and why. A trade's price is the
+        close of the session named beside it; "made" is when it was recorded, since the 16:30 review
+        books at the session before its own. Tap a stock to see only its trades.
+      </div>
+      {only && (
+        <div className="sa-trade-only" style={{ display:'flex', flexWrap:'wrap', alignItems:'center', gap:10,
+          padding:'8px 12px', marginBottom:10, borderRadius:10, background:'var(--violet-soft)', fontSize:12 }}>
+          <span>Only <b className="mono">{only}</b>: {rows.length} trade{rows.length === 1 ? '' : 's'}
+            {sales.length > 0 && `; ${sales.length} sale${sales.length === 1 ? '' : 's'} listed here, ${fmtSignedInr(realized)} before costs`}</span>
+          <button onClick={() => setOnly('')} style={pfLinkBtn}>Show every stock</button>
+        </div>
+      )}
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {shown.map(t => <TradeRow key={t.txn_id || `${t.ts}-${t.symbol}-${t.side}`} t={t}
+                                  onPick={(s) => { setOnly(s); }}/>)}
+      </div>
+      {!only && rows.length > 10 && (
+        <button onClick={()=>setShowAll(v=>!v)} style={{ marginTop:10, padding:'8px 14px',
           borderRadius:9, border:'1px solid var(--border)', background:'transparent',
           color:'var(--ink-2)', fontSize:12, fontWeight:600, cursor:'pointer' }}>
-          {showAll ? 'Show recent only' : `View all ${txns.length} transactions`}
+          {showAll ? 'Show recent only' : `View all ${rows.length} transactions`}
         </button>
+      )}
+    </div>
+  );
+}
+
+// The idle-cash outcomes (core/portfolio/deployment.py OUTCOME_WORDS) as short
+// labels; each idea's own sentence follows its label.
+const DEPLOY_OUTCOMES = {
+  bought: 'bought', waiting: 'qualifies, waits', held: 'already held',
+  sold: 'sold since the idea', verdict: 'not rated BUY', gate: 'withheld by the data gate',
+  price: 'no close for the session', before_dive: 'priced before its analysis',
+  surveillance: 'not cleared by NSE surveillance', band: 'above its entry band',
+  invalidated: 'at or below invalidation', size: 'no room under a cap', ledger: 'already in the ledger',
+};
+
+// The latest digest's idle-cash record: what the review bought, how far the
+// book is from its target, and why it stopped. A BUY verdict elsewhere on the
+// page is the analysis's view; this card is what the portfolio did with it.
+function LastBuysCard({ digest }) {
+  const [all, setAll] = useStatePf(false);
+  const dep = digest.deployment || {};
+  const bought = dep.bought || [];
+  const ideas = dep.ideas || [];
+  const reasons = dep.reasons || [];
+  const shownIdeas = all ? ideas : ideas.slice(0, 6);
+  const day = fmtDay(dep.date || digest.date, true);
+  const pct = (v) => (typeof v === 'number' ? `${v.toFixed(1)}%` : '—');
+  return (
+    <div className="card pf-card-body sa-last-buys">
+      <div className="eyebrow" style={{ marginBottom:4 }}>New buys at the last review</div>
+      {day && <div style={{ fontSize:11, color:'var(--ink-3)', marginBottom:10 }}>
+        The review of {day}: its buys are booked at that day's close.</div>}
+      {dep.error ? (
+        <div style={{ fontSize:14, fontWeight:700 }}>Nothing bought: {dep.error}</div>
+      ) : (
+        <>
+          <div style={{ fontSize:16, fontWeight:800, marginBottom:6 }}>
+            {bought.length ? `Bought ${bought.length}: ${bought.join(', ')}` : 'Bought nothing'}
+          </div>
+          {typeof dep.invested_after_pct === 'number' && (
+            <div style={{ fontSize:12, color:'var(--ink-2)', lineHeight:1.5 }}>
+              In stocks {pct(dep.invested_before_pct)} → {pct(dep.invested_after_pct)} of total equity,
+              against a target of {pct(dep.target_pct)} ({dep.regime ? `market regime ${dep.regime}` : 'no market regime'}).
+              {typeof dep.holdings_after === 'number' && ` Holdings ${dep.holdings_before} → ${dep.holdings_after}.`}
+            </div>
+          )}
+        </>
+      )}
+      {reasons.length > 0 && !dep.error && (
+        <>
+          <div style={{ fontSize:11, fontWeight:700, color:'var(--ink-3)', textTransform:'uppercase',
+            letterSpacing:'.08em', margin:'12px 0 4px' }}>Why it stopped there</div>
+          <ul style={{ margin:0, paddingLeft:18, fontSize:12, color:'var(--ink-2)', lineHeight:1.6 }}>
+            {reasons.map((r, i) => <li key={i}>{r}</li>)}
+          </ul>
+        </>
+      )}
+      {ideas.length > 0 && (
+        <>
+          <div style={{ fontSize:11, fontWeight:700, color:'var(--ink-3)', textTransform:'uppercase',
+            letterSpacing:'.08em', margin:'12px 0 4px' }}>Ideas it looked at, best conviction first</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {shownIdeas.map((it, i) => (
+              <div key={i} className="sa-last-buys-idea" style={{ fontSize:12, lineHeight:1.5 }}>
+                <b className="mono">{it.symbol}</b>
+                <span style={{ marginLeft:6, padding:'1px 7px', borderRadius:999, fontSize:10, fontWeight:700,
+                  background: it.outcome === 'bought' ? 'var(--buy-soft)' : 'var(--neutral-soft)',
+                  color: it.outcome === 'bought' ? 'var(--buy-strong)' : 'var(--neutral)' }}>
+                  {DEPLOY_OUTCOMES[it.outcome] || it.outcome}</span>
+                {it.why && it.outcome !== 'bought' && <span style={{ color:'var(--ink-3)' }}> {it.why}</span>}
+              </div>
+            ))}
+          </div>
+          {ideas.length > 6 && <button onClick={() => setAll(v => !v)} style={{ ...pfLinkBtn, marginTop:6 }}>
+            {all ? 'Show fewer' : `Show all ${ideas.length} ideas`}</button>}
+        </>
       )}
     </div>
   );
@@ -1050,6 +1237,12 @@ function LearningsSection({ learnings, openChat }) {
             <div className="eyebrow" style={{ marginBottom:2 }}>Recent verdict changes</div>
             <div style={{ fontSize:18, fontWeight:700, letterSpacing:'-0.01em' }}>
               {countLine}
+            </div>
+            {/* PR-045: a BUY here was read as a purchase on 20 Nov 2026. */}
+            <div className="sa-learnings-not-trades" style={{ fontSize:12, color:'var(--ink-3)', lineHeight:1.5, marginTop:4 }}>
+              A verdict is the analysis's view of a stock, not a trade: a BUY here buys nothing by itself.
+              What was bought or sold, and why, is in the trade history; why a BUY was not bought is under
+              "New buys at the last review".
             </div>
           </div>
         </div>

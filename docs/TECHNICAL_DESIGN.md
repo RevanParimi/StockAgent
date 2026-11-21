@@ -2484,6 +2484,32 @@ functions in [results.py](../core/portfolio/results.py) (`capital_flows`,
   ledger (`closed_trades` and `trade_stats`, as in the scorecard): trades, win
   rate, average win, average loss and expectancy per trade, before costs. A
   partly sold position is not a closed trade.
+- **New buys at the last review.** The latest digest's idle-cash record
+  (`deployment`, section 6) in a card under the holdings: what the review
+  bought, the share in stocks before and after against the regime's target,
+  the holdings before and after, the reasons it stopped, and each idea it
+  looked at, best conviction first, with its outcome and its sentence ("above
+  its entry band: 12.4% above entry band (₹410–₹432); needs a fresh deep
+  dive"). For a review that bought nothing it reads "Bought nothing. In stocks
+  46.1% → 46.1% of total equity, against a target of 80.0% (market regime
+  NORMAL). Holdings 9 → 9." and then "9 holdings, below the 20 aimed for: no
+  qualifying idea; 4 ideas above entry band". A failed deployment reads
+  "Nothing bought: deployment failed: …". A BUY verdict elsewhere on the page
+  is the analysis's view of a stock; this card is what the portfolio did with
+  it. Without deployment on there is no card.
+- **Trade history.** Every trade from `GET /portfolio/transactions` (the
+  newest 500), newest first, after that card: bought or sold, the quantity,
+  the price and the session whose close it was booked at, and "made" with the
+  time it was recorded (the 16:30 review books at the session before its
+  own). A sale adds the average cost of the shares sold and its result before
+  costs: "Profit +₹1,000 (+3.9%)" or "Loss -₹500 (-1.9%)". Each trade shows,
+  in three lines with "more", the reason the ledger kept when it was made
+  (`reason`: the idea's thesis for a new position, the advice narrative for a
+  sale); "more" also opens the rule note. A trade with no reason kept says
+  "No reason was recorded with this trade", and a hand trade "Your own trade".
+  Tapping a stock lists only its trades, with what the sales listed there
+  made before costs. The closed-trade record follows, then the verdict
+  changes (section 10).
 - **Every price has its date.** The holdings table dates the current price by
   its bar (`last_close_date` from `GET /portfolio`) and the average cost by the
   first purchase. Each trade's price shows its trade date, and the agents'
@@ -3633,7 +3659,9 @@ verdict differs from the run before it; a re-run with the same verdict is not
 one. The route looks through every kept run of each stock the viewer may see
 (below) and sends the changes newest first, at most ten, then the latest
 forecast misses, at most five. The Portfolio page counts only the changes and lists the misses under
-their own heading. For example, MARUTI turned BUY on 9 Oct, TATAMOTORS SELL on
+their own heading. Under the count it says that a verdict is the analysis's
+view of a stock, not a trade, and points to the trade history and the last
+review's buys above it (section 7): a stock can turn BUY without being bought. For example, MARUTI turned BUY on 9 Oct, TATAMOTORS SELL on
 10 Oct and BOSCHLTD BUY on 13 Oct, and eight other stocks were re-analysed with
 the same verdict. The page reads "3 changes in the analysed stocks", BOSCHLTD
 first. A full list reads "The 10 most recent changes", because older ones may
@@ -4146,6 +4174,7 @@ section 10) are part of the current design.
 | [PR-039](planning/PI-2026-09/stories/PR-039.md) | Where the funnel lost the stocks that rose | Done | 7 Marksheets; 8 Discovery | None |
 | [PR-040](planning/PI-2026-09/stories/PR-040.md) | Members see three screens and load no operator code | Done | 10 Interface | PR-001 |
 | [PR-041](planning/PI-2026-09/stories/PR-041.md) | Grade the screen's cut forward before it is widened | Open | 8 Discovery | None |
+| [PR-045](planning/PI-2026-09/stories/PR-045.md) | The trades on the portfolio screen: price, result and reason, and why a BUY was not bought | Done | 7 Marksheets; 10 Interface | SA-049, SA-051 |
 | [CLEAN-007](planning/PI-2026-09/stories/CLEAN-007.md) | The nightly backup stops emailing the archive | Done | 1 Production state; 10 Operations | None |
 | [FIX-017](planning/PI-2026-09/stories/FIX-017.md) | The holding sync reads every NSE corporate-action row it is given, under NSE's code | Open | 6 Portfolio | None |
 | [FIX-018](planning/PI-2026-09/stories/FIX-018.md) | The switch gate sets aside a decision whose result can never be known: named, and within a cap | Done | 6 Portfolio; 7 Marksheets | FIX-016 |

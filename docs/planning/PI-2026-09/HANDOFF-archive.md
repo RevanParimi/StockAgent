@@ -14,6 +14,21 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 21 Nov, early morning (manual session): PR-045 → ACCEPTED (light lane), at the owner's request
+
+- **A manual session on the code-server** from about 05:40 IST, opened with "Push the committed
+  code" and a phone screenshot of "Recent verdict changes". `main` = `origin/main` = `b0d6bca`:
+  the runner had pushed it at 00:19 (`8b84845c` SUCCESS, `/health` 200 at 05:42; `3f97de9`
+  records it).
+- **The owner's two questions:** no new buy seen on 20 Nov, though the verdict cards show BUY
+  and SELL that day; and no history of the rates each stock was bought and sold at, the profit or
+  loss and the reason. A verdict change is a re-analysis, not a trade; the trade list existed at
+  the bottom of the page; why a review bought nothing was only in the digest's email text.
+- **PR-045** (frontend only): "New buys at the last review", "Trade history" above the verdict
+  changes with prices, results and reasons in view and a per-stock filter, and "a verdict is not
+  a trade". [Receipt](evidence/PR-045.md). The read-only probe of Friday's digest was refused by
+  the session's permission check; it waits for the owner's word.
+
 ## 20 Nov, afternoon (autopilot): PR-016 → ACCEPTED (fresh review); merged into `main`
 
 - **Autopilot session `1120-1433-p5`**, a `continue` on the code-server from about 14:33 IST,

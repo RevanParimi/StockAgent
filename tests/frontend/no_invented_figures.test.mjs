@@ -1014,3 +1014,152 @@ test('a performance answer from before costs still shows its realized P&L and no
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });
+
+// -- PR-045: the trades, the last review's buying, and verdicts that are not trades --
+
+// The 16:30 run of Fri 20 Nov reviews Thu 19 Nov and books at its close.
+const DEPLOYMENT = {
+  date: '2026-11-19', regime: 'NORMAL', target_share_pct: 80, target_inr: 8000000.0, target_pct: 80.0,
+  min_holdings: 20, target_holdings: 25, max_holdings: 30, position_inr: 320000.0, equity: 10000000.0,
+  invested_before_pct: 46.1, invested_after_pct: 46.1, holdings_before: 9, holdings_after: 9,
+  cash_after: 5390000.0, bought: [], qualifying: 0,
+  reasons: ['no further qualifying idea', '9 holdings, below the 20 aimed for: no qualifying idea',
+            '4 ideas above entry band', '3 ideas not rated a BUY by the analysis'],
+  ideas: [
+    { symbol: 'QALPHA', conviction: 0.9, source: 'discovery', outcome: 'band',
+      why: '12.4% above entry band (₹410–₹432); needs a fresh deep dive' },
+    { symbol: 'QBETA', conviction: 0.88, source: 'discovery', outcome: 'verdict', why: 'analysis verdict NEUTRAL' },
+    { symbol: 'QGAMMA', conviction: 0.85, source: 'watchlist', outcome: 'band', why: 'above entry band' },
+    { symbol: 'QDELTA', conviction: 0.8, source: 'discovery', outcome: 'verdict', why: 'analysis verdict SELL' },
+    { symbol: 'QEPS', conviction: 0.78, source: 'discovery', outcome: 'band', why: 'above entry band' },
+    { symbol: 'QZETA', conviction: 0.75, source: 'discovery', outcome: 'band', why: 'above entry band' },
+    { symbol: 'QETA', conviction: 0.7, source: 'discovery', outcome: 'verdict', why: 'analysis verdict NEUTRAL' },
+  ],
+};
+const THESIS_BUY = 'Order book of ₹4,000 Cr covers two years of revenue; margins widening.';
+const WHY_SOLD = 'WELCORP closed at ₹2,700.00, 5% under its trailing stop.';
+const SOLD = { ...TRIMMED, txn_id: 's2', verdict: 'EXIT', holding_qty_after: 0, reason: WHY_SOLD,
+               costs: { total: 15.35, estimated: false } };
+const DEPLOYED = { ...BOUGHT, txn_id: 'b2', verdict: 'DEPLOY', reason: THESIS_BUY,
+                   note: 'deploy_idle_cash: discovery idea, conviction 0.90' };
+const OTHER_BUY = { ...BOUGHT, txn_id: 'b3', symbol: 'QOTHER', date: '2026-01-20', ts: '2026-01-20T11:10:00+00:00',
+                    verdict: 'DEPLOY', reason: '' };
+const HAND_SALE = { ...TRIMMED, txn_id: 's3', symbol: 'QOTHER', date: '2026-01-27', ts: '2026-01-27T10:00:00+00:00',
+                    source: 'manual', verdict: '', realized_pnl: -500.0, cost_basis: 2600.0, pnl_pct: -1.92,
+                    reason: '', holding_qty_after: 0 };
+const VERDICT_BUY = { id: 'bullish-qverd-7', kind: 'bullish', severity: 'low', sym: 'QVERD',
+                      title: 'QVERD: NEUTRAL → BUY', when: '2026-11-20', what: 'Composite score 0.58, verdict BUY',
+                      detail: 'Score moved +0.02 → now BUY', agentSnapshot: [] };
+
+async function openTrades({ digest = { ...DIGEST, deployment: DEPLOYMENT },
+                            txns = [HAND_SALE, OTHER_BUY, SOLD, DEPLOYED], viewport } = {}) {
+  const app = await openApp(browser, { user: OWNER, viewport, api: liveApi({
+    '/ui/learnings': json({ items: [VERDICT_BUY], since: '2026-10-01' }),
+    '/portfolio': json({ holdings: [HELD], watchlist: [] }),
+    '/portfolio/digest/latest': json(digest),
+    '/portfolio/performance': json(PERF),
+    '/portfolio/transactions': json({ transactions: txns }),
+  }) });
+  await settled(app.page);
+  await app.page.waitForFunction(() => window.__learningsLive === true, null, { timeout: 8000 }).catch(() => {});
+  await goTo(app.page, 'portfolio');
+  await app.page.getByText(/Your holdings/i).first().waitFor({ timeout: 10000 });
+  return app;
+}
+
+test('the last review says what it bought, how far from the target, and why it stopped', async () => {
+  const { context, page, errors } = await openTrades();
+  try {
+    const card = await page.locator('.sa-last-buys').innerText();
+    assert.match(card, /New buys at the last review/i);
+    assert.match(card, /The review of 19 Nov 2026: its buys are booked at that day's close\./);
+    assert.match(card, /Bought nothing/);
+    assert.match(card, /In stocks 46\.1% → 46\.1% of total equity,\s*against a target of 80\.0% \(market regime NORMAL\)\. Holdings 9 → 9\./);
+    for (const r of DEPLOYMENT.reasons) assert.ok(card.includes(r), r);
+    assert.match(card, /QALPHA\s*above its entry band\s*12\.4% above entry band \(₹410–₹432\); needs a fresh deep dive/);
+    assert.match(card, /QBETA\s*not rated BUY\s*analysis verdict NEUTRAL/);
+    // six shown, the seventh behind the button
+    assert.ok(!card.includes('QETA'), card);
+    await page.getByRole('button', { name: 'Show all 7 ideas' }).click();
+    assert.match(await page.locator('.sa-last-buys').innerText(), /QETA\s*not rated BUY/);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test('a review that bought names the stocks; a failed one says so; none recorded shows no card', async () => {
+  const bought = { ...DEPLOYMENT, bought: ['QALPHA', 'QGAMMA'], invested_after_pct: 52.5, holdings_after: 11,
+                   reasons: ['no further qualifying idea'],
+                   ideas: [{ ...DEPLOYMENT.ideas[0], outcome: 'bought', why: 'deploy_idle_cash: conviction 0.90' },
+                           { ...DEPLOYMENT.ideas[2], outcome: 'bought', why: 'deploy_idle_cash: conviction 0.85' }] };
+  let app = await openTrades({ digest: { ...DIGEST, deployment: bought } });
+  try {
+    const card = await app.page.locator('.sa-last-buys').innerText();
+    assert.match(card, /Bought 2: QALPHA, QGAMMA/);
+    assert.match(card, /In stocks 46\.1% → 52\.5%/);
+    assert.match(card, /Holdings 9 → 11\./);
+    assert.ok(!/deploy_idle_cash/.test(card), 'a bought idea shows its label, not the rule note');
+    assert.deepEqual(app.errors, []);
+  } finally { await app.context.close(); }
+  app = await openTrades({ digest: { ...DIGEST, deployment: { date: '2026-11-19', bought: [],
+    error: 'deployment failed: boom', reasons: ['deployment failed: boom'] } } });
+  try {
+    const card = await app.page.locator('.sa-last-buys').innerText();
+    assert.match(card, /Nothing bought: deployment failed: boom/);
+    assert.ok(!/Why it stopped/i.test(card), card);
+    assert.deepEqual(app.errors, []);
+  } finally { await app.context.close(); }
+  app = await openTrades({ digest: DIGEST });
+  try {
+    assert.equal(await app.page.locator('.sa-last-buys').count(), 0);
+    assert.deepEqual(app.errors, []);
+  } finally { await app.context.close(); }
+});
+
+test('the trade history shows each trade price, result and reason, ahead of the verdict changes', async () => {
+  const { context, page, errors } = await openTrades({ viewport: { width: 390, height: 844 } });
+  try {
+    const hist = await page.locator('.sa-trade-history').innerText();
+    assert.match(hist, /Trade history/i);
+    // the sale: both prices, the result in rupees and per cent, and why
+    assert.match(hist, /Sold WELCORP · 10 @ ₹2,700\.00 on 26 Jan 2026 \(average cost ₹2,600\)/);
+    assert.match(hist, /Profit \+₹1,000 \(\+3\.9%\) before costs/);
+    assert.match(hist, /exit · costs ₹15(?! \(estimated\))/);
+    assert.ok(hist.includes(`Why sold: ${WHY_SOLD}`), hist);
+    // the purchase and its thesis
+    assert.match(hist, /Bought WELCORP · 80 @ ₹2,600\.00 on 19 Jan 2026/);
+    assert.match(hist, /new position from idle cash/);
+    assert.ok(hist.includes(`Why bought: ${THESIS_BUY}`), hist);
+    // a loss, a hand sale, and an autopilot trade with no reason kept
+    assert.match(hist, /Sold QOTHER · 10 @ ₹2,700\.00 on 27 Jan 2026 \(average cost ₹2,600\)\s*Loss -₹500 \(-1\.9%\) before costs\s*by you/);
+    assert.match(hist, /Why sold: Your own trade\./);
+    assert.match(hist, /Why bought: No reason was recorded with this trade\./);
+    // the rule note is behind "more"
+    assert.ok(!/Rule notes/.test(hist), hist);
+    // on a phone the trades come before the verdict changes, and those say they are not trades
+    const y = async (sel) => (await page.locator(sel).boundingBox()).y;
+    assert.ok(await y('.sa-last-buys') < await y('.sa-trade-history'));
+    assert.ok(await y('.sa-trade-history') < await y('.sa-learnings'));
+    const learn = await page.locator('.sa-learnings').innerText();
+    assert.match(learn, /A verdict is the analysis's view of a stock, not a trade: a BUY here buys nothing by itself\./);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test('tapping a stock in the trade history lists only its trades and what its sales made', async () => {
+  const { context, page, errors } = await openTrades();
+  try {
+    await page.locator('.sa-trade-history').getByRole('button', { name: 'QOTHER' }).first().click();
+    let hist = await page.locator('.sa-trade-history').innerText();
+    assert.match(hist, /Only QOTHER: 2 trades; 1 sale listed here, -₹500 before costs/);
+    assert.ok(!/WELCORP/.test(hist), hist);
+    await page.getByRole('button', { name: 'Show every stock' }).click();
+    hist = await page.locator('.sa-trade-history').innerText();
+    assert.match(hist, /WELCORP/);
+    assert.match(hist, /QOTHER/);
+    // the full reason and the rule note open on "more"
+    await page.locator('.sa-trade-history').getByRole('button', { name: 'more' }).first().click();
+    assert.match(await page.locator('.sa-trade-history').innerText(),
+                 /Rule notes: deploy_idle_cash: discovery idea, conviction 0\.90/);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});

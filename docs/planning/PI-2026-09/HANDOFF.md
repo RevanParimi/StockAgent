@@ -1,11 +1,12 @@
-# Current handoff - 2026-11-21 (`b0d6bca` deployed at 00:19; PR-017 on `story/PR-017` awaits its fresh review; PR-015's switch in the next push window; PR-037's catch-up run and PR-042-W0's read wait for you)
+# Current handoff - 2026-11-21 (`b0d6bca` deployed; PR-045 done, push pending to Sun 22 Nov 00:10; PR-017 awaits its fresh review; PR-015's switch in the next window)
 
 ## Now
 
 - **Deployed:** `b0d6bca` at about 00:19 IST Sat 21 Nov (the runner, after the full suite;
-  deployment `8b84845c` SUCCESS; `/health` 200 at 05:42). It adds CLEAN-005, PR-013 and PR-016
-  to `03debc1` (00:17 Fri 20 Nov: PR-037, PR-005, PR-042 with `DECISION_GATE_MODE=enforce`,
-  PR-043, FIX-017, CLEAN-004, PR-040). Each card reads `pending_observation`.
+  `8b84845c` SUCCESS; `/health` 200 at 05:42): CLEAN-005, PR-013 and PR-016 on top of `03debc1`
+  (KT section 1). Each card reads `pending_observation`.
+- **PR-045 done** (light, [receipt](evidence/PR-045.md), your request of 21 Nov): Portfolio's
+  last-review buys, trade history and "a verdict is not a trade". Ships with the next push.
 - **Refused to unattended sessions:** PR-037's catch-up run and `PR-042-W0`'s read (below).
 - **Awaiting its fresh review:** PR-017 on `story/PR-017` (`1b01f80`,
   [receipt](evidence/PR-017-implementation.md), B-30); not on `main`.
@@ -16,12 +17,16 @@
   exact commit, push, deploy and `/health`, `PR-015-W1`
   ([rollout](evidence/PR-015-rollout.md)); then BACKLOG B-12.
 - **Next `continue` outside a window:** **PR-017's fresh hard review** (`REVIEW.md`, against the
-  receipt's digest and manifest). After today's 16:30 review: `FIX-017-W1` and `CLEAN-004-W1`
-  (production reads, so your word or your command).
-- **Git:** `origin/main` = `b0d6bca`. `story/PR-015` and `story/PR-017` are local.
+  receipt's digest and manifest). `FIX-017-W1` and `CLEAN-004-W1` are production reads: your
+  word or your command.
+- **Git:** `origin/main` = `b0d6bca`; `main` 2 ahead, push pending to Sun 22 Nov 00:10.
+  `story/PR-015` and `story/PR-017` are local.
 
 ## Waits for you
 
+- **What Friday's 16:30 run bought** (your question of 21 Nov): after the push, Portfolio's "New
+  buys at the last review" reads it (dated 19 Nov, the close it books at). Sooner: say "run the
+  20 Nov buy probe" (read-only; [receipt](evidence/PR-045.md), "Your questions").
 - **PR-037's catch-up run**, a weekday 09:30–14:00 IST (the next is Mon 23 Nov if not today):
   say "run the PR-037 catch-up" in a session and allow it, or run from the StockAgent folder:
   `railway ssh 'python -c "import os,urllib.request as u;r=u.Request(\"http://127.0.0.1:\"+os.environ.get(\"PORT\",\"8000\")+\"/discovery/run\",method=\"POST\",headers={\"X-Scheduler-Key\":os.environ.get(\"SCHEDULER_KEY\",\"\")});print(u.urlopen(r,timeout=30).status)"'`

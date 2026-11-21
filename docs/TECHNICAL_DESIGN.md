@@ -38,7 +38,11 @@ triggered no production job, backfill or notification.
 Production runs `19611f1`. A manual session pushed it at about 06:05 IST on 21
 November 2026, after the full suite passed on its code (deployment `0f16bb7f`
 SUCCESS; `/health` answered 200 at 06:06 IST). Against `b0d6bca` it adds PR-045's
-portfolio screen (sections 7 and 10). `b0d6bca` was pushed by the runner at about
+portfolio screen (sections 7 and 10). On 21 November at 07:48 IST, at the
+owner's word, an operator script sold the owner's 308 DEEPA through the app's
+own sale route at Friday's close (₹191.72, −9.5% before ₹76.55 of costs; ledger
+row `9fbe13f34642b977`, source `manual`): the B-32 read found it bought on
+Deepak Nitrite's analysis (FIX-033). `b0d6bca` was pushed by the runner at about
 00:19 IST on 21 November 2026, after the full suite passed on that commit
 (deployment `8b84845c` SUCCESS; `/health` answered 200 at 05:42 IST). Against
 `03debc1` it adds CLEAN-005's removals (a failed analysis is no analysis, and

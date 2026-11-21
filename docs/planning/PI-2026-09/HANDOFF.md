@@ -6,8 +6,8 @@
   PR-045 on `b0d6bca` (00:19, the runner: CLEAN-005, PR-013, PR-016). Cards `pending_observation`.
 - **Your requests of 21 Nov:** PR-045 live (guide 11-N); PR-046 done, push pending (11-O);
   PR-007 reshaped and moved up. **The B-32 read** ([evidence](evidence/B-32-read-2026-11-21.md)):
-  5 of 10 new buys went against their own analysis; DEEPA's was Deepak Nitrite's. New FIX-033
-  (P0) and PR-047 (your choice of options).
+  5 of 10 new buys went against their own analysis; DEEPA's was Deepak Nitrite's (sold). New
+  FIX-033 (P0, with an automatic exit) and PR-047 (option A). You are not a user: no hand trades.
 - **Next `continue`, any time:** **FIX-033** on `story/FIX-033`, its fresh review, and a push
   before Tue 24 Nov 16:30 (Saturday's dives are first bought by Tuesday's run).
 - **Awaiting its fresh review:** PR-017 on `story/PR-017` (`1b01f80`,
@@ -25,8 +25,7 @@
 
 ## Waits for you
 
-- **DEEPA** (308 at ₹211.86, bought on Deepak Nitrite's case, −7.0% on 19 Nov): sell it by hand,
-  or leave it to the rules. **PR-047:** option A, B, both, or measure first (card).
+- Nothing new. (DEEPA sold 21 Nov 07:48 at your word, ₹191.72, −9.5%; PR-047: A decided.)
 - **PR-037's catch-up run**, a weekday 09:30–14:00 IST (the next is Mon 23 Nov if not today):
   say "run the PR-037 catch-up" in a session and allow it, or run from the StockAgent folder:
   `railway ssh 'python -c "import os,urllib.request as u;r=u.Request(\"http://127.0.0.1:\"+os.environ.get(\"PORT\",\"8000\")+\"/discovery/run\",method=\"POST\",headers={\"X-Scheduler-Key\":os.environ.get(\"SCHEDULER_KEY\",\"\")});print(u.urlopen(r,timeout=30).status)"'`

@@ -199,7 +199,7 @@ function ToolTracePanel({ trace }) {
 }
 
 // Chat overlay (slide-up panel, anchored bottom-right)
-function ChatOverlay({ open, onClose, mode='wireframe' }) {
+function ChatOverlay({ open, onClose, mode='wireframe', ask=null }) {
   const [msgs, setMsgs] = useState([
     { from:'bot', text:"Hi I'm your StockAgent assistant. Ask me anything about Indian markets." }
   ]);
@@ -300,6 +300,14 @@ function ChatOverlay({ open, onClose, mode='wireframe' }) {
       }
     }
   };
+
+  // PR-046: a card's "Ask why" sends its own question once, when the chat is open.
+  const askedRef = useRef(null);
+  useEffect(() => {
+    if (!open || !ask || askedRef.current === ask.n) return;
+    askedRef.current = ask.n;
+    send(ask.text);
+  }, [open, ask]);
 
   if (!open) return null;
   return (

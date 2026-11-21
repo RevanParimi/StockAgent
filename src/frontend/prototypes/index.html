@@ -377,6 +377,8 @@ function App() {
   // Where to land after login when the tap arrived logged-out:
   const [pendingDest, setPendingDest] = useState(!hasToken && deepLink ? deepLink : null);
   const [chat, setChat] = useState(false);
+  // PR-046: a question a card asks for the user ("Ask why"); n makes a repeat a new ask.
+  const [ask, setAsk] = useState(null);
   const [, forceRender] = useState(0);
 
   // Settings' Appearance segment writes here. Go through saSetTheme so the
@@ -442,7 +444,12 @@ function App() {
     return () => window.removeEventListener('sa-auth-expired', onExpired);
   }, []);
 
-  const openChat = () => setChat(true);
+  // openChat(question) opens the chat and sends that question; as an onClick
+  // handler it receives the click event, which opens the chat with no question.
+  const openChat = (question) => {
+    setChat(true);
+    if (typeof question === 'string' && question.trim()) setAsk({ text: question.trim(), n: Date.now() });
+  };
   const closeChat = () => setChat(false);
 
   const nav = (s) => {
@@ -493,7 +500,7 @@ function App() {
 
     {/* Floating orb on non-auth screens */}
     {screen !== 'auth' && !chat && <SphereOrb onOpen={openChat} mode={SPHERE_MODE}/>}
-    <ChatOverlay open={chat} onClose={closeChat} mode={SPHERE_MODE}/>
+    <ChatOverlay open={chat} onClose={closeChat} mode={SPHERE_MODE} ask={ask}/>
   </>;
 }
 

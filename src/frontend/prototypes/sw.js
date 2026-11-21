@@ -15,7 +15,9 @@
 // v11 (PR-040): members see Today, Portfolio and Ask. The operator screens'
 // files are the owner's only and are not listed here (index.html requests
 // them for the owner); demo-fixtures.js is requested only with ?demo=1.
-const VERSION = 'v11';
+// v12 (PR-045, PR-046): the portfolio screen's trade history and last-review card,
+// and the chat's "Ask why" question; drop the cached screens that lack them.
+const VERSION = 'v12';
 const SHELL_CACHE = `sa-shell-${VERSION}`;
 const RUNTIME_CACHE = `sa-runtime-${VERSION}`;
 

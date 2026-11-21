@@ -1,11 +1,12 @@
-# Current handoff - 2026-11-21 (`19611f1` deployed with PR-045; PR-017 awaits its fresh review; PR-015's switch in the next window)
+# Current handoff - 2026-11-21 (`19611f1` deployed with PR-045; PR-046 waits for the push; PR-017's review, then PR-007; PR-015's switch in the next window)
 
 ## Now
 
 - **Deployed:** `19611f1` at about 06:05 IST Sat 21 Nov (`0f16bb7f` SUCCESS, `/health` 200):
   PR-045 on `b0d6bca` (00:19, the runner: CLEAN-005, PR-013, PR-016). Cards `pending_observation`.
-- **PR-045 done** (light, [receipt](evidence/PR-045.md), your request of 21 Nov): Portfolio's
-  last-review buys, trade history and "a verdict is not a trade". Live; guide 11-N is yours.
+- **Your requests of 21 Nov:** PR-045 live ([receipt](evidence/PR-045.md); guide 11-N); PR-046
+  done, push pending ("Ask why" sends its question; [receipt](evidence/PR-046.md); 11-O); PR-007
+  reshaped and moved up (model-drafted plain reasons, about 3% of tokens); BACKLOG B-32.
 - **Refused to unattended sessions:** PR-037's catch-up run and `PR-042-W0`'s read (below).
 - **Awaiting its fresh review:** PR-017 on `story/PR-017` (`1b01f80`,
   [receipt](evidence/PR-017-implementation.md), B-30); not on `main`.
@@ -16,9 +17,9 @@
   exact commit, push, deploy and `/health`, `PR-015-W1`
   ([rollout](evidence/PR-015-rollout.md)); then BACKLOG B-12.
 - **Next `continue` outside a window:** **PR-017's fresh hard review** (`REVIEW.md`, against the
-  receipt's digest and manifest). `FIX-017-W1` and `CLEAN-004-W1` are production reads: your
+  receipt's digest and manifest), then **PR-007**. `FIX-017-W1` and `CLEAN-004-W1` are production reads: your
   word or your command.
-- **Git:** `origin/main` = `19611f1`; `main` 1 ahead (this record), push pending to 22 Nov 00:10.
+- **Git:** `origin/main` = `19611f1`; `main` 2 ahead, push pending to Sun 22 Nov 00:10.
   `story/PR-015` and `story/PR-017` are local.
 
 ## Waits for you

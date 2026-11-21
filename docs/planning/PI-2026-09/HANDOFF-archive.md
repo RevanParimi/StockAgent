@@ -14,6 +14,18 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 21 Nov, early morning (the same session): PR-046 → ACCEPTED (light lane); PR-007 reshaped and moved up
+
+- **The owner's second message**, about 06:15 IST, with two screenshots: whether the RL Monitor's
+  stats help (they steer nothing but the 30-day forecast, whose removal and the screen's were
+  approved on 15 and 17 Nov: CLEAN-003); "Ask why" opening an empty chat; reasons that "end abrupt"
+  and read "too algorithmic"; and token cost.
+- **PR-046:** "Ask why" sends the card's question; the chat's stock tool adds the two theses around
+  the verdict change; cut text ends "…"; service worker v12. [Receipt](evidence/PR-046.md).
+- **PR-007** reshaped: model-drafted plain reasons beside the stored ones, drafted once per trade
+  and per review (about 3% of a month's tokens); moved to follow PR-015. **BACKLOG B-32:** TVSMOTOR
+  bought on a thesis calling its price unfavourable.
+
 ## 21 Nov, early morning (manual session): PR-045 → ACCEPTED (light lane), at the owner's request
 
 - **A manual session on the code-server** from about 05:40 IST, opened with "Push the committed

@@ -878,10 +878,30 @@ function tradeKind(t) {
 
 // The trade's own reason, or an honest line when none was kept with it.
 function tradeWhy(t) {
-  const r = String(t.reason || '').trim();
+  const r = endsCut(t.reason);
   if (r) return r;
   if (t.source === 'manual' || t.source === 'seed') return 'Your own trade.';
   return 'No reason was recorded with this trade.';
+}
+
+// The server keeps a thesis to a fixed length (800 characters on an idea, 160 on
+// a verdict card), which can stop mid-word. Say so rather than end abruptly.
+function endsCut(text) {
+  const t = String(text || '').trim();
+  return t && !/[.!?)"'’”]$/.test(t) ? t.replace(/[\s,;:–—-]+$/, '') + '…' : t;
+}
+
+// PR-046: the question a verdict card's "Ask why" sends to the chat.
+function askWhyQuestion(it) {
+  const day = fmtDay(it.when, true) || it.when || '';
+  if (it.kind === 'forecast-miss') {
+    return `Explain the forecast miss on ${it.sym}${day ? ` on ${day}` : ''} in plain words.`;
+  }
+  const change = String(it.title || '').split(': ').slice(1).join(': ');
+  const [from, to] = change.split(' → ');
+  const moved = from && to ? ` from ${from} to ${to}` : '';
+  return `Why did the analysis change ${it.sym}'s verdict${moved}${day ? ` on ${day}` : ''}? `
+       + 'Explain in plain words what changed.';
 }
 
 const pfClamp = (lines) => ({ display:'-webkit-box', WebkitLineClamp:lines,
@@ -1299,7 +1319,7 @@ function LessonCard({ it, openChat }) {
         </div>
 
         <div style={{ fontSize:13, color:'var(--ink-2)', lineHeight:1.55, marginBottom:10 }}>
-          {it.what}
+          {endsCut(it.what)}
         </div>
 
         {it.detail && (
@@ -1329,7 +1349,7 @@ function LessonCard({ it, openChat }) {
           </div>
         )}
 
-        <button onClick={openChat} style={{
+        <button className="sa-ask-why" onClick={() => openChat(askWhyQuestion(it))} style={{
           padding:'7px 12px', borderRadius:8,
           border:'1px solid var(--border)', background:'transparent',
           fontSize:12, fontWeight:600, color:'var(--ink-2)',

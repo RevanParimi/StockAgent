@@ -96,7 +96,7 @@ Thirteen tools, each with a schema in `_CHAT_TOOLS` and a branch in
 | `get_historical_prices(symbol, days)` | yfinance | Recent OHLCV and trend |
 | `screen_stocks(sector, mode)` | yfinance, 1-month windows | `value`, `momentum` or `profit` over the sector's tickers |
 | `get_sector_snapshot(sector)` | yfinance and the score store | The sector index, live movers and stored verdicts |
-| `get_stock_analysis(ticker)` | Score store | The latest stored verdict and score |
+| `get_stock_analysis(ticker)` | Score store | The last six runs' dates, verdicts and scores, the latest thesis and the thesis of the last run with another verdict, each cut at a word to 700 characters |
 | `get_analysis_history(days)` | Score store | Verdicts over up to 30 days |
 | `run_agent_analysis(ticker)` | Score store, else the research pipeline | Returns the latest stored analysis whatever its age; only with none stored does it run the pipeline, with a 45-second timeout |
 | `get_rl_prediction(ticker)` | The current month's envelope | Taken from the first sector directory that has one |
@@ -158,7 +158,10 @@ data: {"event":"done"}
 `tool_result` summaries are the first 600 characters of each result. The
 frontend (`ChatOverlay` in [sphere.jsx](../src/frontend/prototypes/sphere.jsx))
 reads the stream with `fetch` and falls back to `/ui/chat` if the stream
-fails.
+fails. A screen can open it with a question: `openChat(question)` in
+`index.html` passes it as `ask`, and the overlay sends it once, as if typed.
+The Portfolio page's verdict cards do this with "Ask why"; buttons that
+pass only their click event open the chat empty.
 
 **Every reply is untrusted text.** The model quotes news snippets and tool
 output, and a quoted `<img src=x onerror=…>` passed to the browser as HTML

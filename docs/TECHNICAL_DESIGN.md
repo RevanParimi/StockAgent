@@ -2510,6 +2510,8 @@ functions in [results.py](../core/portfolio/results.py) (`capital_flows`,
   (`reason`: the idea's thesis for a new position, the advice narrative for a
   sale); "more" also opens the rule note. A trade with no reason kept says
   "No reason was recorded with this trade", and a hand trade "Your own trade".
+  A reason the store cut short (an idea's thesis is kept to 800 characters)
+  ends with "…" rather than mid-word.
   Tapping a stock lists only its trades, with what the sales listed there
   made before costs. The closed-trade record follows, then the verdict
   changes (section 10).
@@ -3664,7 +3666,14 @@ one. The route looks through every kept run of each stock the viewer may see
 forecast misses, at most five. The Portfolio page counts only the changes and lists the misses under
 their own heading. Under the count it says that a verdict is the analysis's
 view of a stock, not a trade, and points to the trade history and the last
-review's buys above it (section 7): a stock can turn BUY without being bought. For example, MARUTI turned BUY on 9 Oct, TATAMOTORS SELL on
+review's buys above it (section 7): a stock can turn BUY without being bought.
+A card's text, a thesis cut to 160 characters, ends with "…" where it was cut.
+Its "Ask why" opens the chat and sends the card's own question, "Why did the
+analysis change OLAELEC's verdict from NEUTRAL to SELL on 20 Nov 2026? Explain
+in plain words what changed.", so the answer starts from that stock. The chat's
+stock tool (`get_stock_analysis`) returns the recent runs' verdicts and scores,
+the latest thesis and the thesis from before the verdict changed. Every other
+chat button opens the chat empty. For example, MARUTI turned BUY on 9 Oct, TATAMOTORS SELL on
 10 Oct and BOSCHLTD BUY on 13 Oct, and eight other stocks were re-analysed with
 the same verdict. The page reads "3 changes in the analysed stocks", BOSCHLTD
 first. A full list reads "The 10 most recent changes", because older ones may
@@ -4178,6 +4187,7 @@ section 10) are part of the current design.
 | [PR-040](planning/PI-2026-09/stories/PR-040.md) | Members see three screens and load no operator code | Done | 10 Interface | PR-001 |
 | [PR-041](planning/PI-2026-09/stories/PR-041.md) | Grade the screen's cut forward before it is widened | Open | 8 Discovery | None |
 | [PR-045](planning/PI-2026-09/stories/PR-045.md) | The trades on the portfolio screen: price, result and reason, and why a BUY was not bought | Done | 7 Marksheets; 10 Interface | SA-049, SA-051 |
+| [PR-046](planning/PI-2026-09/stories/PR-046.md) | "Ask why" asks the card's own question; text cut short says so | Done | 10 Interface | PR-045 |
 | [CLEAN-007](planning/PI-2026-09/stories/CLEAN-007.md) | The nightly backup stops emailing the archive | Done | 1 Production state; 10 Operations | None |
 | [FIX-017](planning/PI-2026-09/stories/FIX-017.md) | The holding sync reads every NSE corporate-action row it is given, under NSE's code | Open | 6 Portfolio | None |
 | [FIX-018](planning/PI-2026-09/stories/FIX-018.md) | The switch gate sets aside a decision whose result can never be known: named, and within a cap | Done | 6 Portfolio; 7 Marksheets | FIX-016 |

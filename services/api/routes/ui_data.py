@@ -1601,9 +1601,32 @@ def _ctx_ticker_detail(ticker: str) -> str:
         ]
         delta = store.get_score_delta(ticker.upper())
         delta_str = f" | Δscore={delta:+.3f} vs prior" if delta is not None else ""
-        return f"{ticker.upper()} HISTORY{delta_str}:\n" + "\n".join(lines)
+        # PR-046: the theses of the newest run and of the last run with another
+        # verdict, so "Ask why" on a verdict change can say what changed.
+        theses = []
+        newest = rows[0]
+        changed = next((r for r in rows[1:] if (r.get("verdict") or "") != (newest.get("verdict") or "")), None)
+        for label, r in (("LATEST", newest), ("BEFORE THE VERDICT CHANGE", changed)):
+            text = _cut_words((r or {}).get("investment_thesis") or "", _TICKER_THESIS_CHARS)
+            if text:
+                theses.append(f"{label} THESIS ({r['run_at'][:10]}, {r['verdict']}): {text}")
+        return (f"{ticker.upper()} HISTORY{delta_str}:\n" + "\n".join(lines)
+                + ("\n" + "\n".join(theses) if theses else ""))
     except Exception:
         return ""
+
+
+# How much of each thesis the chat's stock tool returns (PR-046): two of them
+# stay inside the tool result the model is given.
+_TICKER_THESIS_CHARS = 700
+
+
+def _cut_words(text: str, limit: int) -> str:
+    """`text` up to `limit` characters, cut at a word and marked "…" when cut."""
+    text = " ".join(str(text).split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0].rstrip(",;:") + "…"
 
 
 def _sector_for_ticker(sym: str) -> str:
@@ -2250,8 +2273,9 @@ _CHAT_TOOLS = [
         "function": {
             "name": "get_stock_analysis",
             "description": (
-                "Get the latest StockAgent AI analysis for a tracked NSE stock: verdict, composite score, "
-                "agent breakdown, key positives and risks. Use when the user asks about a specific stock's outlook."
+                "Get StockAgent's recent analyses of an NSE stock: each run's date, verdict and score, the "
+                "latest thesis and the thesis from before its last verdict change. Use when the user asks "
+                "about a specific stock's outlook or why its verdict changed."
             ),
             "parameters": {
                 "type": "object",

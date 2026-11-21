@@ -1163,3 +1163,47 @@ test('tapping a stock in the trade history lists only its trades and what its sa
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });
+
+// -- PR-046: "Ask why" asks the card's own question; text cut short says so --------
+
+test("a verdict card's Ask why opens the chat with that card's question; Open assistant asks nothing", async () => {
+  const asked = [];
+  const stream = async (u, req) => {
+    asked.push(JSON.parse(req.postData() || '{}').message);
+    return { status: 200, contentType: 'text/event-stream',
+             body: 'data: {"event":"token","text":"The analysis now weighs the slower demand."}\n\n'
+                 + 'data: {"event":"done"}\n\n' };
+  };
+  const cut = { ...VERDICT_BUY, what: 'Ola Electric hinges on whether the dealer-led pivot can reverse a' };
+  const app = await openApp(browser, { user: OWNER, api: liveApi({
+    '/ui/learnings': json({ items: [cut], since: '2026-10-01' }),
+    '/ui/chat/stream': stream,
+    '/portfolio': json({ holdings: [HELD], watchlist: [] }),
+    '/portfolio/digest/latest': json(DIGEST),
+    '/portfolio/performance': json(PERF),
+    '/portfolio/transactions': json({ transactions: [{ ...DEPLOYED, reason: 'Margins widen while the stock trades at 55x, so the' }] }),
+  }) });
+  const { context, page, errors } = app;
+  try {
+    await settled(page);
+    await page.waitForFunction(() => window.__learningsLive === true, null, { timeout: 8000 }).catch(() => {});
+    await goTo(page, 'portfolio');
+    await page.locator('.sa-learnings').waitFor({ timeout: 10000 });
+    // text the server cut short ends with an ellipsis, not mid-sentence
+    assert.match(await page.locator('.sa-learnings').innerText(), /can reverse a…/);
+    assert.match(await page.locator('.sa-trade-history').innerText(), /trades at 55x, so the…/);
+    // "Open assistant" opens an empty chat
+    await page.getByRole('button', { name: 'Open assistant' }).click();
+    await page.waitForTimeout(500);
+    assert.deepEqual(asked, []);
+    await page.locator('.chat-overlay button').first().click();   // close
+    await page.waitForTimeout(300);
+    // Ask why sends the card's question once, and the answer streams in
+    await page.locator('.sa-ask-why').first().click();
+    await page.getByText('The analysis now weighs the slower demand.').waitFor({ timeout: 8000 });
+    assert.deepEqual(asked, ["Why did the analysis change QVERD's verdict from NEUTRAL to BUY on 20 Nov 2026? "
+                             + 'Explain in plain words what changed.']);
+    assert.match(await page.locator('.chat-overlay').innerText(), /Why did the analysis change QVERD's verdict/);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});

@@ -1,13 +1,15 @@
-# Current handoff - 2026-11-21 (`19611f1` deployed with PR-045; PR-046 waits for the push; PR-017's review, then PR-007; PR-015's switch in the next window)
+# Current handoff - 2026-11-21 (NEXT FIX-033, P0: DEEPA was bought on Deepak Nitrite's analysis; then PR-017's review; PR-046 waits for the push)
 
 ## Now
 
 - **Deployed:** `19611f1` at about 06:05 IST Sat 21 Nov (`0f16bb7f` SUCCESS, `/health` 200):
   PR-045 on `b0d6bca` (00:19, the runner: CLEAN-005, PR-013, PR-016). Cards `pending_observation`.
-- **Your requests of 21 Nov:** PR-045 live ([receipt](evidence/PR-045.md); guide 11-N); PR-046
-  done, push pending ("Ask why" sends its question; [receipt](evidence/PR-046.md); 11-O); PR-007
-  reshaped and moved up (model-drafted plain reasons, about 3% of tokens); BACKLOG B-32.
-- **Refused to unattended sessions:** PR-037's catch-up run and `PR-042-W0`'s read (below).
+- **Your requests of 21 Nov:** PR-045 live (guide 11-N); PR-046 done, push pending (11-O);
+  PR-007 reshaped and moved up. **The B-32 read** ([evidence](evidence/B-32-read-2026-11-21.md)):
+  5 of 10 new buys went against their own analysis; DEEPA's was Deepak Nitrite's. New FIX-033
+  (P0) and PR-047 (your choice of options).
+- **Next `continue`, any time:** **FIX-033** on `story/FIX-033`, its fresh review, and a push
+  before Tue 24 Nov 16:30 (Saturday's dives are first bought by Tuesday's run).
 - **Awaiting its fresh review:** PR-017 on `story/PR-017` (`1b01f80`,
   [receipt](evidence/PR-017-implementation.md), B-30); not on `main`.
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
@@ -16,17 +18,15 @@
   both as in [PR-005's review](evidence/PR-005-review.md), "Decision"), the full suite on the
   exact commit, push, deploy and `/health`, `PR-015-W1`
   ([rollout](evidence/PR-015-rollout.md)); then BACKLOG B-12.
-- **Next `continue` outside a window:** **PR-017's fresh hard review** (`REVIEW.md`, against the
-  receipt's digest and manifest), then **PR-007**. `FIX-017-W1` and `CLEAN-004-W1` are production reads: your
-  word or your command.
+- **Then, outside a window:** PR-017's fresh hard review (`REVIEW.md`), then PR-007.
+  `FIX-017-W1` and `CLEAN-004-W1` are production reads: your word or your command.
 - **Git:** `origin/main` = `19611f1`; `main` 2 ahead, push pending to Sun 22 Nov 00:10.
   `story/PR-015` and `story/PR-017` are local.
 
 ## Waits for you
 
-- **What Friday's 16:30 run bought** (your question of 21 Nov): Portfolio's "New buys at the
-  last review" now shows it (dated 19 Nov, the close it books at); or say "run the 20 Nov buy
-  probe" (read-only; [receipt](evidence/PR-045.md), "Your questions").
+- **DEEPA** (308 at ₹211.86, bought on Deepak Nitrite's case, −7.0% on 19 Nov): sell it by hand,
+  or leave it to the rules. **PR-047:** option A, B, both, or measure first (card).
 - **PR-037's catch-up run**, a weekday 09:30–14:00 IST (the next is Mon 23 Nov if not today):
   say "run the PR-037 catch-up" in a session and allow it, or run from the StockAgent folder:
   `railway ssh 'python -c "import os,urllib.request as u;r=u.Request(\"http://127.0.0.1:\"+os.environ.get(\"PORT\",\"8000\")+\"/discovery/run\",method=\"POST\",headers={\"X-Scheduler-Key\":os.environ.get(\"SCHEDULER_KEY\",\"\")});print(u.urlopen(r,timeout=30).status)"'`

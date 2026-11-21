@@ -35,9 +35,14 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs `03debc1`. The code-server's autopilot runner pushed it at about
-00:17 IST on 20 November 2026, after the full suite passed on that commit
-(deployment `0ac3c914` SUCCESS; `/health` answered 200 at 10:47 IST). Against
+Production runs `b0d6bca`. The code-server's autopilot runner pushed it at about
+00:19 IST on 21 November 2026, after the full suite passed on that commit
+(deployment `8b84845c` SUCCESS; `/health` answered 200 at 05:42 IST). Against
+`03debc1` it adds CLEAN-005's removals (a failed analysis is no analysis, and
+the per-analyst layer is gone; section 4), PR-013's scorecard lines and PR-016's
+book at prices that could be had (section 7). `03debc1` was pushed by the
+runner at about 00:17 IST on 20 November 2026, after the full suite passed on
+that commit (deployment `0ac3c914` SUCCESS; `/health` answered 200 at 10:47 IST). Against
 `2e995fe` it adds PR-037's idea supply (section 8), PR-005's investment case at
 purchase (section 6), PR-043's search shadow (section 4), FIX-017's
 corporate-action reading (section 6), CLEAN-004's removals and PR-040's member

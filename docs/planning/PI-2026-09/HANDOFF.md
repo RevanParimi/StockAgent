@@ -1,19 +1,16 @@
-# Current handoff - 2026-11-20 (PR-017 implemented on `story/PR-017`, awaiting its fresh review; push pending to Sat 21 Nov 00:10, where PR-015 switches first; PR-037's catch-up run and PR-042-W0's read wait for you)
+# Current handoff - 2026-11-21 (`b0d6bca` deployed at 00:19; PR-017 on `story/PR-017` awaits its fresh review; PR-015's switch in the next push window; PR-037's catch-up run and PR-042-W0's read wait for you)
 
 ## Now
 
-- **Deployed:** `03debc1` at about 00:17 IST Fri 20 Nov (the runner, after the full suite;
-  deployment `0ac3c914` SUCCESS; `/health` 200 at 10:47). Live: PR-037, PR-005 (the backfill
-  waits for your word), PR-042 (`DECISION_GATE_MODE=enforce`), PR-043, FIX-017, CLEAN-004 and
-  PR-040. Each card reads `pending_observation`.
+- **Deployed:** `b0d6bca` at about 00:19 IST Sat 21 Nov (the runner, after the full suite;
+  deployment `8b84845c` SUCCESS; `/health` 200 at 05:42). It adds CLEAN-005, PR-013 and PR-016
+  to `03debc1` (00:17 Fri 20 Nov: PR-037, PR-005, PR-042 with `DECISION_GATE_MODE=enforce`,
+  PR-043, FIX-017, CLEAN-004, PR-040). Each card reads `pending_observation`.
 - **Refused to unattended sessions:** PR-037's catch-up run and `PR-042-W0`'s read (below).
-- **Done today, shipping with the next push:** CLEAN-005 ([review](evidence/CLEAN-005-review.md),
-  `f6b2055`; B-27), PR-013 ([receipt](evidence/PR-013.md); B-12 waits for PR-015's merge) and
-  PR-016 ([review](evidence/PR-016-review.md), `f0ab71c`; B-28, B-29).
 - **Awaiting its fresh review:** PR-017 on `story/PR-017` (`1b01f80`,
   [receipt](evidence/PR-017-implementation.md), B-30); not on `main`.
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
-  Mondays; next Sat 21 Nov 00:10): after the runner's push, **PR-015's switch** (your word, 18
+  Mondays; next Sun 22 Nov 00:10): **PR-015's switch** (your word, 18
   Nov): merge `story/PR-015` (`12b7901`; four KT conflict hunks, sections 1, 3, 4 and 11: keep
   both as in [PR-005's review](evidence/PR-005-review.md), "Decision"), the full suite on the
   exact commit, push, deploy and `/health`, `PR-015-W1`
@@ -21,8 +18,7 @@
 - **Next `continue` outside a window:** **PR-017's fresh hard review** (`REVIEW.md`, against the
   receipt's digest and manifest). After today's 16:30 review: `FIX-017-W1` and `CLEAN-004-W1`
   (production reads, so your word or your command).
-- **Git:** `origin/main` = `03debc1`; `main` 12 commits ahead, push pending to Sat 21 Nov
-  00:10. `story/PR-015` and `story/PR-017` are local.
+- **Git:** `origin/main` = `b0d6bca`. `story/PR-015` and `story/PR-017` are local.
 
 ## Waits for you
 

@@ -336,8 +336,8 @@ def test_property_stops_fire_exactly_when_the_legacy_rule_fires_them():
 
 # -- The mode switch ----------------------------------------------------------------------
 
-def test_shadow_is_the_default_and_an_unknown_value_reads_as_shadow(monkeypatch):
-    assert xs.exit_rule_mode() == "shadow"            # config.yaml as shipped
+def test_evidence_is_shipped_and_an_unknown_value_reads_as_shadow(monkeypatch):
+    assert xs.exit_rule_mode() == "evidence"          # config.yaml as shipped since PR-015
     import backend.shared.config.settings.loader as loader
     for value, mode in (("legacy", "legacy"), (" Evidence ", "evidence"),
                         ("evidense", "shadow"), ("", "shadow"), (None, "shadow")):

@@ -101,6 +101,7 @@ operational control.
 |---|---|---|
 | Learning mode | `observe` since 2026-09-26, set by the Railway variable `RL_LEARNING_MODE`; the repository default is `adapt`. Weight versions stay unchanged across reviews, and every review records its proposal. Every envelope since the 2026-10-01 monthly forecast was issued in `observe`. | Verified 2026-10-01 ([activation record](planning/PI-2026-09/evidence/SA-039-activation-2026-09-26.md)) |
 | Idle cash | Idle-cash deployment is on for the primary portfolio since the 15 Nov 2026 deploy, as the repository configures it (`portfolio.overrides.primary.deploy_idle_cash: true`; the global switch off). It acts in the pipeline after each weekday 16:30 review, first on Monday 16 Nov. Before it: 2 holdings, 15.6% invested, equity ₹9,82,408 at the 12 Nov point against ₹10,00,000 put in. The first run, Monday's review of the 13 Nov session (regime RISK_ON, target 80%), bought one stock, COFORGE for ₹64,896 at that session's close: 3 holdings, 22.3% invested, cash ₹7,63,937, equity ₹9,82,897. It stopped because only 1 idea qualified: 2 were offered, and the other was already held. The repository now configures the ₹1 crore book (section 6): 25 holdings to size a position by, 20 aimed for, 30 at most, 5 new positions a day, 60 managed tickers and 90 event-feed stocks; production runs them since the deploy of 19 Nov (05:25 IST), and the ₹90 L deposit was recorded on 19 Nov at 06:34 IST: ₹1,00,00,000 put in, cash ₹95,04,483, 7 holdings. | Deploy 15 Nov; read-only probes 15 Nov 21:10 and 17 Nov 06:38 IST ([PR-014 receipt](planning/PI-2026-09/evidence/PR-014-rollout.md)); deploy and deposit 19 Nov ([PR-036 receipt](planning/PI-2026-09/evidence/PR-036.md)) |
+| Exit rule | `evidence`, as the repository configures it since PR-015, from the first 16:30 review after its deploy (dated in the story's rollout receipt): the evidence rule decides which holdings are sold because their case broke, and the price-path rule's verdict is still recorded beside it in `exit_shadow.jsonl`. Before it, `shadow` from PR-009's deploy on 30 Oct 2026: the price-path rule acted and both verdicts were recorded. The stops, the shock exit and the crisis exit are the same under both. | [PR-015](planning/PI-2026-09/stories/PR-015.md) and its rollout receipt |
 | Decision gate | `enforce` in production from the first deploy after 19 Nov 2026 12:41 IST (Railway variable `DECISION_GATE_MODE`, PR-042): an analysis whose prices, financials or peers did not arrive reads INSUFFICIENT DATA, so it makes no BUY and no shelf idea; exits and trims are never blocked. `record` stays the repository default. The 2026-10-01 decision had kept `record`, because 25 of 78 analyses (32%) would have abstained, most for reasons since fixed; on 19 Nov it was 4 of 653. | [Enforce decision](planning/PI-2026-09/evidence/SA-003-enforce-decision-2026-10-01.md), [PR-042](planning/PI-2026-09/evidence/PR-042.md) |
 | Instrument identity | Since 2026-10-01, TATAMOTORS is disabled in the managed list, with its history kept, and TMPV is managed as its own automobile ticker. The registry lists TATAMOTORS and HEXAWARE as unresolved. | Owner's dashboard change, 2026-10-01 |
 | Prediction stores | The ownership quarantine was applied on 2026-10-01. It moved 16 stray `automobile/<TICKER>` copies, byte-identical, into `data/prediction_quarantine/20260930T184031Z-ce3556d023d3/`. Rollback remains available. | Apply record in [STATE.json](planning/PI-2026-09/STATE.json) |
@@ -242,7 +243,7 @@ resolved at import, so editing a file does not imply live reconfiguration.
 | `search_shadow.enabled: true` | The search shadow (section 4): after each analysis, its company search also goes to each engine in `search_shadow.engines` (Parallel `fast`, then Exa) through OpenRouter, and the results are recorded, never read. `search_shadow.weekly_budget: 200` calls a week per engine. `false` is the rollback. |
 | `discovery.max_unnamed_redives: 2` | A shelf idea still without a sector key after this many re-dives in a row is dropped with the reason (section 8); 0 = no limit. |
 | [`config/instruments.yaml`](../config/instruments.yaml) | The instrument registry: effective-dated records of which provider symbol each listed ticker is priced from, on which price basis, and whether its identity is resolved (section 4). Evidence is needed to resolve an identity, never to quarantine one. It lists TATAMOTORS and HEXAWARE as unresolved, GATI and INOXLEISUR as delisted, and two plain aliases and five NSE renames as resolved. Quarantine acts through `decision_gate.mode`. |
-| `advisor.exit_rule: shadow` | Which exit rule sells (section 6). `legacy`: the price-path rule acts and nothing is compared. `shadow`: it still acts, and both rules' verdicts are recorded. `evidence`: the evidence rule acts. Any other value reads as `shadow`. The owner switches only on the weekly scorecard's gate; `legacy` is the rollback. |
+| `advisor.exit_rule: evidence` | Which exit rule sells (section 6). `legacy`: the price-path rule acts and nothing is compared. `shadow`: it still acts, and both rules' verdicts are recorded. `evidence`: the evidence rule acts, and the price-path verdict is still recorded beside it. Any other value reads as `shadow`. The owner chose `evidence` on 14 November 2026 without waiting for the weekly scorecard's gate (PR-015); `shadow` is the rollback. |
 | `rl.scorecard_enabled: true` | The monthly scorecard. Its control line reads the stored control logs of the months before the daily second model call was removed; later months show n 0. Not proof of valid prospective comparison. |
 | `ipo.enabled: true`; `ipo.gmp_enabled: false` | IPO refresh and grey-market-price fetching have separate gates. |
 | `delivery.enabled: true`; `delivery.email_enabled: false`; `delivery.push_enabled: true` | Job scheduling, transport enablement and credentials are separate conditions. |
@@ -847,10 +848,11 @@ trades, substantial acquisitions, promoter pledges and shareholding changes.
 Each event is typed, dated and cites the item it came from. Two jobs run it on
 trading days, at 08:15 and 18:30 IST
 (section 9). The evidence exit rule reads its high-materiality negative
-events (section 6); with `advisor.exit_rule: shadow` it only records what it
-would do. The investment case reads it to challenge a holding's pillars
-(section 6). The explanations and the brief's company lane are to read it
-(**Planned:** PR-007, PR-008).
+events (section 6): it sells on them with `advisor.exit_rule: evidence`, the
+repository's setting, and with `shadow` only records what it would do. The
+investment case reads it to challenge a holding's pillars (section 6). The
+explanations and the brief's company lane are to read it (**Planned:** PR-007,
+PR-008).
 
 A run:
 
@@ -1555,7 +1557,7 @@ fires nothing. ₹225 (₹450, down 10%, inside a 12% stop) is at the level.
 **Modes.**
 
 - `legacy`: the price-path rule acts, and nothing is compared.
-- `shadow`, the shipped setting: the price-path rule acts. Both verdicts, with
+- `shadow`: the price-path rule acts. Both verdicts, with
   the evidence rule's reasons and inputs (event ids, news watch items, the
   analysis and its run time, the invalidation level and its source, any source
   it could not read), go to `exit_shadow.jsonl`, one row per holding per review
@@ -1563,8 +1565,13 @@ fires nothing. ₹225 (₹450, down 10%, inside a 12% stop) is at the level.
   the session the close came from and, on a disagreement, the decision's
   benchmark (below). The advice and trades are the price-path rule's, byte for
   byte.
-- `evidence`: the evidence rule acts, and the price-path verdict is still
-  recorded beside it.
+- `evidence`, the repository's setting: the evidence rule acts, and the
+  price-path verdict is still recorded beside it, in the same row and with the
+  same fields, so the comparison runs with the roles swapped. The advice and
+  trades are the evidence rule's. **Example:** bought at ₹500, the close ₹480
+  and the thesis review "not intact" with a falling path, no negative filing,
+  no SELL verdict, the level ₹455: the advice is HOLD, and the row records the
+  price-path rule's EXIT beside it, a disagreement graded as below.
 
 **Decisions.** A disagreement is a row where exactly one rule sells the whole
 position (EXIT or SWITCH). A holding is one **decision**: its first review day
@@ -1766,11 +1773,22 @@ week, about 21 weeks (14 weeks to reach 15 decisions, then 6 and 1).
 [product results review](audit/2026-10-11-product-results-review.md) (its
 section 11) found the auditor's exits right at 10 sessions (7 of 10: the stock
 kept falling) and wrong at 30 (6 of 7 sold stocks then beat the Nifty). One
-horizon would flatter one rule. The scorecard recommends; the owner switches
-(`advisor.exit_rule: evidence`), and `legacy` is the rollback. A result of
-"no difference" is valid too; the owner may then still choose the simpler
-rule. **Planned, after a switch:** the price-path verdict stays recorded for
-one month, then the thesis-review exit path is retired (PR-009's rollout).
+horizon would flatter one rule.
+
+**The switch was made without the gate.** The gate was sized for 12 or more
+holdings; with the 2 held when the owner decided, in mid-November 2026, it
+could not fill for many months, while the price-path rule kept selling. The owner decided on 14 November 2026 not to wait
+(`advisor.exit_rule: evidence`, PR-015): the book is paper money, the stops
+are the same under both rules, and the price-path verdict is still recorded
+each day, so the same tally runs with the roles swapped. The owner keeps the
+rule or rolls it back (`shadow`) at the eight-week results, from the tally at
+10 and 30 sessions; "no difference" is a valid result. The gate's look is
+still computed and shown each week, and its sentence is still worded for a
+switch not yet made: after the switch, "passed two weeks running ... may
+replace" reads as support for keeping the evidence rule, and "fails" as a
+reason to consider the rollback. The thesis review and its `thesis_break`
+verdict stay computed and recorded; retiring that exit path is a later
+decision.
 
 The weekly scorecard also shows, beside the exit rule test, the fall the
 stocks the evidence rule kept went through, and the decision pace with the
@@ -4141,12 +4159,11 @@ The planned changes connect the research to the money:
   case: pillars with evidence, the analysis's target, an invalidation price
   and business triggers, and the next check. Every number in it is checked
   against its inputs (section 6).
-- **Sell on evidence.** Both exit rules run, the price-path rule acting and
-  the evidence rule recorded beside it (section 6). **Planned:** the evidence
-  rule acts (PR-015). The price-path rule's verdict is still
-  recorded each day, so the same comparison runs with the roles swapped. The
-  owner keeps the rule or rolls it back at the eight-week results, without
-  waiting for the switch gate to fill.
+- **Sell on evidence.** Both exit rules run: the evidence rule acts (PR-015)
+  and the price-path rule's verdict is recorded beside it each day (section
+  6), so the same comparison runs with the roles swapped. The owner keeps the
+  rule or rolls it back at the eight-week results, without waiting for the
+  switch gate to fill.
 - **Explain like an investor.** Explanations follow the pattern "what we did,
   why, what would change our mind, what next", grounded and free of internal
   words (PR-007). The brief opens with your stocks (PR-008).
@@ -4215,7 +4232,7 @@ hold, sell and measure
 ([profit-path review](audit/2026-11-14-profit-path-architecture-review.md)).
 Idle-cash deployment is on for the primary portfolio, and reading what it does
 (PR-014) comes first, then the fixes that protect a deployed book and the
-evidence exit rule (PR-015). Two groups are
+evidence exit rule, which acts from PR-015's deploy. Two groups are
 not built unless the owner promotes them. The learning rebuild (SA-012 to
 SA-024 and SA-043) is off the plan ("Off plan" in the table), and learning
 stays in `observe`. The factor engine (SA-026 and SA-045 to SA-047, with

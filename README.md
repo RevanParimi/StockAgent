@@ -308,7 +308,7 @@ The decision engine is **pure Python — deterministic, testable, cheap**. The L
 
 | Verdict | Fires when | Rule codes in the ledger |
 |---|---|---|
-| 🟥 **EXIT** | Loss breaches the volatility-scaled stop, **or** thesis assessed broken with a bearish envelope, **or** a shock re-forecast moved against you, **or** `MACRO_CRISIS` regime + bearish envelope | `stop_breach`, `thesis_break`, `shock_reforecast`, `crisis_regime_bearish` |
+| 🟥 **EXIT** | Loss breaches the volatility-scaled stop, **or** the case to own it broke on evidence (a material negative NSE filing, a fresh SELL research verdict, or the invalidation price; from 10 sessions after the buy), **or** a recent market or company shock re-forecast points down, **or** `MACRO_CRISIS` regime + bearish envelope. With `advisor.exit_rule: shadow` or `legacy`, a thesis review's "broken" with a bearish envelope sells in place of the evidence test | `stop_breach`, `case_broken` (or `thesis_break`), `shock_reforecast`, `crisis_regime_bearish` |
 | 🟧 **TRIM** | Profit ≥ 25% **and** envelope confidence is fading or the mean-reversion prior is elevated | `trim_profit_confidence_decline`, `trim_profit_reversion_elevated` |
 | 🟩 **ADD** | Envelope bullish + supportive regime + position under 10% of total equity (holdings at market plus cash) + recent direction accuracy ≥ 60% | `add_bullish_healthy` |
 | ⬜ **HOLD** | Default — thesis intact, nothing above fired | `default_hold` |

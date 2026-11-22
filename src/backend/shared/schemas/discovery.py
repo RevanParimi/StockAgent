@@ -76,6 +76,9 @@ class DeepDiveResult(BaseModel):
     industry: str = ""
     # FIX-026: how `sector` was named. `graph` is the graph that ran.
     sector_reading: SectorReading | None = None
+    # FIX-033: the symbol the analysis was of (its report's ticker); the dive
+    # keeps a result only when it is `symbol`. "" = not recorded.
+    analysed_symbol: str = ""
 
 
 class ShelfIdea(BaseModel):
@@ -120,6 +123,11 @@ class ShelfIdea(BaseModel):
     # at a session's close counts it only when it was made before that close.
     # "" for a deep dive, which keeps only its day (shelf.decision_time).
     analysed_at: str = ""
+    # FIX-033: the symbol the idea's analysis was of: its deep dive's report
+    # (or a watchlist idea's score-history row). Every buy door refuses an
+    # idea whose analysis is of another symbol (`shelf.analysis_of_other`).
+    # "" = shelved before FIX-033 and not yet verified (`verify_analyses`).
+    analysed_symbol: str = ""
 
 
 class Shelf(BaseModel):

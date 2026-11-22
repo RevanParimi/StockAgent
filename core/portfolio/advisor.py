@@ -21,6 +21,12 @@ NSE filing or rule-typed disclosure, a recent actionable SELL run after the
 buy, or the invalidation price), and only after ADVISOR_MIN_HOLD_SESSIONS.
 Every other rule, the stops included, is the same code under both. The
 pipeline picks the acting rule (core/portfolio/exit_shadow.py).
+
+FIX-033: a holding bought on an analysis of another symbol
+(`AdvisorSignals.bought_on_other`, from `analysed_elsewhere` over the ledger)
+is EXITed at the next review under either rule, whatever the stop or the
+forecast says (trigger bought_on_other_analysis). On 17 Nov the autopilot
+bought DEEPA on Deepak Nitrite's analysis.
 """
 from __future__ import annotations
 
@@ -92,6 +98,10 @@ class AdvisorSignals(BaseModel):
     # ("" = it can): the symbol's identity is unresolved, or its price basis
     # changed (a demerger, a relisting) since the basis the cost was booked on.
     identity_issue: str = ""
+    # FIX-033: "bought on DEEPAKNTR's analysis, not DEEPA's" when a BUY of the
+    # open position names another symbol's analysis (`analysed_elsewhere`);
+    # "" otherwise. Fires the bought_on_other_analysis EXIT.
+    bought_on_other: str = ""
 
 
 class ExitEvidence(BaseModel):
@@ -465,6 +475,27 @@ def build_signals(
     return sig
 
 
+def analysed_elsewhere(transactions) -> dict[str, str]:
+    """{held symbol: why} for each position a BUY of which, since the
+    position last went flat, names an analysis of another symbol
+    (`TransactionRecord.analysed_symbol`, FIX-033), read in ledger order. A
+    sale that leaves no shares closes the position and clears it; a BUY that
+    names no analysis (a top-up, a hand trade, a row from before FIX-033)
+    changes nothing. Example: BUY DEEPA with analysed_symbol "DEEPAKNTR" ->
+    {"DEEPA": "bought on DEEPAKNTR's analysis, not DEEPA's"}."""
+    from core.discovery.shelf import plain_symbol
+    out: dict[str, str] = {}
+    for txn in transactions:
+        symbol = plain_symbol(getattr(txn, "symbol", ""))
+        if txn.side == "SELL" and (txn.holding_qty_after or 0.0) <= 1e-9:
+            out.pop(symbol, None)
+        elif txn.side == "BUY":
+            analysed = plain_symbol(getattr(txn, "analysed_symbol", ""))
+            if analysed and analysed != symbol:
+                out[symbol] = f"bought on {analysed}'s analysis, not {symbol}'s"
+    return out
+
+
 # ---------------------------------------------------------------------------
 # SA-003 data gate inputs
 # ---------------------------------------------------------------------------
@@ -537,6 +568,7 @@ TRIGGER_PLAIN = {
     "stop_breach": "the stop was breached",
     "trailing_stop_breach": "the trailing stop was breached",
     "thesis_break": "the thesis broke",
+    "bought_on_other_analysis": "it was bought on another company's analysis",
     "case_broken": "the reason to own it broke",
     "shock_reforecast": "a shock forced a reforecast",
     "crisis_regime_bearish": "a crisis regime turned the forecast down",
@@ -751,6 +783,10 @@ def decide(
     data_gated = False
 
     # -- EXIT (spec §5.2, highest precedence) ------------------------------
+    # FIX-033: bought on another company's analysis: no case for this stock
+    # was ever made, so it is sold under either rule, whatever else says.
+    if signals.bought_on_other:
+        triggers.append("bought_on_other_analysis")
     if signals.unrealised_pnl_pct <= -signals.atr_stop_pct:
         triggers.append("stop_breach")
     if exit_rule == "evidence":
@@ -871,4 +907,6 @@ def decide(
         rationale_hash=hashlib.sha256(rationale.encode()).hexdigest()[:16],
         regime_unavailable=signals.regime_unavailable,
         envelope_after_close=signals.envelope_after_close if "ENVELOPE_AFTER_CLOSE" in notes else "",
+        bought_on_other=(signals.bought_on_other
+                         if "bought_on_other_analysis" in triggers else ""),
     )

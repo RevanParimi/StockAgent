@@ -8,7 +8,13 @@ computed here, NOT by the LLM (spec §9.4: every idea carries "thesis dead
 below X").
 
 LLM cost cap: at most DISCOVERY_DEEP_DIVE_COUNT analyst calls per weekly
-run, a failed call included. Skipped BEFORE any call: a symbol NSE does not
+run, a failed call included.
+
+FIX-033: the dive asks for the exact NSE symbol (`exact_symbol`), so no model
+is asked which company it means, and keeps a result only when the report is
+of that symbol (`analysed_symbol`, read by every buy door): on 14 Nov a dive
+asked for DEEPA analysed Deepak Nitrite (DEEPAKNTR) and the shelf filed its
+BUY under DEEPA. Skipped BEFORE any call: a symbol NSE does not
 list as a company, a managed symbol unless the autopilot sold it (flag "sold",
 FIX-025), and one already on the shelf unless the candidate is a re-dive (flag
 "redive", PR-004).
@@ -28,12 +34,12 @@ import pandas as pd
 
 from core.config import settings
 from backend.shared.pipeline import decision_gate as dg
-from backend.shared.pipeline.no_analysis import AnalysisUnavailable
+from backend.shared.pipeline.no_analysis import AnalysisUnavailable, UnlistedSymbol
 from backend.shared.schemas.discovery import DeepDiveResult, DiscoveryCandidate
 from core.discovery.sector_naming import (
     analysis_named_on, configured_sectors, decide_key, graph_guess, known_key, read_answer,
     sector_question, unnamed_why)
-from core.discovery.shelf import ShelfStore
+from core.discovery.shelf import ShelfStore, other_company, plain_symbol
 from core.discovery.universe import COMPANY, instrument_kind
 from core.intelligence.rl.workflows.sector_router import NATIVE_SECTORS, get_orchestrator
 from services.api.log_buffer import load_managed_tickers
@@ -93,9 +99,10 @@ def run_deep_dives(
     and offered after the last candidate, in its order, with the calls the
     others leave. Only a call counts: a re-dive skipped below (a held stock's
     idea) takes no room. `tally`, when given, receives `calls` (made),
-    `redive_calls`, `late` (held back, then called) and `deferred` (a re-dive
+    `redive_calls`, `late` (held back, then called), `deferred` (a re-dive
     that would have been called, held back or past the budget, and never
-    called). Example: room 2, re-dives A, B, C then screen ranks X, Y,
+    called) and `other_company` ({symbol asked for: symbol the report is of},
+    FIX-033: no result, no idea and no memo entry; the call still counts). Example: room 2, re-dives A, B, C then screen ranks X, Y,
     budget 4: calls A, B, X, Y; C is deferred.
 
     No call is made for a symbol NSE does not list as a company (`listing`,
@@ -144,6 +151,7 @@ def run_deep_dives(
     queue: list[tuple[DiscoveryCandidate, bool]] = [(c, False) for c in candidates]
     redive_calls = 0
     late: list[str] = []
+    misfiled: dict[str, str] = {}
 
     k = 0
     while k < len(queue):
@@ -191,7 +199,17 @@ def run_deep_dives(
             known = known_key(cand.symbol, managed=managed_keys, idea=idea, keys=keys)
             route = known[0] or graph_guess(classified)
             report = get_orchestrator(route).analyse(
-                cand.symbol, sector_question=sector_question(classified, keys))
+                cand.symbol, sector_question=sector_question(classified, keys),
+                exact_symbol=True)
+            # FIX-033: the analysis must be of the stock asked for. One of
+            # another company keeps no idea and no memo entry.
+            analysed = plain_symbol(getattr(report, "ticker", ""))
+            wrong = (other_company(cand.symbol, analysed) if analysed
+                     else "the report names no symbol")
+            if wrong:
+                misfiled[cand.symbol] = analysed or "?"
+                logger.warning("[deep_dive] %s: %s; not shelved", cand.symbol, wrong)
+                continue
             reading = read_answer(getattr(report, "sector_answer", None), keys, classified)
             sector, reading = decide_key(reading, known, on=on.isoformat(),
                                          named_on=analysis_named_on(idea, keys))
@@ -223,6 +241,7 @@ def run_deep_dives(
                 market_sector=classified.get("sector", ""),
                 industry=classified.get("industry", ""),
                 sector_reading=reading,
+                analysed_symbol=analysed,
             )
             results.append(result)
             logger.info("[deep_dive] %s sector=%s (%s) conviction=%.2f verdict=%s",
@@ -238,11 +257,16 @@ def run_deep_dives(
             # CLEAN-005: no analysis, no idea and no memo entry, so a later
             # run can dive it again; the orchestrator logged and counted it.
             continue
+        except UnlistedSymbol as exc:
+            # FIX-033: the listing checked above holds it, so only a listing
+            # that changed in between gets here.
+            logger.warning("[deep_dive] %s not analysed: %s", cand.symbol, exc)
         except Exception as exc:
             logger.warning("[deep_dive] %s failed (non-fatal): %s", cand.symbol, exc)
     if tally is not None:
         tally.update(
             calls=len(attempted), redive_calls=redive_calls, late=late,
             deferred=[c.symbol for c, back in queue
-                      if back and c.symbol not in attempted])
+                      if back and c.symbol not in attempted],
+            other_company=misfiled)
     return results

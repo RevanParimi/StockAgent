@@ -175,6 +175,102 @@ def verdict_wait(idea) -> str:
     return f"its {what} rates it {verdict}, not a BUY"
 
 
+def plain_symbol(value) -> str:
+    """An NSE symbol as the shelf and the ledger write it: upper case, with no
+    exchange prefix ("NSE:") or Yahoo suffix (".NS", ".BO"); "" for none."""
+    text = str(value or "").strip().upper()
+    if ":" in text:
+        text = text.split(":", 1)[1].strip()
+    for suffix in (".NS", ".BO"):
+        if text.endswith(suffix):
+            text = text[: -len(suffix)]
+    return text
+
+
+def other_company(symbol, analysed) -> str:
+    """Why an analysis of `analysed` cannot stand for `symbol`, or "" when it
+    can (FIX-033): the same symbol, or `analysed` unknown ("": an idea
+    shelved before FIX-033 that no check has verified yet, or a ledger row
+    written before it). Example: ("DEEPA", "DEEPAKNTR") -> "the analysis is
+    of DEEPAKNTR, not DEEPA"."""
+    symbol, analysed = plain_symbol(symbol), plain_symbol(analysed)
+    if not analysed or analysed == symbol:
+        return ""
+    return f"the analysis is of {analysed}, not {symbol}"
+
+
+def analysis_of_other(idea) -> str:
+    """`other_company` for an idea (or a dive): its `analysed_symbol` against
+    its own symbol. One rule for the shelf and every buy door (the candidate
+    list, a SWITCH leg, idle-cash deployment), read beside `verdict_wait`:
+    an idea about another company is never bought, whatever its verdict."""
+    return other_company(getattr(idea, "symbol", ""), getattr(idea, "analysed_symbol", ""))
+
+
+def _thesis_day_bounds(day: date) -> tuple[str, str]:
+    """The naive-UTC `run_at` bounds the score history is read between for a
+    deep dive dated `day`: from that IST day's start to the end of the next
+    (a run that crosses midnight still matches)."""
+    start = datetime(day.year, day.month, day.day, tzinfo=IST).astimezone(timezone.utc)
+    end = start + timedelta(days=2) - timedelta(microseconds=1)
+    return start.replace(tzinfo=None).isoformat(), end.replace(tzinfo=None).isoformat()
+
+
+def score_rows_on(day: date) -> list[dict]:
+    """The score history's analyses run on IST `day` or the day after (a
+    seam: tests answer it)."""
+    from services.data.stores.score_store import ScoreStore
+    return ScoreStore().get_by_date_range(*_thesis_day_bounds(day))
+
+
+def history_identity(idea, rows: list[dict]) -> str:
+    """The symbol the deep dive behind a shelf idea analysed, read from the
+    score history, or "" when it cannot be told (FIX-033, for ideas shelved
+    before the idea kept it). The dive stores the first 800 characters of its
+    report's thesis; the score history keeps every completed analysis's full
+    thesis under the symbol the report is of. Exactly one symbol among `rows`
+    (that dive's day's analyses) whose thesis starts with the idea's is the
+    answer; none, or more than one, is "". Example: DEEPA's idea of 14 Nov
+    has Deepak Nitrite's thesis, and the row with that thesis is DEEPAKNTR's."""
+    thesis = str(getattr(idea, "thesis", "") or "")
+    if not thesis.strip():
+        return ""
+    found = {plain_symbol(r.get("ticker")) for r in rows
+             if str(r.get("investment_thesis") or "")[:800] == thesis and r.get("ticker")}
+    return found.pop() if len(found) == 1 else ""
+
+
+def with_history_identity(ideas: list, rows_on: Callable[[date], list[dict]] | None = None
+                          ) -> list:
+    """`ideas` with each discovery idea that keeps no `analysed_symbol` given
+    the one its score history shows (`history_identity`), as copies; the
+    stored shelf is not written. Each dive day is read once. An idea that
+    cannot be told keeps "" and is bought as before. The daily review reads
+    the shelf through this, so an idea misfiled before FIX-033 is refused
+    from the first review after the deploy (`analysis_of_other`)."""
+    rows_on = rows_on or score_rows_on
+    days: dict[date, list[dict]] = {}
+    out = []
+    for idea in ideas:
+        day = last_dived(idea)
+        if (getattr(idea, "analysed_symbol", "") or getattr(idea, "source", "") == "watchlist"
+                or day is None or not str(getattr(idea, "thesis", "") or "").strip()):
+            out.append(idea)
+            continue
+        if day not in days:
+            try:
+                days[day] = rows_on(day)
+            except Exception as exc:
+                # Fail open, as before FIX-033: an unread history leaves the
+                # idea unverified, never costs the day's other candidates.
+                logger.warning("[shelf] score history of %s unread, ideas dived then "
+                               "stay unverified: %s", day, exc)
+                days[day] = []
+        found = history_identity(idea, days[day])
+        out.append(idea.model_copy(update={"analysed_symbol": found}) if found else idea)
+    return out
+
+
 def resale_wait(idea, sale: date | None, autopilot_exit: date | None) -> str:
     """Why `idea`'s stock may not be bought back yet after its exit, or ""
     when it may (FIX-029). One rule for the candidate list and every buy door
@@ -357,7 +453,8 @@ class ShelfStore:
         kept. A dive with no sector key named is shelved too (FIX-026): its
         paper lane runs and its re-dive asks again, but nothing buys it. A
         dive whose analysis does not rate the stock a BUY (`verdict_wait`) is
-        skipped (`not_buy`, FIX-029) in either gate mode."""
+        skipped (`not_buy`, FIX-029) in either gate mode, and so is one whose
+        analysis is of another company (`other_company`, FIX-033)."""
         shelf = self.load()
         added: list[str] = []
         displaced: list[str] = []
@@ -365,6 +462,7 @@ class ShelfStore:
         capped: list[str] = []
         gated: list[str] = []
         not_buy: list[str] = []
+        misfiled: list[str] = []
         cap = settings.DISCOVERY_MAX_IDEAS_PER_SECTOR
         enforced = dg.enforcing()
         keys = configured_sectors()
@@ -375,6 +473,13 @@ class ShelfStore:
                 gated.append(dive.symbol)
                 logger.info("[shelf] %s not added: data gate %s (enforced)",
                             dive.symbol, dive.data_gate or "missing")
+                continue
+            wrong = analysis_of_other(dive)
+            if wrong:
+                # FIX-033: never an idea about another company.
+                skipped.append(dive.symbol)
+                misfiled.append(dive.symbol)
+                logger.warning("[shelf] %s not added: %s", dive.symbol, wrong)
                 continue
             if dive.conviction < settings.DISCOVERY_MIN_CONVICTION:
                 skipped.append(dive.symbol)
@@ -429,6 +534,7 @@ class ShelfStore:
                 data_gate=dive.data_gate, dived=dive.dive_date,
                 market_sector=dive.market_sector, industry=dive.industry,
                 sector_reading=dive.sector_reading,
+                analysed_symbol=plain_symbol(dive.analysed_symbol),
             ))
             added.append(dive.symbol)
             self._event("added", dive.symbol, f"conviction={dive.conviction:.2f}")
@@ -442,6 +548,8 @@ class ShelfStore:
             summary["gated"] = gated
         if not_buy:
             summary["not_buy"] = not_buy
+        if misfiled:
+            summary["other_company"] = misfiled
         return summary
 
     def _enforce_sector_cap(self, shelf: Shelf) -> list[str]:
@@ -470,9 +578,9 @@ class ShelfStore:
 
     def apply_redives(self, dives: list[DeepDiveResult], on: date) -> dict:
         """Refresh each re-dived active idea in place, or drop it with the
-        reason: the analysis is not actionable (abstain, or no gate), its
-        conviction is below the floor, or (FIX-029) its verdict is no longer a
-        BUY: the owner's D4, "if it is still a BUY, it can be bought again ...
+        reason: the analysis is of another company (FIX-033), it is not
+        actionable (abstain, or no gate), its conviction is below the floor,
+        or (FIX-029) its verdict is no longer a BUY: the owner's D4, "if it is still a BUY, it can be bought again ...
         if not, the idea leaves the shelf". `added` and `close_at_add` stay, so
         the auditor's shelf grades keep their start; the new `dived` date
         restarts the rotation clock.
@@ -504,7 +612,9 @@ class ShelfStore:
             dive = by_symbol.get(idea.symbol)
             if idea.status != "active" or dive is None:
                 continue
-            if not dg.is_actionable(dive.data_gate):
+            if analysis_of_other(dive):
+                reason = f"re-dive {dive.dive_date}: {analysis_of_other(dive)}"
+            elif not dg.is_actionable(dive.data_gate):
                 reason = f"re-dive {dive.dive_date}: data gate {dive.data_gate or 'missing'}"
             elif dive.conviction < floor:
                 reason = (f"re-dive {dive.dive_date}: conviction {dive.conviction:.2f} "
@@ -524,6 +634,8 @@ class ShelfStore:
             idea.entry_low, idea.entry_high = dive.entry_low, dive.entry_high
             idea.invalidation_level = dive.invalidation_level
             idea.data_gate, idea.dived = dive.data_gate, dive.dive_date
+            if dive.analysed_symbol:
+                idea.analysed_symbol = plain_symbol(dive.analysed_symbol)
             if dive.market_sector:
                 idea.market_sector, idea.industry = dive.market_sector, dive.industry
             named = ""
@@ -551,6 +663,45 @@ class ShelfStore:
         if refreshed or dropped or capped:
             self.save(shelf)
         return {"refreshed": refreshed, "dropped": dropped, "capped": capped}
+
+    def verify_analyses(self, rows_on: Callable[[date], list[dict]] | None = None) -> dict:
+        """FIX-033, for the ideas shelved before each kept the symbol its
+        analysis was of: read it from the score history
+        (`with_history_identity`). An idea of its own stock keeps the symbol;
+        one of another company is dropped with the reason, and its dive memo
+        entry goes too, so a later screen may dive the stock as itself; one
+        that cannot be told stays unverified and is stamped at its next
+        re-dive. The weekly run calls it before the re-dives. Example: DEEPA's
+        idea of 14 Nov, whose thesis is DEEPAKNTR's row, is dropped with "its
+        deep dive of 2026-11-14 analysed DEEPAKNTR, not DEEPA"."""
+        shelf = self.load()
+        verified: list[str] = []
+        unverified: list[str] = []
+        dropped: dict[str, str] = {}
+        pending = [i for i in shelf.ideas if i.status == "active" and not i.analysed_symbol]
+        if not pending:
+            return {"verified": verified, "dropped": dropped, "unverified": unverified}
+        for idea, read in zip(pending, with_history_identity(pending, rows_on)):
+            found = read.analysed_symbol
+            if not found:
+                unverified.append(idea.symbol)
+                continue
+            wrong = other_company(idea.symbol, found)
+            if not wrong:
+                idea.analysed_symbol = found
+                verified.append(idea.symbol)
+                continue
+            idea.status = "dropped"
+            idea.analysed_symbol = found
+            reason = f"its deep dive of {last_dived(idea)} analysed {found}, not {idea.symbol}"
+            dropped[idea.symbol] = reason
+            self._event("dropped", idea.symbol, reason)
+            logger.warning("[shelf] %s dropped: %s", idea.symbol, reason)
+        if verified or dropped:
+            self.save(shelf)
+        if dropped:
+            self._forget_dives(set(dropped))
+        return {"verified": verified, "dropped": dropped, "unverified": unverified}
 
     def redive_due(self, on: date, sold: dict[str, date] | None = None) -> list[ShelfIdea]:
         """Active ideas to re-dive, most urgent first, each group oldest dive
@@ -606,6 +757,20 @@ class ShelfStore:
         for d in dives:
             memo[d.symbol] = {"date": d.dive_date, "conviction": round(d.conviction, 4),
                               "verdict": d.verdict, "data_gate": d.data_gate}
+        try:
+            tmp = self._dives_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(memo, indent=1, sort_keys=True), encoding="utf-8")
+            tmp.replace(self._dives_path)
+        except OSError as exc:
+            logger.warning("[shelf] dive memo write failed: %s", exc)
+
+    def _forget_dives(self, symbols: set[str]) -> None:
+        """Remove `symbols` from the dive memo (FIX-033: a dive that analysed
+        another company is no answer about the stock asked for)."""
+        memo = self._load_dives()
+        if not symbols & set(memo):
+            return
+        memo = {sym: rec for sym, rec in memo.items() if sym not in symbols}
         try:
             tmp = self._dives_path.with_suffix(".tmp")
             tmp.write_text(json.dumps(memo, indent=1, sort_keys=True), encoding="utf-8")

@@ -139,6 +139,14 @@ def run_discovery_cycle(on: date | None = None) -> dict:
     except Exception as exc:
         logger.warning("[discovery] holdings unread (non-fatal): %s", exc)
         errors.append(f"holdings unread, so no sold stock is dived as a new idea: {exc}")
+    # FIX-033: an idea shelved before it kept its analysis's symbol is
+    # verified from the score history; one of another company is dropped.
+    # A failure here costs only the check, never the week's re-dives.
+    try:
+        hygiene["analyses"] = shelf_store.verify_analyses()
+    except Exception as exc:
+        logger.warning("[discovery] shelf analyses not verified (non-fatal): %s", exc)
+        errors.append(f"shelf analyses not verified: {exc}")
     try:
         hygiene["not_companies"] = shelf_store.drop_non_companies(listing)
         hygiene["classified"] = shelf_store.backfill_classification(market_classification)
@@ -184,6 +192,8 @@ def run_discovery_cycle(on: date | None = None) -> dict:
         errors.append(f"deep_dives failed: {exc}")
         dives = []
     late, deferred = list(calls.get("late") or []), list(calls.get("deferred") or [])
+    # FIX-033: dives whose report was of another company, not shelved.
+    hygiene["other_company"] = dict(calls.get("other_company") or {})
     hygiene["redive"] = [s for s in hygiene["redive"] if s not in {*late, *deferred}]
     hygiene["redive_late"], hygiene["redive_deferred"] = late, deferred
     split = {**split, "made": calls.get("calls"), "redive_calls": calls.get("redive_calls")}

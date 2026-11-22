@@ -74,6 +74,7 @@ OUTCOME_WORDS = {
     "held": "already held",
     "sold": "sold since the idea was decided",
     "verdict": "not rated a BUY by the analysis",
+    "other_company": "whose analysis is of another company",
     "gate": "withheld by the data gate",
     "price": "without a close for the review session",
     "before_dive": "priced at a close from before its latest deep dive or analysis",

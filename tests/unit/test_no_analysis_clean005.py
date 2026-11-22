@@ -445,7 +445,7 @@ def test_the_deep_dive_mints_no_idea_and_carries_on(failing, monkeypatch):
         o = stub.orchestrator(sector)
 
         class _O:
-            def analyse(self, symbol, sector_question=None):
+            def analyse(self, symbol, sector_question=None, exact_symbol=False):
                 if symbol == TICKER_A:
                     real.setdefault("o", _orchestrator())
                     return real["o"].analyse(symbol, sector_question=sector_question)

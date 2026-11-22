@@ -80,6 +80,7 @@ BUYBACK_WEEKS = 4               # stocks bought back after a sale, over this man
 # An EXIT's triggers in the order the advisor checks them (advisor.decide): a
 # trade whose closing EXIT carries more than one counts once, under the first.
 EXIT_REASONS = (
+    ("bought_on_other_analysis", "another company's analysis"),
     ("stop_breach", "stop"),
     ("case_broken", "case broken"),
     ("thesis_break", "price-path exit"),

@@ -17,7 +17,7 @@ from core.intelligence.algorithms.indicators.fetcher import get_price_history
 from core.intelligence.rl.nse_calendar import is_trading_day
 from services.data.verdict_store import VerdictStore  # plane boundary (Atlas C2)
 from backend.shared.pipeline import decision_gate as dg
-from core.portfolio.advisor import build_signals, data_gate_blocks, decide
+from core.portfolio.advisor import analysed_elsewhere, build_signals, data_gate_blocks, decide
 from core.portfolio import exit_shadow
 from core.portfolio.corp_actions import sync_corp_actions
 from core.portfolio.digest import build_digest
@@ -218,11 +218,22 @@ def run_post_review_pipeline(review_date: date) -> dict:
         shelf_ideas: list = []
         all_ideas: list = []          # PR-009: any status, for a holding's invalidation level
         try:
-            from core.discovery.shelf import ShelfStore
+            from core.discovery.shelf import ShelfStore, with_history_identity
             all_ideas = list(ShelfStore().load().ideas)
-            shelf_ideas = [i for i in all_ideas if i.status == "active"]
+            # FIX-033: an idea shelved before it kept the symbol its analysis
+            # was of is read with the one its score history shows (fails
+            # open per idea: an unread history leaves it as loaded).
+            shelf_ideas = with_history_identity([i for i in all_ideas if i.status == "active"])
         except Exception as exc:
             logger.debug("[portfolio_pipeline] shelf unavailable (non-fatal): %s", exc)
+        # FIX-033: the holdings bought on another symbol's analysis, EXITed
+        # below. An unread ledger names none this run; the next one reads it.
+        misfiled: dict[str, str] = {}
+        try:
+            misfiled = analysed_elsewhere(store.load_transactions(limit=2000))
+        except Exception as exc:
+            logger.warning("[portfolio_pipeline] ledger unread for %s, no holding checked "
+                           "for another company's analysis (non-fatal): %s", user_id, exc)
         try:
             from core.discovery.candidates import buy_candidates
             from core.discovery.shelf import ledger_sales
@@ -338,6 +349,7 @@ def run_post_review_pipeline(review_date: date) -> dict:
                 signals.price_bar_date = quote.bar_date.isoformat() if quote.bar_date else ""
                 # SA-008: is this close the holding's own price basis?
                 signals.identity_issue = holding_identity_issue(holding, review_date)
+                signals.bought_on_other = misfiled.get(holding.symbol, "")
                 evidence = None
                 if evidence_reader is not None:
                     try:

@@ -246,7 +246,7 @@ class _ComposingOrchestrator:
     def set_aggregator_weights(self, weights, ticker):
         self.injected.append(dict(weights))
 
-    def analyse(self, ticker):
+    def analyse(self, ticker, exact_symbol=False):
         from core.schemas.pipeline import FinalReport, WeightedAgentScore
         self.composites.append(_composite(self._mp, self.injected[-1], _SCORES))
         return FinalReport(

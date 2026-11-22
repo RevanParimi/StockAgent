@@ -91,7 +91,7 @@ class _FakeOrchestrator:
     def set_aggregator_weights(self, weights, ticker):
         self.set_aggregator_weights_calls.append((dict(weights), ticker))
 
-    def analyse(self, ticker):
+    def analyse(self, ticker, exact_symbol=False):
         self.analyse_calls.append(ticker)
         return self._report
 
@@ -104,7 +104,7 @@ def _patch_pipeline(monkeypatch, tmp_path, report=None, base_close=1050.0, raise
     def _get_orchestrator(sector):
         if raise_on_analyse:
             class _Boom(_FakeOrchestrator):
-                def analyse(self, ticker):
+                def analyse(self, ticker, exact_symbol=False):
                     raise RuntimeError("orchestrator boom")
             return _Boom(report)
         return fake_orch

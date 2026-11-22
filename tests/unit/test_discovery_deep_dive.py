@@ -19,6 +19,7 @@ def _companies(*symbols):
 
 
 class _FakeReport:
+    ticker = "NEWCO"         # FIX-033: the report names the symbol it is of
     final_score = 0.72
     verdict = "BUY"
     investment_thesis = "Strong momentum with improving delivery."
@@ -57,7 +58,7 @@ def test_run_deep_dives_skips_managed_and_builds_result(monkeypatch):
                         lambda s: {"sector": "Healthcare", "industry": "Drug Manufacturers"})
     graphs, questions = [], []
     monkeypatch.setattr(dd, "get_orchestrator", lambda sector: graphs.append(sector) or type(
-        "O", (), {"analyse": lambda self, t, sector_question=None:
+        "O", (), {"analyse": lambda self, t, sector_question=None, exact_symbol=False:
                   questions.append(sector_question) or _FakeReport()})())
 
     cands = [DiscoveryCandidate(symbol=s, close=100.0, composite=0.9 - i * 0.1)
@@ -95,7 +96,7 @@ def test_run_deep_dives_orchestrator_failure_is_nonfatal(monkeypatch):
     monkeypatch.setattr(dd, "load_listing", lambda: _companies("NEWCO"))
 
     class _Boom:
-        def analyse(self, t, sector_question=None):
+        def analyse(self, t, sector_question=None, exact_symbol=False):
             raise RuntimeError("LLM down")
     monkeypatch.setattr(dd, "get_orchestrator", lambda sector: _Boom())
 

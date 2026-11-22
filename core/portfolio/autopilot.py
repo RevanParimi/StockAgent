@@ -41,6 +41,11 @@ watchlist, after an autopilot exit, not before the Saturday after it), nor
 an idea whose analysis does not rate it a BUY (`shelf.resale_wait`,
 `shelf.verdict_wait`). A skipped SWITCH leg says why on its SELL.
 
+FIX-033: the same buys refuse an idea whose analysis is of another symbol
+(`shelf.analysis_of_other`), and each BUY from an idea keeps the symbol its
+analysis was of (`analysed_symbol`), which the advisor's
+bought_on_other_analysis exit reads.
+
 FIX-028: once the trades are saved, the managed list follows the holdings
 (`_follow_holdings`): a stock no portfolio holds any more leaves the daily
 review (unless a user's own watchlist lists it), then each holding without
@@ -128,7 +133,8 @@ def _txn(portfolio: Portfolio, rec: AdviceRecord, *, side: str, qty: float,
          price: float, cash_before: float, holding_qty_after: float,
          realized: float, note: str, charges: TradeCosts,
          symbol: str | None = None,
-         cost_basis: float | None = None) -> TransactionRecord:
+         cost_basis: float | None = None,
+         analysed_symbol: str = "") -> TransactionRecord:
     sym = symbol or rec.symbol
     ref = f"{rec.date}|{rec.symbol}|{rec.rationale_hash}"
     pnl_pct = None
@@ -144,7 +150,7 @@ def _txn(portfolio: Portfolio, rec: AdviceRecord, *, side: str, qty: float,
         source="autopilot", verdict=rec.verdict, advice_ref=ref,
         triggers=list(rec.triggers), note=note,
         cost_basis=cost_basis, pnl_pct=pnl_pct, reason=rec.narrative,
-        costs=charges,
+        costs=charges, analysed_symbol=analysed_symbol,
     )
 
 
@@ -289,7 +295,8 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
                   top_ups_skipped: list[dict] | None = None,
                   sales: Sales | None = None,
                   ) -> list[TransactionRecord]:
-    from core.discovery.shelf import Sales, close_before_dive, verdict_wait
+    from core.discovery.shelf import (
+        Sales, analysis_of_other, close_before_dive, plain_symbol, verdict_wait)
     txns: list[TransactionRecord] = []
     floor_cash = settings.AUTOPILOT_MIN_CASH_FLOOR
     surveillance = surveillance or _once(lambda: surveillance_report(review_date))
@@ -300,9 +307,11 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
         if not cand:
             continue
         # FIX-029: the list's rule again, against the ledger: not a stock
-        # sold since its idea was decided, nor an idea not rated a BUY.
+        # sold since its idea was decided, nor an idea not rated a BUY;
+        # FIX-033: nor an idea whose analysis is of another symbol.
         idea = (shelf_index or {}).get(cand)
-        wait = (sales.wait(idea) or verdict_wait(idea)) if idea is not None else ""
+        wait = (analysis_of_other(idea) or sales.wait(idea) or verdict_wait(idea)
+                ) if idea is not None else ""
         if wait:
             logger.info("[autopilot] SWITCH buy %s skipped: %s", cand, wait)
             _note_skipped_buy(sell, cand, proceeds, wait)
@@ -389,7 +398,8 @@ def _execute_buys(portfolio: Portfolio, advice: list[AdviceRecord],
                                       review_date.isoformat())
         txns.append(_txn(portfolio, rec, side="BUY", qty=qty, price=price,
                          cash_before=cash_before, holding_qty_after=qty_after,
-                         realized=0.0, note=note, charges=charges, symbol=cand))
+                         realized=0.0, note=note, charges=charges, symbol=cand,
+                         analysed_symbol=plain_symbol(getattr(idea, "analysed_symbol", ""))))
 
     adds = sorted((a for a in advice if a.verdict == "ADD"),
                   key=lambda a: (-a.confidence, a.symbol))
@@ -452,10 +462,15 @@ def _deploy_check(idea, symbol: str, portfolio: Portfolio, sales: Sales,
     outcome is "" when it may be bought. Mirrors a SWITCH buy leg's checks,
     plus the deep dive's own data gate. FIX-029: the re-buy rule and the
     verdict are the candidate list's (`shelf.resale_wait`,
-    `shelf.verdict_wait`), read again here with this run's own exits."""
-    from core.discovery.shelf import close_before_dive, verdict_wait
+    `shelf.verdict_wait`), read again here with this run's own exits, and so
+    is FIX-033's: never an idea whose analysis is of another symbol
+    (`shelf.analysis_of_other`, outcome "other_company")."""
+    from core.discovery.shelf import analysis_of_other, close_before_dive, verdict_wait
     if _find(portfolio, symbol) is not None:
         return "held", "already held", {}
+    wrong = analysis_of_other(idea)
+    if wrong:
+        return "other_company", wrong, {}
     wait = sales.wait(idea)
     if wait:
         return "sold", wait, {}
@@ -503,6 +518,7 @@ def _deploy_idle_cash(portfolio: Portfolio, closes: dict[str, float],
     """SA-049: open new positions with idle cash, best conviction first, up
     to the regime's target (core/portfolio/deployment.py). Returns the BUYs
     and the run's record."""
+    from core.discovery.shelf import plain_symbol
     b = deployment.breadth(portfolio.user_id)
     floor_cash = settings.AUTOPILOT_MIN_CASH_FLOOR
     max_new = max(0, int(settings.AUTOPILOT_DEPLOY_MAX_NEW_PER_DAY))
@@ -588,7 +604,8 @@ def _deploy_idle_cash(portfolio: Portfolio, closes: dict[str, float],
             cash_before=round(cash_before, 2), cash_after=round(portfolio.cash_deployable, 2),
             holding_qty_after=qty_after, realized_pnl=0.0, source="autopilot",
             verdict="DEPLOY", advice_ref=ref, triggers=["deploy_idle_cash"], note=note,
-            reason=str(getattr(idea, "thesis", "") or ""), costs=charges))
+            reason=str(getattr(idea, "thesis", "") or ""), costs=charges,
+            analysed_symbol=plain_symbol(getattr(idea, "analysed_symbol", ""))))
         existing_ids.add(txn_id)
         outcomes.append({**row, "outcome": "bought", "why": note})
     record = deployment.run_record(

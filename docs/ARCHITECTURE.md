@@ -83,8 +83,11 @@ never blocked by missing data
 **Instrument identity.** The registry, `config/instruments.yaml`, holds
 effective-dated records of which provider symbol a ticker is priced from, on
 which price basis, and whether its identity is resolved. Evidence resolves an
-identity; nothing is needed to quarantine one. A tracked ticker resolves to
-itself without an LLM call. An unresolved identity, or price history fetched
+identity; nothing is needed to quarantine one. A tracked ticker, and the
+exact NSE symbol a job asks about (a deep dive, the paper lane), resolves to
+itself without an LLM call; an idea whose analysis is of another symbol is
+never bought, and a holding bought on one is sold. An unresolved identity, or
+price history fetched
 for another symbol, abstains. A forecast row is graded only against a close on
 its own basis. A holding whose basis changed since purchase (a demerger) is
 held, exits included, until an operator reconciles it with

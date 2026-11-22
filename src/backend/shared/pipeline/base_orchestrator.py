@@ -42,7 +42,8 @@ from backend.shared.data.stores.run_logger import log_llm_call, log_run_summary
 from services.data.stores.log_store import run_context, set_run_ticker
 from backend.shared.data.stores.analysis_logger import log_analysis
 from backend.shared.data.stores.api_usage import log_run_api_usage, snapshot_usage
-from backend.shared.pipeline.no_analysis import AnalysisUnavailable, scored_nothing, why_nothing
+from backend.shared.pipeline.no_analysis import (
+    AnalysisUnavailable, UnlistedSymbol, scored_nothing, why_nothing)
 from backend.shared.pipeline.signal_aggregator import SignalAggregator
 
 logger = logging.getLogger(__name__)
@@ -196,12 +197,18 @@ class BaseSectorOrchestrator(ABC):
         progress_callback: Callable[[str, float], None] | None = None,
         *,
         sector_question: str | None = None,
+        exact_symbol: bool = False,
     ) -> FinalReport:
         """Sync end-to-end analysis. Used by CLI and scheduler.
 
         `sector_question` (the discovery deep dive's, FIX-026) rides in the
         unified analyst's one call, no extra call; the answer comes back as
-        `report.sector_answer`, unvalidated."""
+        `report.sector_answer`, unvalidated.
+
+        `exact_symbol` (FIX-033): `user_input` is an NSE symbol, never free
+        text, so no model is asked which company it means
+        (`_resolve_ticker`). The deep dive, the daily review and the monthly
+        forecast pass it; the chat and the Analyze box do not."""
         run_id = str(uuid.uuid4())[:8]
         # E1: everything this run logs at WARNING+ is stamped with the run id,
         # so a degradation can be traced back to the verdict it damaged. The
@@ -217,7 +224,8 @@ class BaseSectorOrchestrator(ABC):
             self._last_analyst_failure = None
             logger.info("[%s] Run %s started for '%s'", self.SECTOR_NAME, run_id, user_input)
 
-            query = self._resolve_ticker(user_input, run_id=run_id)
+            query = (self._resolve_ticker(user_input, run_id=run_id, exact=True) if exact_symbol
+                     else self._resolve_ticker(user_input, run_id=run_id))
             set_run_ticker(query.ticker)
             logger.info("[%s] Resolved: %s -> %s", self.SECTOR_NAME, user_input, query)
 
@@ -499,12 +507,34 @@ class BaseSectorOrchestrator(ABC):
             logger.debug("[%s] _company_name_for failed for %s: %s", self.SECTOR_NAME, ticker, exc)
             return ticker
 
-    def _resolve_ticker(self, user_input: str, run_id: str = "") -> StockQuery:
+    def _resolve_ticker(self, user_input: str, run_id: str = "",
+                        exact: bool = False) -> StockQuery:
+        """The listed company a run analyses. A managed or tracked ticker is
+        itself. With `exact` (FIX-033) `user_input` is an NSE symbol and is
+        analysed as itself once the exchange's listing (or, with no listing
+        cached, Yahoo's price for it: `_verify_ticker`) shows it is listed;
+        otherwise the run stops (`UnlistedSymbol`), and no model is asked.
+        Only free text (the chat, the Analyze box) goes to the model.
+
+        Before this, a deep dive asked for DEEPA (Deepak Automobiles) was
+        sent to the model as free text, which answered DEEPAKNTR, and the
+        shelf filed Deepak Nitrite's BUY under DEEPA (B-32 read, 21 Nov)."""
         t0 = time.time()
         self._last_resolve_usage = (0, 0)  # AUD-087: reset per run
 
         candidate = user_input.strip().upper()
         if candidate in self._managed_tickers() or candidate in self._tracked_tickers():
+            return StockQuery(
+                ticker=candidate,
+                company_name=self._company_name_for(candidate),
+                exchange=settings.DEFAULT_EXCHANGE,
+                analysis_date=date.today(),
+            )
+        if exact:
+            if not self._listed(candidate):
+                raise UnlistedSymbol(
+                    f"{candidate} is not an NSE-listed symbol; an exact symbol is never "
+                    "resolved by a model (FIX-033)")
             return StockQuery(
                 ticker=candidate,
                 company_name=self._company_name_for(candidate),
@@ -578,6 +608,16 @@ class BaseSectorOrchestrator(ABC):
                 company_name=user_input,
                 exchange=settings.DEFAULT_EXCHANGE,
             )
+
+    def _listed(self, symbol: str) -> bool:
+        """Whether NSE lists `symbol` (FIX-033): the cached instrument
+        listing's entry, or, with no listing cached, Yahoo's price for it
+        (`_verify_ticker`)."""
+        from services.data.fetchers.bhavcopy import load_listing
+        listing = load_listing()          # None when no readable cache; never raises
+        if listing:
+            return isinstance(listing.get(symbol), dict)
+        return self._verify_ticker(symbol)
 
     def _verify_ticker(self, ticker: str) -> bool:
         try:

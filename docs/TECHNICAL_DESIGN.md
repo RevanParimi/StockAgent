@@ -401,8 +401,9 @@ section 1.
 [decision gate](../src/backend/shared/pipeline/decision_gate.py).
 
 1. Resolve input to a company, symbol and sector. A ticker the app already
-   tracks resolves to itself with no model call (below); other text goes to an
-   LLM, with a web search when its answer cannot be verified.
+   tracks, and the exact NSE symbol a job asks about (a deep dive, the paper
+   lane), resolves to itself with no model call (below); other text, from the chat or the Analyze box,
+   goes to an LLM, with a web search when its answer cannot be verified.
 2. Select the graph. Automobile, banking/BFSI, IT and renewable energy have
    native implementations; other sectors use generic analysis. The RL router
    delegates graph selection to the central registry.
@@ -799,9 +800,20 @@ sector, enabled or not) or in the instrument registry:
   the identity gate above decides whether it may act;
 - an unreadable registry quarantines every ticker but names none, so free text
   is not mistaken for a ticker;
-- free text ("tata elxsi") goes to the LLM. So does a weekly discovery
-  candidate that no list holds, so its shelf idea can still rest on another
-  company's analysis.
+- an exact NSE symbol (`analyse(..., exact_symbol=True)`, which the deep dive
+  passes for every screen candidate and re-dive, and `generate_forecast` and
+  the daily review pass for theirs: the monthly forecast, a re-forecast and
+  the paper lane's shelf ideas) that no list holds resolves
+  to itself once the exchange's cached instrument listing holds it (with no
+  listing cached, once Yahoo prices it); one that is not listed stops the run
+  (`UnlistedSymbol`), and no model is asked which company it means;
+- free text ("tata elxsi") from the chat or the Analyze box goes to the LLM.
+
+On Sat 14 Nov 2026 a deep dive of DEEPA (Deepak Automobiles), which no list
+held, went to the LLM as free text; it answered DEEPAKNTR (Deepak Nitrite), and
+the shelf filed Deepak Nitrite's BUY under DEEPA. The dive now passes the
+exact symbol and keeps a result only when the report is of that symbol
+(section 8).
 
 Asking an LLM which company a tracked ticker is lets it answer wrongly. At
 09:16 on 1 Oct the monthly forecast for TATAELXSI (Tata Elxsi) was resolved to
@@ -1300,7 +1312,16 @@ not mean a flat forecast.
 
 The cascade is **EXIT → TRIM → ADD → HOLD**. EXIT includes stop breach,
 the acting exit rule's reason test (below), shock and crisis conditions and an
-armed trailing stop.
+armed trailing stop. It also includes a holding bought on another company's
+analysis (`bought_on_other_analysis`, checked first): a BUY of the open
+position whose `analysed_symbol` (written on every BUY from an idea) names
+another symbol (`analysed_elsewhere` in
+[`advisor.py`](../core/portfolio/advisor.py), read from the ledger; a sale to
+zero clears it). It sells under either exit rule, whatever the stop or the
+forecast says; only SA-008's identity hold comes before it. The ledger row and
+the screen give the reason in fixed words, never the narrating model's:
+"EXIT — bought on DEEPAKNTR's analysis, not DEEPA's". A BUY written before
+FIX-033 names no analysis and is not judged.
 TRIM considers profit with declining confidence/reversion. ADD requires
 bullish, sufficiently healthy conditions and position headroom: the holding
 below `advisor.max_position_pct` (10%) of total equity (see "Sizing every
@@ -2305,6 +2326,17 @@ session the same way. Each must:
   takes its next-best idea, and the switch evaluation records no row for the
   sold one, which was not a candidate. A stock held again is left to each
   door's own "already held" check;
+- be an analysis of the stock itself (`analysis_of_other` in
+  [`shelf.py`](../core/discovery/shelf.py)): the candidate list, a SWITCH's
+  buy leg and deployment refuse an idea whose `analysed_symbol` is another
+  symbol ("the analysis is of DEEPAKNTR, not DEEPA"), held or not, and
+  deployment's record counts it ("whose analysis is of another company"). A
+  watchlist idea takes the symbol of its score-history row. An idea shelved
+  before FIX-033 keeps none; the daily review reads it with the symbol its
+  score history shows (`with_history_identity`: the one row of its dive's
+  day whose thesis the idea keeps), so an idea misfiled before the deploy is
+  refused from the first review after it. One that cannot be told is bought
+  as before. Each BUY from an idea writes the symbol on its ledger row;
 - be rated BUY or STRONG BUY by its analysis (`verdict_wait`). The shelf's
   conviction floor reads the model's score; the verdict is bound to the
   composite, a separate number (section 3), so both are read. An idea with no
@@ -2610,7 +2642,7 @@ week whose sessions are not over is never stored.
 | Breadth | Holdings (for the latest week) and the invested share at the week's last valuation. |
 | Holding period | Median exchange sessions held by the positions closed this week. |
 | Idea quality | From the auditor's shelf lane: how many shelf ideas beat the Nifty 10 and 30 sessions after they were shelved, whether bought or not, with the median gap in points. Only grades matured by the week's end count. It measures the idea supply, not the portfolio, and it is a line, not a flag. |
-| By exit reason | The same round trips over the last 13 weeks and since the start, each under exactly one reason: the one its closing sale was made for. A SWITCH is "SWITCH sale" and a TRIM that sold the last share "TRIM", whatever their triggers. An EXIT is its first trigger in the order the advisor checks them: stop, case broken, price-path exit, shock, crisis, trailing stop (a trade sold on two is counted once, under the first, and the line says how many were); an EXIT on a code with no name here shows that code; one with no code is "other (no reason recorded)", never dropped. Your own sales are "sold by you". For each reason and in total: count, wins and average win, losses and average loss, and the mean result a trade, before costs. |
+| By exit reason | The same round trips over the last 13 weeks and since the start, each under exactly one reason: the one its closing sale was made for. A SWITCH is "SWITCH sale" and a TRIM that sold the last share "TRIM", whatever their triggers. An EXIT is its first trigger in the order the advisor checks them: another company's analysis, stop, case broken, price-path exit, shock, crisis, trailing stop (a trade sold on two is counted once, under the first, and the line says how many were); an EXIT on a code with no name here shows that code; one with no code is "other (no reason recorded)", never dropped. Your own sales are "sold by you". For each reason and in total: count, wins and average win, losses and average loss, and the mean result a trade, before costs. |
 | Bought back | From the ledger alone: each stock bought again after a sale emptied its position (by any rule or by you), over the last 4 weeks and since the start, with the charges recorded on that sale and that buy; a round trip whose rows carry no charges (written before charges were recorded) is counted and said. A top-up of a position still held is not one. |
 | Exit rule test | From `exit_shadow.jsonl` (section 6): on how many decisions the price-path rule and the evidence rule disagreed (one per holding, on its first disagreeing day), in how many holding-days reviewed, and how many later days of the same disagreements were not counted; how often the evidence rule was right at 10 and 30 sessions and its mean result a decision against where the money went (how many against cash, how many against the Nifty), with the mean against the Nifty alone beside it; what is still pending, has no price, or has no result because a corporate action could not be ruled out or allowed for (naming those stocks); this week's look at the switch gate ("not worse" on a pass, plus "better" when it applies, or "cannot judge" when more decisions are set aside than the cap allows); and each decision set aside from the gate, with its decision day and why its result can never be known. The row stores the look, so the next week can tell whether the gate passed twice in a row. Shown once a row exists. |
 | What waiting cost | Shown with the exit rule test. For each decision (one per holding, a stock bought again being another) in which the evidence rule kept the stock and the price-path rule sold it: the lowest close in the sessions after the review day up to and including the 10th and the 30th, against the close the decision was made at, as a fall (0 when it never closed below it). The median and the worst, naming the stock, at each horizon. A horizon not yet ended is pending; no close after a horizon's day is read. The closes come from one daily series per stock (Yahoo's, adjusted for bonuses, splits and dividends), so the decision's close and the later ones are in one price basis and a dividend counts as received. A decision has no result at a horizon, said with its stock, when that series lacks the decision's close or any session's close in the window (a missing close could hide the lowest), or when NSE's list of its corporate actions could not be read, is empty, holds no dated row, starts after the decision, or lists a bonus, a split or another change of price basis inside the window, or the instrument registry records a demerger or relisting there. |
@@ -2756,9 +2788,17 @@ or more. The weekly run, in order:
    ranks companies only. The deep dive makes no analyst call for any other
    kind, or for a symbol the listing does not know. With no listing at all,
    nothing is dived that week, and the run says why.
-3. **Shelf upkeep.** An idea NSE lists as a fund, REIT or InvIT is dropped,
-   with its series and ISIN in the reason. An idea without Yahoo's sector
-   and industry gets them (below).
+3. **Shelf upkeep.** An idea shelved before FIX-033, which keeps no
+   `analysed_symbol`, is read against the score history
+   (`ShelfStore.verify_analyses`): the one analysis of its dive's day whose
+   thesis the idea keeps names the symbol it was of. Its own symbol is kept;
+   another drops the idea with the reason ("its deep dive of 2026-11-14
+   analysed DEEPAKNTR, not DEEPA") and removes its dive memo entry, so a
+   later screen may dive the stock as itself; an idea that cannot be told
+   stays unverified until its next re-dive stamps it (`hygiene.analyses`). An
+   idea NSE lists as a fund, REIT or InvIT is dropped, with its series and
+   ISIN in the reason. An idea without Yahoo's sector and industry gets them
+   (below).
 4. **Re-dives first.** An active idea whose stock the autopilot sold on or after
    its latest dive comes first, since a new dive is all that can bring it back.
    Then unverified ideas: shelved before the decision gate existed (no
@@ -2772,9 +2812,10 @@ or more. The weekly run, in order:
    A re-dive refreshes the idea in place:
    conviction, verdict, thesis, entry band, invalidation, gate and `dived`
    date. `added` and `close_at_add` stay, so the auditor's shelf grades keep
-   their start. A re-dive whose analysis is not actionable, whose conviction
-   falls below the floor, or whose verdict is no longer a BUY or STRONG BUY,
-   drops the idea with the reason ("re-dive 2026-10-31: its deep dive rates it
+   their start. A re-dive whose report is of another company ("re-dive
+   2026-11-28: the analysis is of DEEPAKNTR, not DEEPA"), whose analysis is
+   not actionable, whose conviction falls below the floor, or whose verdict
+   is no longer a BUY or STRONG BUY, drops the idea with the reason ("re-dive 2026-10-31: its deep dive rates it
    NEUTRAL, not a BUY"). So does the second re-dive in a row
    (`discovery.max_unnamed_redives`, 2) that leaves an idea without a sector
    key: "re-dive 2026-11-28: no sector key after 2 re-dives in a row (the
@@ -2784,7 +2825,13 @@ or more. The weekly run, in order:
    re-dive that names its key resets the count. A new dive that is not a BUY is not shelved either
    (`not_buy` in the run's summary): the shelf holds the ideas the analysis
    rates BUY, and the conviction floor reads a separate number.
-5. **Deep dives.** `discovery.deep_dive_count` (45) bounds the analyst calls
+5. **Deep dives.** Each dive asks for the exact NSE symbol (section 4,
+   "Ticker resolution") and keeps a result only when the report is of that
+   symbol (`analysed_symbol`); one of another company, or naming none, keeps
+   no idea and no memo entry, is logged with both symbols ("DEEPA: the
+   analysis is of DEEPAKNTR, not DEEPA; not shelved") and is named in
+   `hygiene.other_company`, and its call still counts.
+   `discovery.deep_dive_count` (45) bounds the analyst calls
    a week: re-dives, IPO slots and screen ranks together, a failed call
    included. The re-dives may take the calls less this week's IPO candidates
    (at most `discovery.ipo_max_deep_dives`, 2) less
@@ -2821,7 +2868,8 @@ or more. The weekly run, in order:
    new idea, first offered by Tuesday's run. Below the floor it stays out, and
    the memo holds a repeat for 30 days.
 6. **Shelf.** Up to `discovery.shelf_size` (45) active ideas at conviction
-   0.55 or more, strongest first. Under the enforced data gate only an
+   0.55 or more, strongest first. A dive whose report is of another company
+   is never shelved (`other_company` in the summary). Under the enforced data gate only an
    actionable or degraded dive becomes an idea; in `record` mode an abstained
    one is shelved, as the mode's "nothing withheld" says. At most `discovery.max_ideas_per_sector` (6)
    share a sector key (below). A newcomer to a full sector replaces that sector's

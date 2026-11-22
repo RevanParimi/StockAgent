@@ -138,6 +138,10 @@ class AdviceRecord(BaseModel):
     # FIX-027: set when an ADD only a re-forecast made after the review
     # session's close would allow was held; says which re-forecast and when.
     envelope_after_close: str = ""
+    # FIX-033: "bought on DEEPAKNTR's analysis, not DEEPA's" when the holding
+    # was bought on another symbol's analysis (trigger
+    # bought_on_other_analysis); "" otherwise.
+    bought_on_other: str = ""
     # DEPRECATED — never written by anything. See the class docstring.
     outcome_10td: float | None = None
     outcome_30td: float | None = None
@@ -196,6 +200,11 @@ class TransactionRecord(BaseModel):
     # written before costs were charged (core/portfolio/costs.py estimates
     # those when read), on a DIV and on a DEPOSIT.
     costs: TradeCosts | None = None
+    # FIX-033: a BUY that opens or adds from an idea: the symbol that idea's
+    # analysis was of. The advisor EXITs a holding bought on another
+    # symbol's analysis. "" = written before FIX-033, not recorded, or not a
+    # buy from an idea (a top-up, a hand trade).
+    analysed_symbol: str = ""
 
 
 class CorporateEvent(BaseModel):

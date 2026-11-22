@@ -18,6 +18,8 @@ ScoreStore().get_score_delta(ticker)               → float | None
 ScoreStore().get_verdict_changed(ticker)           → bool
 ScoreStore().prune_old_records(ticker)
 ScoreStore().get_all_latest()                      → list[dict]
+ScoreStore().theses_between(since, until)          → list[dict] (FIX-033)
+theses_between(since, until)                       → the same, from the default store
 """
 
 from __future__ import annotations
@@ -241,6 +243,24 @@ class ScoreStore:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def theses_between(self, since_iso: str, until_iso: str) -> list[dict]:
+        """{"ticker", "thesis"} for each analysis run between the naive-UTC
+        bounds (inclusive), the thesis cut to its first 800 characters, as a
+        deep dive keeps it on its shelf idea (FIX-033). A server-side identity
+        check reads it (`core/discovery/shelf.py`); no viewer is shown it, so
+        FIX-010's visibility filter does not apply (its guard names the one
+        caller). No report JSON is read."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT ticker, substr(investment_thesis, 1, 800) AS thesis
+                FROM score_history
+                WHERE run_at >= ? AND run_at <= ?
+                """,
+                (since_iso, until_iso),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def get_all_latest(self) -> list[dict]:
         """Return the most recent run for every ticker in the database."""
         with self._conn() as conn:
@@ -316,3 +336,8 @@ class ScoreStore:
             return conn.execute(
                 "SELECT COUNT(*) FROM score_history"
             ).fetchone()[0]
+
+
+def theses_between(since_iso: str, until_iso: str) -> list[dict]:
+    """`ScoreStore().theses_between` on the default store (FIX-033)."""
+    return ScoreStore().theses_between(since_iso, until_iso)

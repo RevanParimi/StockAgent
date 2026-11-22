@@ -27,6 +27,10 @@ from this list, which has two sources:
   so SA-050's entry rule applies to it unchanged. A stock the autopilot sold
   onto the watchlist (source "autopilot") does not qualify: the exit rule has
   just sold it, and buying it back needs a new deep dive.
+- **Of the stock itself** (`shelf.analysis_of_other`, FIX-033): an idea
+  whose analysis is of another symbol is never offered, a shelf idea or a
+  watchlist one. On 14 Nov a dive asked for DEEPA analysed Deepak Nitrite
+  (DEEPAKNTR), and Tuesday's run bought DEEPA on that case.
 - **After an exit** (`shelf.resale_wait`, FIX-029): a stock this portfolio
   sold since its idea was decided is not offered, and from the watchlist a
   stock the autopilot sold counts only an analysis made on or after the
@@ -78,8 +82,8 @@ from core.config import settings
 from core.discovery.deep_dive import entry_levels
 from core.discovery.sector_naming import configured_sectors, ticker_map_sector, unnamed_why
 from core.discovery.shelf import (
-    BUY_VERDICTS, Sales, close_before_decision, close_before_dive, dive_is_fresh, last_dived,
-    verdict_wait)
+    BUY_VERDICTS, Sales, analysis_of_other, close_before_decision, close_before_dive,
+    dive_is_fresh, last_dived, plain_symbol, verdict_wait)
 from core.discovery.universe import COMPANY, instrument_kind
 from core.intelligence.rl.nse_calendar import session_close_at
 
@@ -219,6 +223,7 @@ def watchlist_idea(item, on: date, analysis_before: Callable[[str, datetime], di
         entry_low=entry_low, entry_high=entry_high, invalidation_level=invalidation,
         close_at_add=close, source_screen_date=day, data_gate=gate, dived=day,
         source="watchlist", analysed_at=analysed_at.isoformat(),
+        analysed_symbol=plain_symbol(record.get("ticker", symbol)),
     ), ""
 
 
@@ -243,6 +248,9 @@ def buy_candidates(portfolio, on: date, shelf_ideas: list, *,
     managed is offered only once its key is named (FIX-026); a watchlist
     stock takes `holding_sector`.
 
+    FIX-033: an idea whose analysis is of another symbol is not offered
+    (`shelf.analysis_of_other`), held or not.
+
     FIX-029, the list every buy door reads: a shelf idea whose verdict is
     not a BUY is not offered (`shelf.verdict_wait`), nor is a stock not held
     now whose exit came since its idea was decided, or, from the watchlist,
@@ -266,7 +274,10 @@ def buy_candidates(portfolio, on: date, shelf_ideas: list, *,
         is_held = idea.symbol.strip().upper() in held
         sold = "" if is_held else sales.wait(idea)
         not_a_buy = "" if is_held else verdict_wait(idea)
-        if sold:
+        wrong = analysis_of_other(idea)
+        if wrong:
+            excluded[idea.symbol] = wrong
+        elif sold:
             excluded[idea.symbol] = sold
         elif late:
             excluded[idea.symbol] = f"{late}; waits for a review of a later session"
@@ -322,7 +333,7 @@ def buy_candidates(portfolio, on: date, shelf_ideas: list, *,
                            item.symbol, exc)
             idea, why = None, f"could not be read: {exc}"
         if idea is not None:
-            why = sales.wait(idea)
+            why = analysis_of_other(idea) or sales.wait(idea)
         if idea is None or why:
             excluded[item.symbol.strip().upper()] = why
         else:

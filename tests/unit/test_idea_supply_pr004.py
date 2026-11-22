@@ -307,13 +307,13 @@ class Analyst:
         analyst.graphs.append(sector)
 
         class _O:
-            def analyse(self, symbol, sector_question=None):
+            def analyse(self, symbol, sector_question=None, exact_symbol=False):
                 analyst.calls.append(symbol)
                 analyst.questions.append(sector_question)
                 if symbol in analyst.fail:
                     raise RuntimeError("LLM down")
                 return SimpleNamespace(
-                    final_score=analyst.conviction.get(symbol, 0.7), verdict="BUY",
+                    ticker=symbol, final_score=analyst.conviction.get(symbol, 0.7), verdict="BUY",
                     investment_thesis=f"thesis {symbol}",
                     decision_gate=SimpleNamespace(status=analyst.gate.get(symbol, "actionable"),
                                                   run_id=f"r-{symbol}", reasons=[]),
@@ -1131,7 +1131,9 @@ def test_beside_a_users_own_pick_an_autopilot_exit_still_does_not_qualify(fresh_
     pf = SimpleNamespace(holdings=[], watchlist=[
         WatchlistItem(symbol="A", added="2026-07-01", source="autopilot"),
         WatchlistItem(symbol="U", added="2026-07-01", source="user")])
-    out, excluded = cands_mod.buy_candidates(pf, D, [], analysis_before=lambda s, before: record(),
+    out, excluded = cands_mod.buy_candidates(pf, D, [],
+                                             analysis_before=lambda s, before: {**record(),
+                                                                                "ticker": s},
                                              window=window, listing=companies("A", "U"))
     assert [i.symbol for i in out] == ["U"]
     assert excluded == {"A": "sold onto the watchlist by the autopilot"}
@@ -1244,7 +1246,9 @@ def test_the_managed_record_is_read_from_the_managed_file_enabled_or_not(fresh_r
                     {"sym": "V", "enabled": True}])
     window = _eod_window(["W", "V"], days=60, end=date(2026, 7, 12), close=500.0)
     pf = SimpleNamespace(holdings=[], watchlist=[_sectorless("W"), _sectorless("V")])
-    out, excluded = cands_mod.buy_candidates(pf, D, [], analysis_before=lambda s, before: record(),
+    out, excluded = cands_mod.buy_candidates(pf, D, [],
+                                             analysis_before=lambda s, before: {**record(),
+                                                                                "ticker": s},
                                              window=window, listing=companies("W", "V"))
     assert excluded == {} and fresh_rules == []
     assert [(i.symbol, i.sector) for i in out] == [("W", "automobile"), ("V", "automobile")]

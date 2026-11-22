@@ -65,11 +65,11 @@ class Analyst:
         me.graphs.append(graph)
 
         class _O:
-            def analyse(self, symbol, sector_question=None):
+            def analyse(self, symbol, sector_question=None, exact_symbol=False):
                 me.calls.append(symbol)
                 me.questions.append(sector_question)
                 return SimpleNamespace(
-                    final_score=0.72, verdict="BUY", investment_thesis=f"thesis {symbol}",
+                    ticker=symbol, final_score=0.72, verdict="BUY", investment_thesis=f"thesis {symbol}",
                     decision_gate=SimpleNamespace(status="actionable", run_id=f"r-{symbol}",
                                                   reasons=[]),
                     sector_answer=me.answers.get(symbol))

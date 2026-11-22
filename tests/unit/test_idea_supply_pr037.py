@@ -224,7 +224,7 @@ def test_the_room_counts_calls_and_holds_the_rest_back(dive_env, budget, calls, 
                       redive_room=2, tally=tally)
     assert dive_env["analyst"].calls == calls
     assert tally == {"calls": len(calls), "redive_calls": len([c for c in calls if c in "ABC"]),
-                     "late": late, "deferred": deferred}
+                     "late": late, "deferred": deferred, "other_company": {}}
 
 
 def test_without_a_room_the_order_is_todays(dive_env):  # noqa: F811
@@ -249,7 +249,7 @@ class VerdictAnalyst(pr004.Analyst):
         inner, analyst = super().orchestrator(sector), self
 
         class _O:
-            def analyse(self, symbol, sector_question=None):
+            def analyse(self, symbol, sector_question=None, exact_symbol=False):
                 out = inner.analyse(symbol, sector_question=sector_question)
                 out.verdict = analyst.verdict.get(symbol, "BUY")
                 return out

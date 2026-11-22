@@ -24,6 +24,7 @@ from services.clients.llm_client import (
 logger = logging.getLogger(__name__)
 
 _TRIGGER_TEXT = {
+    "bought_on_other_analysis": "it was bought on an analysis of another company, so no case for this stock was ever made",
     "stop_breach": "the position has breached its volatility-scaled stop",
     "thesis_break": "the original thesis is assessed as broken while the forecast points down",
     "case_broken": "the reason to own the stock broke: a material negative company event, an actionable SELL research verdict, or the price at its invalidation level",
@@ -61,7 +62,9 @@ Respond with JSON: {{"narrative": "<2-3 sentences>"}}"""
 
 
 def fallback_narrative(rec: AdviceRecord) -> str:
-    reasons = [_TRIGGER_TEXT.get(t, t) for t in rec.triggers]
+    other = getattr(rec, "bought_on_other", "")
+    reasons = [other if t == "bought_on_other_analysis" and other
+               else _TRIGGER_TEXT.get(t, t) for t in rec.triggers]
     notes = [f"an add was withheld: {rec.regime_unavailable}"
              if n == "REGIME_UNAVAILABLE" and rec.regime_unavailable else _NOTE_TEXT.get(n, n)
              for n in rec.notes]
@@ -76,7 +79,11 @@ def _user_suffix(rec: AdviceRecord) -> str:
 
 
 def narrate(rec: AdviceRecord, signals: AdvisorSignals) -> str:
-    if not settings.ADVISOR_NARRATE:
+    """The advice's narrative. FIX-033: a sale of a holding bought on another
+    symbol's analysis is told in the fixed words ("EXIT — bought on
+    DEEPAKNTR's analysis, not DEEPA's"), never phrased by the model, so the
+    ledger row and the screen name both symbols."""
+    if not settings.ADVISOR_NARRATE or getattr(rec, "bought_on_other", ""):
         return fallback_narrative(rec) + _user_suffix(rec)
     from core.portfolio import narrative_cache
     try:

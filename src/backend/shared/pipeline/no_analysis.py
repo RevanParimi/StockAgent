@@ -50,6 +50,13 @@ class AnalysisUnavailable(RuntimeError):
         return UNAVAILABLE_MESSAGE.format(ticker=self.ticker)
 
 
+class UnlistedSymbol(ValueError):
+    """FIX-033: an exact NSE symbol (a deep dive's, the daily review's, the
+    monthly forecast's) that the exchange's listing does not hold. The run
+    stops before any data is read or any model is asked which company it
+    means; the caller skips the stock as it skips any failed analysis."""
+
+
 def scored_nothing(outputs: Mapping[str, AgentOutput] | None) -> bool:
     """True when no dimension produced a score.
 

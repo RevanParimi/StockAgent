@@ -14,6 +14,26 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 23 Nov, night (autopilot): PR-015 → ACCEPTED (light rollout); merged into `main`
+
+- **Autopilot session `1123-0344-p4`**, a `continue` on the code-server from about 03:44 IST, at
+  the owner's word of 18 Nov; `main` = `84887d4`. Merge and tests in the Monday 03:00–04:00
+  hold, the push after 04:00. No production read before the push.
+- **Input verified:** `story/PR-015` = `12b7901`, digest `9501379b…` = Conversation 1.
+- **Merged** as `31521a2`: four KT conflicts (sections 1, 3, 4, 11), each with a story merged
+  since the branch, kept both sides; one section 6 sentence corrected. Focused 306 passed.
+  `advisor.exit_rule: evidence` acts from the first 16:30 review after the deploy. New check
+  `PR-015-W1`. [Rollout receipt](evidence/PR-015-rollout.md), Conversation 2.
+
+## 18 Nov, night (autopilot): PR-015 prepared on `story/PR-015`; the switch waits for your word
+
+- **Autopilot `1118-0029-p5`**, code-server, from about 00:29 IST; `main` = `8422a23`.
+- **Step 1 confirmed from the code:** under `evidence` both verdicts are still recorded in
+  `exit_shadow.jsonl`; the thesis review still runs; the scorecard reads every row.
+- **`12b7901` on `story/PR-015`:** the setting and the living documents (KT sections 1, 3, 4, 6,
+  11, 12; AUTOPILOT_GUIDE; README; guide case 07-L). On the word, the merging session follows
+  the receipt's "What the owner's word starts".
+
 ## 23 Nov, night (autopilot): PR-017 → ACCEPTED (fresh review); merged into `main`
 
 - **Autopilot session `1123-0159-p3`**, a `continue` on the code-server from about 01:59 IST,

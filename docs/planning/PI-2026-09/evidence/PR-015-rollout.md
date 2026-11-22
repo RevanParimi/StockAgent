@@ -122,3 +122,47 @@ and the path ends at ₹478. No filing, no SELL verdict, the invalidation price 
 evidence rule earned ₹80 a share more; if it falls to its stop at ₹440, it lost ₹40 a share more.
 Either way the row records both verdicts, and the tally at 10 and 30 sessions shows which was
 right, for the owner's decision at `PR-014-R2` (from 11 Jan 2027).
+
+## Conversation 2: Monday 23 Nov, from about 03:44 IST (the merge)
+
+Autopilot session `1123-0344-p4` on the code-server, a `continue`, at the owner's word of 18 Nov
+(about 07:05 IST, "do as per recommendation" to the ask "switch PR-015"). After a fetch, `main` =
+`84887d4`, one commit ahead of `origin/main` = `b9578e5` (PR-017's deploy record). The session
+started inside Monday's 03:00–04:00 hold: the merge and the tests ran in it, the push only after
+04:00. No production state was read before the push; no variable changed, no job ran, no message
+was sent.
+
+**Input verified.** `story/PR-015` = `12b7901`; `git diff 4fd57ab 12b7901` gives sha256
+`9501379b…`, as in Conversation 1.
+
+**Merged** into `main` as `31521a2` (`git merge --no-ff story/PR-015`). `config.yaml`, README,
+AUTOPILOT_GUIDE, the testing guide and the test merged cleanly. KT had four conflicts, each with a
+story merged since the branch; both sides were kept:
+
+| KT | `main` since the branch | Kept |
+| --- | --- | --- |
+| Section 1, the table | The idle-cash row (the ₹1 crore book, PR-036); the decision gate `enforce` (PR-042) | `main`'s two rows, the branch's new "Exit rule" row between them |
+| Section 3, the settings | The `rl.scorecard_enabled` row after CLEAN-004 | The branch's `advisor.exit_rule: evidence` row, then `main`'s scorecard row |
+| Section 4, the event feed | The investment case reads the feed (PR-005 built) | The branch's sentence on selling under `evidence`, `main`'s investment-case sentence; PR-007 and PR-008 still planned |
+| Section 11 | "Own a stock for a reason" as PR-005 built it | `main`'s bullet, then the branch's "Sell on evidence" |
+
+One sentence corrected in section 6: "with the 2 or 3 held in November 2026" became "with the 2
+held when the owner decided, in mid-November 2026", since the book has held 7 or more stocks since
+the 19 Nov deposit. Not changed: `docs/architecture-map/seed-walkthrough-2026-11-22.md` still
+reads `shadow (CURRENT)`. It is dated, gives production values as of 22 Nov, and MAP-001
+re-checks each claim against the code of its day before replacing it.
+
+**Tests.**
+
+- Focused, the five files of Conversation 1, on `31521a2`: 306 passed.
+- Full suite on `31521a2` (detached worktree, the repository's `.stockai` Python):
+  6,997 passed, 5 skipped, 1 xfailed, 0 failed, return code 0, 9 min 42 s (about 03:46 to 03:56 IST).
+- `scripts/docs/check_kt_docs.py`: no errors.
+- The full suite on the records commit, the one pushed, is in the deploy record.
+
+**Accepted** (light, rollout) in this conversation without a fresh-session review, on the full
+suite and the docs check; the owner's word of 18 Nov covers the push. Base revision `84887d4`;
+merge `31521a2`; `git diff 84887d4 31521a2` gives sha256 `1994d555ed67a92c21e67233def08594fecb6f765dc7727a4491ebc59f92dca0`.
+
+**The first review under `evidence`** is today's 16:30 run (Mon 23 Nov), if the deploy is live
+before it. `PR-015-W1` reads it from Tue 24 Nov morning, at the owner's word.

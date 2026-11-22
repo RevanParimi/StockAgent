@@ -2618,6 +2618,13 @@
       "fields": {
         "sequencing_note": "Edge roadmap, stage 2, after PR-016. Extends the auditor's shelf lane; it does not replace it."
       }
+    },
+    {
+      "id": "PR-015",
+      "moved": "2026-11-22",
+      "fields": {
+        "sequencing_note": "Directly after FIX-015. The owner decided on 14 Nov not to wait for PR-009's gate; the old rule's verdict keeps being recorded and the owner judges at PR-014-R2."
+      }
     }
   ]
 }

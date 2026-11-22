@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-23 (PR-017 accepted; NEXT PR-015's switch in a window, else PR-047)
+# Current handoff - 2026-11-23 (PR-015 accepted and merged; NEXT BACKLOG B-12, then PR-047)
 
 ## Now
 
@@ -14,16 +14,17 @@
   merged as `9875e9a`; pushed and deployed (above). `FIX-033-W1` from today's 16:30 review;
   Sat 28 Nov for the shelf. **PR-017 accepted** by its fresh review (autopilot `1123-0159-p3`,
   [receipt](evidence/PR-017-review.md)) and merged as `d41c439`, the reviewer's tests `d7a6dc4`;
-  BACKLOG B-33 to B-35. Deployed (above); `PR-017-W1` from Sat 28 Nov.
-- **Next `continue`, in a push window** (00:10–06:20 IST, not the 1st, not Mon 03:00–04:00):
-  **PR-015's switch** (your word, 18 Nov): merge `story/PR-015` (`12b7901`; KT hunks 1, 3, 4, 11:
-  keep both, [PR-005's review](evidence/PR-005-review.md)), full suite, push, deploy, `/health`,
-  `PR-015-W1` ([rollout](evidence/PR-015-rollout.md)); then BACKLOG B-12.
-- **Outside a window:** **PR-047** (option A), then MAP-001 to MAP-005, PR-007. `FIX-017-W1`,
-  `CLEAN-004-W1`: production reads, your word.
-- **Git:** `origin/main` = `b9578e5`; `main` 1 ahead (this deploy record), push pending to a
-  window: the runner's, or PR-015's switch pushes it with it.
-  `story/PR-015` local; `story/PR-017` and `story/FIX-033` merged.
+  BACKLOG B-33 to B-35. Deployed (above); `PR-017-W1` from Sat 28 Nov. **PR-015 accepted**
+  (light rollout, autopilot `1123-0344-p4`, at your word of 18 Nov;
+  [receipt](evidence/PR-015-rollout.md)) and merged as `31521a2`: `advisor.exit_rule: evidence`
+  acts from the first 16:30 review after its deploy (today's). `PR-015-W1` from Tue 24 Nov.
+- **Next `continue`:** **BACKLOG B-12** (light; its trigger, PR-015's merge, is met): the
+  scorecard's gate sentence after the switch and which rule acts, with KT section 6's paragraph.
+  Then **PR-047** (option A), MAP-001 to MAP-005, PR-007. `FIX-017-W1`, `CLEAN-004-W1`,
+  `FIX-033-W1`, `PR-015-W1`: production reads, your word.
+- **Git:** `origin/main` = `b9578e5`; `main` 3 ahead (`84887d4`, the merge `31521a2`, these
+  records), pushed by this session after 04:00 once the full suite passes on this commit; the
+  deploy record follows. `story/PR-015`, `story/PR-017` and `story/FIX-033` merged.
 
 ## Waits for you
 
@@ -59,6 +60,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Sat 21 Nov | `PR-043-W1` | the first Saturday's shadow rows |
 | Sat 28 Nov | `PR-017-W1` | the first Saturday run and that night's audit: `dives.jsonl` seeded, the idea lanes graded; B-33's two lines |
 | Mon 23 Nov | `FIX-033-W1` | after the 16:30 review: no buy on another company's analysis; Sat 28 Nov: `hygiene.analyses`, `other_company` |
+| Mon 23 Nov | `PR-015-W1` | after the 16:30 review: every shadow row `evidence`, one per holding; no SELL on `thesis_break` |
 | Tue 24 Nov | `FIX-032-W1` | your re-run of FIX-032's probe |
 | Wed 25 Nov‡ | `PR-005-W1` | the first cases written at purchase, and any price retried |
 | Thu 26 Nov | `PR-036-W5` | share invested and holdings, 5 sessions after the deposit |
@@ -74,15 +76,6 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 
 ‡ If that day's review opens a position; a later first buy moves it. `PR-014-D1`, `R1` and
 `R2` keep their dates; their baseline note says capital changes on the deposit day.
-
-## 18 Nov, night (autopilot): PR-015 prepared on `story/PR-015`; the switch waits for your word
-
-- **Autopilot `1118-0029-p5`**, code-server, from about 00:29 IST; `main` = `8422a23`.
-- **Step 1 confirmed from the code:** under `evidence` both verdicts are still recorded in
-  `exit_shadow.jsonl`; the thesis review still runs; the scorecard reads every row.
-- **`12b7901` on `story/PR-015`:** the setting and the living documents (KT sections 1, 3, 4, 6,
-  11, 12; AUTOPILOT_GUIDE; README; guide case 07-L). On the word, the merging session follows
-  the receipt's "What the owner's word starts".
 
 ## 18 Nov, morning (autopilot): PR-038's rule predeclared; its read waits for your word
 

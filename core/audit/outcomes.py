@@ -575,7 +575,12 @@ def grade_ipo_lane(
 
 
 def grade_due(on: date, user_id: str | None = None, **kw) -> dict:
-    """Grade every lane. A failure in one lane never stops the others."""
+    """Grade every lane. A failure in one lane never stops the others.
+
+    PR-017: the idea lanes (dive, bare, screen; core/audit/idea_lanes.py)
+    follow, sharing one price reader. Their `pending`, `no_entry_price` and
+    `no_exit_price` counts stay in their lane's summary: a price that has not
+    arrived, or never will, is not a failed run."""
     uid = user_id or settings.PORTFOLIO_DEFAULT_USER_ID
     lanes: dict[str, dict] = {}
     for name, fn in (("advice", grade_advice_lane),
@@ -591,6 +596,15 @@ def grade_due(on: date, user_id: str | None = None, **kw) -> dict:
             logger.warning("[audit] %s lane failed (non-fatal): %s", name, exc)
             lanes[name] = {"graded": 0, "skipped_unpriceable": 0,
                            "already_present": 0, "error": str(exc)}
+    try:
+        from core.audit.idea_lanes import grade_idea_lanes
+        allowed = {k: v for k, v in kw.items()
+                   if k in _IDEA_KWARGS or k in _COMMON_KWARGS}
+        lanes.update(grade_idea_lanes(on, uid, **allowed))
+    except Exception as exc:
+        logger.warning("[audit] idea lanes failed (non-fatal): %s", exc)
+        lanes["dive"] = {"graded": 0, "skipped_unpriceable": 0,
+                         "already_present": 0, "error": str(exc)}
     return {
         "graded": sum(l.get("graded", 0) for l in lanes.values()),
         "skipped_unpriceable": sum(l.get("skipped_unpriceable", 0) for l in lanes.values()),
@@ -600,6 +614,7 @@ def grade_due(on: date, user_id: str | None = None, **kw) -> dict:
 
 
 _COMMON_KWARGS = {"store", "bench", "price_fn", "base_dir"}
+_IDEA_KWARGS = {"discovery_dir", "panel", "corp_actions"}
 _LANE_KWARGS = {"advice": set(), "alert": {"sent_log"},
                 "shelf": {"shelf_path"}, "switch": set(),
                 "ipo": {"verdicts_dir", "history_store", "cache_path"}}

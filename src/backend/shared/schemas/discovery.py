@@ -23,7 +23,10 @@ class DiscoveryCandidate(BaseModel):
 
 class ScreenResult(BaseModel):
     """Stage-1 output: ~2000 universe -> ranked, guarded candidates."""
-    screen_date: str                       # ISO
+    screen_date: str                       # ISO: the EOD day the screen read
+    # PR-017: the day the screen ran (its first actionable open is the next
+    # session's); "" on files written before it was recorded.
+    run_date: str = ""
     universe_size: int
     shortlist_size: int
     candidates: list[DiscoveryCandidate] = Field(default_factory=list)

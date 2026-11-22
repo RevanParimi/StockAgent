@@ -47,7 +47,8 @@ def run_screen(on: date | None = None) -> ScreenResult:
 
     if window.empty:
         logger.warning("[discovery.screen] EOD store empty — screen skipped")
-        result = ScreenResult(screen_date=screen_date, universe_size=0,
+        result = ScreenResult(screen_date=screen_date, run_date=on.isoformat(),
+                              universe_size=0,
                               shortlist_size=0)
         _persist(result)
         return result
@@ -78,7 +79,8 @@ def run_screen(on: date | None = None) -> ScreenResult:
 
     if not live:
         logger.warning("[discovery.screen] ALL signals dark — screen degraded to empty")
-        result = ScreenResult(screen_date=screen_date, universe_size=len(universe),
+        result = ScreenResult(screen_date=screen_date, run_date=on.isoformat(),
+                              universe_size=len(universe),
                               shortlist_size=0, dark_signals=dark,
                               degraded_checks=screen_checks)
         _persist(result)
@@ -116,6 +118,7 @@ def run_screen(on: date | None = None) -> ScreenResult:
 
     result = ScreenResult(
         screen_date=screen_date,
+        run_date=on.isoformat(),
         universe_size=len(universe),
         shortlist_size=len(shortlist),
         candidates=candidates,

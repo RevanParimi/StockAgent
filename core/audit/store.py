@@ -12,7 +12,7 @@ import logging
 import re
 from pathlib import Path
 
-from backend.shared.schemas.audit import AuditOutcome
+from backend.shared.schemas.audit import IDEA_FIELDS, AuditOutcome
 from core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -37,8 +37,13 @@ class AuditOutcomeStore:
         return self._dir / "advice_outcomes.jsonl"
 
     def append(self, row: AuditOutcome) -> None:
+        """One line per row. The idea-lane fields (PR-017) are left out where
+        they hold their default, so every other lane's line keeps the exact
+        shape it had before they existed."""
+        unset = {name for name in IDEA_FIELDS
+                 if getattr(row, name) == AuditOutcome.model_fields[name].default}
         with open(self.path, "a", encoding="utf-8") as fh:
-            fh.write(row.model_dump_json() + "\n")
+            fh.write(row.model_dump_json(exclude=unset or None) + "\n")
 
     def load_all(self) -> list[AuditOutcome]:
         path = self.path

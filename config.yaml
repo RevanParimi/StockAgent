@@ -616,6 +616,10 @@ discovery:
   shortlist_size: 120            # bhavcopy-ranked names that get per-symbol guard checks (provisional)
   max_candidates: 60             # ScreenResult size after guards (provisional)
   deep_dive_count: 45            # weekly analyst calls, re-dives and IPO slots included (LLM cost cap)
+  # PR-017, the owner's second judge: one bare-model call per new deep dive
+  # (the dive's evidence, none of the method), at most this many in any 7 days.
+  bare_judge_enabled: true
+  bare_judge_max_per_week: 20
   new_dive_floor: 15             # calls re-dives leave for the screen's new companies (a third, provisional); 0 = off
   shelf_size: 45                 # max active shelf ideas: 30 holdings plus 15 waiting
   max_ideas_per_sector: 6        # active ideas per sector key; 0 = no cap (6 x 3.2% within the 30% sector cap)
@@ -1061,6 +1065,11 @@ audit:
   alerts_enabled: true         # kill-switch for breach alerts only
   benchmark_ticker: "^NSEI"    # NIFTY 50 — the benchmark `correct` is defined against
   horizons_td: [10, 30, 60]    # trading days after issue
+  # PR-017: the idea lanes (dive, screen, bare) grade from the next session's
+  # open at these horizons, counted from the call's day. The lanes above keep
+  # horizons_td. Every reader of the idea rows takes its horizons from here.
+  idea_horizons_td: [10, 30, 60, 90, 180]
+  idea_max_symbol_reads: 200   # NSE corporate-action lists read per night for the idea lanes
   min_n: 30                    # below this, every verdict is INSUFFICIENT_DATA
   switch_min_n: 30                   # n_effective floor before any switch verdict
   switch_horizon_td: 10              # horizon the switch blocks report on

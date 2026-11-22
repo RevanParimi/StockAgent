@@ -1,27 +1,28 @@
-# Current handoff - 2026-11-21 (NEXT FIX-033, P0: DEEPA was bought on Deepak Nitrite's analysis; then PR-017's review; PR-046 waits for the push)
+# Current handoff - 2026-11-23 (NEXT FIX-033, P0: DEEPA was bought on Deepak Nitrite's analysis; then PR-017's review, PR-047 and your architecture map)
 
 ## Now
 
 - **Deployed:** `19611f1` at about 06:05 IST Sat 21 Nov (`0f16bb7f` SUCCESS, `/health` 200):
   PR-045 on `b0d6bca` (00:19, the runner: CLEAN-005, PR-013, PR-016). Cards `pending_observation`.
-- **Your requests of 21 Nov:** PR-045 live (guide 11-N); PR-046 done, push pending (11-O);
-  PR-007 reshaped and moved up. **The B-32 read** ([evidence](evidence/B-32-read-2026-11-21.md)):
-  5 of 10 new buys went against their own analysis; DEEPA's was Deepak Nitrite's (sold). New
-  FIX-033 (P0, with an automatic exit) and PR-047 (option A). You are not a user: no hand trades.
+- **21 Nov:** PR-045 live (guide 11-N); PR-046 done, push pending (11-O); PR-007 reshaped. The
+  [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against their own
+  analysis; DEEPA (Deepak Nitrite's case) sold. FIX-033 (P0) and PR-047 (option A). No hand trades.
+- **23 Nov:** your architecture map, MAP-001 to MAP-005 (light;
+  [design](../../superpowers/specs/2026-11-23-architecture-map-design.md)); the autopilot runs it.
 - **Next `continue`, any time:** **FIX-033** on `story/FIX-033`, its fresh review, and a push
   before Tue 24 Nov 16:30 (Saturday's dives are first bought by Tuesday's run).
 - **Awaiting its fresh review:** PR-017 on `story/PR-017` (`1b01f80`,
   [receipt](evidence/PR-017-implementation.md), B-30); not on `main`.
 - **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
-  Mondays; next Sun 22 Nov 00:10): **PR-015's switch** (your word, 18
+  Mondays): **PR-015's switch** (your word, 18
   Nov): merge `story/PR-015` (`12b7901`; four KT conflict hunks, sections 1, 3, 4 and 11: keep
   both as in [PR-005's review](evidence/PR-005-review.md), "Decision"), the full suite on the
   exact commit, push, deploy and `/health`, `PR-015-W1`
   ([rollout](evidence/PR-015-rollout.md)); then BACKLOG B-12.
-- **Then, outside a window:** PR-017's fresh hard review (`REVIEW.md`), then PR-007.
+- **Then:** PR-017's fresh hard review (`REVIEW.md`), PR-047, MAP-001 to MAP-005, PR-007.
   `FIX-017-W1` and `CLEAN-004-W1` are production reads: your word or your command.
-- **Git:** `origin/main` = `19611f1`; `main` 2 ahead, push pending to Sun 22 Nov 00:10.
-  `story/PR-015` and `story/PR-017` are local.
+- **Git:** `origin/main` = `19611f1`; `main` 5 ahead (with the MAP records); the runner
+  pushes them in the Mon 23 Nov window after the full suite. `story/PR-015`, `story/PR-017` local.
 
 ## Waits for you
 
@@ -37,8 +38,7 @@
 - **PR-005's backfill:** say "run the PR-005 backfill" (a dry run, then `--apply`).
 - **PR-038's re-read** (Sat 21 Nov, `PR-038-R1`) and **PR-040's walk-through** (`PR-040-W1`,
   guide 11-M).
-- **Optional:** the weekly watchdog line "No off-site copy has ever been confirmed"; removing it
-  is a registry edit you approve separately.
+- **Optional:** removing the weekly watchdog line on the off-site copy (a registry edit).
 
 ## Watched, and from when
 

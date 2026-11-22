@@ -38,7 +38,10 @@ PR-034 follow them. [CLEAN-007](stories/CLEAN-007.md) removed the backup email t
 on 17 Nov, after the owner's review of the repository and of what a `continue` costs,
 [CLEAN-002](stories/CLEAN-002.md) (shorten what every conversation reads) moves up to follow
 PR-035, and [PR-040](stories/PR-040.md) (members see three screens and load no operator code, the
-first half of PR-010) follows CLEAN-004. The tables below show the plan as it was first drawn.
+first half of PR-010) follows CLEAN-004. **Since 23 Nov 2026**, at the owner's request, the
+architecture map ([design](../../superpowers/specs/2026-11-23-architecture-map-design.md)),
+[MAP-001](stories/MAP-001.md) to [MAP-005](stories/MAP-005.md), follows PR-047. The tables below
+show the plan as it was first drawn.
 
 Planning assumption: six two-week sprints, one story implementation and a separate review conversation at a time. Start dates and team capacity are not known; these are relative sprints, not promised calendar deadlines. Estimates are relative, provisional points; re-estimate after Sprint 1. Do not expand a story just to meet a point budget.
 

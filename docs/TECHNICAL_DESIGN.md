@@ -35,7 +35,14 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs `19611f1`. A manual session pushed it at about 06:05 IST on 21
+Production runs `aeb38b9`. An autopilot session pushed it at about 01:49 IST on
+23 November 2026, after the full suite passed on that commit (deployment
+`1b5e318b` SUCCESS; `/health` answered 200 at 01:50 IST). Against `19611f1` it
+adds FIX-033's identity checks (a deep dive, the forecasts and the daily review
+analyse the exact NSE symbol; no idea or holding stands on another company's
+analysis; sections 4, 6, 7 and 8) and PR-046's "Ask why" (section 10), which the
+runner's documentation pushes of 00:29 and 01:26 IST that day had already
+deployed. `19611f1` was pushed by a manual session at about 06:05 IST on 21
 November 2026, after the full suite passed on its code (deployment `0f16bb7f`
 SUCCESS; `/health` answered 200 at 06:06 IST). Against `b0d6bca` it adds PR-045's
 portfolio screen (sections 7 and 10). On 21 November at 07:48 IST, at the

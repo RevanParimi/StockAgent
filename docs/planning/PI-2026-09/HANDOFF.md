@@ -2,16 +2,16 @@
 
 ## Now
 
-- **Deployed:** `19611f1`, 06:05 IST Sat 21 Nov (`0f16bb7f` SUCCESS, `/health` 200): PR-045 on
-  `b0d6bca` (CLEAN-005, PR-013, PR-016). Cards `pending_observation`.
+- **Deployed:** `aeb38b9`, 01:49 IST Mon 23 Nov (`1b5e318b` SUCCESS, `/health` 200 at 01:50):
+  FIX-033 and PR-046 on `19611f1` (PR-045). Cards `pending_observation`.
 - **21 Nov:** the [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against
   their own analysis; DEEPA (Deepak Nitrite's case) sold. FIX-033 (P0), PR-047 (option A). No hand
   trades.
 - **23 Nov:** your architecture map, MAP-001 to MAP-005 (light;
   [design](../../superpowers/specs/2026-11-23-architecture-map-design.md)). **FIX-033 accepted**
   by its fresh review (autopilot `1123-0126-p2`, [receipt](evidence/FIX-033-review.md)) and
-  merged as `9875e9a`; pushed by the same session after the full suite (its push and deploy
-  record follows this commit). `FIX-033-W1` from the first 16:30 review after the deploy.
+  merged as `9875e9a`; pushed and deployed (above). `FIX-033-W1` from today's 16:30 review;
+  Sat 28 Nov for the shelf.
 - **Next `continue`, in a push window** (00:10–06:20 IST, not the 1st, not Mon 03:00–04:00):
   **PR-015's switch** (your word, 18 Nov): merge `story/PR-015` (`12b7901`; KT hunks 1, 3, 4, 11:
   keep both, [PR-005's review](evidence/PR-005-review.md)), full suite, push, deploy, `/health`,
@@ -20,8 +20,8 @@
   [receipt](evidence/PR-017-implementation.md)).
 - **Then:** PR-047 (option A), MAP-001 to MAP-005, PR-007. `FIX-017-W1`, `CLEAN-004-W1`:
   production reads, your word.
-- **Git:** `main` = the FIX-033 records commit on `9875e9a`; `story/PR-015`, `story/PR-017`
-  local; `story/FIX-033` merged.
+- **Git:** `origin/main` = `aeb38b9`; `main` 1 ahead (this deploy record), push pending to a
+  window. `story/PR-015`, `story/PR-017` local; `story/FIX-033` merged.
 
 ## Waits for you
 
@@ -55,7 +55,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Sun 22 Nov | `PR-013-W1` | after the weekly review: the scorecard's four new lines |
 | Sun 22 Nov | `PR-016-W1` | after the weekly review: `executable_prices.jsonl`, the line and `paper_prices` |
 | Sat 21 Nov | `PR-043-W1` | the first Saturday's shadow rows |
-| Mon 23 Nov | `FIX-033-W1` | after the first 16:30 review after the deploy: no buy on another company's analysis; Sat 28 Nov: `hygiene.analyses`, `other_company` |
+| Mon 23 Nov | `FIX-033-W1` | after the 16:30 review: no buy on another company's analysis; Sat 28 Nov: `hygiene.analyses`, `other_company` |
 | Tue 24 Nov | `FIX-032-W1` | your re-run of FIX-032's probe |
 | Wed 25 Nov‡ | `PR-005-W1` | the first cases written at purchase, and any price retried |
 | Thu 26 Nov | `PR-036-W5` | share invested and holdings, 5 sessions after the deposit |

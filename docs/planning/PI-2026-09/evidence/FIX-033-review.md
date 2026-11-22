@@ -158,7 +158,10 @@ git merge-tree --write-tree main story/FIX-033
 
 - **Focused, with the reviewer cases:** 479 passed (the 40 story tests among them).
 - **Reviewer cases:** 50 passed (RV1–RV5 with their shapes).
-- **Full suite at `9875e9a`** (code identical to `a3a2116`): see the push record (the run on `9875e9a` and the run on the records commit before the push).
+- **Full suite at `9875e9a`** (code identical to `a3a2116`, in the worktree): 6,958 passed / 8 skipped /
+  1 xfailed / 0 failed (3m52s; three more tests skip there than in the main checkout).
+- **Full suite at `aeb38b9`** (the records commit, the one pushed), main checkout: 6,961 passed / 5
+  skipped / 1 xfailed / 0 failed (7m57s).
 - **Broad-except guard:** OK (138 grandfathered). **`check_kt_docs.py`:** `errors: []`.
 
 ## Acceptance checklist
@@ -179,11 +182,14 @@ git merge-tree --write-tree main story/FIX-033
 
 ## Production
 
-Not yet deployed. New check `FIX-033-W1` (STATE `pending_production_checks`) is the
-implementation receipt's "Production watch", as written there. It reads from the first 16:30
-review after the deploy and from the first Saturday run after it (Sat 28 Nov).
+**Deployed** with `aeb38b9`. This session pushed it at about 01:49 IST on Mon 23 Nov, inside
+the window, after the full suite on that commit. Railway deployment `1b5e318b` (commit `aeb38b9`)
+read SUCCESS by 01:50, and `/health` answered 200 at 01:50:12 IST. Production was not otherwise
+read. New check `FIX-033-W1` (STATE `pending_production_checks`) is the implementation
+receipt's "Production watch", as written there. It reads from today's 16:30 review and from the
+first Saturday run after the deploy (Sat 28 Nov).
 
 ## Decision
 
-**ACCEPTED** for `a3a2116`; status `done`. Merged into `main` as `9875e9a`. Push: see STATE
-history and HANDOFF.
+**ACCEPTED** for `a3a2116`; status `done`. Merged into `main` as `9875e9a`; deployed with
+`aeb38b9` (01:49 IST, 23 Nov); production verification `pending_observation` (`FIX-033-W1`).

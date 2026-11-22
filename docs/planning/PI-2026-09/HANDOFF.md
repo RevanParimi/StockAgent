@@ -1,34 +1,33 @@
-# Current handoff - 2026-11-23 (NEXT FIX-033, P0: DEEPA was bought on Deepak Nitrite's analysis; then PR-017's review, PR-047 and your architecture map)
+# Current handoff - 2026-11-23 (NEXT FIX-033's fresh review, P0; then PR-017's review, PR-047 and your architecture map)
 
 ## Now
 
-- **Deployed:** `19611f1` at about 06:05 IST Sat 21 Nov (`0f16bb7f` SUCCESS, `/health` 200):
-  PR-045 on `b0d6bca` (00:19, the runner: CLEAN-005, PR-013, PR-016). Cards `pending_observation`.
-- **21 Nov:** PR-045 live (guide 11-N); PR-046 done, push pending (11-O); PR-007 reshaped. The
-  [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against their own
-  analysis; DEEPA (Deepak Nitrite's case) sold. FIX-033 (P0) and PR-047 (option A). No hand trades.
+- **Deployed:** `19611f1`, 06:05 IST Sat 21 Nov (`0f16bb7f` SUCCESS, `/health` 200): PR-045 on
+  `b0d6bca` (CLEAN-005, PR-013, PR-016). Cards `pending_observation`.
+- **21 Nov:** the [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against
+  their own analysis; DEEPA (Deepak Nitrite's case) sold. FIX-033 (P0), PR-047 (option A). No hand
+  trades.
 - **23 Nov:** your architecture map, MAP-001 to MAP-005 (light;
-  [design](../../superpowers/specs/2026-11-23-architecture-map-design.md)); the autopilot runs it.
-- **Next `continue`, any time:** **FIX-033** on `story/FIX-033`, its fresh review, and a push
-  before Tue 24 Nov 16:30 (Saturday's dives are first bought by Tuesday's run).
-- **Awaiting its fresh review:** PR-017 on `story/PR-017` (`1b01f80`,
-  [receipt](evidence/PR-017-implementation.md), B-30); not on `main`.
-- **Next `continue`, in a push window** (00:10–06:20 IST, not on the 1st, not 03:00–04:00 on
-  Mondays): **PR-015's switch** (your word, 18
-  Nov): merge `story/PR-015` (`12b7901`; four KT conflict hunks, sections 1, 3, 4 and 11: keep
-  both as in [PR-005's review](evidence/PR-005-review.md), "Decision"), the full suite on the
-  exact commit, push, deploy and `/health`, `PR-015-W1`
-  ([rollout](evidence/PR-015-rollout.md)); then BACKLOG B-12.
-- **Then:** PR-017's fresh hard review (`REVIEW.md`), PR-047, MAP-001 to MAP-005, PR-007.
-  `FIX-017-W1` and `CLEAN-004-W1` are production reads: your word or your command.
-- **Git:** `origin/main` = `19611f1`; `main` 5 ahead (with the MAP records); the runner
-  pushes them in the Mon 23 Nov window after the full suite. `story/PR-015`, `story/PR-017` local.
+  [design](../../superpowers/specs/2026-11-23-architecture-map-design.md)). FIX-033 implemented.
+- **Next `continue`, any time:** **FIX-033's fresh review** (`REVIEW.md`) of `story/FIX-033`
+  (`a3a2116`, [receipt](evidence/FIX-033-implementation.md)); on acceptance merge to `main` and
+  push in a window before Tue 24 Nov 16:30 (Tuesday's run buys Saturday's dives).
+- **Awaiting its fresh review:** PR-017, `story/PR-017` (`1b01f80`,
+  [receipt](evidence/PR-017-implementation.md)).
+- **In a push window** (00:10–06:20 IST, not the 1st, not Mon 03:00–04:00): **PR-015's
+  switch** (your word, 18 Nov): merge `story/PR-015` (`12b7901`; KT hunks 1, 3, 4, 11: keep both,
+  [PR-005's review](evidence/PR-005-review.md)), full suite, push, deploy, `/health`,
+  `PR-015-W1` ([rollout](evidence/PR-015-rollout.md)); then BACKLOG B-12.
+- **Then:** PR-017's review, PR-047, MAP-001 to MAP-005, PR-007. `FIX-017-W1`, `CLEAN-004-W1`:
+  production reads, your word.
+- **Git:** `origin/main` = `2cf3eee` (the runner, 00:29 Mon 23 Nov); `main` 1 ahead (FIX-033's
+  records), push pending. `story/FIX-033`, `story/PR-015`, `story/PR-017` local.
 
 ## Waits for you
 
-- Nothing new. (DEEPA sold 21 Nov 07:48 at your word, ₹191.72, −9.5%; PR-047: A decided.)
-- **PR-037's catch-up run**, a weekday 09:30–14:00 IST (the next is Mon 23 Nov if not today):
-  say "run the PR-037 catch-up" in a session and allow it, or run from the StockAgent folder:
+- Nothing new.
+- **PR-037's catch-up run**, a weekday 09:30–14:00 IST: say "run the PR-037 catch-up" in a
+  session and allow it, or run from the StockAgent folder:
   `railway ssh 'python -c "import os,urllib.request as u;r=u.Request(\"http://127.0.0.1:\"+os.environ.get(\"PORT\",\"8000\")+\"/discovery/run\",method=\"POST\",headers={\"X-Scheduler-Key\":os.environ.get(\"SCHEDULER_KEY\",\"\")});print(u.urlopen(r,timeout=30).status)"'`
   (prints 202; the key never leaves the container).
 - **`PR-042-W0`'s read** (read-only): `railway ssh 'printenv DECISION_GATE_MODE; python -c "import json,os,collections;p=os.path.join(os.environ.get(\"LOGS_DIR\",\"data/logs\"),\"decision_gate.jsonl\");print(dict(collections.Counter((r.get(\"mode\"),r.get(\"enforced\")) for r in map(json.loads,open(p)) if r.get(\"ts\",\"\")>=\"2026-11-19T18:47\")))"'`.
@@ -71,6 +70,12 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 
 ‡ If that day's review opens a position; a later first buy moves it. `PR-014-D1`, `R1` and
 `R2` keep their dates; their baseline note says capital changes on the deposit day.
+
+## 23 Nov, night (autopilot): FIX-033 implemented; its fresh review is next
+
+- **Autopilot `1123-0029-p1`**, 00:30 IST, on `2cf3eee`: exact symbols, no model guess; another
+  company's analysis never shelved or bought; a holding bought on one EXITed; legacy ideas read
+  from the score history. To weigh: an unknown ("") is bought as before.
 
 ## 20 Nov, afternoon (autopilot): PR-017 implemented; its fresh review is next
 

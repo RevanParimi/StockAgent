@@ -215,6 +215,9 @@ KEYED_READS = {
     ("services/api/routes/ui_data.py", "_gather_ticker_data"),   # the 8 built-in tickers; bootstrap filters the rest
     ("services/api/routes/ui_data.py", "get_watchlist"),          # looked up by the viewer's own symbols
     ("services/scheduler/run_schedule.py", "cmd_latest"),         # the operator's CLI on the server
+    # FIX-033: tickers and theses of a dive's day, compared server-side with a
+    # shelf idea's own thesis; no viewer is shown any of it.
+    ("core/discovery/shelf.py", "score_rows_on"),
 }
 
 
@@ -228,7 +231,8 @@ def test_every_list_shaped_read_of_the_score_history_is_filtered():
         parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
         for node in ast.walk(tree):
             if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                    and node.func.attr in ("get_all_latest", "get_by_date_range")):
+                    and node.func.attr in ("get_all_latest", "get_by_date_range",
+                                           "theses_between")):
                 continue
             up, filtered, func = node, False, None
             while up in parents:

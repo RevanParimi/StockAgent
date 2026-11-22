@@ -401,8 +401,8 @@ section 1.
 [decision gate](../src/backend/shared/pipeline/decision_gate.py).
 
 1. Resolve input to a company, symbol and sector. A ticker the app already
-   tracks, and an exact NSE symbol a deep dive asks about, resolves to itself
-   with no model call (below); other text, from the chat or the Analyze box,
+   tracks, and the exact NSE symbol a job asks about (a deep dive, the paper
+   lane), resolves to itself with no model call (below); other text, from the chat or the Analyze box,
    goes to an LLM, with a web search when its answer cannot be verified.
 2. Select the graph. Automobile, banking/BFSI, IT and renewable energy have
    native implementations; other sectors use generic analysis. The RL router
@@ -801,7 +801,9 @@ sector, enabled or not) or in the instrument registry:
 - an unreadable registry quarantines every ticker but names none, so free text
   is not mistaken for a ticker;
 - an exact NSE symbol (`analyse(..., exact_symbol=True)`, which the deep dive
-  passes for every screen candidate and re-dive) that no list holds resolves
+  passes for every screen candidate and re-dive, and `generate_forecast` and
+  the daily review pass for theirs: the monthly forecast, a re-forecast and
+  the paper lane's shelf ideas) that no list holds resolves
   to itself once the exchange's cached instrument listing holds it (with no
   listing cached, once Yahoo prices it); one that is not listed stops the run
   (`UnlistedSymbol`), and no model is asked which company it means;

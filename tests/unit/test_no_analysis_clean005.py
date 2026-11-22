@@ -119,7 +119,7 @@ def failing(monkeypatch):
     monkeypatch.setattr(bo_mod, "get_llm_client", lambda: MagicMock())
     monkeypatch.setattr(sa_mod, "get_llm_client", lambda: MagicMock())
 
-    def _resolve(self, user_input, run_id=""):
+    def _resolve(self, user_input, run_id="", exact=False):
         t = user_input.strip().upper()
         return StockQuery(ticker=t, company_name=f"{t} Ltd", nse_data={})
     monkeypatch.setattr(bo_mod.BaseSectorOrchestrator, "_resolve_ticker", _resolve)
@@ -241,8 +241,8 @@ def test_no_score_row_reaches_the_score_store(monkeypatch):
     monkeypatch.setattr(bo_mod, "get_llm_client", lambda: MagicMock())
     monkeypatch.setattr(sa_mod, "get_llm_client", lambda: MagicMock())
     monkeypatch.setattr(bo_mod.BaseSectorOrchestrator, "_resolve_ticker",
-                        lambda self, u, run_id="": StockQuery(ticker=u, company_name="Q Ltd",
-                                                              nse_data={}))
+                        lambda self, u, run_id="", exact=False: StockQuery(
+                            ticker=u, company_name="Q Ltd", nse_data={}))
     monkeypatch.setattr(bo_mod.BaseSectorOrchestrator, "_prefetch_nse_data", lambda self, q: None)
     monkeypatch.setattr(bo_mod.BaseSectorOrchestrator, "_resolve_weights_for", lambda self, t: None)
 

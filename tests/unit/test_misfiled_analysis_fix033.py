@@ -57,7 +57,8 @@ SAT_28 = date(2026, 11, 28)
 WRONG = "the analysis is of DEEPAKNTR, not DEEPA"
 BOUGHT = "bought on DEEPAKNTR's analysis, not DEEPA's"
 # Deepak Nitrite's thesis, longer than the 800 characters an idea keeps.
-NITRITE = ("Deepak Nitrite Ltd: phenol-acetone spreads recovering; " * 20).strip()
+NITRITE = ("Deepak Nitrite Ltd: phenol-acetone spreads recovering, ₹1,508 then ₹1,602; "
+           * 12).strip()
 AUTOMOBILES = "Deepak Automobiles Ltd: key managerial resignation; neutral."
 
 
@@ -150,6 +151,28 @@ def test_analyse_passes_exact_only_when_asked(monkeypatch):
     o.analyse("NEWDRUG", exact_symbol=True)
     o.analyse("NEWDRUG")
     assert seen == [{"exact": True}, {}]
+
+
+def test_the_forecast_paper_lane_and_daily_review_pass_the_exact_symbol(monkeypatch):
+    """The monthly forecast, a re-forecast and the paper lane (one helper),
+    and the daily review's re-run, ask for the exact symbol."""
+    import core.intelligence.rl.workflows.daily_review as dr
+    import core.intelligence.rl.workflows.generate_forecast as gf
+    import core.intelligence.rl.workflows.sector_router as router
+    asked = []
+
+    class _O:
+        def set_aggregator_weights(self, weights, ticker):
+            pass
+
+        def analyse(self, ticker, exact_symbol=False):
+            asked.append((ticker, exact_symbol))
+            return SimpleNamespace(weighted_agent_scores={})
+    monkeypatch.setattr(gf, "get_orchestrator", lambda sector: _O())
+    monkeypatch.setattr(router, "get_orchestrator", lambda sector: _O())
+    gf._run_orchestrator_analysis("DEEPA", "generic", {"a": 1.0})
+    dr._run_todays_agent_scores("DEEPA", "generic")
+    assert asked == [("DEEPA", True), ("DEEPA", True)]
 
 
 # ---------------------------------------------------------------------------
@@ -339,7 +362,7 @@ def test_deployment_refuses_it_and_says_why(tmp_path, monkeypatch):
 def _rows(*pairs, run_at="2026-11-14T07:09:00"):
     """Score-history rows of the dive day: (ticker, thesis). 07:09 UTC is
     12:39 IST on Sat 14 Nov, the B-32 read's time for DEEPAKNTR."""
-    return [{"ticker": t, "investment_thesis": th, "run_at": run_at} for t, th in pairs]
+    return [{"ticker": t, "thesis": th[:800], "run_at": run_at} for t, th in pairs]
 
 
 def _legacy(symbol, thesis):
@@ -385,7 +408,10 @@ def test_the_score_history_is_read_between_those_bounds(tmp_path, monkeypatch):
                          "'[]', '{}')", (ticker, ticker, run_at, NITRITE))
     monkeypatch.setattr("services.data.stores.score_store.ScoreStore",
                         lambda: ScoreStore(db_path=path))
-    assert [r["ticker"] for r in shelf_mod.score_rows_on(DIVE_DAY)] == ["DEEPAKNTR"]
+    rows = shelf_mod.score_rows_on(DIVE_DAY)
+    assert rows == [{"ticker": "DEEPAKNTR", "thesis": NITRITE[:800]}]
+    # The store's cut and the idea's are the same 800 characters.
+    assert shelf_mod.history_identity(_legacy("DEEPA", NITRITE), rows) == "DEEPAKNTR"
 
 
 def test_reading_the_shelf_stamps_copies_and_the_list_refuses_deepa():

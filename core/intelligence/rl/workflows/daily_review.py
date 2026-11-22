@@ -360,7 +360,7 @@ def _run_todays_agent_scores(
         orchestrator = get_orchestrator(sector)
         if learned_weights:
             orchestrator.set_aggregator_weights(learned_weights, ticker)
-        report = orchestrator.analyse(ticker)
+        report = orchestrator.analyse(ticker, exact_symbol=True)   # FIX-033
         if capture is not None:
             capture["report"] = report
         return {name: ws.raw for name, ws in report.weighted_agent_scores.items()}

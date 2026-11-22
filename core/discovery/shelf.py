@@ -217,10 +217,11 @@ def _thesis_day_bounds(day: date) -> tuple[str, str]:
 
 
 def score_rows_on(day: date) -> list[dict]:
-    """The score history's analyses run on IST `day` or the day after (a
-    seam: tests answer it)."""
-    from services.data.stores.score_store import ScoreStore
-    return ScoreStore().get_by_date_range(*_thesis_day_bounds(day))
+    """{"ticker", "thesis"} (its first 800 characters) for each analysis in
+    the score history run on IST `day` or the day after (a seam: tests answer
+    it). Read server-side only; no viewer sees it."""
+    from services.data.stores import score_store
+    return score_store.theses_between(*_thesis_day_bounds(day))
 
 
 def history_identity(idea, rows: list[dict]) -> str:
@@ -229,14 +230,14 @@ def history_identity(idea, rows: list[dict]) -> str:
     before the idea kept it). The dive stores the first 800 characters of its
     report's thesis; the score history keeps every completed analysis's full
     thesis under the symbol the report is of. Exactly one symbol among `rows`
-    (that dive's day's analyses) whose thesis starts with the idea's is the
-    answer; none, or more than one, is "". Example: DEEPA's idea of 14 Nov
+    (that dive's day's analyses, `score_rows_on`) whose thesis's first 800
+    characters are the idea's is the answer; none, or more than one, is "". Example: DEEPA's idea of 14 Nov
     has Deepak Nitrite's thesis, and the row with that thesis is DEEPAKNTR's."""
     thesis = str(getattr(idea, "thesis", "") or "")
     if not thesis.strip():
         return ""
     found = {plain_symbol(r.get("ticker")) for r in rows
-             if str(r.get("investment_thesis") or "")[:800] == thesis and r.get("ticker")}
+             if str(r.get("thesis") or "")[:800] == thesis and r.get("ticker")}
     return found.pop() if len(found) == 1 else ""
 
 

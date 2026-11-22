@@ -332,7 +332,9 @@ def _run_orchestrator_analysis(
     """
     orchestrator = get_orchestrator(sector)
     orchestrator.set_aggregator_weights(effective_weights, ticker)
-    return orchestrator.analyse(ticker)
+    # FIX-033: a managed, held or shelved symbol, never free text: no model is
+    # asked which company it is (the paper lane passes shelf symbols).
+    return orchestrator.analyse(ticker, exact_symbol=True)
 
 
 def _compute_forecast_profile(

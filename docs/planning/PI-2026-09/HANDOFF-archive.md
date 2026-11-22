@@ -14,6 +14,25 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 23 Nov, night (autopilot): FIX-033 → ACCEPTED (fresh review); merged into `main`
+
+- **Autopilot session `1123-0126-p2`**, a `continue` on the code-server from about 01:26 IST,
+  inside the push window. `main` = `origin/main` = `a108ade`. No production read.
+- **Input verified:** `story/FIX-033` = `a3a2116`; digest `8f92bf60…` and manifest `36ce5e97…`
+  = the implementation receipt. The 14 Nov path traced again: an exact listed symbol is analysed
+  as itself, every buy door reads the stamped candidate list, the ledger in file order.
+  Reviewer cases RV1–RV5 (a share-count ledger oracle, 32 resolver shapes, spellings, a
+  two-session pipeline run); mutants 9 of 9; focused 479 passed.
+- **Findings:** nit N1 only (no story test spells the `NSE:` prefix), no follow-up.
+- **Merged** as `9875e9a`, code byte-identical to `a3a2116`. New check `FIX-033-W1`.
+  [Review receipt](evidence/FIX-033-review.md).
+
+## 23 Nov, night (autopilot): FIX-033 implemented; its fresh review is next
+
+- **Autopilot `1123-0029-p1`**, 00:30 IST, on `2cf3eee`: exact symbols, no model guess; another
+  company's analysis never shelved or bought; a holding bought on one EXITed; legacy ideas read
+  from the score history. To weigh: an unknown ("") is bought as before.
+
 ## 21 Nov, early morning (the same session): PR-046 → ACCEPTED (light lane); PR-007 reshaped and moved up
 
 - **The owner's second message**, about 06:15 IST, with two screenshots: whether the RL Monitor's

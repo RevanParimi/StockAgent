@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-23 (NEXT FIX-033's fresh review, P0; then PR-017's review, PR-047 and your architecture map)
+# Current handoff - 2026-11-23 (FIX-033 accepted; NEXT PR-015's switch in a window, else PR-017's review)
 
 ## Now
 
@@ -8,20 +8,20 @@
   their own analysis; DEEPA (Deepak Nitrite's case) sold. FIX-033 (P0), PR-047 (option A). No hand
   trades.
 - **23 Nov:** your architecture map, MAP-001 to MAP-005 (light;
-  [design](../../superpowers/specs/2026-11-23-architecture-map-design.md)). FIX-033 implemented.
-- **Next `continue`, any time:** **FIX-033's fresh review** (`REVIEW.md`) of `story/FIX-033`
-  (`a3a2116`, [receipt](evidence/FIX-033-implementation.md)); on acceptance merge to `main` and
-  push in a window before Tue 24 Nov 16:30 (Tuesday's run buys Saturday's dives).
-- **Awaiting its fresh review:** PR-017, `story/PR-017` (`1b01f80`,
-  [receipt](evidence/PR-017-implementation.md)).
-- **In a push window** (00:10–06:20 IST, not the 1st, not Mon 03:00–04:00): **PR-015's
-  switch** (your word, 18 Nov): merge `story/PR-015` (`12b7901`; KT hunks 1, 3, 4, 11: keep both,
-  [PR-005's review](evidence/PR-005-review.md)), full suite, push, deploy, `/health`,
+  [design](../../superpowers/specs/2026-11-23-architecture-map-design.md)). **FIX-033 accepted**
+  by its fresh review (autopilot `1123-0126-p2`, [receipt](evidence/FIX-033-review.md)) and
+  merged as `9875e9a`; pushed by the same session after the full suite (its push and deploy
+  record follows this commit). `FIX-033-W1` from the first 16:30 review after the deploy.
+- **Next `continue`, in a push window** (00:10–06:20 IST, not the 1st, not Mon 03:00–04:00):
+  **PR-015's switch** (your word, 18 Nov): merge `story/PR-015` (`12b7901`; KT hunks 1, 3, 4, 11:
+  keep both, [PR-005's review](evidence/PR-005-review.md)), full suite, push, deploy, `/health`,
   `PR-015-W1` ([rollout](evidence/PR-015-rollout.md)); then BACKLOG B-12.
-- **Then:** PR-017's review, PR-047, MAP-001 to MAP-005, PR-007. `FIX-017-W1`, `CLEAN-004-W1`:
+- **Outside a window:** **PR-017's fresh review** (`REVIEW.md`) of `story/PR-017` (`1b01f80`,
+  [receipt](evidence/PR-017-implementation.md)).
+- **Then:** PR-047 (option A), MAP-001 to MAP-005, PR-007. `FIX-017-W1`, `CLEAN-004-W1`:
   production reads, your word.
-- **Git:** `origin/main` = `2cf3eee` (the runner, 00:29 Mon 23 Nov); `main` 1 ahead (FIX-033's
-  records), push pending. `story/FIX-033`, `story/PR-015`, `story/PR-017` local.
+- **Git:** `main` = the FIX-033 records commit on `9875e9a`; `story/PR-015`, `story/PR-017`
+  local; `story/FIX-033` merged.
 
 ## Waits for you
 
@@ -55,6 +55,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Sun 22 Nov | `PR-013-W1` | after the weekly review: the scorecard's four new lines |
 | Sun 22 Nov | `PR-016-W1` | after the weekly review: `executable_prices.jsonl`, the line and `paper_prices` |
 | Sat 21 Nov | `PR-043-W1` | the first Saturday's shadow rows |
+| Mon 23 Nov | `FIX-033-W1` | after the first 16:30 review after the deploy: no buy on another company's analysis; Sat 28 Nov: `hygiene.analyses`, `other_company` |
 | Tue 24 Nov | `FIX-032-W1` | your re-run of FIX-032's probe |
 | Wed 25 Nov‡ | `PR-005-W1` | the first cases written at purchase, and any price retried |
 | Thu 26 Nov | `PR-036-W5` | share invested and holdings, 5 sessions after the deposit |
@@ -70,12 +71,6 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 
 ‡ If that day's review opens a position; a later first buy moves it. `PR-014-D1`, `R1` and
 `R2` keep their dates; their baseline note says capital changes on the deposit day.
-
-## 23 Nov, night (autopilot): FIX-033 implemented; its fresh review is next
-
-- **Autopilot `1123-0029-p1`**, 00:30 IST, on `2cf3eee`: exact symbols, no model guess; another
-  company's analysis never shelved or bought; a holding bought on one EXITed; legacy ideas read
-  from the score history. To weigh: an unknown ("") is bought as before.
 
 ## 20 Nov, afternoon (autopilot): PR-017 implemented; its fresh review is next
 

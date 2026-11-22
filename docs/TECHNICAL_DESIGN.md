@@ -2658,9 +2658,10 @@ calibration). The `shelf` lane above still runs and its rows are unchanged.
   across every bonus or split ex after the entry session, with the exit
   grading's fail-closed rules (section 6, "Two exit rules"). Example: entered
   at ₹500, a 1:1 bonus ex 20 sessions later, ₹260 at 30 sessions: ₹520 in the
-  entry's shares, +4%. A demerger or a list that could not be read leaves the
-  horizon ungraded (`no_exit_price`, or `pending` while a later read could
-  settle it).
+  entry's shares, +4%. A demerger, a list that could not be read, or a list
+  that is empty or starts after the entry (a recent listing, a company NSE
+  lists no action for) leaves the horizon ungraded (`no_exit_price`, or
+  `pending` while a later read could settle it).
 - **The Nifty** runs from the close of the session before the entry open to the
   horizon close (the series holds closes only), so it includes one overnight
   move the stock's return does not.
@@ -2673,7 +2674,8 @@ The report, at each horizon, gives n, the mean and median excess in points and
 the share beating the Nifty for **BUY dives** (BUY or STRONG BUY at a
 conviction of at least the shelf's floor, 0.55), **rejected dives** (every
 other dive with a recorded verdict; an abstained one is only counted),
-**screen only** (candidates their week's run did not dive) and **the bare
+**screen only** (candidates their week's run did not dive, including those it
+skipped because they were dived in the month before) and **the bare
 model's BUYs**, and BUY dives split by graph (native, generic). Under 30 a
 figure reads "too few to judge", and is still shown with its n. It also says
 how many recorded dives reached each horizon and have no grade (no price yet,

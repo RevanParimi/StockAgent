@@ -2611,6 +2611,13 @@
       "fields": {
         "sequencing_note": "RESEQUENCED 21 Nov 2026 (the PR-045 conversation, CLAUDE.md section 2: order is delegated): ahead of PR-017's fresh review and PR-015's switch, because a misfiled idea from any Saturday dive is first bought by Tuesday's 16:30 run; it should be reviewed and pushed before Tue 24 Nov 16:30 (windows: Sun 22, Mon 23 except 03:00-04:00, Tue 24 00:10-06:20). The owner may change it."
       }
+    },
+    {
+      "id": "PR-017",
+      "moved": "2026-11-22",
+      "fields": {
+        "sequencing_note": "Edge roadmap, stage 2, after PR-016. Extends the auditor's shelf lane; it does not replace it."
+      }
     }
   ]
 }

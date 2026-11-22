@@ -14,6 +14,27 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 23 Nov, night (autopilot): PR-017 → ACCEPTED (fresh review); merged into `main`
+
+- **Autopilot session `1123-0159-p3`**, a `continue` on the code-server from about 01:59 IST,
+  inside the push window; PR-015's switch waits for 04:00. `main` = `61b7305`. No production read.
+- **Input verified:** `story/PR-017` = `1b01f80`; digest `c735410f…` and manifest `95e5ccc8…`
+  = the implementation receipt. The card's example traced from the dive to the auditor's row and
+  every reader of the store. Reviewer cases RV1–RV8; 13 mutants, 11 caught; focused 195 passed.
+- **Findings:** five low. L1 (five invariants no story test pinned) fixed by the reviewer's
+  tests; L2–L5 are BACKLOG B-33 (the seed's two gaps), B-34 (an empty NSE list is never graded),
+  B-35 ("screen only" holds candidates dived the month before).
+- **Merged** as `d41c439` (FIX-033's conflicts kept both sides), the reviewer's tests `d7a6dc4`.
+  New check `PR-017-W1`. [Review receipt](evidence/PR-017-review.md).
+
+## 20 Nov, afternoon (autopilot): PR-017 implemented; its fresh review is next
+
+- **Autopilot `1120-1454-p6`**, from about 14:54 IST, on `7293fb4`. **`1b01f80`:** every dive
+  kept as issued (`dives.jsonl`, seeded once on the first Saturday after the deploy); the bare
+  judge (20 a week); lanes `dive`, `screen`, `bare` from the next open, 10 to 180 sessions; an
+  "ideas" report block and a scorecard line. To weigh: the automatic seed, and the Nifty leg
+  from the close before the entry open.
+
 ## 23 Nov, night (autopilot): FIX-033 → ACCEPTED (fresh review); merged into `main`
 
 - **Autopilot session `1123-0126-p2`**, a `continue` on the code-server from about 01:26 IST,

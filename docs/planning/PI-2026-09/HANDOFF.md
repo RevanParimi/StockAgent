@@ -1,9 +1,10 @@
-# Current handoff - 2026-11-23 (FIX-033 accepted; NEXT PR-015's switch in a window, else PR-017's review)
+# Current handoff - 2026-11-23 (PR-017 accepted; NEXT PR-015's switch in a window, else PR-047)
 
 ## Now
 
 - **Deployed:** `aeb38b9`, 01:49 IST Mon 23 Nov (`1b5e318b` SUCCESS, `/health` 200 at 01:50):
-  FIX-033 and PR-046 on `19611f1` (PR-045). Cards `pending_observation`.
+  FIX-033 and PR-046 on `19611f1` (PR-045). Cards `pending_observation`. Then `61b7305` (its
+  record, docs only), the runner's push at 01:59 (`53352126` SUCCESS, `/health` 200 at 02:18).
 - **21 Nov:** the [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against
   their own analysis; DEEPA (Deepak Nitrite's case) sold. FIX-033 (P0), PR-047 (option A). No hand
   trades.
@@ -11,17 +12,18 @@
   [design](../../superpowers/specs/2026-11-23-architecture-map-design.md)). **FIX-033 accepted**
   by its fresh review (autopilot `1123-0126-p2`, [receipt](evidence/FIX-033-review.md)) and
   merged as `9875e9a`; pushed and deployed (above). `FIX-033-W1` from today's 16:30 review;
-  Sat 28 Nov for the shelf.
+  Sat 28 Nov for the shelf. **PR-017 accepted** by its fresh review (autopilot `1123-0159-p3`,
+  [receipt](evidence/PR-017-review.md)) and merged as `d41c439`, the reviewer's tests `d7a6dc4`;
+  BACKLOG B-33 to B-35. Not deployed: `PR-017-W1` from the first Saturday after its deploy.
 - **Next `continue`, in a push window** (00:10–06:20 IST, not the 1st, not Mon 03:00–04:00):
   **PR-015's switch** (your word, 18 Nov): merge `story/PR-015` (`12b7901`; KT hunks 1, 3, 4, 11:
   keep both, [PR-005's review](evidence/PR-005-review.md)), full suite, push, deploy, `/health`,
   `PR-015-W1` ([rollout](evidence/PR-015-rollout.md)); then BACKLOG B-12.
-- **Outside a window:** **PR-017's fresh review** (`REVIEW.md`) of `story/PR-017` (`1b01f80`,
-  [receipt](evidence/PR-017-implementation.md)).
-- **Then:** PR-047 (option A), MAP-001 to MAP-005, PR-007. `FIX-017-W1`, `CLEAN-004-W1`:
-  production reads, your word.
-- **Git:** `origin/main` = `aeb38b9`; `main` 1 ahead (this deploy record), push pending to a
-  window. `story/PR-015`, `story/PR-017` local; `story/FIX-033` merged.
+- **Outside a window:** **PR-047** (option A), then MAP-001 to MAP-005, PR-007. `FIX-017-W1`,
+  `CLEAN-004-W1`: production reads, your word.
+- **Git:** `origin/main` = `61b7305`; `main` 3 ahead (`d41c439`, `d7a6dc4`, PR-017's records),
+  push pending to a window: the runner's, or PR-015's switch pushes them with it.
+  `story/PR-015` local; `story/PR-017` and `story/FIX-033` merged.
 
 ## Waits for you
 
@@ -55,6 +57,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Sun 22 Nov | `PR-013-W1` | after the weekly review: the scorecard's four new lines |
 | Sun 22 Nov | `PR-016-W1` | after the weekly review: `executable_prices.jsonl`, the line and `paper_prices` |
 | Sat 21 Nov | `PR-043-W1` | the first Saturday's shadow rows |
+| Sat after its deploy | `PR-017-W1` | the first Saturday run and that night's audit: `dives.jsonl` seeded, the idea lanes graded; B-33's two lines |
 | Mon 23 Nov | `FIX-033-W1` | after the 16:30 review: no buy on another company's analysis; Sat 28 Nov: `hygiene.analyses`, `other_company` |
 | Tue 24 Nov | `FIX-032-W1` | your re-run of FIX-032's probe |
 | Wed 25 Nov‡ | `PR-005-W1` | the first cases written at purchase, and any price retried |
@@ -71,14 +74,6 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 
 ‡ If that day's review opens a position; a later first buy moves it. `PR-014-D1`, `R1` and
 `R2` keep their dates; their baseline note says capital changes on the deposit day.
-
-## 20 Nov, afternoon (autopilot): PR-017 implemented; its fresh review is next
-
-- **Autopilot `1120-1454-p6`**, from about 14:54 IST, on `7293fb4`. **`1b01f80`:** every dive
-  kept as issued (`dives.jsonl`, seeded once on the first Saturday after the deploy); the bare
-  judge (20 a week); lanes `dive`, `screen`, `bare` from the next open, 10 to 180 sessions; an
-  "ideas" report block and a scorecard line. To weigh: the automatic seed, and the Nifty leg
-  from the close before the entry open.
 
 ## 18 Nov, night (autopilot): PR-015 prepared on `story/PR-015`; the switch waits for your word
 

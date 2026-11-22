@@ -207,8 +207,14 @@ call, NSE's live corporate-action lists, the nightly audit's run time with 200 l
 
 ## Production
 
-Not deployed by this session: `main` is pushed by the next job-free window (the runner between
-phases, or the session that switches PR-015 from 04:00). After the deploy, **`PR-017-W1`**
+**Pushed and deployed** by this session: `61b7305..b9578e5` at 02:40 IST Mon 23 Nov, inside the
+window, after the full suite on `b9578e5` (a first run: 1 failed, the member browser suite's
+subtest 8 "every member screen says unavailable when its API fails", a watchlist message not yet
+drawn under load (BACKLOG B-36); it passed alone in 72 s, no frontend file changed since `aeb38b9`; the rerun:
+6,997 passed, 5 skipped, 1 xfailed, 0 failed, 8m48s). Railway `5f69280a` SUCCESS on `b9578e5`,
+`53352126` removed; `/health` 200 at 02:41 IST. Tonight's 23:45 audit is the first to run the
+idea lanes: only the stored screen files can be graded before the first Saturday run (as
+"dived unknown"). **`PR-017-W1`**
 (STATE `pending_production_checks`) reads the first Saturday discovery run and that night's
 audit, as the implementation receipt's "Production watch" proposes, plus two lines for B-33: the
 last discovery run before the deploy made dives, and no seeded dive names a stock that run's
@@ -218,6 +224,6 @@ last discovery run before the deploy made dives, and no seeded dive names a stoc
 
 **ACCEPTED** for `1b01f80` (diff `c735410f`, manifest `95e5ccc8`). Status `done`; merged into
 `main` as `d41c439` (FIX-033's conflicts kept both sides; the end-to-end test's stub takes
-`exact_symbol`), the reviewer's tests `d7a6dc4`. `production_verification`:
-`pending_deployment`. BACKLOG B-33, B-34, B-35. Next: PR-015's switch in the 04:00–06:20 window,
+`exact_symbol`), the reviewer's tests `d7a6dc4`; deployed with `b9578e5`.
+`production_verification`: `pending_observation`. BACKLOG B-33, B-34, B-35. Next: PR-015's switch in the 04:00–06:20 window,
 else PR-047 (option A).

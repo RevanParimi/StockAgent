@@ -35,7 +35,13 @@ triggered no production job, backfill or notification.
 
 ### Production state at this edition
 
-Production runs `aeb38b9`. An autopilot session pushed it at about 01:49 IST on
+Production runs `b9578e5`. An autopilot session pushed it at about 02:40 IST on
+23 November 2026, after the full suite passed on that commit (deployment
+`5f69280a` SUCCESS; `/health` answered 200 at 02:41 IST). Against `aeb38b9` it
+adds PR-017's idea lanes (every deep dive, the screen's other candidates and a
+bare model graded against the Nifty; the dive record and the bare judge from the
+first Saturday run; sections 3, 7 and 8). `aeb38b9` was pushed by an autopilot
+session at about 01:49 IST on
 23 November 2026, after the full suite passed on that commit (deployment
 `1b5e318b` SUCCESS; `/health` answered 200 at 01:50 IST). Against `19611f1` it
 adds FIX-033's identity checks (a deep dive, the forecasts and the daily review

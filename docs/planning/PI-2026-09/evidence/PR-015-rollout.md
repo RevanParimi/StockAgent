@@ -166,3 +166,13 @@ merge `31521a2`; `git diff 84887d4 31521a2` gives sha256 `1994d555ed67a92c21e672
 
 **The first review under `evidence`** is today's 16:30 run (Mon 23 Nov), if the deploy is live
 before it. `PR-015-W1` reads it from Tue 24 Nov morning, at the owner's word.
+
+**Pushed and deployed** by this session: `b9578e5..4c7f611` (`84887d4`, the merge `31521a2`, the
+records `4c7f611`) at 04:07 IST Mon 23 Nov, inside the window and after Monday's 03:00–04:00
+hold, after the full suite on `4c7f611` (detached worktree: 6,997 passed, 5 skipped, 1 xfailed,
+0 failed, return code 0, 9 min 45 s) and a fetch showing `origin/main` unchanged. Railway
+`5f33208f` SUCCESS on `4c7f611` (`5f69280a` removed); `/health` 200 at 04:07:51 IST. Only the
+deployment list and `/health` were read. Production reads `advisor.exit_rule: evidence` from the
+repository; no variable can override it (`exit_rule_mode()` calls `cfg` without an environment
+name; code inspection).
+Today's 16:30 review is the first the evidence rule decides; `PR-015-W1` reads it.

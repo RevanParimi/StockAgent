@@ -1,10 +1,11 @@
-# Current handoff - 2026-11-23 (PR-015 accepted and merged; NEXT BACKLOG B-12, then PR-047)
+# Current handoff - 2026-11-23 (PR-015 accepted and deployed; NEXT BACKLOG B-12, then PR-047)
 
 ## Now
 
-- **Deployed:** `b9578e5`, 02:40 IST Mon 23 Nov (`5f69280a` SUCCESS, `/health` 200 at 02:41):
-  PR-017 on `aeb38b9` (01:49, FIX-033 and PR-046; `61b7305`, its record, the runner's at 01:59).
-  Cards `pending_observation`. Tonight's 23:45 audit grades the stored screens first.
+- **Deployed:** `4c7f611`, 04:07 IST Mon 23 Nov (`5f33208f` SUCCESS, `/health` 200 at 04:07):
+  PR-015's switch on `b9578e5` (02:40, PR-017), on `aeb38b9` (01:49, FIX-033 and PR-046).
+  Cards `pending_observation`. Today's 16:30 review is the first the evidence rule decides;
+  tonight's 23:45 audit grades the stored screens first.
 - **21 Nov:** the [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against
   their own analysis; DEEPA (Deepak Nitrite's case) sold. FIX-033 (P0), PR-047 (option A). No hand
   trades.
@@ -16,15 +17,14 @@
   [receipt](evidence/PR-017-review.md)) and merged as `d41c439`, the reviewer's tests `d7a6dc4`;
   BACKLOG B-33 to B-35. Deployed (above); `PR-017-W1` from Sat 28 Nov. **PR-015 accepted**
   (light rollout, autopilot `1123-0344-p4`, at your word of 18 Nov;
-  [receipt](evidence/PR-015-rollout.md)) and merged as `31521a2`: `advisor.exit_rule: evidence`
-  acts from the first 16:30 review after its deploy (today's). `PR-015-W1` from Tue 24 Nov.
+  [receipt](evidence/PR-015-rollout.md)) and merged as `31521a2`; deployed (above):
+  `advisor.exit_rule: evidence` acts from today's 16:30 review. `PR-015-W1` from Tue 24 Nov.
 - **Next `continue`:** **BACKLOG B-12** (light; its trigger, PR-015's merge, is met): the
   scorecard's gate sentence after the switch and which rule acts, with KT section 6's paragraph.
   Then **PR-047** (option A), MAP-001 to MAP-005, PR-007. `FIX-017-W1`, `CLEAN-004-W1`,
   `FIX-033-W1`, `PR-015-W1`: production reads, your word.
-- **Git:** `origin/main` = `b9578e5`; `main` 3 ahead (`84887d4`, the merge `31521a2`, these
-  records), pushed by this session after 04:00 once the full suite passes on this commit; the
-  deploy record follows. `story/PR-015`, `story/PR-017` and `story/FIX-033` merged.
+- **Git:** `origin/main` = `4c7f611`; `main` 1 ahead (this deploy record), push pending to a
+  window: the runner's, or the next push. `story/PR-015`, `story/PR-017` and `story/FIX-033` merged.
 
 ## Waits for you
 

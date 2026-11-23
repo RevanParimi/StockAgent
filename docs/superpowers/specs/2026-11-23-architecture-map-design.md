@@ -105,6 +105,22 @@ Labels in the 3D world are HTML overlays that always face the camera; long text 
 - **2D fallback** (MAP-005): the same model as a flat map when WebGL is missing or the screen is
   small.
 
+## Look and usability (added 2026-11-23; see "Decisions taken")
+
+Five sessions build the map. Two files keep one look and one standard across them:
+
+- **`docs/architecture-map/DESIGN.md`**, the map's own design rules: a colour per module and per
+  plane, type, glow and bloom limits, panel and flowchart styles, motion, and contrast. It follows
+  the DESIGN.md format collected in VoltAgent's awesome-design-md, but it is our own and copies no
+  brand. MAP-002 writes it before drawing anything. A later card that adds a visual element adds
+  it to DESIGN.md first.
+- **`docs/architecture-map/UI-CHECKLIST.md`**, an interface checklist in our own words, taken from
+  Vercel's Web Interface Guidelines (vercel-labs/web-interface-guidelines) at a recorded commit:
+  keyboard, visible focus, labels, contrast, reduced motion, touch targets, and so on. It is read
+  once and kept in the repository, never fetched at build or test time, so the map stays offline
+  and the check stays repeatable. Each card passes it for what it adds, and its receipt lists each
+  item as passed or not applicable. MAP-005 passes it over the whole map.
+
 ## The model: what keeps it true
 
 ```
@@ -181,3 +197,9 @@ and the guards. The owner sees screenshots at the end of each.
 - **Order in the queue:** after FIX-033 (P0) and PR-047 (the buy rule decided on 21 Nov), which
   protect money, and PR-017's pending fresh review; ahead of PR-007 and the rest. PR-015's switch
   keeps its push window. The owner may move the map first.
+- **DESIGN.md and UI-CHECKLIST.md**, added by Claude in a manual session at about 08:15 IST under
+  CLAUDE.md section 2 (story content is delegated). The owner had shared two videos of design
+  tools; the session found two of them fit the map, and the owner asked whether they had been
+  added to the stories. Two others were set aside: image-to-code, because the map is drawn from the
+  model and has no mockups, and a second Playwright, because one is already planned and
+  installed. The owner may drop either file.

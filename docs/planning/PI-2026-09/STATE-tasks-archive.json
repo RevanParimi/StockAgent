@@ -2625,6 +2625,13 @@
       "fields": {
         "sequencing_note": "Directly after FIX-015. The owner decided on 14 Nov not to wait for PR-009's gate; the old rule's verdict keeps being recorded and the owner judges at PR-014-R2."
       }
+    },
+    {
+      "id": "OPS-001",
+      "moved": "2026-11-26",
+      "fields": {
+        "sequencing_note": "Placed 26 Nov 2026 at the owner's word: OPS-001 to OPS-006 in the owner's priority order, after BACKLOG B-12 and ahead of PR-047 and the map."
+      }
     }
   ]
 }

@@ -14,6 +14,28 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 26 Nov (autopilot `1126-0616-p1`, finished by a manual session): B-12 → ACCEPTED (light)
+
+- **26 Nov, B-12 done** (light, autopilot `1126-0616-p1`, [receipt](evidence/B-12.md)): the
+  scorecard's "Exit rule test" line names the acting rule and words its gate for it: under
+  `evidence` a pass supports keeping it; a shortfall in count or money is a reason to consider
+  the rollback. Checked by an Opus subagent; its medium finding fixed. Seen after a deploy.
+  The box restarted during its full suite (07:56 IST); a manual session ran it again (7,018
+  passed, 8m34s) and committed.
+
+## 23 Nov, from the current section's "Now": FIX-033, PR-017 and PR-015 accepted; the map
+
+- **23 Nov:** your architecture map, MAP-001 to MAP-005 (light;
+  [design](../../superpowers/specs/2026-11-23-architecture-map-design.md)). **FIX-033 accepted**
+  by its fresh review (autopilot `1123-0126-p2`, [receipt](evidence/FIX-033-review.md)) and
+  merged as `9875e9a`; pushed and deployed (above). `FIX-033-W1` from today's 16:30 review;
+  Sat 28 Nov for the shelf. **PR-017 accepted** by its fresh review (autopilot `1123-0159-p3`,
+  [receipt](evidence/PR-017-review.md)) and merged as `d41c439`, the reviewer's tests `d7a6dc4`;
+  BACKLOG B-33 to B-35. Deployed (above); `PR-017-W1` from Sat 28 Nov. **PR-015 accepted**
+  (light rollout, autopilot `1123-0344-p4`, at your word of 18 Nov;
+  [receipt](evidence/PR-015-rollout.md)) and merged as `31521a2`; deployed (above):
+  `advisor.exit_rule: evidence` acts from today's 16:30 review. `PR-015-W1` from Tue 24 Nov.
+
 ## 23 Nov, night (autopilot): PR-015 → ACCEPTED (light rollout); merged into `main`
 
 - **Autopilot session `1123-0344-p4`**, a `continue` on the code-server from about 03:44 IST, at

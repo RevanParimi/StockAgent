@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-26 (B-12 done, push pending with your walkthrough; NEXT PR-047)
+# Current handoff - 2026-11-26 (OPS-001: the full suite is normal; push pending; NEXT OPS-002)
 
 ## Now
 
@@ -8,36 +8,29 @@
 - **21 Nov:** the [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against
   their own analysis; DEEPA (Deepak Nitrite's case) sold. FIX-033 (P0), PR-047 (option A). No hand
   trades.
-- **23 Nov:** your architecture map, MAP-001 to MAP-005 (light;
-  [design](../../superpowers/specs/2026-11-23-architecture-map-design.md)). **FIX-033 accepted**
-  by its fresh review (autopilot `1123-0126-p2`, [receipt](evidence/FIX-033-review.md)) and
-  merged as `9875e9a`; pushed and deployed (above). `FIX-033-W1` from today's 16:30 review;
-  Sat 28 Nov for the shelf. **PR-017 accepted** by its fresh review (autopilot `1123-0159-p3`,
-  [receipt](evidence/PR-017-review.md)) and merged as `d41c439`, the reviewer's tests `d7a6dc4`;
-  BACKLOG B-33 to B-35. Deployed (above); `PR-017-W1` from Sat 28 Nov. **PR-015 accepted**
-  (light rollout, autopilot `1123-0344-p4`, at your word of 18 Nov;
-  [receipt](evidence/PR-015-rollout.md)) and merged as `31521a2`; deployed (above):
-  `advisor.exit_rule: evidence` acts from today's 16:30 review. `PR-015-W1` from Tue 24 Nov.
-- **26 Nov, B-12 done** (light, autopilot `1126-0616-p1`, [receipt](evidence/B-12.md)): the
-  scorecard's "Exit rule test" line names the acting rule and words its gate for it: under
-  `evidence` a pass supports keeping it; a shortfall in count or money is a reason to consider
-  the rollback. Checked by an Opus subagent; its medium finding fixed. Seen after a deploy.
-  The box restarted during its full suite (07:56 IST); a manual session ran it again (7,018
-  passed, 8m34s) and committed.
-- **Next `continue`:** **PR-047** (option A; step 1 light), then MAP-001 to MAP-005, PR-007.
-  **Autopilot, your word (26 Nov):** run to MAP-005; the phase that accepts MAP-005 runs
+- **26 Nov, afternoon** (a manual session, your word): B-12 committed (`4a9ae8d`). The
+  build-box stories [OPS-001](stories/OPS-001.md) to [OPS-006](stories/OPS-006.md) added ahead
+  of PR-047, in your order. **OPS-001 done, the full suite is normal:** anon 846 MB before, 1,650
+  at the peak, 806 five minutes after; 7,018 passed in 8m34s
+  ([receipt](evidence/OPS-001.md)).
+- **Next `continue`:** **OPS-002** (the memory guard), OPS-003 to OPS-006, **PR-047** (option
+  A; step 1 light), MAP-001 to MAP-005, PR-007. **Autopilot, your word (26 Nov):** run to
+  MAP-005; the phase that accepts MAP-005 runs
   `/home/coder/project/autopilot/autopilot.sh stop` before writing its status.
   `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`: production reads, your word.
+- **Autopilot stopped** since the box restarted at 07:56 IST on 26 Nov; its status still lists
+  phase `1126-0616-p1` as running (OPS-004). Its test runs have no memory guard until OPS-002.
 - **Git, push pending:** `origin/main` = `53461ab` (the runner's push, 04:17 Mon 23 Nov);
-  `main` is ahead by `f893dc4`, `8fae35d` (your walkthrough copy), `370d802` and B-12's commit.
-  The runner's 06:16 suite on `370d802` failed on one browser suite's time limit (a 2-CPU
-  container under load, BACKLOG B-37). After the push, confirm
+  `main` is ahead by `f893dc4`, `8fae35d` (your walkthrough copy), `370d802`, `4a9ae8d` (B-12)
+  and the OPS commit. Push in a window, 00:10–06:20 IST. The 06:16 suite failed on a browser
+  suite's time limit (OPS-003); the 13:26 run passed it. After the push, confirm
   `docs/architecture-map/walkthrough-2026-11-26.md` on `origin/main` (your word, 26 Nov).
   `story/PR-015`, `story/PR-017` and `story/FIX-033` merged.
 
 ## Waits for you
 
-- Nothing new.
+- **Restarting the autopilot**, when you want it: `/home/coder/project/autopilot/autopilot.sh
+  start 15` (13 phases to MAP-005, with room for repeats).
 - **PR-037's catch-up run**, a weekday 09:30–14:00 IST: say "run the PR-037 catch-up" in a
   session and allow it, or run from the StockAgent folder:
   `railway ssh 'python -c "import os,urllib.request as u;r=u.Request(\"http://127.0.0.1:\"+os.environ.get(\"PORT\",\"8000\")+\"/discovery/run\",method=\"POST\",headers={\"X-Scheduler-Key\":os.environ.get(\"SCHEDULER_KEY\",\"\")});print(u.urlopen(r,timeout=30).status)"'`

@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-23 (PR-015 accepted and deployed; NEXT BACKLOG B-12, then PR-047)
+# Current handoff - 2026-11-26 (PR-015 accepted and deployed; NEXT BACKLOG B-12 with your walkthrough's push, then PR-047)
 
 ## Now
 
@@ -21,10 +21,12 @@
   `advisor.exit_rule: evidence` acts from today's 16:30 review. `PR-015-W1` from Tue 24 Nov.
 - **Next `continue`:** **BACKLOG B-12** (light; its trigger, PR-015's merge, is met): the
   scorecard's gate sentence after the switch and which rule acts, with KT section 6's paragraph.
+  Your word (26 Nov): its push also carries your walkthrough copy, committed 26 Nov
+  (`docs/architecture-map/walkthrough-2026-11-26.md`); the phase confirms it reached `origin/main`.
   Then **PR-047** (option A), MAP-001 to MAP-005, PR-007. `FIX-017-W1`, `CLEAN-004-W1`,
   `FIX-033-W1`, `PR-015-W1`: production reads, your word.
-- **Git:** `origin/main` = `4c7f611`; `main` 1 ahead (this deploy record), push pending to a
-  window: the runner's, or the next push. `story/PR-015`, `story/PR-017` and `story/FIX-033` merged.
+- **Git:** `origin/main` = `53461ab` (the deploy record, the runner's push at 04:17 Mon 23 Nov);
+  `main` 2 ahead (the MAP design edit `f893dc4`, the walkthrough copy), push pending: B-12's. `story/PR-015`, `story/PR-017` and `story/FIX-033` merged.
 
 ## Waits for you
 

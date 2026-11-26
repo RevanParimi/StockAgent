@@ -225,10 +225,15 @@ StockAgent-main/
 │   ├── seed_autopilot.py          # One-time Autopilot seed: equal-weight holdings + autopilot=True
 │   ├── missed_risers.py           # Read-only report: where the discovery funnel lost the stocks
 │   │                              #  that rose (and the ones that fell) over the last 60 sessions
-│   └── ci/check_broad_except.py   # CI guard: no new unlogged broad except; the
-│                                  #  grandfathered handlers are in broad_except_baseline.txt
+│   ├── ci/check_broad_except.py   # CI guard: no new unlogged broad except; the
+│   │                              #  grandfathered handlers are in broad_except_baseline.txt
+│   ├── ci/guarded_suite.py        # Runs the tests in two steps under a memory and time guard
+│   │                              #  (Linux): stops over 2,400 MB anon, ends what tests leave
+│   └── ci/guard_forced_memory.py  # The guard's proof: grows to 3.5 GB; skips without the guard
 ├── tests/                         # Test suite (how to run: tests/TEST_DOCUMENTATION.md)
 │   ├── conftest.py                # Shared fixtures; imports hermetic.py before any app code
+│   ├── guard_plugin.py            # The guard's pytest plugin: running test, leftover processes
+│   ├── proc_tree.py               # Linux process-tree helpers: ends processes by lineage
 │   ├── hermetic.py                # Hermetic boundary: no .env, no outbound network (sockets,
 │   │                              #  DNS, curl_cffi), each test in an empty working directory,
 │   │                              #  checkout data/ logs/ outputs/ unreachable

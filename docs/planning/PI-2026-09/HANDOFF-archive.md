@@ -14,6 +14,22 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 26 Nov (autopilot `1126-1449-p1`): OPS-002 → ACCEPTED (light)
+
+- **26 Nov, OPS-002 done** (light, [receipt](evidence/OPS-002.md)): `scripts/ci/guarded_suite.py`
+  runs the full suite in two steps, stops it over 2,400 MB anon or a time limit, and ends what
+  tests leave behind. Checked by an Opus subagent; its high finding (the main step also ran the
+  browser files) fixed. The forced 3.5 GB test stopped at 2,421 MB with no OOM kill; the browser
+  step ran twice with no orphan; the full suite through `prepush-suite.sh`: 7,053 passed.
+
+## 26 Nov, afternoon (a manual session), from the current section's "Now": OPS-001 → ACCEPTED (light)
+
+- **26 Nov, afternoon** (a manual session, your word): B-12 committed (`4a9ae8d`). The
+  build-box stories [OPS-001](stories/OPS-001.md) to [OPS-006](stories/OPS-006.md) added ahead
+  of PR-047, in your order. **OPS-001 done, the full suite is normal:** anon 846 MB before, 1,650
+  at the peak, 806 five minutes after; 7,018 passed in 8m34s
+  ([receipt](evidence/OPS-001.md)).
+
 ## 26 Nov (autopilot `1126-0616-p1`, finished by a manual session): B-12 → ACCEPTED (light)
 
 - **26 Nov, B-12 done** (light, autopilot `1126-0616-p1`, [receipt](evidence/B-12.md)): the

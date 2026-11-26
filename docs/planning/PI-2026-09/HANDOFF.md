@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-26 (NEXT OPS-002, the memory guard; no push until it is merged)
+# Current handoff - 2026-11-26 (NEXT OPS-003, the slow browser test; push waits for a window)
 
 ## Now
 
@@ -8,31 +8,29 @@
 - **21 Nov:** the [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against
   their own analysis; DEEPA (Deepak Nitrite's case) sold. FIX-033 (P0), PR-047 (option A). No hand
   trades.
-- **26 Nov, afternoon** (a manual session, your word): B-12 committed (`4a9ae8d`). The
-  build-box stories [OPS-001](stories/OPS-001.md) to [OPS-006](stories/OPS-006.md) added ahead
-  of PR-047, in your order. **OPS-001 done, the full suite is normal:** anon 846 MB before, 1,650
-  at the peak, 806 five minutes after; 7,018 passed in 8m34s
-  ([receipt](evidence/OPS-001.md)).
-- **Next `continue`:** **OPS-002** (the memory guard, 2,400 MB anon; it ends a test browser's
-  leftovers), OPS-003, OPS-004, OPS-006, **PR-047** (option A; step 1 light), OPS-005, MAP-001 to
-  MAP-005, PR-007 (your order, 26 Nov). **Autopilot, your word (26 Nov):** run to MAP-005; the phase that accepts MAP-005 runs
+- **26 Nov, evening** (autopilot `1126-1449-p1`): **OPS-002 done**
+  ([receipt](evidence/OPS-002.md)). On this box the full suite runs through
+  `scripts/ci/guarded_suite.py` (two steps; stopped over 2,400 MB anon; test leftovers ended),
+  and `prepush-suite.sh` calls it. Full run: 7,053 passed, peak anon 1,676 MB.
+- **Next `continue`:** **OPS-003** (the slow browser test), OPS-004, OPS-006, **PR-047** (option A;
+  step 1 light), OPS-005, MAP-001 to MAP-005, PR-007 (your order, 26 Nov). **Autopilot, your word
+  (26 Nov):** run to MAP-005; the phase that accepts MAP-005 runs
   `/home/coder/project/autopilot/autopilot.sh stop` before writing its status.
   `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`: production reads, your word.
-- **Autopilot stopped** since the box restarted at 07:56 IST on 26 Nov; its status still lists
-  phase `1126-0616-p1` as running (OPS-004). Its test runs have no memory guard until OPS-002.
-- **Git, push held (your word, 26 Nov): nothing is pushed until OPS-002 is merged.** Then in a
-  window, 00:10–06:20 IST. The autopilot holds by itself (`maybe_push` reads STATE); a session
-  holds too. `origin/main` = `53461ab` (04:17 Mon 23 Nov); `main` is ahead by `f893dc4`,
-  `8fae35d` (your walkthrough copy), `370d802`, `4a9ae8d` (B-12) and the OPS commits, so B-12's
-  email wording waits too (next weekly review: Sun 29 Nov). After the push, confirm
+- **Autopilot** started again by you at 14:49 IST on 26 Nov; its status still lists the crashed
+  phase `1126-0616-p1` as running (OPS-004).
+- **Git, push pending:** your hold of 26 Nov (nothing pushed until OPS-002 is merged) is met.
+  Next window 00:10–06:20 IST; the runner pushes between phases after the guarded suite.
+  `origin/main` = `53461ab` (04:17 Mon 23 Nov); `main` is ahead by `f893dc4`, `8fae35d` (your
+  walkthrough copy), `370d802`, `4a9ae8d` (B-12) and the OPS commits (B-12's email wording:
+  next weekly review Sun 29 Nov). After the push, confirm
   `docs/architecture-map/walkthrough-2026-11-26.md` on `origin/main` (your word, 26 Nov).
   `story/PR-015`, `story/PR-017` and `story/FIX-033` merged.
 
 ## Waits for you
 
-- **Restarting the autopilot**, when you want it: `/home/coder/project/autopilot/autopilot.sh
-  start 15` (13 phases to MAP-005, with room for repeats).
-- **The Railway limit, 4 GB to 3 GB:** yours, after OPS-002 lands.
+- **The Railway limit, 4 GB to 3 GB:** yours; OPS-002 has landed. About 440 MB of room stays
+  above the guard; one guarded full run afterwards is suggested.
 - **PR-037's catch-up run**, a weekday 09:30–14:00 IST: say "run the PR-037 catch-up" in a
   session and allow it, or run from the StockAgent folder:
   `railway ssh 'python -c "import os,urllib.request as u;r=u.Request(\"http://127.0.0.1:\"+os.environ.get(\"PORT\",\"8000\")+\"/discovery/run\",method=\"POST\",headers={\"X-Scheduler-Key\":os.environ.get(\"SCHEDULER_KEY\",\"\")});print(u.urlopen(r,timeout=30).status)"'`
@@ -154,7 +152,8 @@ session). Pull `main` first. Git carries the code, the docs, STATE, this file, e
   - **Deleting lines from `milestones.yaml`** needs the owner's approval each time.
   - **Owner setup waits for rollout:** Railway alerts, the OpenRouter key limit, Healthchecks.io with Telegram, SA-007's
     backup bucket. Remind the owner then.
-  - **Run the full suite before any push** (about 26 minutes on the laptop). On 17 Nov a push of documents and the docs
+  - **Run the full suite before any push** (about 26 minutes on the laptop; on the code-server
+    only through `scripts/ci/guarded_suite.py`, its memory guard). On 17 Nov a push of documents and the docs
     check went without it, at the owner's "now", and its record says so.
   - **Other sessions may share a checkout** (eight on the laptop on 17 Nov). Before writing STATE or HANDOFF, list them
     and compare file times; run review tests in a detached `git worktree`. On any device, pull before committing and

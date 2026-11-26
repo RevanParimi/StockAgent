@@ -2632,6 +2632,13 @@
       "fields": {
         "sequencing_note": "Placed 26 Nov 2026 at the owner's word: OPS-001 to OPS-006 in the owner's priority order, after BACKLOG B-12 and ahead of PR-047 and the map."
       }
+    },
+    {
+      "id": "OPS-002",
+      "moved": "2026-11-26",
+      "fields": {
+        "sequencing_note": "Owner's order, 26 Nov 2026 (second word): OPS-002, OPS-003, OPS-004, OPS-006, then PR-047, then OPS-005, then the map."
+      }
     }
   ]
 }

@@ -4442,6 +4442,20 @@ stubs it. A Windows-only retry in
 [core/utils/atomic_io.py](../core/utils/atomic_io.py) absorbs the transient
 `PermissionError` of a rename on Windows; Linux renames never retry.
 
+### The build box's test guard
+
+The build box has little memory and shares it with the editor and other
+sessions, so there the full suite runs through
+`scripts/ci/guarded_suite.py`, as does the test run before a push. A runaway run ends the tests, not the box. It runs two
+steps, every test but the browser files and then the browser files, and both
+must pass. It stops a run when the container's anonymous memory is over
+2,400 MB (page cache is not counted: it fills the cap in a healthy run), or when
+a test or an idle stretch passes its time limit. Processes a test leaves behind,
+such as a browser whose test timed out, are found by lineage and ended: after
+each browser test and at session end. CI and other machines run pytest itself.
+Limits, exit codes and the log:
+[tests/TEST_DOCUMENTATION.md](../tests/TEST_DOCUMENTATION.md).
+
 ### Continuous integration
 
 The CI workflow, [.github/workflows/ci.yml](../.github/workflows/ci.yml), runs

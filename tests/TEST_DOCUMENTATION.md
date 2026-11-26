@@ -14,6 +14,7 @@ April 2026 version of this page described a layout that no longer exists.
 | `tests/frontend/` | The browser suites (Node and Chromium), run by `npm run test:frontend`: the chat Markdown boundary, the Logs screen, and real figures with owner-only operator tools (`no_invented_figures.test.mjs`). Each serves the real prototype files and answers the API from the test's own plan; nothing reaches the network. |
 | `tests/fixtures/` | Captured payloads. Read them through `Path(__file__)`, never a relative path. |
 | `tests/hermetic.py` | The suite's hermetic boundary, described below. |
+| `tests/guard_plugin.py`, `tests/proc_tree.py` | The memory guard's pytest plugin and its process-tree helpers, described below. |
 
 ## Running
 
@@ -29,7 +30,52 @@ On this Windows checkout, use the project virtual environment
 (`.stockai/Scripts/python.exe`). The whole tree takes about 7 minutes there.
 
 No `.env`, network flag or `RL_LEARNING_MODE` setting is needed. The suite
-ignores all three (next section).
+ignores all three (see "The hermetic boundary").
+
+## The memory guard (the build box, Linux)
+
+On the code-server, run the full suite through the guard, not bare pytest:
+
+```text
+.stockai/bin/python scripts/ci/guarded_suite.py                   # the full suite
+.stockai/bin/python scripts/ci/guarded_suite.py --only browser    # the browser files alone
+.stockai/bin/python scripts/ci/guarded_suite.py -- tests/unit/test_atomic_io.py -q
+```
+
+The test run before a push (`autopilot/prepush-suite.sh`, outside git) calls
+the same script. The full suite is two steps, and both must pass: `main`
+(everything but the three browser files) and then `browser`
+(`test_chat_markdown_boundary.py`, `test_member_screens_pr040.py`,
+`test_ui_no_invented_figures_pr001.py`). A new test file that starts a browser
+belongs in `BROWSER_FILES` in the script; a test fails if it is missing.
+
+| Rule | Limit | What happens |
+|---|---|---|
+| Memory: the container's `anon` (cgroup v2 `memory.stat`; page cache is not counted) | over 2,400 MB | the run stops, exit 3 |
+| One test | 300 s; 960 s in the browser step | the run stops, exit 4 |
+| No test running (start-up, collection, session end) | 600 s | the run stops, exit 4 |
+| The whole run | 5,400 s | the run stops, exit 4 |
+| SIGTERM, SIGINT or SIGHUP to the guard | | the run stops, exit 5 |
+
+A stopped run ends every process it started and runs no further step. A process
+a test leaves behind, such as a browser whose test timed out, is ended after
+that test in the browser step, and at session end in both. Processes are found
+by lineage, never by name, so the editor's and other sessions' `node` processes
+are never touched. The pytest process is also the kernel's first choice if
+memory runs out, and it dies if the guard does. Other exit codes: 0 passed,
+1 a test or step failed (so does a pytest that ends without finishing its
+session, or a process that cannot be ended), 2 the guard could not run (it needs
+Linux and a readable `anon`; elsewhere run pytest itself) or failed itself. The
+log warns when the container's cap leaves under 300 MB above the limit. A run
+given after `--` ends leftovers at session end, or after each test when it names
+a browser file.
+
+Each stop and each process ended is logged in
+`analysis_data/test-guard/guard.log` (ignored by git; the last 400 lines), with
+the test that was running. To see the guard act on a real machine, run
+`.stockai/bin/python scripts/ci/guarded_suite.py -- scripts/ci/guard_forced_memory.py -s`:
+it grows towards 3.5 GB, must be stopped on the way (exit 3), gives up on its
+own above 2,700 MB of `anon`, and skips without the guard.
 
 ## The hermetic boundary
 

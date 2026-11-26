@@ -10,7 +10,7 @@
   },
   "active_task": "PR-047",
   "next_task": "PR-047",
-  "next_phase": "26 Nov: NEXT PR-047 step 2 (option A: buy only when the model's own verdict is BUY too; decision path, story/PR-047, fresh review; Opus). Step 1 built; its read PR-047-S1 waits for your word, from 1 Dec (best 12-13 Dec). Then OPS-005, MAP-001 to MAP-005, PR-007 (your order). Push in a window (00:10-06:20 IST), then confirm docs/architecture-map/walkthrough-2026-11-26.md and OPS-003's commit on origin/main. The autopilot's run to MAP-005 stands. PR-015-W1, FIX-033-W1: reads at your word. Read HANDOFF.md.",
+  "next_phase": "26 Nov evening: RESUME PR-047 step 2 on story/PR-047 (WIP commit: model_verdict on FinalReport, DeepDiveResult, ShelfIdea, dive record; no door reads it yet, untested). Left: verdict_wait needs model BUY too (unknown refused); watchlist door from report_json; legacy ideas from verdict_shadow.jsonl (with_model_verdicts, weekly verify, redive_due first); tests, docs, receipt, guarded suite. Then OPS-005, MAP-001..005, PR-007. Read HANDOFF.md.",
 
   "scope": "One phase per conversation. Decision-path cards (what is bought, sold, sized or graded) keep the fresh-session review; other cards are accepted in their own conversation on the full suite and their checks (owner, 14 Nov 2026; AGENTS.md). The queue is the planned-scope todo cards in this file's order; stretch, paused and removed cards need the owner's explicit promotion.",
   "pending_production_checks": [

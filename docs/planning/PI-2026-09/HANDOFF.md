@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-26 (NEXT PR-047, step 2; push waits for a window)
+# Current handoff - 2026-11-26 (NEXT PR-047 step 2's fresh review; push waits for a window)
 
 ## Now
 
@@ -8,34 +8,30 @@
 - **21 Nov:** the [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against
   their own analysis; DEEPA (Deepak Nitrite's case) sold. FIX-033 (P0), PR-047 (option A). No hand
   trades.
-- **26 Nov, PR-047 step 1 built** ([receipt](evidence/PR-047-step1.md); its read is
-  `PR-047-S1`): the measure for option B and the staged entry, its rules fixed before any live
-  data. Not read: your word, from Tue 1 Dec. No app code changed.
-- **26 Nov, OPS-002, 003, 004, 006 done** (receipts `evidence/OPS-00*.md`): here the full suite
-  runs only through `scripts/ci/guarded_suite.py`; the autopilot holds (no phase, retry or push)
-  after a box restart, out-of-memory kill or memory anomaly until you say `autopilot.sh seen`.
-- **Next `continue`:** **PR-047 step 2** (option A, decision path, `story/PR-047`, fresh review),
-  then OPS-005, MAP-001 to MAP-005, PR-007 (your order, 26 Nov). **Autopilot, your word:** run to
-  MAP-005; the phase that accepts it runs `/home/coder/project/autopilot/autopilot.sh stop` before
+- **26 Nov, PR-047:** step 1's measure built ([receipt](evidence/PR-047-step1.md)); step 2
+  `review_required` (below).
+- **26 Nov, OPS-002, 003, 004, 006 done** (`evidence/OPS-00*.md`): the full suite runs only via
+  `scripts/ci/guarded_suite.py`; a box event holds the autopilot until you say `autopilot.sh seen`.
+- **Next `continue`:** **PR-047 step 2's fresh review** (Opus, `REVIEW.md`; on acceptance:
+  merge, guarded suite, window push, `PR-047-W1`), then OPS-005, MAP-001 to MAP-005, PR-007 (your
+  order, 26 Nov). **Autopilot, your word:** run to MAP-005; the phase that accepts it runs `/home/coder/project/autopilot/autopilot.sh stop` before
   writing its status. `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`: production reads,
   your word.
-- **Autopilot** started by you at 14:49 IST on 26 Nov. That runner keeps its old script until
-  your next `start`: until then its phases and pre-push run check the box events, its retries do
-  not.
-- **Git, push pending:** your OPS-002 push hold is met. Next window
-  00:10–06:20 IST; the runner pushes between phases after the guarded suite. `origin/main` =
-  `53461ab` (04:17 Mon 23 Nov); `main` is ahead by `f893dc4`, `8fae35d` (your walkthrough copy),
-  `370d802`, `4a9ae8d` (B-12's email wording: next weekly review Sun 29 Nov), the OPS commits and
-  PR-047 step 1's records. After the push, confirm
-  `docs/architecture-map/walkthrough-2026-11-26.md` on `origin/main` (your word, 26 Nov); that is
-  also OPS-003's last acceptance line, not yet seen. `story/PR-015`, `story/PR-017` and `story/FIX-033` merged.
+- **Autopilot** started by you 14:49 IST, 26 Nov; its retries check box events only after your
+  next `start`.
+- **Git, push pending** (OPS-002's hold met): next window 00:10–06:20 IST; the runner pushes
+  between phases after the guarded suite. `origin/main` = `53461ab` (23 Nov); `main` is 13 ahead
+  (your walkthrough copy, B-12's email wording for Sun 29 Nov, OPS, PR-047's records);
+  `story/PR-047` stays local until its review. After the push, confirm
+  `docs/architecture-map/walkthrough-2026-11-26.md` on `origin/main` (your word; OPS-003's last
+  acceptance line).
 
 ## Waits for you
 
 - **PR-047's read** (read-only; from Tue 1 Dec, best Sat 12 or Sun 13 Dec, before `PR-014-R1`):
   say "run the PR-047 measure"; command in its receipt.
-- **The Railway limit, 4 GB to 3 GB:** yours; OPS-002 has landed (still 4 GB on 26 Nov). About
-  440 MB of room stays above the guard; one guarded full run afterwards is suggested.
+- **The Railway limit, 4 GB to 3 GB:** yours; OPS-002 has landed (still 4 GB on 26 Nov); about
+  440 MB above the guard then, one guarded full run after it.
 - **PR-037's catch-up run**, a weekday 09:30–14:00 IST: say "run the PR-037 catch-up" in a
   session and allow it, or run from the StockAgent folder:
   `railway ssh 'python -c "import os,urllib.request as u;r=u.Request(\"http://127.0.0.1:\"+os.environ.get(\"PORT\",\"8000\")+\"/discovery/run\",method=\"POST\",headers={\"X-Scheduler-Key\":os.environ.get(\"SCHEDULER_KEY\",\"\")});print(u.urlopen(r,timeout=30).status)"'`
@@ -109,6 +105,13 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 
 - **Autopilot `1119-1629-p1`**, no production read. 15 November deploys shaped and in the same
   probe (dry run: 2 passed); CLEAN-007 verified from `CLEAN-007-W1`; no November closure.
+
+## 26 Nov, night (autopilot): PR-047 step 2, `review_required`
+
+- **Autopilot `1126-1901-p7`** (Opus), no production read: `story/PR-047` `8541b37`
+  ([receipt](evidence/PR-047-implementation.md)). Every buy door needs the band's BUY and the
+  model's own; older ideas read it from `verdict_shadow.jsonl`, failing closed. TVSMOTOR (14 Nov)
+  would be refused. 168 new tests, mutants 17 of 17; full suite 7,221 passed, 0 failed.
 
 # START HERE — standing rules
 

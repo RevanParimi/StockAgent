@@ -14,6 +14,16 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 26 Nov (autopilot `1126-1754-p5`): the notes on OPS-002 to OPS-006 and the box event, as they stood
+
+- **26 Nov, evening:** **OPS-002, 003, 004, 006 done** ([002](evidence/OPS-002.md),
+  [003](evidence/OPS-003.md), [004](evidence/OPS-004.md), [006](evidence/OPS-006.md)). Here the
+  full suite runs through `scripts/ci/guarded_suite.py`; the autopilot holds (no phase, retry or
+  push) after a box restart, out-of-memory kill or memory anomaly until you say
+  `autopilot.sh seen`. The code-server's CLAUDE.md now says so (section 8, Box ops).
+- **Box event:** the box restarted at 07:56 IST on 26 Nov; phase `1126-0616-p1` marked
+  `INTERRUPTED`; marked as seen at OPS-004's install.
+
 ## 26 Nov (autopilot `1126-1741-p4`): OPS-006 → ACCEPTED (light)
 
 - **26 Nov, OPS-006 done** (light, [receipt](evidence/OPS-006.md)): the code-server's CLAUDE.md

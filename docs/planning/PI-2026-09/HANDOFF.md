@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-26 (NEXT PR-047, step 1; push waits for a window)
+# Current handoff - 2026-11-26 (NEXT PR-047, step 2; push waits for a window)
 
 ## Now
 
@@ -8,31 +8,32 @@
 - **21 Nov:** the [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against
   their own analysis; DEEPA (Deepak Nitrite's case) sold. FIX-033 (P0), PR-047 (option A). No hand
   trades.
-- **26 Nov, evening:** **OPS-002, 003, 004, 006 done** ([002](evidence/OPS-002.md),
-  [003](evidence/OPS-003.md), [004](evidence/OPS-004.md), [006](evidence/OPS-006.md)). Here the
-  full suite runs through `scripts/ci/guarded_suite.py`; the autopilot holds (no phase, retry or
-  push) after a box restart, out-of-memory kill or memory anomaly until you say
-  `autopilot.sh seen`. The code-server's CLAUDE.md now says so (section 8, Box ops).
-- **Box event:** the box restarted at 07:56 IST on 26 Nov; phase `1126-0616-p1` marked
-  `INTERRUPTED`; marked as seen at OPS-004's install.
-- **Next `continue`:** **PR-047** (option A; step 1 light), OPS-005, MAP-001 to MAP-005, PR-007
-  (your order, 26 Nov). **Autopilot, your word (26 Nov):** run to MAP-005; the phase that accepts MAP-005 runs
-  `/home/coder/project/autopilot/autopilot.sh stop` before writing its status.
-  `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`: production reads, your word.
+- **26 Nov, PR-047 step 1 built** ([receipt](evidence/PR-047-step1.md); its read is
+  `PR-047-S1`): the measure for option B and the staged entry, its rules fixed before any live
+  data. Not read: your word, from Tue 1 Dec. No app code changed.
+- **26 Nov, OPS-002, 003, 004, 006 done** (receipts `evidence/OPS-00*.md`): here the full suite
+  runs only through `scripts/ci/guarded_suite.py`; the autopilot holds (no phase, retry or push)
+  after a box restart, out-of-memory kill or memory anomaly until you say `autopilot.sh seen`.
+- **Next `continue`:** **PR-047 step 2** (option A, decision path, `story/PR-047`, fresh review),
+  then OPS-005, MAP-001 to MAP-005, PR-007 (your order, 26 Nov). **Autopilot, your word:** run to
+  MAP-005; the phase that accepts it runs `/home/coder/project/autopilot/autopilot.sh stop` before
+  writing its status. `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`: production reads,
+  your word.
 - **Autopilot** started by you at 14:49 IST on 26 Nov. That runner keeps its old script until
   your next `start`: until then its phases and pre-push run check the box events, its retries do
   not.
-- **Git, push pending:** your hold of 26 Nov (nothing pushed until OPS-002 is merged) is met.
-  Next window 00:10–06:20 IST; the runner pushes between phases after the guarded suite.
-  `origin/main` = `53461ab` (04:17 Mon 23 Nov); `main` is ahead by `f893dc4`, `8fae35d` (your
-  walkthrough copy), `370d802`, `4a9ae8d` (B-12) and the OPS commits (B-12's email wording:
-  next weekly review Sun 29 Nov). After the push, confirm
-  `docs/architecture-map/walkthrough-2026-11-26.md` on `origin/main` (your word, 26 Nov); that
-  is also OPS-003's last acceptance line, not yet seen.
-  `story/PR-015`, `story/PR-017` and `story/FIX-033` merged.
+- **Git, push pending:** your OPS-002 push hold is met. Next window
+  00:10–06:20 IST; the runner pushes between phases after the guarded suite. `origin/main` =
+  `53461ab` (04:17 Mon 23 Nov); `main` is ahead by `f893dc4`, `8fae35d` (your walkthrough copy),
+  `370d802`, `4a9ae8d` (B-12's email wording: next weekly review Sun 29 Nov), the OPS commits and
+  PR-047 step 1's records. After the push, confirm
+  `docs/architecture-map/walkthrough-2026-11-26.md` on `origin/main` (your word, 26 Nov); that is
+  also OPS-003's last acceptance line, not yet seen. `story/PR-015`, `story/PR-017` and `story/FIX-033` merged.
 
 ## Waits for you
 
+- **PR-047's read** (read-only; from Tue 1 Dec, best Sat 12 or Sun 13 Dec, before `PR-014-R1`):
+  say "run the PR-047 measure"; command in its receipt.
 - **The Railway limit, 4 GB to 3 GB:** yours; OPS-002 has landed (still 4 GB on 26 Nov). About
   440 MB of room stays above the guard; one guarded full run afterwards is suggested.
 - **PR-037's catch-up run**, a weekday 09:30–14:00 IST: say "run the PR-037 catch-up" in a
@@ -71,6 +72,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Wed 25 Nov‡ | `PR-005-W1` | the first cases written at purchase, and any price retried |
 | Thu 26 Nov | `PR-036-W5` | share invested and holdings, 5 sessions after the deposit |
 | Fri 27 Nov | `PR-042-W1` | a week of enforce: what it stopped; no exit or trim stopped |
+| Tue 1 Dec | `PR-047-S1` | PR-047's measure, at your word; best 12-13 Dec |
 | Tue 1 Dec | `PR-014-D1` | the door read: what the buy list offered and refused (and BACKLOG B-13) |
 | Tue 1 Dec | `FIX-015-W1` | every shock sale since the deploy, read with `PR-014-D1` |
 | Tue 1 Dec | `PR-037-W2` | the shelf, ideas offered a day and holdings after two Saturdays; BACKLOG B-14 |

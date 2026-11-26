@@ -23,6 +23,8 @@
   scorecard's gate sentence after the switch and which rule acts, with KT section 6's paragraph.
   Your word (26 Nov): its push also carries your walkthrough copy, committed 26 Nov
   (`docs/architecture-map/walkthrough-2026-11-26.md`); the phase confirms it reached `origin/main`.
+  **Autopilot, your word (26 Nov):** run to MAP-005; the phase that accepts MAP-005 runs
+  `/home/coder/project/autopilot/autopilot.sh stop` before writing its status.
   Then **PR-047** (option A), MAP-001 to MAP-005, PR-007. `FIX-017-W1`, `CLEAN-004-W1`,
   `FIX-033-W1`, `PR-015-W1`: production reads, your word.
 - **Git:** `origin/main` = `53461ab` (the deploy record, the runner's push at 04:17 Mon 23 Nov);

@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-26 (NEXT OPS-006, box ops in CLAUDE.md; push waits for a window)
+# Current handoff - 2026-11-26 (NEXT PR-047, step 1; push waits for a window)
 
 ## Now
 
@@ -8,15 +8,15 @@
 - **21 Nov:** the [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against
   their own analysis; DEEPA (Deepak Nitrite's case) sold. FIX-033 (P0), PR-047 (option A). No hand
   trades.
-- **26 Nov, evening:** **OPS-002, 003, 004 done** ([002](evidence/OPS-002.md),
-  [003](evidence/OPS-003.md), [004](evidence/OPS-004.md)). On this box the full suite runs through
-  `scripts/ci/guarded_suite.py`. The autopilot now holds (no phase, retry or push) after a box
-  restart, out-of-memory kill or memory anomaly until you say `autopilot.sh seen`.
+- **26 Nov, evening:** **OPS-002, 003, 004, 006 done** ([002](evidence/OPS-002.md),
+  [003](evidence/OPS-003.md), [004](evidence/OPS-004.md), [006](evidence/OPS-006.md)). Here the
+  full suite runs through `scripts/ci/guarded_suite.py`; the autopilot holds (no phase, retry or
+  push) after a box restart, out-of-memory kill or memory anomaly until you say
+  `autopilot.sh seen`. The code-server's CLAUDE.md now says so (section 8, Box ops).
 - **Box event:** the box restarted at 07:56 IST on 26 Nov; phase `1126-0616-p1` marked
   `INTERRUPTED`; marked as seen at OPS-004's install.
-- **Next `continue`:** **OPS-006** (box ops in CLAUDE.md), **PR-047**
-  (option A; step 1 light), OPS-005, MAP-001 to MAP-005, PR-007 (your order, 26 Nov). **Autopilot, your word
-  (26 Nov):** run to MAP-005; the phase that accepts MAP-005 runs
+- **Next `continue`:** **PR-047** (option A; step 1 light), OPS-005, MAP-001 to MAP-005, PR-007
+  (your order, 26 Nov). **Autopilot, your word (26 Nov):** run to MAP-005; the phase that accepts MAP-005 runs
   `/home/coder/project/autopilot/autopilot.sh stop` before writing its status.
   `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`: production reads, your word.
 - **Autopilot** started by you at 14:49 IST on 26 Nov. That runner keeps its old script until
@@ -33,8 +33,8 @@
 
 ## Waits for you
 
-- **The Railway limit, 4 GB to 3 GB:** yours; OPS-002 has landed. About 440 MB of room stays
-  above the guard; one guarded full run afterwards is suggested.
+- **The Railway limit, 4 GB to 3 GB:** yours; OPS-002 has landed (still 4 GB on 26 Nov). About
+  440 MB of room stays above the guard; one guarded full run afterwards is suggested.
 - **PR-037's catch-up run**, a weekday 09:30–14:00 IST: say "run the PR-037 catch-up" in a
   session and allow it, or run from the StockAgent folder:
   `railway ssh 'python -c "import os,urllib.request as u;r=u.Request(\"http://127.0.0.1:\"+os.environ.get(\"PORT\",\"8000\")+\"/discovery/run\",method=\"POST\",headers={\"X-Scheduler-Key\":os.environ.get(\"SCHEDULER_KEY\",\"\")});print(u.urlopen(r,timeout=30).status)"'`

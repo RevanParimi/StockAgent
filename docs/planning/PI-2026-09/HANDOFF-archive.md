@@ -14,6 +14,13 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 26 Nov (autopilot `1126-1741-p4`): OPS-006 → ACCEPTED (light)
+
+- **26 Nov, OPS-006 done** (light, [receipt](evidence/OPS-006.md)): the code-server's CLAUDE.md
+  (outside git, never committed) gained section 8, Box ops, 19 lines: the two logs, anon and
+  file, what is normal, the memory cap (3,815 MB read that day), never two full suites, the
+  guarded suite and its 2,400 MB limit, and what a box event holds. Nothing else in it changed.
+
 ## 26 Nov (autopilot `1126-1654-p3`): OPS-004 → ACCEPTED (light)
 
 - **26 Nov, OPS-004 done** (light, [receipt](evidence/OPS-004.md)): the autopilot reads

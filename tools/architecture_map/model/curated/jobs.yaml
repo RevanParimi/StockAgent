@@ -1,0 +1,26 @@
+# Every job the scheduler registers: the part it belongs to, and what it does.
+ops_watchdog: {module: M12.1, does: "milestones and checks ─► owner"}
+macro_daily_news: {module: M2.4, does: policy and RBI headlines cached}
+macro_market_news: {module: M2.4, does: market headlines cached}
+ipo_refresh_am: {module: M8.1, does: "IPO calendar and bid ladder"}
+ipo_refresh_pm: {module: M8.1, does: "evening IPO refresh, before Sunday's review"}
+ipo_deep_dive: {module: M8.1, does: "T−1 research and post-close re-read (dark)"}
+company_events_am: {module: M7.1, does: "overnight filings, disclosures and news"}
+company_events_pm: {module: M7.1, does: "the day's filings, disclosures and news"}
+preopen_shock_check: {module: M4.5, does: "1 search + 1 model call: overnight shock?"}
+morning_brief: {module: M9.1, does: build and send the brief}
+rl_daily_review: {module: M4.2, does: "grades the previous session (T−1), then the portfolio (M5.1)"}
+bhavcopy_daily_sync: {module: M2.1, does: NSE end-of-day file for all stocks}
+atlas_universe_recompute: {module: M1.4, does: "demand per instrument (Atlas)"}
+atlas_cost_rollup: {module: M1.5, does: "model cost per user (Atlas)"}
+atlas_retention: {module: M1.4, does: "prune bounded stores (Atlas)"}
+data_backup_nightly: {module: M12.4, does: "archive, restore drill, off-site copy if set"}
+audit_nightly: {module: M11.1, does: grades matured calls against the Nifty}
+ledger_cleanup_weekly: {module: M4.4, does: old lessons cleaned}
+event_ingest_weekly: {module: M4.4, does: results and concalls into the dossier}
+research_loop_weekly: {module: M4.4, does: "answer the dossier's open questions"}
+discovery_weekly: {module: M6.1, does: the weekly funnel}
+weekly_review: {module: M9.2, does: "index watch, results scorecard, review"}
+scorecard_monthly: {module: M11.2, does: "previous month's forecast scorecard"}
+rl_monthly_forecast: {module: M4.1, does: a new 30-day envelope per stock}
+rl_calendar_update: {module: M1.2, does: "next year's NSE holidays"}

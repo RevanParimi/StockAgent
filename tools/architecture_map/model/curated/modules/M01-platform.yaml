@@ -1,0 +1,167 @@
+id: M1
+name: Platform and runtime
+short: Platform
+plane: base
+column: 0
+summary: boots the app, owns the clock, config, storage, model access
+submodules:
+  - id: M1.1
+    name: Boot
+    summary: services/api/server.py
+    files: [services/api/server.py]
+    code: ["services/api/server.py::lifespan", "services/api/server.py::_self_heal_rl",
+           "services/api/server.py::_acquire_singleton_lock", "services/api/server.py::_ensure_calendar_file"]
+    config: [scheduler.enabled]
+    logic: |
+      Docker starts uvicorn with 2 workers ── each worker runs lifespan()
+        every worker
+          logging: console, plus WARNING+ kept in data/telemetry.db
+          self-checks in the log: volume mounted? managed_tickers.json? API counter?
+          | run history?
+          NSE holiday file has this year? ── no ─► fetch it (hardcoded list as fallback)
+        try to bind 127.0.0.1:59321 (the singleton lock)
+          got it = PRIMARY worker
+            thread "RL self-heal" (starts after 10 s)
+              for each managed stock, in its own sector
+                already done this month (checkpoint file)? ─► skip
+                no envelope this month? ─► generate_forecast (M4.1)
+                  fails ─► skip this stock; the next deploy retries it
+                trading days without a review? ─► run_daily_review for each
+            start the scheduler (M1.2)
+            sweep expired chat sessions and login sessions
+            start the outbox drainer (M9.5)
+          lost it = API-only worker: serves requests, runs no jobs
+          Why: before this lock every job ran twice (2x LLM cost, racing file writes).
+  - id: M1.2
+    name: Scheduler
+    summary: every timed job, and the NSE calendar
+    files:
+      - services/scheduler/__init__.py
+      - services/scheduler/python/__init__.py
+      - services/scheduler/python/scheduler.py
+      - services/scheduler/run_schedule.py
+      - core/intelligence/rl/nse_calendar.py
+      - core/intelligence/rl/calendar_updater.py
+      - services/data/stores/job_outcomes.py
+    code: ["services/scheduler/python/scheduler.py::AutomobileScheduler",
+           "core/intelligence/rl/nse_calendar.py::is_trading_day",
+           "core/intelligence/rl/calendar_updater.py::update_calendar"]
+    config: [scheduler.enabled, scheduler.feedback_cron, rl.scheduler_max_workers]
+    logic: |
+      scheduler.enabled off ─► start() returns: nothing below runs
+      Registration (APScheduler, timezone Asia/Kolkata)
+        always: daily review, monthly forecast, calendar, ledger cleanup, pre-open check,
+        | backup, 3 Atlas jobs
+        only when the flag is on
+          macro_news.enabled ─► 2 macro news jobs
+          scorecard / event ingest / research loop flags ─► those jobs
+          events.enabled ─► company_events_am, company_events_pm
+          discovery.enabled ─► bhavcopy sync, discovery_weekly
+          delivery.enabled ─► morning_brief, weekly_review
+          audit.enabled ─► audit_nightly
+          ipo.enabled ─► 2 IPO refreshes, IPO deep dive
+          watchdog.enabled ─► ops_watchdog
+        every job: coalesce (missed runs fold into one), misfire grace 15 min to 6 h
+        a job crashes ─► error listener ─► one critical alert to the owner
+      The 16:30 daily-review job (the heart of the day)
+        review_date = the previous trading session (skips holidays)
+        cohort = enabled managed stocks, each once (duplicates logged)
+        thread pool ─► run_daily_review(stock, review_date, sector) (M4.2)
+          total budget 300 s × number of stocks
+            budget runs out ─► keep the finished reviews, mark the rest timed out,
+            | carry on (a slow day must not kill the trading day)
+        each stock gets ONE outcome: completed | degraded | data_gated | skipped | failed
+        produced = completed + degraded
+          produced = 0 ─► zero-output alert (owner)
+          produced < required ─► partial-output alert naming each stock and reason
+        run_post_review_pipeline(review_date) (M5.1); its failure never fails the reviews
+        record the outcome ─► GET /scheduler/status "last_runs"
+  - id: M1.3
+    name: Config and switches
+    summary: config.yaml, then the settings the code reads
+    files:
+      - core/config/__init__.py
+      - core/config/settings/*.py
+      - core/config/prompts/__init__.py
+      - core/config/prompts/shared/__init__.py
+      - src/backend/shared/config/**/*.py
+      - src/backend/shared/prompts/__init__.py
+    code: ["src/backend/shared/config/settings/loader.py::cfg",
+           "src/backend/shared/config/settings/loader.py::load_yaml"]
+    logic: |
+      settings.X = cfg("section.key", env="VAR", fallback=...)
+        1 environment variable (Railway) ... wins
+        2 config.yaml ...................... otherwise
+        3 the code's fallback .............. otherwise
+        config.yaml malformed ─► the app refuses to start (fails loudly)
+        config.yaml missing ─► one warning, every fallback applies
+      Switches that change behaviour (defaults below; production values at the end)
+        rl.learning_mode ................. observe or adapt (M4.3)
+        decision_gate.mode ............... record or enforce (M3.4)
+        advisor.exit_rule ................ legacy, shadow or evidence (M5.5)
+        autopilot.deploy_idle_cash ....... off, but overrides.primary turns it on
+        | for the owner's paper book (M5.4)
+        atlas.enabled .................... outbox drainer and 23:xx Atlas jobs
+        config/sector_toggles.json ....... 4 native sectors on; 18 others use the generic path
+        auth.required (AUTH_REQUIRED) .... off = an anonymous request acts as the owner
+  - id: M1.4
+    name: Storage and the Atlas user plane
+    summary: data/ on the Railway volume
+    files:
+      - core/utils/*.py
+      - services/data/__init__.py
+      - services/data/stores/__init__.py
+      - services/data/stores/atlas_store.py
+      - services/data/verdict_store.py
+      - services/api/log_buffer.py
+      - core/portfolio/retention.py
+      - core/portfolio/universe.py
+      - scripts/atlas_etl.py
+      - src/backend/shared/data/__init__.py
+      - src/backend/shared/data/stores/__init__.py
+    code: ["core/utils/atomic_io.py::atomic_write_text", "services/data/verdict_store.py::VerdictStore",
+           "services/api/log_buffer.py::load_managed_tickers"]
+    config: [atlas.enabled]
+    logic: |
+      data/   one Railway volume at /app/data; the ONLY home of state
+        predictions/<sector>/<TICKER>/    envelopes, feedback logs, weights, lessons, dossier
+          <sector>/_shared_ledger.json       sector-wide lessons
+          _market_ledger.json, _regime_state.json
+        portfolio/<user>/                 portfolio.json, transactions.jsonl,
+        | advice_ledger.jsonl, value history, digests/, cases/, exit_shadow.jsonl
+        discovery/                        screens/, shelf.json, dives.json, dives.jsonl,
+        | shelf_events.jsonl, bare_judgements.jsonl
+        events/<SYMBOL>.jsonl             company events
+        ipo/, market_cache/               IPO facts; EOD parquet, index constituents
+        logs/                             data_health.jsonl, decision_gate.jsonl
+        backups/                          the last 7 archives and their manifests
+        managed_tickers.json              which stocks the 16:30 review covers
+        SQLite: users.db, chat_sessions.db, atlas.db, telemetry.db, scores.db
+      Rules
+        writes are atomic (temp file + rename)
+        ledgers are append-only
+        transactions.jsonl is the authority; portfolio.json is derived from it
+      The plane boundary: the portfolio pipeline reads stored forecasts through
+      | VerdictStore, and the learning code never imports the user stores (a test checks)
+  - id: M1.5
+    name: LLM access
+    summary: one OpenRouter client; three model tiers
+    files:
+      - services/clients/__init__.py
+      - services/clients/llm_client.py
+      - src/backend/shared/clients/__init__.py
+      - src/backend/shared/clients/llm_client.py
+      - scripts/model_bench.py
+      - scripts/reasoning_bench.py
+    code: ["services/clients/llm_client.py::get_llm_client", "services/clients/llm_client.py::record_llm_call"]
+    config: [llm.model_fast, llm.model_reasoning, llm.model_bulk]
+    logic: |
+      OpenRouter through one client factory; every call logged (tokens, cost) to telemetry.db
+        fast ....... chat tool loop, pre-open shock rating
+        reasoning .. unified analyst, aggregator, feedback agent, thesis review,
+        | investment case, the bare judge, chat fallback
+        bulk ....... ticker resolution, advice narration, brief and weekly headlines,
+        | event typing, forecast profile, forecast blindspot hints, dossier curation,
+        | event ingestion, question research, macro news review, IPO extraction and
+        | narration
+      Failure watch: 10 failed calls in a row ─► one critical owner alert (at most every 6 h)

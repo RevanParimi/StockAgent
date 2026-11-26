@@ -1,0 +1,30 @@
+# Production values, taken from KT section 1 (docs/TECHNICAL_DESIGN.md), each as of the date
+# it was observed or set. Never read from production by the map.
+- key: rl.learning_mode
+  value: observe
+  source: KT section 1
+  as_of: 2026-10-01
+  note: set by the Railway variable RL_LEARNING_MODE on 26 Sep
+- key: portfolio.overrides.primary.deploy_idle_cash
+  value: true
+  source: KT section 1
+  as_of: 2026-11-15
+  note: on for the owner's portfolio since the 15 Nov deploy, as the repository configures it
+- key: decision_gate.mode
+  value: enforce
+  source: KT section 1
+  as_of: 2026-11-19
+  note: "the Railway variable DECISION_GATE_MODE; applies from the first deploy after 19 Nov"
+- key: advisor.exit_rule
+  value: evidence
+  source: KT section 1
+  as_of: 2026-11-23
+  note: "from the 23 Nov deploy, as the repository configures it"
+- name: Instrument identity
+  value: TATAMOTORS disabled in the managed list; TMPV managed as its own ticker
+  source: KT section 1
+  as_of: 2026-10-01
+- name: Off-site backup copy
+  value: no target configured (the owner deferred it to the end of the PI)
+  source: KT section 1
+  as_of: 2026-11-17

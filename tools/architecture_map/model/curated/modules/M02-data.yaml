@@ -1,0 +1,146 @@
+id: M2
+name: Data layer
+short: Data
+plane: middle
+column: 1
+summary: prices, filings, news ─► one checked bundle per stock
+submodules:
+  - id: M2.1
+    name: Prices and closes
+    summary: close verification, the session close, the end-of-day cache
+    files:
+      - services/data/fetchers/close_verifier.py
+      - services/data/fetchers/bhavcopy.py
+      - services/data/stores/eod_store.py
+      - core/portfolio/pricing.py
+      - core/intelligence/algorithms/**/*.py
+    code: ["services/data/fetchers/close_verifier.py::get_verified_close",
+           "services/data/fetchers/close_verifier.py::cross_check_close",
+           "core/portfolio/pricing.py::session_close", "core/portfolio/pricing.py::close_on",
+           "core/intelligence/algorithms/indicators/fetcher.py::get_price_history"]
+    config: [rl.close_verify_enabled, rl.close_verify_tolerance_pct]
+    logic: |
+      "What did stock X close at?"
+        three readers: get_verified_close (the latest close, for forecasts),
+        | cross_check_close (the daily review's session D), session_close (the portfolio)
+        which symbol? ─► the instrument registry (ZOMATO is priced as ETERNAL.NS, a
+        | recorded rename)
+        yfinance close + NSE official close (when rl.close_verify_enabled)
+          both present, within tolerance ─► yfinance value ("agree")
+          both present, too far apart ─► NSE value + warning
+          | (yfinance once returned another company's price for MARUTI: ~131 vs ~13,000)
+          only one present ─► that one
+          none ─► None
+        D is not a trading day ─► the last trading day before it
+        no close for that session after one retry ─► PriceUnavailableError
+        | (the portfolio skips that holding today)
+        a bar older than D ─► fresh_for(D) = False ─► the gates call it stale
+      Prices for every NSE stock at once
+        19:00 bhavcopy sync (last 7 days, so it heals after an outage)
+        | ─► one parquet per day (EodStore)
+        | ─► read by the discovery screen, the weekly review, the executable-price check
+  - id: M2.2
+    name: Sector data bundle
+    summary: one checked fetch pass per analysis
+    files:
+      - services/data/context/**/*.py
+    code: ["services/data/context/bundle_builder.py::build_sector_bundle",
+           "services/data/context/fetch_result.py::FetchResult"]
+    config: [unified_analyst.section_max_chars, unified_analyst.bundle_max_chars,
+             observability.data_health_essential_sections]
+    logic: |
+      build_sector_bundle(stock, sector)      one fetch pass per analysis; never raises
+        10 sections, fixed order
+          company_news ........ Serper search (other engines run beside it, record only)
+          sector_policy_news .. Serper search
+          macro_context ....... INR/USD, crude and factor regime, plus a Serper search
+          policy_deep_dive .... one Tavily page
+          fundamentals ........ ESSENTIAL (statements; results dates from the NSE data
+          | prefetched once per run)
+          technicals .......... ESSENTIAL (price history, indicators)
+          commodities ......... automobile only
+          flows_sentiment ..... NSE bulk deals, FII/DII, mutual-fund herding
+          peers_valuation ..... ESSENTIAL (peers by industry and size)
+          dossier ............. what the learning loop knows about the company (M4.4)
+        each section returns text + a STATUS set by its producer from the data, not the text
+          ok / cache_hit ................. usable
+          stale / fallback / empty ....... weak
+          n/a ............................ deliberately not fetched
+          failed:<ErrorType> ............. the fetcher raised; text = "unavailable"
+          unverified ..................... plain text came back with no proof
+        capped per section and in total ─► to_prompt_text() for the analyst
+  - id: M2.3
+    name: Identity
+    summary: which company is this ticker, on this date
+    files:
+      - src/backend/shared/data/instruments.py
+      - src/backend/shared/data/fetchers/symbol_resolver.py
+    code: ["src/backend/shared/data/fetchers/symbol_resolver.py::resolve_identity",
+           "src/backend/shared/data/fetchers/symbol_resolver.py::identity_break",
+           "src/backend/shared/data/instruments.py::load_registry"]
+    logic: |
+      Is TICKER on date D the company we think, priced on the right basis?
+        resolve_identity(ticker, D), first match wins
+          a full provider symbol ─► itself
+          listed in config/instruments.yaml ─► the dated segment decides
+            active ─► that period's provider symbol + price basis
+            unresolved / suspended / delisted ─► UNRESOLVED, and then
+              research ─► the decision gate abstains
+              daily review ─► the day is not graded
+              portfolio ─► the holding is HELD (even exits) until an operator runs
+              | identity_reconcile plan (read-only) ─► apply --approve <digest>
+          a learned mapping to another code (never reviewed) ─► UNRESOLVED
+          no entry ─► its own NSE listing, resolved
+        prices came from a different symbol ─► the gate abstains
+      The user typed a name, not a ticker         (the orchestrator, M3.1)
+        a managed or tracked ticker ─► itself, no model
+        otherwise ─► bulk model guess ─► does yfinance have a price for it?
+          yes ─► use the guess
+          no ─► Serper search ─► the model again with the snippets ("do not guess")
+      An exact NSE symbol (deep dive, daily review, monthly forecast)
+        listed (cached listing, else a yfinance price) ─► analysed as itself, no model
+        not listed ─► the run stops (UnlistedSymbol)
+  - id: M2.4
+    name: Other feeds
+    summary: news, filings, macro, surveillance and fundamentals
+    files:
+      - services/data/fetchers/__init__.py
+      - services/data/fetchers/bulk_block.py
+      - services/data/fetchers/corporate_events.py
+      - services/data/fetchers/fundamentals.py
+      - services/data/fetchers/macro.py
+      - services/data/fetchers/mf_herding.py
+      - services/data/fetchers/news.py
+      - services/data/fetchers/nse_announcements.py
+      - services/data/fetchers/nse_client.py
+      - services/data/fetchers/nse_disclosures.py
+      - services/data/fetchers/nse_key_registry.py
+      - services/data/fetchers/nse_market.py
+      - services/data/fetchers/surveillance.py
+      - services/data/stores/api_usage.py
+      - services/clients/tavily_fetcher.py
+      - services/background/*.py
+      - src/backend/shared/clients/tavily_fetcher.py
+      - src/backend/shared/data/fetchers/__init__.py
+      - src/backend/shared/data/fetchers/fundamentals.py
+      - src/backend/shared/data/fetchers/macro.py
+      - src/backend/shared/data/fetchers/news.py
+      - src/backend/shared/data/stores/api_usage.py
+    code: ["services/data/fetchers/news.py::fetch_news_context",
+           "services/data/fetchers/surveillance.py::parse_surveillance",
+           "services/background/macro_news_fetcher.py::MacroNewsFetcher"]
+    config: [macro_news.enabled, search_shadow.enabled]
+    logic: |
+      Outside sources, each behind one reader that never stops a run
+        news search ........ Serper (monthly credits counted per call)
+        full pages ......... Tavily extraction (policy, results, IPO documents)
+        macro news ......... 07:30 and 09:00/12:00/15:00 ─► the macro news cache (read by
+        | the brief, the daily review and the chat, not by the analysis bundle)
+        NSE filings ........ announcements, board meetings, insider, SAST, pledge,
+        | shareholding
+        NSE market data .... surveillance report (ASM/GSM), bulk and block deals,
+        | index constituents
+        corporate actions .. bonus, split, dividend; results calendar for held stocks
+        fundamentals and peers ... for the analysis bundle
+        F&O snapshot ....... for the forecast (M4.1)
+      A source that fails ─► that part reads empty or failed, never invented

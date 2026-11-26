@@ -1,0 +1,228 @@
+id: M5
+name: Portfolio (paper money, real prices, no broker anywhere)
+short: Portfolio
+plane: middle
+column: 4
+summary: advisor rules ─► virtual trades ─► profit and loss
+files:
+  - core/portfolio/__init__.py
+  - core/portfolio/store.py
+  - src/backend/shared/schemas/portfolio.py
+  - src/backend/shared/schemas/cases.py
+submodules:
+  - id: M5.1
+    name: Post-review pipeline
+    summary: runs after the 16:30 review, for each user
+    files: [core/portfolio/pipeline.py]
+    code: ["core/portfolio/pipeline.py::run_post_review_pipeline"]
+    config: [advisor.enabled]
+    logic: |
+      run_post_review_pipeline(session D)
+        advisor off, or D not a trading day ─► stop
+        NSE surveillance report: read at most once per run
+        for each active user
+          1  corporate-action sync FIRST (bonus, split, dividend adjust cost and
+          | quantity)
+          no holdings and no idle-cash deployment ─► next user
+          2  buy candidates = fresh shelf ideas + own watchlist BUYs − resale wait (M6.4)
+          3  closes for D (holdings and candidates); sector weights on total equity
+          4  refresh the results calendar for held stocks
+          5  for each holding
+            build signals (envelope path, regime, confidence, ATR stop, P/L, age,
+            | weights, bought on another company's analysis)
+            decide with the acting exit rule + the data gate (M5.2)
+            decide again with the other exit rule ─► exit_shadow row (never acted on)
+            narrate (bulk model; template text on failure)
+            append the advice record to advice_ledger.jsonl
+            compare with the top 5 shelf ideas ─► switch evaluations (for grading)
+          6  autopilot executes (M5.3)
+          7  case upkeep: retry a missing invalidation price; events challenge pillars
+          8  value point: equity at D's marks ─► value history
+          9  reconcile the ledger with portfolio.json (detects and alerts, never repairs)
+          10 digest for D
+          11 alerts: TRIM/EXIT/SWITCH, each trade, a skipped switch buy; end-of-day
+          | digest push
+      Every step is non-fatal: one holding or one user failing never stops the rest.
+  - id: M5.2
+    name: Advisor
+    summary: the decision for one holding
+    files:
+      - core/portfolio/advisor.py
+      - core/portfolio/narrator.py
+      - core/portfolio/narrative_cache.py
+    code: ["core/portfolio/advisor.py::decide", "core/portfolio/advisor.py::analysed_elsewhere",
+           "core/portfolio/narrator.py::narrate"]
+    config: [advisor.exit_rule, advisor.stop_atr_mult, advisor.stop_buckets,
+             advisor.trim_profit_pct, advisor.add_min_direction_accuracy,
+             advisor.switch_conviction_gap]
+    logic: |
+      decide(signals, holding)      a pure function, no model
+        identity changed or unresolved ─► HOLD (note IDENTITY); even exits wait
+        EXIT if any trigger fires
+          bought_on_other_analysis .. bought on another company's analysis (sold under
+          | either rule)
+          stop_breach ............... unrealised P/L ≤ −stop%
+          | stop = 3 × ATR(20), clamped: large cap 8–12%, mid 12–18%, small 15–22%
+          | (unknown size counts as mid; a conservative profile tightens one step)
+          case_broken (evidence rule, after 10 sessions) ... a material negative filing,
+          | a fresh actionable SELL analysis, or the close at the invalidation price
+          or thesis_break (legacy rule) ... the thesis reviewer says "not intact" and
+          | the forecast path is falling
+          shock_reforecast .......... a recent shock re-forecast + falling path
+          crisis_regime_bearish ..... MACRO_CRISIS + falling path
+          trailing_stop_breach ...... was up ≥ 10%, then fell ≥ stop% from its peak
+        else TRIM if P/L ≥ +25% and
+          confidence has fallen by ≥ 0.05, or
+          reversion prior ≥ 0.20
+        else ADD if all of
+          the remaining forecast path is UP
+          regime is not MACRO_CRISIS or RISK_OFF
+          the position is < 10% of equity
+          direction accuracy over the last 7 reviews ≥ 60%
+          the day's regime is known ........ (else note REGIME_UNAVAILABLE, no ADD)
+          data gate: fresh close, actionable forecast .. (else note DATA_GATE, no ADD)
+        else HOLD
+        EXIT + a stronger shelf idea in an underweight sector (conviction gap ≥ 0.15,
+        | gate passes) ─► SWITCH (sell this one, buy that one)
+        TRIM in months 10–12 with the thesis intact ─► HOLD (WAIT_FOR_LTCG)
+        This tax softening never applies to an EXIT.
+        notes: EARNINGS_GAP_PROTECTION, POSITION_LARGE (>10%),
+        | SECTOR_CONCENTRATION_HIGH (>30%), ENVELOPE_AFTER_CLOSE
+      Precedence: EXIT > TRIM > ADD > HOLD
+  - id: M5.3
+    name: Autopilot
+    summary: carries out the verdicts on the paper book
+    files:
+      - core/portfolio/autopilot.py
+      - scripts/seed_autopilot.py
+    code: ["core/portfolio/autopilot.py::execute_advice", "core/portfolio/autopilot.py::_deploy_check"]
+    config: [autopilot.enabled, autopilot.add_tranche_pct, autopilot.trim_pct,
+             autopilot.min_cash_floor, autopilot.add_cooldown_td, advisor.max_position_pct,
+             advisor.max_sector_pct]
+    logic: |
+      execute_advice(advice, closes, session D)      every trade is booked at D's close
+        fixed order
+          1 SELLS: EXIT (all), SWITCH sell leg (all), TRIM (25%), in symbol order
+          2 BUYS: SWITCH buy legs, then ADDs (25% of the holding's value) by confidence
+          | ADD cooldown: 5 sessions between two buys of one stock
+          3 idle-cash deployment, if it is on for this portfolio (M5.4)
+        every buy must pass
+          size: position ≤ 10% and sector ≤ 30% of equity AFTER the trade; ₹10,000
+          | cash floor
+          NSE surveillance: listed active, no ASM or GSM stage
+        a new position (SWITCH buy leg, idle-cash buy) must also pass
+          price inside its idea's entry band
+          identity resolved; close dated D (enforce)
+          resale wait: not sold by this book since its idea was decided
+          the analysis rates it BUY, by the composite's band AND by its own model
+          the idea's analysis is of this symbol, not another company
+        a top-up (ADD) reads neither verdict: it rests on the advisor's own ADD
+        | conditions (M5.2) and the cooldown
+        any check fails ─► skipped; the money stays in cash; the reason is recorded
+        every trade pays its costs (STT, stamp, exchange, SEBI, GST, DP) from cash
+        txn_id = hash(user, date, symbol, side, ref) ─► a re-run never trades twice
+        a new position ─► an investment case is written (M5.5)
+        the managed list follows the holdings
+          a sold stock leaves the 16:30 review (unless someone watches it)
+          a new holding joins it
+  - id: M5.4
+    name: Money rules
+    summary: sizing, deployment, costs
+    files:
+      - core/portfolio/sizing.py
+      - core/portfolio/deployment.py
+      - core/portfolio/costs.py
+    code: ["core/portfolio/sizing.py::surveillance_issue", "core/portfolio/deployment.py::run_record"]
+    config: [autopilot.deploy_idle_cash, portfolio.overrides.primary.deploy_idle_cash,
+             autopilot.deploy_max_new_per_day, autopilot.deploy_target_invested_pct,
+             portfolio.target_holdings, portfolio.max_holdings, portfolio.min_holdings]
+    logic: |
+      Deployment (idle cash ─► new positions)
+        target invested share from the sticky regime: calm 80% | RISK_OFF 50% |
+        | MACRO_CRISIS 0%
+        position size = the NORMAL share ÷ target_holdings (80% ÷ 25 = 3.2% of
+        | equity), whatever today's regime
+        at most 5 new positions a day; at most 30 holdings; a minimum of 20 is reported,
+        | never forced
+        candidates by conviction, best first ─► each through the buy checks (M5.3)
+        stops when: target met, 30 holdings, 5 opened today, crisis, or regime unknown
+        The digest says why each idea, and each idle rupee, was not used.
+      Sizing: every weight is a share of TOTAL equity (holdings at market + cash)
+      Costs: dated rates in config.yaml; older rows without costs are estimated and
+      | labelled so
+  - id: M5.5
+    name: Investment cases and the exit rules
+    summary: why we own it, and what would prove us wrong
+    files:
+      - core/portfolio/cases.py
+      - core/portfolio/exit_shadow.py
+      - core/config/prompts/shared/investment_case.py
+      - scripts/backfill_cases.py
+    code: ["core/portfolio/cases.py::CaseStore", "core/portfolio/cases.py::review_pillars",
+           "core/portfolio/exit_shadow.py::scorecard_block", "core/portfolio/exit_shadow.py::gate_look"]
+    config: [advisor.exit_rule, advisor.min_hold_sessions, advisor.case_write,
+             advisor.case_model, advisor.case_noise_atr_mult]
+    logic: |
+      Investment case (written when a position opens: SWITCH buy, deployment buy,
+      | manual add)
+        inputs: the newest actionable analysis, the shelf idea, prices
+        one reasoning call writes: pillars with evidence, expectations,
+        | what would prove us wrong, what to watch
+        every figure is checked against the inputs ─► an invented figure ─► a plain
+        | deterministic case is stored instead
+        invalidation price: used only if it is above the purchase-day stop and at least
+        | 1.5 ATR below the entry
+        each day new company events challenge the pillars (a record, never a sale by
+        | itself)
+      Exit rule mode (advisor.exit_rule)
+        legacy ─► thesis_break decides; nothing recorded
+        shadow ─► legacy decides; both verdicts saved for each holding, each day,
+        | in exit_shadow.jsonl
+        evidence ─► case_broken decides; the legacy verdict is still recorded beside it
+        | the owner decided on 14 Nov 2026 to switch without waiting for the weekly
+        | gate, and judges at the 8-week results; rollback = shadow
+        an unknown value ─► reads as shadow
+  - id: M5.6
+    name: Integrity guards
+    summary: corporate actions, reconciliation, identity, promotion
+    files:
+      - core/portfolio/corp_actions.py
+      - core/portfolio/reconcile.py
+      - core/portfolio/identity_reconcile.py
+      - core/portfolio/promotion.py
+    code: ["core/portfolio/corp_actions.py::sync_corp_actions", "core/portfolio/reconcile.py::reconcile",
+           "core/portfolio/identity_reconcile.py::plan"]
+    config: [portfolio.max_managed_tickers]
+    logic: |
+      corporate actions (daily, before any advice)
+        bonus / split / dividend ─► adj_avg_price and adj_qty; the raw quantity and
+        | price never change
+        why: without it, a 1:1 bonus reads as a −50% crash and fires a false EXIT
+      reconcile (daily): cash chain continuity, final cash, per-stock quantity vs ledger
+        drift ─► error log + alert; never auto-repaired (a human decides)
+      identity reconcile (operator CLI): plan (read-only) ─► apply --approve <digest>
+      corrupt portfolio.json ─► quarantined; changes return HTTP 409
+      promotion: a held or watched stock ─► managed_tickers.json (cap 60;
+      | only watchlist entries are ever evicted)
+  - id: M5.7
+    name: Results
+    summary: is it making money?
+    files:
+      - core/portfolio/results.py
+      - core/portfolio/executable.py
+      - core/portfolio/digest.py
+      - core/portfolio/digest_text.py
+    code: ["core/portfolio/results.py::build_row", "core/portfolio/results.py::scorecard_lines",
+           "core/portfolio/digest.py::build_digest"]
+    logic: |
+      value history: equity at each review's marks; deposits tracked as capital_in
+      weekly results scorecard (Sunday)
+        closed round trips; exit reasons
+        sold too early (from the auditor's grades)
+        you vs the Nifty (each deposit buys Nifty units on its day, so idle cash counts
+        | against the book)
+        breadth, holding period, red flags
+        every deep dive against the Nifty; the exit rules' disagreements and their gate
+      executable prices: the booked close vs the next real open ─► the gap a person
+      | would pay
+      GET /portfolio/performance, /scorecard, /transactions, /advice ─► Portfolio screen

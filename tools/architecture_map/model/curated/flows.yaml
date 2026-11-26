@@ -1,0 +1,23 @@
+# What travels between the parts. Each end is a module, a sub-module, a store or an external.
+- {from: M2, to: M3, what: one checked bundle per stock}
+- {from: M3, to: M4, what: "verdict + dimension scores (envelope, daily grade)"}
+- {from: M6, to: M3, what: deep dives call the analysis}
+- {from: M6, to: M5, what: "the shelf: ideas with entry band and invalidation level"}
+- {from: M3, to: M5, what: "verdicts behind the buy checks and the cases"}
+- {from: M4, to: M5, what: "forecast path, regime and thesis review"}
+- {from: M7, to: M5, what: "company events: exit evidence and case pillars"}
+- {from: M2, to: M5, what: closes and corporate actions}
+- {from: M2, to: M6, what: end-of-day data for the screen}
+- {from: M8, to: M6, what: recent listings for the IPO lane}
+- {from: M5, to: M9, what: "advice, trades and the digest"}
+- {from: M9, to: ext.user, what: "brief, weekly review, alerts (push and email)"}
+- {from: M9, to: ext.owner, what: operator alerts}
+- {from: M10, to: M3, what: "on-demand analysis (chat, Analyze box)"}
+- {from: M10, to: ext.user, what: "screens and chat, read from every store"}
+- {from: M11, to: M9, what: breach reports to the owner}
+- {from: M12, to: ext.owner, what: watchdog notices and job alerts}
+- {from: M3, to: M11, what: "every analysis graded against the Nifty"}
+- {from: M5, to: M11, what: "advice and switches graded against the Nifty"}
+- {from: M6, to: M11, what: "ideas and dives graded against the Nifty"}
+- {from: M12, to: M1, what: watches every scheduled job}
+- {from: M10, to: M4, what: reads the learning stores for the screens and chat}

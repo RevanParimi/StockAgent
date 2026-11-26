@@ -4494,11 +4494,19 @@ three jobs on Linux with Python 3.11 and no secrets:
 
 - the whole `tests/` tree;
 - the broad-exception guard
-  ([scripts/ci/check_broad_except.py](../scripts/ci/check_broad_except.py))
-  and `check_kt_docs.py`;
+  ([scripts/ci/check_broad_except.py](../scripts/ci/check_broad_except.py)),
+  `check_kt_docs.py` and the architecture map's guard
+  (`tools/architecture_map/model/check.py`);
 - the chat-rendering browser suite in Chromium.
 
-The guard fails when new code catches every exception without logging,
+The architecture map's guard fails when `docs/architecture-map/model.json` or
+`TREES.md` differs from a fresh run of its generator, when the map names a
+path, function or setting that does not exist, or when a job, route or Python
+file belongs to no module. After a code change,
+`python tools/architecture_map/model/generate.py` rewrites both files. The map
+is developer documentation: nothing of it ships in the image.
+
+The broad-exception guard fails when new code catches every exception without logging,
 re-raising or using it. The 154 handlers that already did so are grandfathered
 in a burn-down list; they were not reviewed one by one. The list counts
 handlers per function, so a change that fixes one grandfathered handler and

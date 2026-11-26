@@ -1,0 +1,42 @@
+# One stock's life, end to end (MAP-003 plays it). `tours` are MAP-003's to write.
+traces:
+  - id: one-stocks-life
+    title: One stock's life, end to end
+    steps:
+      - when: Saturday
+        text: "discovery: XYZ ranks high ─► deep dive: BUY by band and model, conviction 0.68, actionable"
+        refs: [M6.1, M6.3, M3]
+      - when: Saturday
+        text: "shelf (entry band, invalidation level) ─► 'tracking only' alert to all"
+        refs: [M6.3, M9.3]
+      - when: Saturday
+        text: "paper envelope and weekly paper review start"
+        refs: [M6.5]
+      - when: Mon 16:30
+        text: "reviews Friday ─► XYZ not offered (its dive came after Friday's close)"
+        refs: [rl_daily_review, M6.4]
+      - when: Tue 16:30
+        text: "reviews Monday ─► XYZ is a buy candidate; regime NORMAL, book below 80% ─► size 3.2% of equity"
+        refs: [M6.4, M5.4]
+      - when: Tue 16:30
+        text: "band, surveillance, identity, caps, cash floor all pass ─► BUY at Monday's close; costs charged; case written; XYZ joins the managed list"
+        refs: [M5.3, M5.5, S.portfolio, S.managed]
+      - when: Afterwards
+        text: "its envelope is made by the next deploy's self-heal, the 1st-of-month job or a manual trigger; until then 'skipped: no_envelope' and the advice reads a FLAT path: no ADD, price stops still protect it"
+        refs: [M1.1, M4.1, M5.2]
+      - when: Every day
+        text: "16:30 grades its forecast row ─► advisor: HOLD / ADD / TRIM / EXIT / SWITCH"
+        refs: [M4.2, M5.2]
+      - when: Every day
+        text: "08:15 and 18:30 the events feed watches its filings and news"
+        refs: [M7.1]
+      - when: Every night
+        text: "23:45 the auditor grades matured advice against the Nifty"
+        refs: [M11.1]
+      - when: Exit day
+        text: "for example a stop breach ─► EXIT ─► SELL at that session's close ─► realised profit or loss ─► alert and digest ─► resale wait before it can be bought back"
+        refs: [M5.2, M5.3, M9.3, M6.4]
+      - when: Sunday
+        text: "weekly results: the closed trade, its exit reason, the book against the Nifty"
+        refs: [M5.7, M9.2]
+tours: []

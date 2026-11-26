@@ -1,0 +1,79 @@
+id: M11
+name: Measurement (reads decisions, changes none)
+short: Measurement
+plane: ring
+column: 5
+summary: grades every call against the Nifty
+submodules:
+  - id: M11.1
+    name: Nightly auditor
+    summary: core/audit/, 23:45
+    files:
+      - core/audit/*.py
+      - src/backend/shared/schemas/audit.py
+    code: ["core/audit/outcomes.py::grade_due", "core/audit/idea_lanes.py::grade_idea_lanes",
+           "core/audit/report.py::build_report", "core/audit/thresholds.py::evaluate_breaches"]
+    config: [audit.enabled, audit.horizons_td, audit.idea_horizons_td, audit.min_n]
+    logic: |
+      grade_due(today)      safe to re-run: one grade per (call, horizon)
+        lanes
+          advice .... every advisor verdict
+          alert ..... every escalation alert
+          shelf ..... every shelf idea
+          switch .... every switch evaluated (did the candidate beat the holding?)
+          ipo ....... IPO verdicts after listing
+          dive ...... every deep dive, at the conviction it was issued with
+          screen .... the screen's candidates, dived or not
+          bare ...... the plain model's answer to the same evidence
+        "correct" = EXCESS return vs NIFTY 50 over the horizon, never raw return
+        | (in a rising market raw return makes every HOLD look right)
+          the idea lanes (dive, screen, bare) enter at the next session's open; they
+          | record results, not "correct"
+        not matured yet ─► waits; no price ─► counted as unpriceable
+        report ─► one verdict word (INSUFFICIENT_DATA while the sample is small),
+        | Wilson intervals
+        breach rules ─► owner alerts
+  - id: M11.2
+    name: Monthly scorecard
+    summary: forecast accuracy against simple baselines
+    files:
+      - core/intelligence/rl/eval/*.py
+      - src/backend/shared/schemas/scorecard.py
+      - scripts/missed_risers.py
+    code: ["core/intelligence/rl/eval/scorecard.py::build_scorecard"]
+    config: [rl.scorecard_enabled]
+    logic: |
+      1st of the month 02:00 ─► the previous month, from the feedback logs
+        direction accuracy, Brier score, coverage vs simple baselines
+        | (persistence, always-up): the "baseline duel"
+      Learning evidence and a missed-risers report run by hand (read only)
+  - id: M11.3
+    name: Weekly results
+    summary: the money line, on Sunday (M5.7)
+    logic: |
+      Built by the portfolio (M5.7) and sent by the weekly review (M9.2)
+        the book against the Nifty, closed trades and exit reasons, red flags,
+        | every deep dive against the Nifty, the exit-rule disagreements
+  - id: M11.4
+    name: Shadows
+    summary: side-by-side records, never acted on
+    files:
+      - src/backend/shared/pipeline/verdict_shadow.py
+      - services/data/fetchers/search_shadow.py
+      - core/discovery/bare_judge.py
+    code: ["src/backend/shared/pipeline/verdict_shadow.py::log_verdict_shadow",
+           "services/data/fetchers/search_shadow.py::submit_shadow",
+           "core/discovery/bare_judge.py::judge"]
+    config: [discovery.bare_judge_enabled, discovery.bare_judge_max_per_week,
+             search_shadow.enabled]
+    logic: |
+      Shadows
+        verdict shadow ........ the model's verdict vs the composite band (every analysis)
+        | (the buy doors read it for ideas shelved before the model's verdict was kept)
+        exit shadow ........... both exit rules' verdicts (every holding, every review day)
+        switch evaluations .... every holding vs the top 5 shelf ideas, taken or not
+        search shadow ......... other search engines beside Serper for company news
+        bare judge ............ a plain model asked BUY or SKIP on each new dive's
+        | evidence (capped per week)
+        weight observations ... what adapt mode WOULD have done (while in observe)
+        decision_gate.jsonl ... what enforce stops (or, in record mode, would stop)

@@ -1,0 +1,109 @@
+id: M10
+name: Interface (API, login, screens, chat)
+short: Interface
+plane: top
+column: 2
+summary: API routes, login, screens, chat assistant
+files:
+  - services/api/__init__.py
+submodules:
+  - id: M10.1
+    name: API routes
+    summary: services/api/routes/
+    files:
+      - services/api/routes/__init__.py
+      - services/api/routes/analyse.py
+      - services/api/routes/analytics.py
+      - services/api/routes/audit_api.py
+      - services/api/routes/delivery_api.py
+      - services/api/routes/discovery_api.py
+      - services/api/routes/events_api.py
+      - services/api/routes/history.py
+      - services/api/routes/ops_api.py
+      - services/api/routes/portfolio_api.py
+      - services/api/routes/rl_monitor.py
+      - services/api/routes/scheduler_api.py
+      - services/api/routes/stream.py
+    code: ["services/api/server.py::app"]
+    logic: |
+      FastAPI app
+        /auth/*         signup (by invite), login, logout, me, invites, delete account
+        /ui/*           bootstrap, tickers, market summary, watchlist, search, learnings,
+        | managed tickers, agents + weights, chat, logs (SSE)
+        /portfolio/*    portfolio, holdings, watchlist, CSV import, advice, digest,
+        | transactions, performance, scorecard, cases, deposit, run-advisor
+        /discovery/*    shelf, latest screen, run, promote, drop
+        /events/{sym}   company events
+        /delivery/*     brief, weekly, alerts, outbox, push keys and subscriptions,
+        | run-brief, run-weekly
+        /scheduler/*    status (last runs), manual triggers (X-Scheduler-Key)
+        /analytics/*    accuracy, weight drift, misses, conviction, sector comparison,
+        | exports
+        /ui/rl/*        RL monitor: predicted vs actual, weights, misses
+        /audit/*        graded-outcome summary, backfill (owner)
+        /ops/errors     error backlog (owner)
+        /analyse, /ws/stream, /history/{ticker}
+        /health         is the process alive? (not jobs, not data)
+        /{anything}     a screen file, else index.html; an unknown API path ─► 404
+  - id: M10.2
+    name: Identity and sign-in
+    summary: who is calling
+    files:
+      - services/api/auth.py
+      - services/api/routes/auth_api.py
+      - services/data/stores/user_store.py
+    code: ["services/api/auth.py::get_current_user", "services/api/auth.py::require_owner",
+           "services/api/auth.py::check_scheduler_key"]
+    config: [auth.required, analyse.daily_quota]
+    logic: |
+      get_current_user(request)
+        auth.required off ─► an anonymous request acts as the owner ("primary")
+        valid bearer token ─► that user (owner or member)
+        otherwise ─► 401
+      owner-only routes: deposit, outbox, error backlog, audit backfill ...
+      machine routes: X-Scheduler-Key (open, with a warning, while SCHEDULER_KEY is unset)
+      quotas: chat questions a day per member; on-demand analyses a day; the owner is
+      | exempt
+  - id: M10.3
+    name: Screens
+    summary: the installable web app
+    files:
+      - src/frontend/prototypes
+      - scripts/seed_fixture_ui.py
+    logic: |
+      index.html loads the JSX files; they become JavaScript in the browser (no build step)
+        every account: Today, Portfolio, Settings, and Ask (the chat)
+          home.jsx ........ market pulse, scores, trending, watchlist
+          portfolio.jsx ... holdings, P/L vs Nifty, trades, why a BUY was not bought,
+          | cases
+          inbox.jsx + brief, digest and weekly views, shown on Today
+          settings.jsx, auth.jsx
+        owner only (loaded only for the owner): analytics.jsx, rl-monitor.jsx,
+        | agents-page.jsx (weights), logs.jsx
+        chat replies rendered by chat-markdown.js (marked + DOMPurify, pinned with SRI
+        | hashes)
+        sw.js + manifest.json ─► installable app, web push
+  - id: M10.4
+    name: Chat assistant
+    summary: questions about stocks and the caller's own book
+    files:
+      - services/api/routes/ui_data.py
+      - services/data/stores/chat_session_store.py
+    code: ["services/api/routes/ui_data.py::chat_stream", "services/api/routes/ui_data.py::check_chat_quota"]
+    config: [chat.daily_quota]
+    logic: |
+      POST /ui/chat/stream {message, session_id}
+        signed in? quota left? (members have a daily limit)
+        prompt = system + IST market session + macro context + last 12 messages + message
+        pre-router (no model): a buy / sell / momentum question with a sector?
+          yes ─► run screen_stocks + search_market_news first and add the results
+        tool loop: fast model, at most 4 rounds, 45-second budget
+          the model asks for tools ─► they run in parallel ─► results go back ─► repeat
+          no tool call ─► that text is the answer
+          13 tools: live price, historical prices, macro news, market news search, screen
+          | stocks, stock analysis, analysis history, RL insights, sector snapshot, run
+          | analysis (M3), RL prediction, dossier, portfolio brief (the caller's own data
+          | only)
+        rounds or budget spent ─► one last call without tools
+        errors: retries per model, then the reasoning model as fallback
+        strip <think>, clean up, stream in small word groups, save the turn

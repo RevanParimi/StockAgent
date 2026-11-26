@@ -1,0 +1,45 @@
+# The map's front matter. `code_map` paths are checked to exist unless `runtime: true`.
+title: StockAgent architecture, as trees
+product: "StockAgent: an autonomous research-and-trading agent for NSE stocks, on paper money"
+reading: |
+  How to read: `├──` is a step or a branch, `─►` means "leads to", and `(M5)` means "see module
+  M5". Switch values under each part are the repository's defaults; production values are listed
+  at the end and cite KT section 1 of
+  [the technical design](../TECHNICAL_DESIGN.md#1-reading-the-evidence).
+clock_note: |
+  The most useful timing fact: the 16:30 job on day T reviews session T-1 and books every trade at
+  T-1's 15:30 close. Nothing the system decides reads anything published after that close.
+externals:
+  - {id: ext.user, name: The account holders}
+  - {id: ext.owner, name: The owner}
+code_map:
+  - path: services/
+    note: the runtime shell
+    children:
+      - {path: services/api/, note: "FastAPI app (server.py), auth.py, routes/"}
+      - {path: services/scheduler/python/scheduler.py, note: every timed job}
+      - {path: services/data/, note: "fetchers, stores, the analysis bundle, verdict store, backup"}
+      - {path: services/clients/, note: "llm_client.py (OpenRouter), tavily_fetcher.py"}
+      - {path: services/background/, note: the macro news cache}
+  - path: src/backend/
+    note: the research engine
+    children:
+      - {path: src/backend/shared/pipeline/, note: "orchestrator, unified analyst, aggregator, decision gate"}
+      - {path: src/backend/shared/config/, note: "settings (core/config is a shim to them)"}
+      - {path: src/backend/sectors/, note: "registry and five paths: automobile, banking_bfsi, it_sector, renewable_energy, generic"}
+  - {path: src/frontend/prototypes/, note: "the PWA (JSX turned into JavaScript in the browser, no build step)"}
+  - path: core/
+    note: the product logic
+    children:
+      - {path: core/intelligence/, note: "learning loop (rl/), regime, seasonal, indicators, F&O"}
+      - {path: core/portfolio/, note: "advisor, autopilot, sizing, costs, cases, results"}
+      - {path: core/discovery/, note: "screen, deep dive, shelf, candidates, paper lane"}
+      - {path: core/events/, note: company events}
+      - {path: core/ipo/, note: IPO research and verdict}
+      - {path: core/delivery/, note: "brief, weekly review, alerts, channels, outbox"}
+      - {path: core/audit/, note: the nightly grader}
+      - {path: core/ops/, note: "watchdog, error backlog"}
+  - {path: config.yaml, note: every tunable value and switch}
+  - {path: config/, note: "instruments.yaml, sector_toggles.json, milestones.yaml"}
+  - {path: tools/architecture_map/, note: "this map: generators, curated meaning, guard"}
+  - {path: data/, note: "(Railway volume) all state: JSON, JSONL, parquet, SQLite", runtime: true}

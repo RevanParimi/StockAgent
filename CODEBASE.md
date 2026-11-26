@@ -242,6 +242,10 @@ StockAgent-main/
 │   ├── fixtures/                  # Shared test fixtures
 │   ├── integration/               # Integration tests
 │   └── unit/                      # Unit tests
+├── tools/                         # Developer tooling: never copied into the image
+│   └── architecture_map/model/    # The architecture map's model (MAP-001): generate.py writes
+│                                  #  docs/architecture-map/model.json and TREES.md from the code
+│                                  #  and curated/ (YAML); check.py is the CI guard
 ├── config/
 │   ├── instruments.yaml           # Instrument registry (ticker → symbol, basis, identity status)
 │   └── sector_toggles.json        # Enable/disable sectors at runtime
@@ -252,6 +256,7 @@ StockAgent-main/
 │                                  #  redeploy. Nothing should default here.
 ├── outputs/                       # Report output files
 ├── docs/                          # Design documentation (index: docs/README.md)
+│   └── architecture-map/          # Generated: TREES.md and model.json (never edit by hand)
 ├── Dockerfile                     # THE deploy artifact: core/ services/ src/backend→backend/
 │                                  #  scripts/ config.yaml config/ prototypes → anything outside
 │                                  #  its COPY set is dead in prod by construction
@@ -261,6 +266,13 @@ StockAgent-main/
 ├── requirements-test.txt          # Pinned test-only tools (runtime set: requirements.txt)
 └── requirements.txt
 ```
+
+> **The architecture map.** After a change to the code (any `.py` under `core/`, `services/`,
+> `src/backend/` or `scripts/`, even one line), to `config.yaml` or to the map's curated files, run
+> `python tools/architecture_map/model/generate.py` and commit what it writes. The guard
+> (`tools/architecture_map/model/check.py`, in CI's guards job and in the tests) fails otherwise,
+> and also when a new job, route or Python file belongs to no module in `curated/`. Read it as
+> trees in [docs/architecture-map/TREES.md](docs/architecture-map/TREES.md).
 
 > **Deleted in audit Wave E (2026-07-17, −34.8K lines)** — if you're looking for these, they're
 > gone on purpose: `core/sectors/` (22 sector skeletons, never live), `core/graphs/`,

@@ -1,0 +1,144 @@
+id: M6
+name: Discovery (finding new ideas)
+short: Discovery
+plane: middle
+column: 2
+summary: weekly hunt for new ideas ─► "the shelf"
+files:
+  - src/backend/shared/schemas/discovery.py
+submodules:
+  - id: M6.1
+    name: Weekly funnel
+    summary: run_discovery_cycle, Saturday 12:30
+    files:
+      - core/discovery/__init__.py
+      - core/discovery/ipo_tracker.py
+    code: ["core/discovery/__init__.py::run_discovery_cycle", "core/discovery/__init__.py::budget_split"]
+    config: [discovery.enabled, discovery.deep_dive_count, discovery.new_dive_floor]
+    logic: |
+      run_discovery_cycle()     each stage non-fatal; failures are listed in the result
+        1 data: end-of-day sync (7 days), bulk/block deals (4 weeks), insider trades,
+        | NSE listing
+          no listing ─► no stock can be confirmed as a company ─► no deep dives this week
+        2 IPO candidates (up to 2 slots)
+        3 shelf hygiene
+          verify the shelf's analyses: one of another company is dropped
+          verify the model's own verdicts: not a BUY ─► dropped; unreadable ─► re-dived
+          | first
+          drop non-companies, classify, pick re-dives
+            order: sold by the autopilot since its dive ─► unverified or unnamed
+            | ─► dive older than 30 days
+        4 screen (M6.2) ─► ranked candidates, minus those dived in the last month
+        5 deep dives (M6.3), budget 45 analyst calls a week
+          IPO slots first
+          re-dives up to 45 − IPO slots − 15 (15 calls kept for new companies)
+          new companies in rank order
+          leftover re-dives take what remains; the rest wait a week
+        6 record every dive as issued (dives.jsonl); the bare judge asks a plain model
+        | about the new ones (M11.4)
+        7 shelf update: refresh or drop re-dived ideas; add new ones; rotate stale
+        | (> 60 days)
+        8 alert to all: "added to the research shelf, tracking only, not a buy"
+        9 weekly paper reviews (M6.5)
+  - id: M6.2
+    name: Screen and guards
+    summary: a ranked shortlist from end-of-day data, then rejections
+    files:
+      - core/discovery/screen.py
+      - core/discovery/signals.py
+      - core/discovery/guards.py
+      - core/discovery/universe.py
+      - core/discovery/insider.py
+    code: ["core/discovery/screen.py::run_screen", "core/discovery/guards.py::apply_guards",
+           "core/discovery/signals.py::compute_signals"]
+    config: [discovery.min_price, discovery.liquidity_floor_cr, discovery.float_mcap_floor_cr,
+             discovery.max_promoter_pledge_pct, discovery.shortlist_size,
+             discovery.max_candidates, discovery.signal_weights]
+    logic: |
+      run_screen()      pure pandas, no model
+        universe: EQ series, above the price floor, companies only (NSE listing)
+        6 signals (raw values, then percentile ranks)
+          momentum ........... 6- and 12-month return ÷ volatility
+          delivery_surge
+          volume_breakout
+          bulk_block ......... bulk and block deal activity
+          high_52wk_rs ....... near the 52-week high, relative strength
+          insider_buying ..... promoter and director open-market net buying
+          a signal without data ─► "dark": left out, weights renormalised, named in the
+          | result
+        composite rank ─► shortlist (120)
+        guards on the shortlist
+          liquidity, series, price, circuit streaks (from end-of-day data)
+          surveillance: any ASM or GSM stage ─► reject; suspended ─► reject
+          free-float market cap floor
+          promoter pledge > 25% ─► reject
+          a guard's source is down ─► stock kept, check marked degraded
+          | (the watchdog warns when it lasts a week)
+        top 60 candidates ─► screens/<date>_screen.json
+  - id: M6.3
+    name: Deep dive and the shelf
+    summary: one analysis per candidate; the best join the shelf
+    files:
+      - core/discovery/deep_dive.py
+      - core/discovery/shelf.py
+      - core/discovery/sector_naming.py
+      - core/discovery/dive_record.py
+    code: ["core/discovery/deep_dive.py::run_deep_dives", "core/discovery/deep_dive.py::entry_levels",
+           "core/discovery/shelf.py::ShelfStore.apply_deep_dives",
+           "core/discovery/shelf.py::verdict_wait", "core/discovery/dive_record.py::DiveRecord"]
+    config: [discovery.shelf_size, discovery.max_ideas_per_sector, discovery.min_conviction,
+             discovery.stale_days, discovery.redive_after_days]
+    logic: |
+      Deep dive (one candidate)
+        skipped before any model call: not a company; already managed (unless sold);
+        | already on the shelf (unless due a re-dive)
+        M3 analysis of the exact NSE symbol (native or generic path), with the sector
+        | question in the same call
+        a report of another company ─► no result, no idea (the call still counts)
+        code, not the model, sets the entry band (close −3% to +2%) and an ATR-scaled
+        | invalidation level ("the thesis is dead below X")
+        result: verdict, model's own verdict, conviction, gate status, sector key
+      Shelf (at most 45 active ideas)
+        shelved only if: conviction ≥ 0.55, verdict BUY or STRONG BUY by the band AND by
+        | the model, of this company, and actionable when the gate is enforced
+        at most 6 ideas per sector (an unnamed or "generic" key is not capped)
+          sector full ─► replaces its weakest idea only if conviction is higher
+        shelf full ─► a stronger idea displaces the weakest
+        re-dive ─► refreshed in place, or dropped (not actionable, below floor, no
+        | longer BUY)
+        latest dive older than 60 days ─► rotated out
+        every change ─► shelf_events.jsonl (feeds the alerts)
+  - id: M6.4
+    name: Buy candidates
+    summary: what the autopilot may buy on session D
+    files: [core/discovery/candidates.py]
+    code: ["core/discovery/candidates.py::buy_candidates", "core/discovery/candidates.py::watchlist_idea",
+           "core/discovery/shelf.py::resale_wait", "core/discovery/shelf.py::analysis_of_other"]
+    config: [discovery.watchlist_buys]
+    logic: |
+      buy_candidates(portfolio, D)
+        source A: shelf ideas
+          dive fresh (≤ 30 days) AND made before D's close
+          the dive's verdict is BUY or STRONG BUY, by the band and by the model
+        source B: this user's watchlist BUYs
+          newest analysis before D's close: BUY or STRONG BUY (band and model),
+          | actionable, conviction ≥ floor, fresh, an NSE company
+          gets an entry band + invalidation level from the close that analysis read
+          a stock the autopilot sold onto the watchlist does not qualify
+        both: never an analysis of another company; a held stock keeps its idea
+        a stock with no sector key named is not offered
+        resale wait: sold since its idea was decided ─► not offered until a new deep
+        | dive (shelf) or analysis (watchlist)
+          a watchlist stock the autopilot sold: only an analysis made on or after the
+          | Saturday after the exit counts
+  - id: M6.5
+    name: Paper lane
+    summary: how an idea's forecast performs before any money goes into it
+    files: [core/discovery/paper_lane.py]
+    code: ["core/discovery/paper_lane.py::run_paper_reviews"]
+    logic: |
+      Every active shelf idea
+        a PAPER envelope (generate_forecast paper=True) in a separate store root
+        a weekly paper review (run_daily_review paper=True): graded, no learning writes
+        a new month ─► the envelope is remade if missing
+      Purpose: see how an idea's forecast performs before any money goes into it.

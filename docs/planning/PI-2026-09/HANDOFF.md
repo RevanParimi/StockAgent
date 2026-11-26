@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-26 (NEXT MAP-001; PR-047 accepted, its push waits for a window)
+# Current handoff - 2026-11-27 (NEXT MAP-002; MAP-001 accepted; the push waits for a window)
 
 ## Now
 
@@ -6,24 +6,23 @@
   PR-015's switch on `b9578e5` (02:40, PR-017), on `aeb38b9` (01:49, FIX-033 and PR-046).
   Cards `pending_observation`. The evidence rule decides from 23 Nov's 16:30 review.
 - **21 Nov:** the [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against
-  their own analysis; DEEPA (Deepak Nitrite's case) sold. FIX-033 (P0), PR-047 (option A). No hand
-  trades.
-- **26 Nov, PR-047 accepted** by its fresh review (autopilot `1126-2234-p8`,
-  [receipt](evidence/PR-047-review.md)), merged as `6eca615`, not yet pushed: a buy needs the
-  band's BUY and the model's own, so TVSMOTOR's kind is refused. BACKLOG B-42: a top-up (ADD)
-  reads neither verdict, for `PR-014-R1`. Step 1's read, `PR-047-S1`, waits for your word.
-- **26 Nov, OPS-002 to 006 done** (`evidence/OPS-00*.md`): the full suite runs only via
-  `scripts/ci/guarded_suite.py`; a box event holds the autopilot until `autopilot.sh seen`;
-  `autopilot.sh health` writes a daily box line.
-- **Next `continue`:** **MAP-001** (light), then MAP-002 to MAP-005, PR-007 (your order,
+  their own analysis; DEEPA sold. FIX-033, PR-047. No hand trades.
+- **26 Nov, PR-047 accepted** by its fresh review ([receipt](evidence/PR-047-review.md)), merged
+  as `6eca615`, not yet pushed: a buy needs the band's BUY and the model's own, so TVSMOTOR's kind
+  is refused. B-42: a top-up reads neither verdict (`PR-014-R1`). `PR-047-S1` waits for your word.
+- **Box rules** (OPS-002 to 006): full suite only via `scripts/ci/guarded_suite.py`; a box event
+  holds the autopilot until `autopilot.sh seen`; `autopilot.sh health` writes a daily box line.
+- **27 Nov, MAP-001 done** ([receipt](evidence/MAP-001.md),
+  [TREES.md](../../architecture-map/TREES.md)): code changes now need the map regenerated.
+- **Next `continue`:** **MAP-002** (light, 5 points), then MAP-003 to MAP-005, PR-007 (your order,
   26 Nov). **Autopilot, your word:** run to MAP-005; the phase that accepts it runs `/home/coder/project/autopilot/autopilot.sh stop` before
   writing its status. `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`: production reads,
   your word.
-- **Autopilot** (started 14:49 IST, 26 Nov): retry box checks and its own health line need your
-  next `start`.
-- **Git, push pending** (OPS-002's hold met): next window 00:10–06:20 IST; the runner pushes
-  between phases after the guarded suite. `origin/main` = `53461ab` (23 Nov); `main` is 18 ahead
-  (your walkthrough copy, B-12's email wording for Sun 29 Nov, OPS, PR-047's merge and records).
+- **Autopilot** (started 14:49 IST, 26 Nov): its retry box checks and health line need your next
+  `start`.
+- **Git, push pending:** next window 00:10–06:20 IST; the runner pushes between phases after
+  the guarded suite. `origin/main` = `53461ab` (23 Nov); `main` is 19 ahead (your walkthrough
+  copy, B-12's email wording for Sun 29 Nov, OPS, PR-047, MAP-001).
   After the push: the deploy, `/health`, `PR-047-W1` from the next 16:30 review; confirm
   `docs/architecture-map/walkthrough-2026-11-26.md` on `origin/main` (your word; OPS-003's last
   acceptance line).
@@ -136,6 +135,11 @@ These opened the old "START HERE — resume checklist, in order"; its dated entr
 session). Pull `main` first. Git carries the code, the docs, STATE, this file, every card and every receipt, so
 `continue` works from a fresh clone. A fresh clone lacks only what follows:
 
+- **Regenerate the architecture map with any code change** (a `.py` under `core/`, `services/`,
+  `src/backend/` or `scripts/`, `config.yaml`, or the map's curated files): run
+  `python tools/architecture_map/model/generate.py` and commit what it writes, or CI's guard and
+  the suite fail with the reason and the fix. A conflict on `model.json` is resolved the same way
+  (MAP-001; MAP-005 adds the AGENTS.md rule).
 - **Setup is automatic.** AGENTS.md's first step runs `bash scripts/setup_dev.sh --check`, and `bash scripts/setup_dev.sh`
   when something is missing. It creates `.venv` with the oldest Python from 3.11 up (the laptop keeps `.stockai`), installs
   the three requirement files, runs `npm ci` and installs Playwright's Chromium. On a new copy that took 5 min 26 s on

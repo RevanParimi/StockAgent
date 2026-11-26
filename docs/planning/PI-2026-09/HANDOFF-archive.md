@@ -14,6 +14,15 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 27 Nov, night (autopilot `1126-2343-p10`): MAP-001 → ACCEPTED (light)
+
+- **27 Nov, MAP-001 done** (light, [receipt](evidence/MAP-001.md), base `56b3a71`):
+  `tools/architecture_map/model/` writes `docs/architecture-map/model.json` and `TREES.md` from the
+  code (25 jobs, 91 routes, 344 files) and the curated meaning (12 modules, 51 logic trees); its
+  guard runs in CI and the tests. The 22 Nov seed was re-checked against the code, fixed and
+  deleted. Opus check: accept after fixes (readers that could miss a route or a gate, tracebacks on
+  wrong curated types, imprecise claims), fixed; B-44 and B-45 added.
+
 ## 26 Nov, night (autopilot `1126-2255-p9`): OPS-005 → ACCEPTED (light)
 
 - **26 Nov, OPS-005 done** (light, [receipt](evidence/OPS-005.md)): `autopilot/box_health.py`

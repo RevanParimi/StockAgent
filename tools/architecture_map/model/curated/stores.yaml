@@ -1,0 +1,166 @@
+# Where state lives. Paths are on the data/ volume. `code` names what manages the store.
+- id: S.predictions
+  name: Prediction stores
+  path: data/predictions/<sector>/<TICKER>/
+  holds: "envelopes, feedback logs, weights, lessons, dossier; exactly one store per stock"
+  writers: [M4.1, M4.2, M4.3, M4.4]
+  readers: [M1.1, M1.2, M1.4, M2.2, M4.1, M4.2, M4.4, M4.5, M5.2, M5.5, M5.6, M9.1, M10.1, M11.2]
+  code: ["core/intelligence/rl/stores/prediction_store.py::PredictionStore"]
+- id: S.ledgers
+  name: Shared lesson ledgers
+  path: data/predictions/<sector>/_shared_ledger.json and data/predictions/_market_ledger.json
+  holds: sector-wide and market-wide lessons
+  writers: [M4.4]
+  readers: [M4.2]
+  code: ["core/intelligence/rl/stores/ledger_propagator.py::propagate_lessons"]
+- id: S.regime
+  name: Sticky regime state
+  path: data/predictions/_regime_state.json
+  holds: the market-wide regime label and its calm streak
+  writers: [M4.2]
+  readers: [M4.2, M5.2, M5.4, M9.1]
+- id: S.paper
+  name: Paper-lane predictions
+  path: data/rl/paper/predictions/
+  holds: envelopes and reviews of shelf ideas, with no learning writes
+  writers: [M6.5]
+  readers: [M6.5]
+- id: S.portfolio
+  name: Portfolio ledger
+  path: data/portfolio/<user>/ (transactions.jsonl is the authority; portfolio.json derived)
+  holds: holdings, cash, every trade
+  writers: [M5.3, M5.6]
+  readers: [M5.1, M5.7, M6.4, M9.2, M10.1, M10.4]
+  code: ["core/portfolio/store.py::PortfolioStore"]
+- id: S.advice
+  name: Advice ledger
+  path: data/portfolio/<user>/advice_ledger.jsonl and switch_evaluations.jsonl
+  holds: every verdict with its triggers; every switch compared
+  writers: [M5.1]
+  readers: [M5.7, M10.1, M11.1]
+- id: S.history
+  name: Value history, digests and results
+  path: data/portfolio/<user>/value_history.jsonl, digests/, weekly_scorecard.jsonl, executable_prices.jsonl
+  holds: equity at each review, the daily digest, the weekly scorecard
+  writers: [M5.1, M5.3, M5.7]
+  readers: [M5.7, M9.2, M10.1]
+- id: S.cases
+  name: Investment cases
+  path: data/portfolio/<user>/cases/
+  holds: why each position is owned, and what would prove it wrong
+  writers: [M5.5]
+  readers: [M5.1, M5.5, M10.1]
+  code: ["core/portfolio/cases.py::CaseStore"]
+- id: S.exit_shadow
+  name: Exit-rule shadow
+  path: data/portfolio/<user>/exit_shadow.jsonl
+  holds: both exit rules' verdicts, per holding and review day
+  writers: [M5.5]
+  readers: [M5.7, M11.4]
+- id: S.shelf
+  name: The shelf
+  path: data/discovery/shelf.json and shelf_events.jsonl
+  holds: active ideas and every change to them
+  writers: [M6.3]
+  readers: [M2.2, M5.1, M6.1, M6.4, M6.5, M7.1, M9.1, M9.2, M10.1, M12.1]
+  code: ["core/discovery/shelf.py::ShelfStore"]
+- id: S.screens
+  name: Weekly screens
+  path: data/discovery/screens/<date>_screen.json
+  holds: each week's ranked candidates
+  writers: [M6.2]
+  readers: [M6.1, M9.1, M10.1, M11.1]
+- id: S.dives
+  name: Dive memo and dive record
+  path: data/discovery/dives.json (memo) and dives.jsonl (every dive, kept for good)
+  holds: what each deep dive said on its day
+  writers: [M6.3]
+  readers: [M6.1, M11.1]
+- id: S.bare
+  name: Bare judgements
+  path: data/discovery/bare_judgements.jsonl
+  holds: the plain model's BUY or SKIP on new dives
+  writers: [M11.4]
+  readers: [M11.1]
+- id: S.events
+  name: Company events
+  path: data/events/<SYMBOL>.jsonl
+  holds: typed, dated filings and news per stock
+  writers: [M7.1]
+  readers: [M5.1, M5.5, M10.1]
+  code: ["core/events/store.py::EventStore"]
+- id: S.ipo
+  name: IPO facts and verdicts
+  path: data/ipo/ and data/market_cache/ipo.json
+  holds: calendar, order book, research, verdicts
+  writers: [M8.1]
+  readers: [M6.1, M9.1, M11.1]
+- id: S.eod
+  name: End-of-day cache
+  path: data/market_cache/bhavcopy/
+  holds: one parquet per session for every NSE stock
+  writers: [M2.1]
+  readers: [M5.7, M6.1, M6.2, M6.3, M6.4, M9.2, M11.1]
+  code: ["services/data/stores/eod_store.py::EodStore"]
+- id: S.scores
+  name: Score history
+  path: data/scores.db
+  holds: one row per completed analysis
+  writers: [M3.1]
+  readers: [M1.2, M5.5, M6.3, M6.4, M10.1, M10.4]
+  code: ["services/data/stores/score_store.py::ScoreStore"]
+- id: S.telemetry
+  name: Telemetry
+  path: data/telemetry.db
+  holds: model calls, run summaries, warnings, data health
+  writers: [M1.5, M3.1, M12.5]
+  readers: [M12.2, M12.5]
+- id: S.gate
+  name: Gate and data-health logs
+  path: data/logs/ (decision_gate.jsonl, data_health.jsonl)
+  holds: "what the data gate stopped, and what each run received; read by the owner"
+  writers: [M3.4]
+  readers: [ext.owner]
+- id: S.users
+  name: Accounts
+  path: data/users.db
+  holds: users, sessions, invites, quotas
+  writers: [M10.2]
+  readers: [M10.2]
+- id: S.chat
+  name: Chat sessions
+  path: data/chat_sessions.db
+  holds: the last turns of each chat
+  writers: [M10.4]
+  readers: [M10.4]
+- id: S.atlas
+  name: Atlas user plane
+  path: data/atlas.db
+  holds: user instruments, verdict projections, the outbox, feedback
+  writers: [M1.4, M9.5]
+  readers: [M1.4, M9.5]
+  code: ["services/data/stores/atlas_store.py::enabled"]
+- id: S.delivery
+  name: Sent alerts and delivery
+  path: data/delivery/
+  holds: the sent-alert log, briefs and weekly reviews
+  writers: [M9.1, M9.2, M9.3]
+  readers: [M10.1, M11.1]
+- id: S.managed
+  name: Managed list
+  path: data/managed_tickers.json
+  holds: which stocks the 16:30 review covers
+  writers: [M5.3, M5.6, M10.1]
+  readers: [M1.1, M1.2, M4.1, M4.2]
+- id: S.audit
+  name: Graded outcomes
+  path: data/portfolio/<user>/advice_outcomes.jsonl
+  holds: each call graded at each horizon
+  writers: [M11.1]
+  readers: [M5.7, M10.1, M11.1]
+- id: S.backups
+  name: Backups
+  path: data/backups/
+  holds: the last 7 archives and their manifests
+  writers: [M12.4]
+  readers: [M12.1]

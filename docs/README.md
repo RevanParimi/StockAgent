@@ -12,6 +12,7 @@ Two kinds of documents live here. Know which kind you're reading.
 |---|---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | **Start here.** Current-state system map: the three loops, runtime topology, the scheduled jobs, data volume layout, LLM tiers, security posture | Everyone |
 | [PRODUCT_MAP.md](PRODUCT_MAP.md) | Every module and its parts, counted from the tree, with a four-week study order | Developers learning the codebase |
+| [architecture-map/TREES.md](architecture-map/TREES.md) | The architecture as trees: modules, logic, flows, stores, the daily clock and one stock's life. Generated from the code and the curated model in `tools/architecture_map/model/` (`model.json` beside it); the CI guard fails when they disagree. [The dated reading copy of 26 Nov](architecture-map/walkthrough-2026-11-26.md) is the owner's | Developers and technology managers |
 | [../README.md](../README.md) | Product-level tour: what it does, sectors, verdicts, portfolio features, FAQ | Users / evaluators |
 | [../CODEBASE.md](../CODEBASE.md) | Module map, API endpoint census, sector registry, configuration reference | Developers |
 | [RL_DESIGN.md](RL_DESIGN.md) | The learning loop in full: envelopes, the daily review's steps and input checks, the learning mode, weight formulas, lessons, the Knowledge Layer, the Living Envelope | RL developers |

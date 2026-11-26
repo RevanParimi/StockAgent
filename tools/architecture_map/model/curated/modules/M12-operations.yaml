@@ -1,0 +1,75 @@
+id: M12
+name: Operations
+short: Operations
+plane: ring
+column: 6
+summary: watchdog, error backlog, ops alerts, backups, logs
+submodules:
+  - id: M12.1
+    name: Watchdog
+    summary: milestones and checks, 06:30
+    files:
+      - core/ops/__init__.py
+      - core/ops/watchdog/*.py
+    code: ["core/ops/watchdog/engine.py::evaluate", "core/ops/watchdog/runner.py::run_watchdog"]
+    config: [watchdog.enabled]
+    logic: |
+      06:30: config/milestones.yaml + named checks; the ladder is a pure function
+        satisfied after not being satisfied ─► "resolved" once, then silent
+        unknown (the check crashed) ─► warning every day (a silent watchdog is worse
+        | than none)
+        past its deadline, not satisfied ─► critical every 7 days, indefinitely
+        window open (or no window) ─► warning every day (a check may ask for slower)
+        window near ─► info once
+        otherwise silent
+      examples: backup restorable, audit ran, IPO cache fresh, screen guard sources
+      | alive, error backlog needs triage, scorecard written
+  - id: M12.2
+    name: Error backlog
+    summary: every warning, grouped into issues
+    files:
+      - core/ops/error_backlog.py
+      - scripts/prod_errors.py
+    code: ["core/ops/error_backlog.py::STATUSES"]
+    logic: |
+      every WARNING+ in telemetry.db ─► normalised text ─► fingerprint
+        one issue per cause: new | regressed | ongoing | quiet, with a spiking flag
+        triage by the owner: open | acknowledged | fixed | wontfix
+          "fixed" is proven by later data; a recurrence reopens the issue
+  - id: M12.3
+    name: Ops alerts
+    summary: the owner hears of failures at once
+    files: [core/delivery/ops_alerts.py]
+    code: ["core/delivery/ops_alerts.py::alert_job_zero_output",
+           "core/delivery/ops_alerts.py::alert_job_crashed"]
+    logic: |
+      10 model failures in a row ─► one critical alert (at most every 6 h)
+      a job with zero or partial output ─► an alert naming each stock and reason
+      a crashed job ─► one critical alert
+  - id: M12.4
+    name: Backups
+    summary: a nightly archive that is proven restorable
+    files:
+      - services/data/backup.py
+      - services/data/offsite.py
+      - services/data/restore.py
+    code: ["services/data/backup.py::run_backup_job", "services/data/backup.py::BACKUP_KEEP"]
+    logic: |
+      23:30: zip of everything that cannot be rebuilt
+        SQLite through its backup API
+        manifest: SHA-256, integrity, row counts
+        restore drill
+        keep 7
+        off-site copy (AES-256-GCM) once a target is set; the watchdog says when none is
+        | confirmed
+        nothing is emailed
+  - id: M12.5
+    name: Logs
+    summary: what happened, kept
+    files:
+      - services/data/stores/log_store.py
+    code: ["services/data/stores/log_store.py::SQLiteLogHandler"]
+    logic: |
+      telemetry.db (model calls, run summaries, app logs, data health)
+        an in-memory buffer for /ui/logs
+        a run id on every warning

@@ -2667,6 +2667,13 @@
       "fields": {
         "sequencing_note": "Moved behind PR-047. Owner's order, 26 Nov 2026 (second word): OPS-002, OPS-003, OPS-004, OPS-006, then PR-047, then OPS-005, then the map."
       }
+    },
+    {
+      "id": "MAP-001",
+      "moved": "2026-11-26",
+      "fields": {
+        "sequencing_note": "Placed 23 Nov 2026 (CLAUDE.md section 2: order is delegated): after FIX-033 (P0), PR-017's fresh review and PR-047 (the decided buy rule), which protect money; before PR-007 and the rest. PR-015's switch keeps its push window. One phase per card; the autopilot runs them. The owner may move the map first."
+      }
     }
   ]
 }

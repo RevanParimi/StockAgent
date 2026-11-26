@@ -1,0 +1,164 @@
+id: M3
+name: Research engine (one stock ─► one verdict)
+short: Research
+plane: middle
+column: 2
+summary: one stock ─► a verdict, STRONG BUY ... STRONG SELL
+submodules:
+  - id: M3.1
+    name: Orchestrator
+    summary: base_orchestrator.py, the one analyse() path
+    files:
+      - src/backend/shared/pipeline/__init__.py
+      - src/backend/shared/pipeline/base_orchestrator.py
+      - src/backend/shared/pipeline/no_analysis.py
+      - src/backend/shared/schemas/pipeline.py
+      - src/backend/shared/prompts/orchestrator.py
+      - src/backend/sectors/*/pipeline/*.py
+      - core/pipeline/__init__.py
+      - core/pipeline/orchestrator.py
+      - core/schemas/pipeline.py
+      - core/config/prompts/shared/orchestrator.py
+      - services/data/stores/analysis_failures.py
+      - services/data/stores/analysis_logger.py
+      - services/data/stores/run_logger.py
+      - services/data/stores/score_store.py
+      - src/backend/shared/data/stores/analysis_logger.py
+      - src/backend/shared/data/stores/run_logger.py
+      - src/backend/shared/data/stores/score_store.py
+      - scripts/backfill_score_history.py
+    code: ["src/backend/shared/pipeline/base_orchestrator.py::BaseSectorOrchestrator.analyse",
+           "src/backend/shared/pipeline/base_orchestrator.py::BaseSectorOrchestrator._resolve_ticker",
+           "src/backend/shared/pipeline/no_analysis.py::AnalysisUnavailable"]
+    config: [rl.learning_mode]
+    logic: |
+      analyse("MARUTI")      one run id; every warning in the run carries it
+        1 resolve the ticker (M2.3); an exact NSE symbol is never sent to a model
+        2 choose weights
+          learning_mode observe ─► the sector's default weights
+          adapt ─► this stock's learned weights (defaults if none)
+        3 prefetch NSE data once
+        4 bundle (M2.2) + unified analyst (M3.2)
+          write one data-health row: what arrived, what was missing
+          queue the search shadow on a daemon thread (changes nothing)
+        5 no dimension scored?
+          yes ─► record the failure, raise AnalysisUnavailable
+          | no verdict, no score row; the caller skips this stock today
+        6 aggregator (M3.3) ─► FinalReport
+        7 decision gate (M3.4) ─► may turn the verdict into INSUFFICIENT DATA
+        8 record: run summary, score history (scores.db), analysis log, API usage
+          score history feeds Home, the watchlist, chat and the buy candidates (M6.4)
+      Who asks for an analysis
+        16:30 daily review (re-run on a miss day) ................ M4.2
+        monthly forecast, startup self-heal, shock re-forecasts .. M4
+        Saturday deep dives, paper lane .......................... M6
+        POST /analyse, /ws/stream, the chat tool run_agent_analysis . M10
+        "generate envelope" on a managed ticker .................. M10
+  - id: M3.2
+    name: Unified analyst
+    summary: ONE reasoning call scores every dimension
+    files:
+      - src/backend/shared/pipeline/unified_analyst.py
+      - src/backend/sectors/*/prompts/*.py
+      - src/backend/sectors/*/schemas/*.py
+      - src/backend/sectors/*/config/*.py
+      - src/backend/sectors/*/data/*.py
+    code: ["src/backend/shared/pipeline/unified_analyst.py::UnifiedAnalyst.run",
+           "src/backend/shared/pipeline/unified_analyst.py::DIMENSIONS"]
+    config: [unified_analyst.max_tokens]
+    logic: |
+      UnifiedAnalyst.run(stock, bundle, sector)     never raises
+        the sector's spec ─► its prompt module + its dimensions
+          automobile (9) ....... sales_demand, raw_materials, fundamentals,
+          | pattern_analysis, sentiment, policy_regulatory, competitive_intel,
+          | risk_macro, valuation_catalyst (+ price target, fair value)
+          banking_bfsi (6) ..... fundamentals, risk, macro_policy, institutional,
+          | pattern_analysis, universe_setup
+          it_sector (8) ........ fundamentals, global_macro, risk_macro, peer_benchmark,
+          | pattern_analysis, sentiment, transcript_nlp, insider_smart_money
+          renewable_energy (6) . fundamentals, business, valuation, sentiment_policy,
+          | technical, risk
+          generic (8) .......... business, fundamentals, valuation, technical, macro,
+          | risk, management, earnings
+        one reasoning-tier call (with retries), JSON out
+          valid JSON ─► one output per dimension (score 0..1, texts capped)
+          cut-off JSON ─► salvage the dimensions present; the rest are marked errored
+          garbage or a failed call ─► {} + reason (the orchestrator raises
+          | AnalysisUnavailable)
+        an optional "sector question" from discovery, answered in the same call
+  - id: M3.3
+    name: Aggregator
+    summary: weights ─► composite ─► verdict
+    files:
+      - src/backend/shared/pipeline/signal_aggregator.py
+      - src/backend/shared/prompts/signal_aggregator.py
+      - core/pipeline/signal_aggregator.py
+      - core/config/prompts/shared/signal_aggregator.py
+    code: ["src/backend/shared/pipeline/signal_aggregator.py::SignalAggregator.run",
+           "src/backend/shared/pipeline/signal_aggregator.py::CONFLICT_THRESHOLD"]
+    config: [rl.hard_bind_verdict_enabled, score_thresholds]
+    logic: |
+      SignalAggregator.run(outputs, weights)
+        composite = Σ(score × weight) ÷ Σ(weight), over SCORED dimensions only
+          errored dimension ─► excluded, weights renormalised (never counted as 0.5)
+        conflicts: two dimensions 0.30 or more apart ─► flagged to the model
+        one reasoning-tier call ─► thesis, drivers, risks, final_score, verdict
+        verdict shadow: log the model's verdict beside the composite's verdict
+        the model's own verdict is kept as model_verdict (read by the buy doors, M6)
+        hard-bind on (rl.hard_bind_verdict_enabled) ─► verdict = the composite's band
+          ≥ 0.75 ......... STRONG BUY
+          0.55 – 0.75 .... BUY
+          0.40 – 0.55 .... NEUTRAL
+          0.20 – 0.40 .... SELL
+          < 0.20 ......... STRONG SELL
+          (final_score stays the model's; it sets how wide the forecast's confidence is)
+  - id: M3.4
+    name: Decision gate
+    summary: actionable, degraded or abstain
+    files:
+      - src/backend/shared/pipeline/decision_gate.py
+      - services/data/stores/data_health.py
+    code: ["src/backend/shared/pipeline/decision_gate.py::assess_analysis",
+           "src/backend/shared/pipeline/decision_gate.py::apply_gate",
+           "src/backend/shared/pipeline/decision_gate.py::apply_identity"]
+    config: [decision_gate.mode, decision_gate.min_dimensions_fraction]
+    logic: |
+      assess_analysis(section statuses, dimensions scored)
+        ABSTAIN if any of
+          an essential section (fundamentals, technicals, peers_valuation) not
+          | ok / cache_hit
+          fewer than 50% of the sector's dimensions scored
+          a hollow run, or no structured provenance (the bundle was not described)
+          identity unresolved, or prices fetched for another symbol
+          the gate itself crashed (fails closed)
+        DEGRADED: essentials present, some enrichment (news, macro, flows) missing;
+        | still usable
+        ACTIONABLE: everything present
+      Then, by mode
+        record ─► compute it, log to decision_gate.jsonl, change nothing
+        enforce ─► an abstained analysis means
+          verdict = INSUFFICIENT DATA
+          no forecast envelope, no re-forecast, no shelf idea
+          no weight update and no lesson from it
+          no ADD, no SWITCH buy, no idle-cash buy on it
+          EXIT and TRIM are never blocked (missing data must not trap a position)
+        an unknown mode value ─► fails closed to enforce
+  - id: M3.5
+    name: Sector routing
+    summary: which analysis path runs for a sector key
+    files:
+      - src/backend/sectors/__init__.py
+      - src/backend/sectors/registry.py
+      - src/backend/sectors/generic/__init__.py
+      - core/intelligence/rl/workflows/sector_router.py
+    code: ["src/backend/sectors/registry.py::_SectorRegistry.get_graph_sector",
+           "core/intelligence/rl/workflows/sector_router.py::get_orchestrator"]
+    config: [sectors.generic_fallback_enabled]
+    logic: |
+      Which path runs for sector key S?      registry.get_graph_sector(S)
+        S native and enabled (automobile, banking_bfsi, it_sector, renewable_energy)
+        | ─► itself
+        S known but has no native path (pharma, fmcg, metals ... 18 in all) ─► generic
+        S unknown ─► generic (automobile only if the fallback flag is turned off)
+        One map for every entry point. Two maps once disagreed and made duplicate
+        | stores.

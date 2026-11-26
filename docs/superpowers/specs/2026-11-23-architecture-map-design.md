@@ -1,8 +1,9 @@
 # Architecture map — a 3D world for the flow, a flat panel for the logic
 
 Status: **adopted as the plan** on 2026-11-23 (the owner, about 00:10 IST: "take it like phases
-that we do and complete all phases of this plan using our autopilot"). Nothing here is
-implemented yet. Author: Claude + Revan. Date: 2026-11-23. Stories:
+that we do and complete all phases of this plan using our autopilot"). MAP-001 (the model, its
+generators and the guard) is implemented; the viewer and later phases are not. Author: Claude +
+Revan. Date: 2026-11-23. Stories:
 [MAP-001](../../planning/PI-2026-09/stories/MAP-001.md) to
 [MAP-005](../../planning/PI-2026-09/stories/MAP-005.md).
 
@@ -11,7 +12,8 @@ implemented yet. Author: Claude + Revan. Date: 2026-11-23. Stories:
 On 22 Nov 2026 the owner asked to understand the core architecture "in ascii tree way": prose
 documents do not show the flow. The walkthrough that followed (12 modules, their sub-modules, the
 logic of each as branching trees, the daily clock, one stock's life) is kept as the map's seed:
-[seed walkthrough](../../architecture-map/seed-walkthrough-2026-11-22.md). The owner then asked
+seed walkthrough, which MAP-001 turned into the model on 27 Nov and which
+[TREES.md](../../architecture-map/TREES.md), generated from that model, replaces. The owner then asked
 for the same understanding as something "visually stunning and detailed", in 3D, that "will long
 last for any developer or techno manager"; effort is not a constraint.
 

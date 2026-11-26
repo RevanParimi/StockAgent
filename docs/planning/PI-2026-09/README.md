@@ -41,9 +41,11 @@ PR-035, and [PR-040](stories/PR-040.md) (members see three screens and load no o
 first half of PR-010) follows CLEAN-004. **Since 23 Nov 2026**, at the owner's request, the
 architecture map ([design](../../superpowers/specs/2026-11-23-architecture-map-design.md)),
 [MAP-001](stories/MAP-001.md) to [MAP-005](stories/MAP-005.md), follows PR-047. **Since 26 Nov
-2026**, at the owner's request after the build box went down, [OPS-001](stories/OPS-001.md) to
-[OPS-006](stories/OPS-006.md) (what the test suite costs the box, a memory guard, the slow browser
-test, the autopilot reading the crash log, a daily health line, box notes) come ahead of PR-047.
+2026**, at the owner's request after the build box went down, the build-box stories come first:
+[OPS-001](stories/OPS-001.md) (what the test suite costs), [OPS-002](stories/OPS-002.md) (a memory
+guard), [OPS-003](stories/OPS-003.md) (the slow browser test), [OPS-004](stories/OPS-004.md) (the
+autopilot reads the crash log) and [OPS-006](stories/OPS-006.md) (box notes), then PR-047, then
+[OPS-005](stories/OPS-005.md) (a daily health line), then the map (the owner's order, 26 Nov).
 The tables below show the plan as it was first drawn.
 
 Planning assumption: six two-week sprints, one story implementation and a separate review conversation at a time. Start dates and team capacity are not known; these are relative sprints, not promised calendar deadlines. Estimates are relative, provisional points; re-estimate after Sprint 1. Do not expand a story just to meet a point budget.

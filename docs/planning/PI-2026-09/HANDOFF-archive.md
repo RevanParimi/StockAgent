@@ -14,6 +14,15 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 26 Nov (autopilot `1126-1654-p3`): OPS-004 → ACCEPTED (light)
+
+- **26 Nov, OPS-004 done** (light, [receipt](evidence/OPS-004.md)): the autopilot reads
+  `~/devbox/events.log` before each phase and push (`autopilot/box_events.py`, outside git). A
+  `BOOT`, `OOM_KILL` or `ANOMALY` not yet seen, or a log that cannot be read, holds it;
+  `RC_EXIT` alone does not. Crashed phase `1126-0616-p1` now reads `INTERRUPTED`. Opus check:
+  both medium findings fixed (a 2-hour cut could end a working phase; a phase stopped by hand
+  could later read interrupted). 47 tests of the autopilot pass; B-40 recorded.
+
 ## 26 Nov (autopilot `1126-1550-p2`): OPS-003 → ACCEPTED (light)
 
 - **26 Nov, OPS-003 done** (light, [receipt](evidence/OPS-003.md)): the two screen suites stop

@@ -698,6 +698,8 @@ def test_the_scorecard_shows_the_tally_and_recommends_only_on_two_passing_weeks(
     assert block["gate"]["status"] == xs.PASS and block["recommend"] is False
     line = next(l["text"] for l in first["lines"] if l.get("label") == "Exit rule test")
     assert line == (
+        "Acting at the latest recorded review (12 Nov): the price-path rule; the evidence "
+        "rule's verdict is recorded beside it. "
         "The price-path rule and the evidence rule disagreed on 17 decisions in 18 "
         "holding-days reviewed; at 10 sessions it was right on 16 of 16, averaging +5.00% a "
         "decision against the Nifty; at 30 sessions it was right on 16 of 16, averaging "
@@ -1013,6 +1015,8 @@ def test_r2_four_five_day_episodes_are_four_decisions_and_the_gate_says_not_yet(
         assert block["recommend"] is False
         line = next(l["text"] for l in card["lines"] if l.get("label") == "Exit rule test")
         assert line == (
+            "Acting at the latest recorded review (7 Aug): the price-path rule; the evidence "
+            "rule's verdict is recorded beside it. "
             "The price-path rule and the evidence rule disagreed on 4 decisions in 20 "
             "holding-days reviewed (a holding counts once, on the first day the rules "
             "differed; 16 later days of the same disagreements are not counted); at 10 "

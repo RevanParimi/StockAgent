@@ -1,11 +1,10 @@
-# Current handoff - 2026-11-26 (PR-015 accepted and deployed; NEXT BACKLOG B-12 with your walkthrough's push, then PR-047)
+# Current handoff - 2026-11-26 (B-12 done, push pending with your walkthrough; NEXT PR-047)
 
 ## Now
 
 - **Deployed:** `4c7f611`, 04:07 IST Mon 23 Nov (`5f33208f` SUCCESS, `/health` 200 at 04:07):
   PR-015's switch on `b9578e5` (02:40, PR-017), on `aeb38b9` (01:49, FIX-033 and PR-046).
-  Cards `pending_observation`. Today's 16:30 review is the first the evidence rule decides;
-  tonight's 23:45 audit grades the stored screens first.
+  Cards `pending_observation`. The evidence rule decides from 23 Nov's 16:30 review.
 - **21 Nov:** the [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against
   their own analysis; DEEPA (Deepak Nitrite's case) sold. FIX-033 (P0), PR-047 (option A). No hand
   trades.
@@ -19,16 +18,22 @@
   (light rollout, autopilot `1123-0344-p4`, at your word of 18 Nov;
   [receipt](evidence/PR-015-rollout.md)) and merged as `31521a2`; deployed (above):
   `advisor.exit_rule: evidence` acts from today's 16:30 review. `PR-015-W1` from Tue 24 Nov.
-- **Next `continue`:** **BACKLOG B-12** (light; its trigger, PR-015's merge, is met): the
-  scorecard's gate sentence after the switch and which rule acts, with KT section 6's paragraph.
-  Your word (26 Nov): its push also carries your walkthrough copy, committed 26 Nov
-  (`docs/architecture-map/walkthrough-2026-11-26.md`); the phase confirms it reached `origin/main`.
+- **26 Nov, B-12 done** (light, autopilot `1126-0616-p1`, [receipt](evidence/B-12.md)): the
+  scorecard's "Exit rule test" line names the acting rule and words its gate for it: under
+  `evidence` a pass supports keeping it; a shortfall in count or money is a reason to consider
+  the rollback. Checked by an Opus subagent; its medium finding fixed. Seen after a deploy.
+  The box restarted during its full suite (07:56 IST); a manual session ran it again (7,018
+  passed, 8m34s) and committed.
+- **Next `continue`:** **PR-047** (option A; step 1 light), then MAP-001 to MAP-005, PR-007.
   **Autopilot, your word (26 Nov):** run to MAP-005; the phase that accepts MAP-005 runs
   `/home/coder/project/autopilot/autopilot.sh stop` before writing its status.
-  Then **PR-047** (option A), MAP-001 to MAP-005, PR-007. `FIX-017-W1`, `CLEAN-004-W1`,
-  `FIX-033-W1`, `PR-015-W1`: production reads, your word.
-- **Git:** `origin/main` = `53461ab` (the deploy record, the runner's push at 04:17 Mon 23 Nov);
-  `main` 2 ahead (the MAP design edit `f893dc4`, the walkthrough copy), push pending: B-12's. `story/PR-015`, `story/PR-017` and `story/FIX-033` merged.
+  `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`: production reads, your word.
+- **Git, push pending:** `origin/main` = `53461ab` (the runner's push, 04:17 Mon 23 Nov);
+  `main` is ahead by `f893dc4`, `8fae35d` (your walkthrough copy), `370d802` and B-12's commit.
+  The runner's 06:16 suite on `370d802` failed on one browser suite's time limit (a 2-CPU
+  container under load, BACKLOG B-37). After the push, confirm
+  `docs/architecture-map/walkthrough-2026-11-26.md` on `origin/main` (your word, 26 Nov).
+  `story/PR-015`, `story/PR-017` and `story/FIX-033` merged.
 
 ## Waits for you
 

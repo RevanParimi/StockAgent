@@ -1786,13 +1786,34 @@ could not fill for many months, while the price-path rule kept selling. The owne
 are the same under both rules, and the price-path verdict is still recorded
 each day, so the same tally runs with the roles swapped. The owner keeps the
 rule or rolls it back (`shadow`) at the eight-week results, from the tally at
-10 and 30 sessions; "no difference" is a valid result. The gate's look is
-still computed and shown each week, and its sentence is still worded for a
-switch not yet made: after the switch, "passed two weeks running ... may
-replace" reads as support for keeping the evidence rule, and "fails" as a
-reason to consider the rollback. The thesis review and its `thesis_break`
-verdict stay computed and recorded; retiring that exit path is a later
-decision.
+10 and 30 sessions; "no difference" is a valid result. The thesis review and
+its `thesis_break` verdict stay computed and recorded; retiring that exit path
+is a later decision.
+
+**What the line says after the switch.** The gate's look is still computed and
+shown each week. The line first names the rule acting at the latest recorded
+review, read from that row's `mode` ("Acting at the latest recorded review (27
+Nov): the evidence rule; the price-path rule's verdict is recorded beside
+it."), and words the gate for it.
+
+| The look | Evidence rule acting | Price-path rule acting (`shadow`) |
+|---|---|---|
+| Passes twice running | "which supports keeping the evidence rule. The owner decides." | "so the evidence rule may replace the price-path rule. The owner decides." |
+| Passes this week | "a second passing week running would support keeping the evidence rule." | "it must pass again next week." |
+| Fails in count or money | "That is a reason to consider the rollback to the price-path rule. The owner decides." | the reasons only |
+| Fails otherwise, a result still unknown | "Some results are still unknown, so this does not yet show whether the evidence rule is doing worse than the price-path rule." | the reasons only |
+| Fails otherwise, every result known | "That does not show the evidence rule doing worse than the price-path rule." | the reasons only |
+
+A fail is "in count or money" when the evidence rule is right on less than 50%
+at a horizon even if every result still unknown there went its way, or its mean
+result is below 0 at a horizon whose results are all known. Examples, with 15
+judged decisions: right on 6 at 30 sessions, or right on 8 with a mean of
+−3.6%, is a reason to consider the rollback. Right on 7 at 10 sessions with one
+more decision still without a price there (7 + 1 = 8 of 15), everything else
+passing, fails but cannot yet say whether the rule is worse, whatever the
+known results average. One stock holding 5 of them (33%), every result known,
+fails without showing it worse. `legacy` writes no row, so under it the line
+goes on naming the rule of the last recorded review, with that review's date.
 
 The weekly scorecard also shows, beside the exit rule test, the fall the
 stocks the evidence rule kept went through, and the decision pace with the
@@ -2747,7 +2768,7 @@ week whose sessions are not over is never stored.
 | Every deep dive | From the auditor's idea lanes (above): at 30 sessions from the next session's open, BUY dives, rejected dives, screen-only candidates and the bare model's BUYs against the Nifty, each with its mean and median gap in points, the share that beat it and its n ("too few to judge" under 30), and BUY dives by graph. Only grades matured by the week's end count. Paper research: it is a line, not a flag. |
 | By exit reason | The same round trips over the last 13 weeks and since the start, each under exactly one reason: the one its closing sale was made for. A SWITCH is "SWITCH sale" and a TRIM that sold the last share "TRIM", whatever their triggers. An EXIT is its first trigger in the order the advisor checks them: another company's analysis, stop, case broken, price-path exit, shock, crisis, trailing stop (a trade sold on two is counted once, under the first, and the line says how many were); an EXIT on a code with no name here shows that code; one with no code is "other (no reason recorded)", never dropped. Your own sales are "sold by you". For each reason and in total: count, wins and average win, losses and average loss, and the mean result a trade, before costs. |
 | Bought back | From the ledger alone: each stock bought again after a sale emptied its position (by any rule or by you), over the last 4 weeks and since the start, with the charges recorded on that sale and that buy; a round trip whose rows carry no charges (written before charges were recorded) is counted and said. A top-up of a position still held is not one. |
-| Exit rule test | From `exit_shadow.jsonl` (section 6): on how many decisions the price-path rule and the evidence rule disagreed (one per holding, on its first disagreeing day), in how many holding-days reviewed, and how many later days of the same disagreements were not counted; how often the evidence rule was right at 10 and 30 sessions and its mean result a decision against where the money went (how many against cash, how many against the Nifty), with the mean against the Nifty alone beside it; what is still pending, has no price, or has no result because a corporate action could not be ruled out or allowed for (naming those stocks); this week's look at the switch gate ("not worse" on a pass, plus "better" when it applies, or "cannot judge" when more decisions are set aside than the cap allows); and each decision set aside from the gate, with its decision day and why its result can never be known. The row stores the look, so the next week can tell whether the gate passed twice in a row. Shown once a row exists. |
+| Exit rule test | From `exit_shadow.jsonl` (section 6): which rule was acting at the latest recorded review, and the gate worded for that rule; on how many decisions the price-path rule and the evidence rule disagreed (one per holding, on its first disagreeing day), in how many holding-days reviewed, and how many later days of the same disagreements were not counted; how often the evidence rule was right at 10 and 30 sessions and its mean result a decision against where the money went (how many against cash, how many against the Nifty), with the mean against the Nifty alone beside it; what is still pending, has no price, or has no result because a corporate action could not be ruled out or allowed for (naming those stocks); this week's look at the switch gate ("not worse" on a pass, plus "better" when it applies, or "cannot judge" when more decisions are set aside than the cap allows); and each decision set aside from the gate, with its decision day and why its result can never be known. The row stores the look, so the next week can tell whether the gate passed twice in a row. Shown once a row exists. |
 | What waiting cost | Shown with the exit rule test. For each decision (one per holding, a stock bought again being another) in which the evidence rule kept the stock and the price-path rule sold it: the lowest close in the sessions after the review day up to and including the 10th and the 30th, against the close the decision was made at, as a fall (0 when it never closed below it). The median and the worst, naming the stock, at each horizon. A horizon not yet ended is pending; no close after a horizon's day is read. The closes come from one daily series per stock (Yahoo's, adjusted for bonuses, splits and dividends), so the decision's close and the later ones are in one price basis and a dividend counts as received. A decision has no result at a horizon, said with its stock, when that series lacks the decision's close or any session's close in the window (a missing close could hide the lowest), or when NSE's list of its corporate actions could not be read, is empty, holds no dated row, starts after the decision, or lists a bonus, a split or another change of price basis inside the window, or the instrument registry records a demerger or relisting there. |
 | At prices that could be had | Every autopilot BUY and SELL again at two real prices, from `executable_prices.jsonl` (below): the open of the first session after the booked close's, and the open of the first session the run that booked it could still act at. The same trades, quantities and cost rates; each BUY pays and each SELL receives the real price, and the trades' cash difference moves the since-start valuation of "You vs the Nifty" (the Nifty side is unchanged). The line gives the paper book since the start at each price beside its figure at the booked closes, how much more buys cost and how much less sells brought on average at the next open, and the number of trades, with how many have no price or are still waiting at each price; each of those keeps its booked close. A price from a session after the week's end is still waiting in that week's row. |
 | Decision pace | Shown with the exit rule test. Decisions a week over the last 4 weeks, how many in all and since when, and the earliest week the switch gate could first pass at that pace and pass two weeks running, labelled arithmetic, not a forecast. Later decisions are taken to come evenly at the pace (the m-th, 7m ÷ pace days on, rounded up to a whole day). The gate needs 15 decisions past 30 sessions whose review days span 8 weeks, and decisions reach 30 sessions in the order they were made: the week is the one holding the 30th session after the first decision, from the 15th on, made 56 days or more after the first. Example: 6 decisions since 2 Oct, 4 of them in the last 4 weeks (1 a week), read on 29 Nov 2026: the 15th comes 9 weeks on, on 31 Jan 2027; its 30th session is 12 Mar, so the week of 8 Mar, and two passing weeks running the week of 15 Mar. With no decision in the last 4 weeks no date is given; once the decisions it needs have reached 30 sessions the line says the gate can judge. A pass is never assumed. |

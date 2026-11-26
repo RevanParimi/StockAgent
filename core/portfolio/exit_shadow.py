@@ -63,8 +63,11 @@ the gate, named and within a cap; any other never helps the evidence rule
 (`gate_look`).
 
 **The switch gate** is fixed here, before any result. It recommends the
-switch; the owner makes it (`advisor.exit_rule: evidence`). Rollback: legacy.
-A pass means "not worse" in count and money, not "better" (`gate_look`).
+switch; the owner makes it (`advisor.exit_rule: evidence`). Rollback: shadow.
+A pass means "not worse" in count and money, not "better" (`gate_look`). The
+line names the rule acting at the latest recorded review (`latest_acting`) and
+words the gate for it: with the evidence rule acting, a pass supports keeping
+it and a fail in count or money is a reason to consider the rollback.
 
 Information is what was known at the review session's 15:30 close (FIX-031,
 the clock of `shelf.close_before_decision`): an event published at or after
@@ -843,7 +846,11 @@ def gate_look(grades: Iterable[dict]) -> dict:
     - fail: at 10 or at 30 sessions, the evidence rule right on less than
       GATE_MIN_RIGHT_PCT, or its mean result (`grade_disagreements`) below
       GATE_MIN_MEAN_RESULT_PCT or unknown; or one stock more than
-      GATE_MAX_STOCK_PCT of them;
+      GATE_MAX_STOCK_PCT of them. `worse` is true when such a fail shows
+      the evidence rule behind in count or money: right on less than
+      GATE_MIN_RIGHT_PCT even counting every unknown result as right, or a
+      mean below the floor at a horizon whose results are all known. A fail
+      only for a missing result or one stock's share leaves it false;
     - cannot_judge: none of these, but more than GATE_MAX_SET_ASIDE set
       aside, or more than GATE_MAX_SET_ASIDE_PCT of `matured`. Only a pass
       becomes it, and it is never a pass (`recommends`);
@@ -890,7 +897,7 @@ def gate_look(grades: Iterable[dict]) -> dict:
                                 for h in GRADE_HORIZONS_TD},
             "unknown_result": {str(h): unknown[h] for h in GRADE_HORIZONS_TD},
             "span_days": span, "top_stock": top_symbol, "top_stock_count": top_count,
-            "better": False, "reasons": []}
+            "better": False, "worse": False, "reasons": []}
     if n < GATE_MIN_MATURED or span < GATE_MIN_SPAN_DAYS:
         if n < GATE_MIN_MATURED:
             look["reasons"].append(f"{n} of the {GATE_MIN_MATURED} decisions it needs "
@@ -919,6 +926,9 @@ def gate_look(grades: Iterable[dict]) -> dict:
         look["reasons"].append(f"{top_symbol} is {top_count} of the {n} "
                                f"(more than {GATE_MAX_STOCK_PCT:.0f}%)")
     if look["reasons"]:
+        look["worse"] = any(
+            (right[h] + unknown[h]) * 100 < GATE_MIN_RIGHT_PCT * n
+            or (not unknown[h] and total[h] < floor) for h in GRADE_HORIZONS_TD)
         look["status"] = FAIL
         return look
     # The cap, in whole numbers: 2 of 20 is exactly 10%, which it allows.
@@ -947,21 +957,39 @@ def recommends(look: dict, previous_look: dict | None) -> bool:
             and previous_look.get("status") == PASS)
 
 
+def latest_acting(rows: Iterable[dict]) -> dict | None:
+    """The rule whose verdict was acted on at the latest review recorded in
+    `rows`, and that review's day: {"rule": "evidence" | "legacy", "date"}.
+    Each row's `mode` says it. A review under `legacy` writes no row, so this
+    names the last recorded review and says nothing about today's setting. Of
+    the latest day's rows, the one written last counts. None when no row
+    names its mode and day."""
+    dated = [(day, r["mode"]) for r in rows
+             if (day := _day(r.get("date"))) and r.get("mode") in MODES]
+    if not dated:
+        return None
+    day, mode = sorted(dated, key=lambda pair: pair[0])[-1]
+    return {"rule": acting_rule(mode), "date": day.isoformat()}
+
+
 def scorecard_block(rows: Iterable[dict], *, as_of: date,
                     stock_quote_on: Callable[[str, date], object] | None,
                     bench_close_on: Callable[[date], float],
                     corp_actions: Callable[[str], object] | None,
                     previous_look: dict | None = None) -> dict:
     """The weekly scorecard's exit-rule block, from rows decided by `as_of`:
-    `rows` holding-days reviewed, `decisions` (one per holding), and
-    `repeat_days`, the later disagreeing days of the same holdings. The
-    prices and corporate actions are `grade_disagreements`'s."""
+    `rows` holding-days reviewed, `decisions` (one per holding),
+    `repeat_days`, the later disagreeing days of the same holdings, and
+    `acting`, the rule acting at the latest of those reviews
+    (`latest_acting`). The prices and corporate actions are
+    `grade_disagreements`'s."""
     rows = [r for r in rows if (_day(r.get("date")) or date.max) <= as_of]
     decisions, later = first_disagreements(rows)
     grades = grade_disagreements(rows, as_of=as_of, stock_quote_on=stock_quote_on,
                                  bench_close_on=bench_close_on, corp_actions=corp_actions)
     look = gate_look(grades)
     return {"rows": len(rows), "decisions": len(decisions), "repeat_days": later,
+            "acting": latest_acting(rows),
             "tally": [tally(grades, h) for h in GRADE_HORIZONS_TD],
             "gate": look, "recommend": recommends(look, previous_look)}
 
@@ -1142,9 +1170,14 @@ def _n(count: int, word: str) -> str:
 
 
 def scorecard_text(block: dict) -> str:
-    """The block in plain words, for the scorecard line. Each horizon names
-    the count right and the mean result against where the money went (cash
-    or the Nifty, per decision), with the mean against the Nifty beside it."""
+    """The block in plain words, for the scorecard line. It first names the
+    rule acting at the latest recorded review. Each horizon names the count
+    right and the mean result against where the money went (cash or the
+    Nifty, per decision), with the mean against the Nifty beside it. The gate
+    is worded for the acting rule: with the evidence rule acting, a pass
+    supports keeping it, and a fail says whether it shows that rule doing
+    worse (`gate_look`'s `worse`), or that it cannot yet say while a result
+    is unknown; otherwise a pass recommends the switch."""
     bits = []
     for t in block["tally"]:
         if t["graded"]:
@@ -1161,8 +1194,17 @@ def scorecard_text(block: dict) -> str:
             bits.append(bit)
         else:
             bits.append(f"at {t['horizon_td']} sessions none graded yet")
-    text = (f"The price-path rule and the evidence rule disagreed on "
-            f"{_n(block['decisions'], 'decision')} in {block['rows']} holding-days reviewed")
+    acting = block.get("acting")
+    evidence_acts = bool(acting) and acting["rule"] == "evidence"
+    text = ""
+    if acting:
+        reviewed = _day(acting["date"])
+        now, beside = (("evidence", "price-path") if evidence_acts
+                       else ("price-path", "evidence"))
+        text = (f"Acting at the latest recorded review ({reviewed.day} {reviewed:%b}): the "
+                f"{now} rule; the {beside} rule's verdict is recorded beside it. ")
+    text += (f"The price-path rule and the evidence rule disagreed on "
+             f"{_n(block['decisions'], 'decision')} in {block['rows']} holding-days reviewed")
     if block.get("repeat_days"):
         text += (f" (a holding counts once, on the first day the rules differed; "
                  f"{_n(block['repeat_days'], 'later day')} of the same disagreements "
@@ -1187,13 +1229,25 @@ def scorecard_text(block: dict) -> str:
                + (f"; better: right on at least {BETTER_RIGHT_PCT:.0f}% with a positive mean"
                   if look.get("better") else ""))
     if block.get("recommend"):
-        text += (f" Switch gate: passed two weeks running ({verdict}), so the evidence rule "
-                 "may replace the price-path rule. The owner decides.")
+        text += f" Switch gate: passed two weeks running ({verdict}), " + (
+            "which supports keeping the evidence rule. The owner decides." if evidence_acts
+            else "so the evidence rule may replace the price-path rule. The owner decides.")
     elif look["status"] == PASS:
-        text += (f" Switch gate: passed this week ({verdict}); it must pass again "
-                 "next week.")
+        text += f" Switch gate: passed this week ({verdict}); " + (
+            "a second passing week running would support keeping the evidence rule."
+            if evidence_acts else "it must pass again next week.")
     elif look["status"] == FAIL:
         text += " Switch gate: fails (" + "; ".join(look["reasons"]) + ")."
+        if evidence_acts:
+            if look.get("worse"):
+                text += (" That is a reason to consider the rollback to the price-path rule. "
+                         "The owner decides.")
+            elif any((look.get("unknown_result") or {}).values()):
+                text += (" Some results are still unknown, so this does not yet show whether "
+                         "the evidence rule is doing worse than the price-path rule.")
+            else:
+                text += (" That does not show the evidence rule doing worse than the "
+                         "price-path rule.")
     elif look["status"] == CANNOT_JUDGE:
         text += " Switch gate: cannot judge (" + "; ".join(look["reasons"]) + ")."
     else:

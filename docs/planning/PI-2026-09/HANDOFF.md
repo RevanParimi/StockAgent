@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-26 (NEXT OPS-005; PR-047 accepted, its push waits for a window)
+# Current handoff - 2026-11-26 (NEXT MAP-001; PR-047 accepted, its push waits for a window)
 
 ## Now
 
@@ -12,16 +12,17 @@
   [receipt](evidence/PR-047-review.md)), merged as `6eca615`, not yet pushed: a buy needs the
   band's BUY and the model's own, so TVSMOTOR's kind is refused. BACKLOG B-42: a top-up (ADD)
   reads neither verdict, for `PR-014-R1`. Step 1's read, `PR-047-S1`, waits for your word.
-- **26 Nov, OPS-002, 003, 004, 006 done** (`evidence/OPS-00*.md`): the full suite runs only via
-  `scripts/ci/guarded_suite.py`; a box event holds the autopilot until you say `autopilot.sh seen`.
-- **Next `continue`:** **OPS-005** (light), then MAP-001 to MAP-005, PR-007 (your order,
+- **26 Nov, OPS-002 to 006 done** (`evidence/OPS-00*.md`): the full suite runs only via
+  `scripts/ci/guarded_suite.py`; a box event holds the autopilot until `autopilot.sh seen`;
+  `autopilot.sh health` writes a daily box line.
+- **Next `continue`:** **MAP-001** (light), then MAP-002 to MAP-005, PR-007 (your order,
   26 Nov). **Autopilot, your word:** run to MAP-005; the phase that accepts it runs `/home/coder/project/autopilot/autopilot.sh stop` before
   writing its status. `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`: production reads,
   your word.
-- **Autopilot** started by you 14:49 IST, 26 Nov; its retries check box events only after your
+- **Autopilot** (started 14:49 IST, 26 Nov): retry box checks and its own health line need your
   next `start`.
 - **Git, push pending** (OPS-002's hold met): next window 00:10–06:20 IST; the runner pushes
-  between phases after the guarded suite. `origin/main` = `53461ab` (23 Nov); `main` is 17 ahead
+  between phases after the guarded suite. `origin/main` = `53461ab` (23 Nov); `main` is 18 ahead
   (your walkthrough copy, B-12's email wording for Sun 29 Nov, OPS, PR-047's merge and records).
   After the push: the deploy, `/health`, `PR-047-W1` from the next 16:30 review; confirm
   `docs/architecture-map/walkthrough-2026-11-26.md` on `origin/main` (your word; OPS-003's last

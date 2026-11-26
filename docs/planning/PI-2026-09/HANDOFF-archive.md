@@ -14,6 +14,15 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 26 Nov, night (autopilot `1126-2255-p9`): OPS-005 → ACCEPTED (light)
+
+- **26 Nov, OPS-005 done** (light, [receipt](evidence/OPS-005.md)): `autopilot/box_health.py`
+  (outside git) appends one line a day to `SESSION_LOG.md` about the IST day before: peak anon, OOM
+  kills, restarts, RC exits (link A), MB freed by the sweep (`~/devbox/sweep.log`, found after the
+  card was written). The autopilot runs it at `start` and before each phase; each session runs
+  `autopilot.sh health` (CLAUDE.md section 8). Opus check: accept after fixes (a day the logs do
+  not cover read as 0), fixed; 73 autopilot tests; B-43 added.
+
 ## 26 Nov, night (autopilot): PR-047 step 2, `review_required`
 
 - **Autopilot `1126-1901-p7`** (Opus), no production read: `story/PR-047` `8541b37`

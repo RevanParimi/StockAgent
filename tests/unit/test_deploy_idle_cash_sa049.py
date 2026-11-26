@@ -145,6 +145,7 @@ def _idea(sym, price, conviction=0.8, sector="pharma", gate="actionable", dived=
     its analysis named `sector` (FIX-030: a key no analysis named is not
     offered); a "generic" one carries no reading unless given."""
     kw.setdefault("verdict", "BUY")
+    kw.setdefault("model_verdict", "BUY")          # PR-047: its own model's too
     if sector != "generic":
         from backend.shared.schemas.discovery import SectorReading
         kw.setdefault("sector_reading", SectorReading(answer=sector, reason="stub analysis"))

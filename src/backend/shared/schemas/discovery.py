@@ -65,6 +65,10 @@ class DeepDiveResult(BaseModel):
     graph: Literal["native", "generic"]
     conviction: float                      # FinalReport.final_score, 0-1
     verdict: str
+    # PR-047: the model's own verdict (FinalReport.model_verdict); `verdict`
+    # is the composite's band. The shelf takes a dive only when both are a
+    # BUY. "" = not recorded.
+    model_verdict: str = ""
     thesis: str
     entry_low: float
     entry_high: float
@@ -101,6 +105,11 @@ class ShelfIdea(BaseModel):
     added: str                             # ISO date
     conviction: float
     verdict: str = ""
+    # PR-047: the model's own verdict of the idea's latest analysis; `verdict`
+    # is the composite's band. Every buy door needs both to be a BUY
+    # (`shelf.verdict_wait`). "" = shelved before PR-047 and not yet read from
+    # the verdict-shadow log (`shelf.with_model_verdicts`): nothing buys it.
+    model_verdict: str = ""
     thesis: str = ""
     entry_low: float = 0.0
     entry_high: float = 0.0

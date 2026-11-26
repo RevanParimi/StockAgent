@@ -125,7 +125,7 @@ def _cohort() -> list[tuple[str, str]]:
 
 def _idea(sym: str, sector: str, dived: str = SAT) -> ShelfIdea:
     return ShelfIdea(symbol=sym, sector=sector, added=dived, dived=dived, conviction=0.8,
-                     verdict="BUY", data_gate="actionable", entry_low=96.0, entry_high=104.0,
+                     verdict="BUY", model_verdict="BUY", data_gate="actionable", entry_low=96.0, entry_high=104.0,
                      invalidation_level=90.0, thesis=f"why {sym}")
 
 

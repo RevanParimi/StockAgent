@@ -11,7 +11,9 @@ month. The auditor grades every dive at the conviction it was issued with
     {DISCOVERY_DATA_DIR}/dives.jsonl, append-only, two kinds of row:
 
 - `"row": "dive"`, one per dive: reference `dive:<dive date>|<symbol>`, the
-  conviction, verdict, graph, sector key, close, composite, data gate, entry
+  conviction, verdict (the composite's band), the model's own verdict
+  (`model_verdict`, PR-047; absent from older and seeded rows), graph,
+  sector key, close, composite, data gate, entry
   band and invalidation level as the dive returned them, and whether it was a
   re-dive of a shelf idea (`kind`: "redive" | "new");
 - `"row": "run"`, one per discovery run that made dives: its day, the screen
@@ -104,7 +106,9 @@ def _dive_row(d, *, kind: str, screen_date: str, at: str) -> dict:
     return {
         "row": "dive", "ref": dive_ref(d.dive_date, d.symbol), "symbol": d.symbol,
         "dive_date": d.dive_date, "conviction": round(float(d.conviction), 4),
-        "verdict": str(d.verdict), "graph": d.graph, "sector": d.sector,
+        "verdict": str(d.verdict),
+        "model_verdict": str(getattr(d, "model_verdict", "") or ""),   # PR-047
+        "graph": d.graph, "sector": d.sector,
         "close": float(d.close), "composite": float(d.composite),
         "data_gate": d.data_gate, "entry_low": float(d.entry_low),
         "entry_high": float(d.entry_high), "invalidation_level": float(d.invalidation_level),

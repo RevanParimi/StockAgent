@@ -205,6 +205,9 @@ class SignalAggregator:
             learned_weights_used=bool(learned_weights),
             sector=sector,
         )
+        # PR-047: the model's own verdict is kept beside the bound one, bound
+        # or not, so a buy door can require both (`shelf.verdict_wait`).
+        report.model_verdict = str(raw_llm_verdict or "")
         # Bind only the categorical verdict to the learned composite; final_score
         # is left as the LLM's (it feeds base_confidence -> MC path width, so the
         # price path is undisturbed). Deterministic verdict unblocks AUD-098.

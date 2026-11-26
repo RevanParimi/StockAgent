@@ -233,7 +233,7 @@ def _analyse(store, run_at, verdict="BUY", score=0.70):
             "agent_scores, investment_thesis, conviction_drivers, top_risks, report_json) "
             "VALUES (?,?,?,?,?,?,?,?,?,?)",
             ("W", "W Ltd", run_at, score, verdict, "{}", f"case of {run_at}", "[]", "[]",
-             json.dumps({"decision_gate": {"status": "actionable"}})))
+             json.dumps({"decision_gate": {"status": "actionable"}, "model_verdict": verdict})))
 
 
 def test_m3_rv12_a_daily_reviewed_watchlist_buy_is_offered_every_day(tmp_path, monkeypatch):
@@ -326,7 +326,7 @@ def test_the_sale_rule_over_three_weeks_against_an_oracle():
             for hand in [None, *days]:
                 for watch in (False, True):
                     idea = ShelfIdea(symbol="X", sector="pharma", added=decided.isoformat(),
-                                     dived=decided.isoformat(), conviction=0.7, verdict="BUY",
+                                     dived=decided.isoformat(), conviction=0.7, verdict="BUY", model_verdict="BUY",
                                      source="watchlist" if watch else "discovery")
                     exits = [d for d in (auto, hand) if d is not None]
                     sales = Sales(last={"X": max(exits)} if exits else {},

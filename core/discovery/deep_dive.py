@@ -19,6 +19,9 @@ list as a company, a managed symbol unless the autopilot sold it (flag "sold",
 FIX-025), and one already on the shelf unless the candidate is a re-dive (flag
 "redive", PR-004).
 
+PR-047: a result keeps the model's own verdict (`model_verdict`) beside the
+composite's band (`verdict`); the shelf takes it only when both are a BUY.
+
 FIX-026: the same analyst call names the stock's sector key from the
 configured list (core/discovery/sector_naming.py). Yahoo Finance's
 classification (FIX-011's one industry source: it tells an insurer from a
@@ -234,6 +237,7 @@ def run_deep_dives(
                 graph="native" if route in NATIVE_SECTORS else "generic",
                 conviction=float(report.final_score),
                 verdict=str(report.verdict),
+                model_verdict=str(getattr(report, "model_verdict", "") or ""),
                 thesis=str(report.investment_thesis)[:800],
                 entry_low=entry_low,
                 entry_high=entry_high,
@@ -250,8 +254,9 @@ def run_deep_dives(
             results.append(result)
             if evidence is not None:
                 evidence[cand.symbol] = getattr(orchestrator, "_last_bundle", None)
-            logger.info("[deep_dive] %s sector=%s (%s) conviction=%.2f verdict=%s",
-                        cand.symbol, sector, reading.source, report.final_score, report.verdict)
+            logger.info("[deep_dive] %s sector=%s (%s) conviction=%.2f verdict=%s model=%s",
+                        cand.symbol, sector, reading.source, report.final_score, report.verdict,
+                        result.model_verdict or "?")
             # Loud in the week's summary and the watchdog's sector_keys check;
             # INFO here so one problem does not also open an error-backlog issue.
             unnamed = unnamed_why(result, keys)

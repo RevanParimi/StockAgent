@@ -14,11 +14,17 @@ from this list, which has two sources:
   the price (`shelf.close_before_dive`). A deep dive keeps only its day, so
   it counts as made after that day's close. Its verdict must be a BUY or
   STRONG BUY (`shelf.verdict_wait`, FIX-029): the conviction floor reads the
-  model's score, the verdict a separate number.
+  model's score, the verdict a separate number. The analysis's own model
+  must have written BUY or STRONG BUY too, not only the composite's band
+  (PR-047); a shelf idea shelved before ideas kept that verdict is read with
+  the one the verdict-shadow log shows (`shelf.with_model_verdicts`), and is
+  not offered while it cannot be told.
 - **The user's own watchlist BUYs** (DISCOVERY_WATCHLIST_BUYS). A stock the
   user added, or promoted from the shelf, qualifies when the newest analysis
   in the score history run before the review session's close (FIX-029) is a
-  BUY or STRONG BUY, passed the data gate as actionable, reaches the shelf's
+  BUY or STRONG BUY, by its band and by its own model (PR-047: the report's
+  `model_verdict`; an analysis made before reports kept it waits for the
+  next analysis), passed the data gate as actionable, reaches the shelf's
   conviction floor, is fresh by the same rule (and within
   DISCOVERY_STALE_DAYS), and NSE lists it as a company. An analysis run after
   that close, a BUY or a SELL, counts from the next session's close. It gets
@@ -83,7 +89,7 @@ from core.discovery.deep_dive import entry_levels
 from core.discovery.sector_naming import configured_sectors, ticker_map_sector, unnamed_why
 from core.discovery.shelf import (
     BUY_VERDICTS, Sales, analysis_of_other, close_before_decision, close_before_dive,
-    dive_is_fresh, last_dived, plain_symbol, verdict_wait)
+    dive_is_fresh, last_dived, plain_symbol, plain_verdict, verdict_wait)
 from core.discovery.universe import COMPANY, instrument_kind
 from core.intelligence.rl.nse_calendar import session_close_at
 
@@ -111,14 +117,26 @@ def _ist_day(stamp) -> date | None:
     return dt.date() if dt is not None else None
 
 
-def _gate_status(record: dict) -> str:
-    """The data-gate status stored with the analysis; "" when it has none."""
+def _report(record: dict) -> dict:
+    """The full report stored with the analysis; {} when it cannot be read."""
     try:
         report = json.loads(record.get("report_json") or "{}")
     except (TypeError, ValueError):
-        return dg.UNKNOWN
-    gate = report.get("decision_gate") if isinstance(report, dict) else None
+        return {}
+    return report if isinstance(report, dict) else {}
+
+
+def _gate_status(record: dict) -> str:
+    """The data-gate status stored with the analysis; "" when it has none."""
+    gate = _report(record).get("decision_gate")
     return str((gate or {}).get("status") or dg.UNKNOWN) if isinstance(gate, dict) else dg.UNKNOWN
+
+
+def _model_verdict(record: dict) -> str:
+    """The verdict the analysis's own model wrote (PR-047: the report's
+    `model_verdict`, kept beside the composite's band); "" for a report made
+    before reports kept it, or one that cannot be read."""
+    return plain_verdict(_report(record).get("model_verdict"))
 
 
 def _managed_sectors() -> dict[str, str]:
@@ -172,6 +190,14 @@ def watchlist_idea(item, on: date, analysis_before: Callable[[str, datetime], di
     verdict = str(record.get("verdict") or "").strip().upper()
     if verdict not in BUY_VERDICTS:
         return None, f"latest analysis is {verdict or 'without a verdict'}"
+    # PR-047: the analysis's own model must say BUY too, not only the band.
+    model = _model_verdict(record)
+    if not model:
+        return None, ("latest analysis kept no verdict of the model's own; waits for a new "
+                      "analysis")
+    if model not in BUY_VERDICTS:
+        return None, (f"latest analysis's own verdict is {model}, not a BUY (the composite's "
+                      f"band says {verdict})")
     analysed_at = _ist_time(record.get("run_at"))
     if analysed_at is None:
         return None, "latest analysis is undated"
@@ -218,7 +244,7 @@ def watchlist_idea(item, on: date, analysis_before: Callable[[str, datetime], di
                       "key and the ticker map has none")
     return ShelfIdea(
         symbol=symbol, sector=sector, added=day,
-        conviction=conviction, verdict=verdict,
+        conviction=conviction, verdict=verdict, model_verdict=model,
         thesis=str(record.get("investment_thesis") or "")[:800],
         entry_low=entry_low, entry_high=entry_high, invalidation_level=invalidation,
         close_at_add=close, source_screen_date=day, data_gate=gate, dived=day,

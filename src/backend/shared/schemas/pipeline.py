@@ -250,6 +250,11 @@ class FinalReport(BaseModel):
     # STRONG BUY | BUY | NEUTRAL | SELL | STRONG SELL, or INSUFFICIENT DATA when
     # the SA-003 gate withheld the verdict (decision_gate.enforced).
     verdict: str
+    # PR-047: the aggregation model's own verdict, as it wrote it, before
+    # `rl.hard_bind_verdict_enabled` binds `verdict` to the composite's band.
+    # Every buy door needs both to be a BUY (core/discovery/shelf.verdict_wait).
+    # "" = a report made before PR-047.
+    model_verdict: str = ""
     weighted_agent_scores: dict[str, WeightedAgentScore]
     conflicts_resolved: list[str] = Field(default_factory=list)
     conviction_drivers: list[str] = Field(default_factory=list)

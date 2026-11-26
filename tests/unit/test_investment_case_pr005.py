@@ -83,7 +83,7 @@ def _record(run_at="2026-10-17T05:00:00", thesis="Loan growth with steady asset 
 def _idea(level=200.0, thesis="Loan growth with steady asset quality. Valuation below "
                               "its own history.", dived=DIVE, symbol=SYM):
     return ShelfIdea(symbol=symbol, sector="banking_bfsi", added=dived, dived=dived,
-                     conviction=0.74, verdict="BUY", thesis=thesis, entry_low=205.0,
+                     conviction=0.74, verdict="BUY", model_verdict="BUY", thesis=thesis, entry_low=205.0,
                      entry_high=218.0, invalidation_level=level, status="promoted")
 
 

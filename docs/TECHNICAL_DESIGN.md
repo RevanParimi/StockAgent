@@ -240,7 +240,7 @@ resolved at import, so editing a file does not imply live reconfiguration.
 |---|---|
 | `scheduler.enabled: false` | Local startup default; production overrides are separate. |
 | `scheduler.feedback_cron: "30 16 * * mon-fri"` | Daily review default, interpreted in Asia/Kolkata. |
-| `rl.hard_bind_verdict_enabled: true` | Research category follows the composite; model `final_score` remains separate. |
+| `rl.hard_bind_verdict_enabled: true` | Research category follows the composite; model `final_score` remains separate, and so does the model's own verdict (`model_verdict`), which every buy also needs to be a BUY (section 6). |
 | `rl.learning_mode: adapt` | Learning switch, env `RL_LEARNING_MODE`. `adapt` lets learned weights and lesson emphasis move decisions; `observe` contains them (section 5). Any other value fails closed to `observe`. Production sets `observe`. |
 | `decision_gate.mode: record` | Essential-data gate switch, env `DECISION_GATE_MODE`. `record` computes and records the gate everywhere and changes nothing; `enforce` withholds verdicts, forecasts, learning and new-risk buys that rest on unverified data or an unresolved identity (sections 4–6). Any other value fails closed to `enforce`. |
 | `peers.count: 5`, `peers.minimum: 3` | Valuation peers: at most 5 same-industry peers, none with fewer than 3 (section 4). `peers.cache_days: 30` and `peers.max_lookups: 25` bound the Yahoo lookups behind them. |
@@ -438,8 +438,11 @@ section 1.
    and normalizes surviving weights. With no surviving weight it falls back
    to a neutral composite. An LLM produces narrative and report fields.
 6. With hard-bind enabled, configured score bands determine the categorical
-   verdict. The raw model verdict is logged for comparison; its numeric
-   `final_score` remains separate.
+   verdict. The raw model verdict is logged for comparison
+   (`verdict_shadow.jsonl`) and kept on the report as `model_verdict`, bound
+   or not; its numeric `final_score` remains separate. A buy needs both
+   verdicts to be a BUY (section 6): the band re-weighs the analysts with
+   fixed weights and may not overrule the conclusion the analysis reached.
 7. The decision gate labels the report actionable, degraded or abstain before
    anything logs or returns its verdict.
 8. Score history, run summaries, logs and the data-health row support the
@@ -2394,10 +2397,25 @@ session the same way. Each must:
   day whose thesis the idea keeps), so an idea misfiled before the deploy is
   refused from the first review after it. One that cannot be told is bought
   as before. Each BUY from an idea writes the symbol on its ledger row;
-- be rated BUY or STRONG BUY by its analysis (`verdict_wait`). The shelf's
-  conviction floor reads the model's score; the verdict is bound to the
-  composite, a separate number (section 3), so both are read. An idea with no
-  verdict stored waits for its re-dive, which comes first (section 8);
+- be rated BUY or STRONG BUY by its analysis (`verdict_wait`), twice: by
+  the verdict, which is bound to the composite's band (section 4, step 6),
+  and by the verdict the analysis's own model wrote (`model_verdict`, the
+  owner's option A of 21 Nov 2026). The shelf's conviction floor reads the
+  model's score, a third number. A model NEUTRAL at 0.62 with the band at
+  BUY is refused: "its deep dive's own verdict is NEUTRAL, not a BUY (the
+  composite's band says BUY)" (TVSMOTOR's dive of 14 Nov, bought on 16 Nov
+  before this rule). Requiring both can only refuse a buy. An idea with no
+  verdict stored waits for its re-dive, which comes first (section 8). An
+  idea shelved before ideas kept the model's verdict is read with the one
+  the verdict-shadow log shows (`with_model_verdicts`: the rows of its
+  symbol on its dive's day or the next, at its conviction to four decimals
+  and its band, all giving the same verdict); one that cannot be told,
+  including when the log cannot be read, is not bought until the weekly
+  check or its re-dive supplies one. A watchlist idea reads `model_verdict`
+  from the stored report; an analysis made before reports kept it waits for
+  the next one ("latest analysis kept no verdict of the model's own; waits
+  for a new analysis"). A top-up (ADD) of a holding reads the forecast's
+  path, not a verdict, and is unchanged;
 - be priced at a close struck after its latest deep dive or analysis, by
   the same rule, in either gate mode (`close_before_dive` in
   [`shelf.py`](../core/discovery/shelf.py)). When the review session's bar
@@ -2919,7 +2937,14 @@ or more. The weekly run, in order:
    another drops the idea with the reason ("its deep dive of 2026-11-14
    analysed DEEPAKNTR, not DEEPA") and removes its dive memo entry, so a
    later screen may dive the stock as itself; an idea that cannot be told
-   stays unverified until its next re-dive stamps it (`hygiene.analyses`). An
+   stays unverified until its next re-dive stamps it (`hygiene.analyses`).
+   An idea shelved before ideas kept the model's own verdict is read against
+   the verdict-shadow log the same way (`ShelfStore.verify_model_verdicts`,
+   section 6): a BUY is stamped, any other verdict drops the idea with the
+   reason ("its deep dive's own verdict is NEUTRAL, not a BUY (the
+   composite's band says BUY); deep dive of 2026-11-14, read from the
+   verdict-shadow log") and keeps its dive memo entry, and one that cannot be
+   told stays for a re-dive (`hygiene.model_verdicts`). An
    idea NSE lists as a fund, REIT or InvIT is dropped, with its series and
    ISIN in the reason. An idea without Yahoo's sector and industry gets them
    (below).
@@ -2927,8 +2952,9 @@ or more. The weekly run, in order:
    its latest dive comes first, since a new dive is all that can bring it back.
    Then unverified ideas: shelved before the decision gate existed (no
    `data_gate`), with no sector key named (below; a key the old Yahoo-label
-   table set counts as not named) or with no verdict stored, which nothing
-   buys until a re-dive supplies it. Then ideas whose latest dive is older than
+   table set counts as not named), with no verdict stored or with no model
+   verdict the shelf upkeep could read, which nothing buys until a re-dive
+   supplies it. Then ideas whose latest dive is older than
    `discovery.redive_after_days` (30), each group oldest first. A stock analysed on 24 Oct and sold on 27 Oct is
    re-dived on Sat 31 Oct, not Sat 28 Nov. A sale the user made by hand and a
    TRIM that leaves shares do not count. Re-dives take the budget
@@ -2939,16 +2965,21 @@ or more. The weekly run, in order:
    their start. A re-dive whose report is of another company ("re-dive
    2026-11-28: the analysis is of DEEPAKNTR, not DEEPA"), whose analysis is
    not actionable, whose conviction falls below the floor, or whose verdict
-   is no longer a BUY or STRONG BUY, drops the idea with the reason ("re-dive 2026-10-31: its deep dive rates it
-   NEUTRAL, not a BUY"). So does the second re-dive in a row
+   is no longer a BUY or STRONG BUY, by the band or by the model's own
+   verdict, drops the idea with the reason ("re-dive 2026-10-31: its deep dive rates it
+   NEUTRAL, not a BUY"; "re-dive 2026-11-28: its deep dive's own verdict is
+   NEUTRAL, not a BUY (the composite's band says BUY)"). So does the second re-dive in a row
    (`discovery.max_unnamed_redives`, 2) that leaves an idea without a sector
    key: "re-dive 2026-11-28: no sector key after 2 re-dives in a row (the
    analysis gave no sector answer)". An idea no analysis names therefore
    costs three analyses (the dive that shelved it and two re-dives), not one
    every Saturday, and the dive memo keeps it from a new dive for 30 days. A
    re-dive that names its key resets the count. A new dive that is not a BUY is not shelved either
-   (`not_buy` in the run's summary): the shelf holds the ideas the analysis
-   rates BUY, and the conviction floor reads a separate number.
+   (`not_buy` in the run's summary; `not_buy_model` names those the band
+   rated BUY and the model did not): the shelf holds the ideas the analysis
+   rates BUY, by both verdicts, and the conviction floor reads a separate
+   number. The dive keeps both verdicts, and so does its row in the dive
+   record (`model_verdict`, absent from rows written before PR-047).
 5. **Deep dives.** Each dive asks for the exact NSE symbol (section 4,
    "Ticker resolution") and keeps a result only when the report is of that
    symbol (`analysed_symbol`); one of another company, or naming none, keeps

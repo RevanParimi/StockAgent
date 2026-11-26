@@ -371,7 +371,7 @@ def test_an_existing_holdings_store_is_never_rekeyed(monkeypatch, tmp_path):
 
 def _redive(symbol, key, *, source="analysis", answer=None):
     return DeepDiveResult(symbol=symbol, sector=key, graph="generic", conviction=0.7,
-                          verdict="BUY", thesis="t", entry_low=97.0, entry_high=102.0,
+                          verdict="BUY", model_verdict="BUY", thesis="t", entry_low=97.0, entry_high=102.0,
                           invalidation_level=85.0, close=100.0, composite=0.0,
                           dive_date="2026-10-31", data_gate="actionable",
                           market_sector="Basic Materials", industry="Specialty Chemicals",

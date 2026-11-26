@@ -154,6 +154,14 @@ def run_discovery_cycle(on: date | None = None) -> dict:
     except Exception as exc:
         logger.warning("[discovery] shelf analyses not verified (non-fatal): %s", exc)
         errors.append(f"shelf analyses not verified: {exc}")
+    # PR-047: an idea shelved before it kept its model's own verdict reads it
+    # from the verdict-shadow log; one the model did not rate a BUY is dropped,
+    # one that cannot be told is re-dived first. A failure costs only the check.
+    try:
+        hygiene["model_verdicts"] = shelf_store.verify_model_verdicts()
+    except Exception as exc:
+        logger.warning("[discovery] shelf model verdicts not verified (non-fatal): %s", exc)
+        errors.append(f"shelf model verdicts not verified: {exc}")
     try:
         hygiene["not_companies"] = shelf_store.drop_non_companies(listing)
         hygiene["classified"] = shelf_store.backfill_classification(market_classification)

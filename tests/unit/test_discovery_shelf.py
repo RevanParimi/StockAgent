@@ -12,7 +12,7 @@ def _dive(symbol, conviction, on="2026-07-04"):
     """A dive whose analysis named "pharma" (FIX-030: a key no analysis named
     is neither offered nor promotable)."""
     return DeepDiveResult(symbol=symbol, sector="pharma", graph="generic",
-                          conviction=conviction, verdict="BUY", thesis="t",
+                          conviction=conviction, verdict="BUY", model_verdict="BUY", thesis="t",
                           entry_low=97.0, entry_high=102.0, invalidation_level=88.0,
                           close=100.0, composite=0.8, dive_date=on,
                           sector_reading=SectorReading(answer="pharma", named_on=on))

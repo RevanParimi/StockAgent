@@ -84,7 +84,7 @@ def dive(symbol, conviction, sector="", on="2026-07-04", gate="actionable", clos
     Yahoo `sector`, else an explicit "generic")."""
     key = key_for(sector) if key is None else key
     return DeepDiveResult(symbol=symbol, sector=key or "generic", graph="generic",
-                          conviction=conviction, verdict="BUY", thesis=f"t {symbol}",
+                          conviction=conviction, verdict="BUY", model_verdict="BUY", thesis=f"t {symbol}",
                           entry_low=round(close * 0.97, 2), entry_high=round(close * 1.02, 2),
                           invalidation_level=round(close * 0.88, 2), close=close,
                           composite=0.5, dive_date=on, data_gate=gate,
@@ -313,7 +313,7 @@ class Analyst:
                 if symbol in analyst.fail:
                     raise RuntimeError("LLM down")
                 return SimpleNamespace(
-                    ticker=symbol, final_score=analyst.conviction.get(symbol, 0.7), verdict="BUY",
+                    ticker=symbol, final_score=analyst.conviction.get(symbol, 0.7), verdict="BUY", model_verdict="BUY",
                     investment_thesis=f"thesis {symbol}",
                     decision_gate=SimpleNamespace(status=analyst.gate.get(symbol, "actionable"),
                                                   run_id=f"r-{symbol}", reasons=[]),
@@ -686,7 +686,7 @@ def test_old_values_offer_every_active_idea_and_no_watchlist(monkeypatch):
     before the analysis named sectors is not offered (the story's tests)."""
     monkeypatch.setattr(settings, "DISCOVERY_REDIVE_AFTER_DAYS", 0)
     monkeypatch.setattr(settings, "DISCOVERY_WATCHLIST_BUYS", False)
-    ideas = [ShelfIdea(symbol=s, sector="generic", added=a, conviction=0.7, verdict="BUY",
+    ideas = [ShelfIdea(symbol=s, sector="generic", added=a, conviction=0.7, verdict="BUY", model_verdict="BUY",
                        sector_reading=reading())
              for s, a in [("OLD", "2025-01-01"), ("NEW", "2026-07-10")]]
     portfolio = SimpleNamespace(holdings=[], watchlist=[WatchlistItem(
@@ -718,12 +718,13 @@ def test_old_values_send_the_cycle_exactly_the_ipo_and_screen_candidates(
 # ---------------------------------------------------------------------------
 
 def _idea(symbol, added, *, gate="actionable", dived="", conviction=0.7, sector="", key=None,
-          verdict="BUY"):
+          verdict="BUY", model_verdict="BUY"):
     """An idea whose analysis named `key` (default: the fixture's key for the
-    Yahoo `sector`, else an explicit "generic") and rated it `verdict`."""
+    Yahoo `sector`, else an explicit "generic") and rated it `verdict`, its
+    own model `model_verdict` (PR-047)."""
     key = key_for(sector) if key is None else key
     return ShelfIdea(symbol=symbol, sector=key or "generic", added=added, conviction=conviction,
-                     verdict=verdict, data_gate=gate, dived=dived, source_screen_date=added,
+                     verdict=verdict, model_verdict=model_verdict, data_gate=gate, dived=dived, source_screen_date=added,
                      entry_low=97.0, entry_high=102.0, invalidation_level=88.0,
                      close_at_add=100.0, market_sector=sector, sector_reading=reading(key))
 
@@ -1049,10 +1050,14 @@ D = date(2026, 7, 13)                     # a Monday
 
 
 def record(verdict="BUY", score=0.80, run_at="2026-07-10T11:00:00", gate="actionable",
-           thesis="Margins recovering."):
-    """A score-history row: run_at is naive UTC (11:00 UTC = 16:30 IST)."""
+           thesis="Margins recovering.", model="BUY"):
+    """A score-history row: run_at is naive UTC (11:00 UTC = 16:30 IST). Its
+    report keeps the model's own verdict `model` (PR-047; None: a report made
+    before reports kept it)."""
     report = {"decision_gate": {"status": gate, "run_id": "r1", "reasons": []}} if gate \
         is not None else {}
+    if model is not None:
+        report["model_verdict"] = model
     return {"ticker": "W", "run_at": run_at, "final_score": score, "verdict": verdict,
             "investment_thesis": thesis, "report_json": json.dumps(report)}
 
@@ -1477,7 +1482,7 @@ def test_pipeline_holds_a_watchlist_buy_under_the_key_its_forecasts_use(
 def test_pipeline_does_not_buy_a_stale_shelf_idea_until_it_is_redived(tmp_path, monkeypatch):
     # Its analysis named "pharma" (FIX-030: a key no analysis named is not offered).
     stale = ShelfIdea(symbol="CAND", sector="pharma", added="2026-06-01", conviction=0.9,
-                      verdict="BUY",
+                      verdict="BUY", model_verdict="BUY",
                       entry_low=485.0, entry_high=510.0, invalidation_level=450.0,
                       data_gate="actionable", sector_reading=reading("pharma"))
     advice, buys = _review_day(tmp_path, monkeypatch, ideas=[stale])

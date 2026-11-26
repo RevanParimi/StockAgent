@@ -369,7 +369,7 @@ def _redive(world, symbol, on):
 def _legacy(symbol, key, conviction, yahoo, dived="2026-11-07", reading=None):
     """An idea as shelf.json holds it from before FIX-026 (no reading), or
     with the reading a FIX-026 re-dive wrote (`reading`)."""
-    return ShelfIdea(symbol=symbol, sector=key, added=dived, dived=dived, verdict="BUY",
+    return ShelfIdea(symbol=symbol, sector=key, added=dived, dived=dived, verdict="BUY", model_verdict="BUY",
                      conviction=conviction, data_gate="actionable", source_screen_date=dived,
                      entry_low=970.0, entry_high=1020.0, invalidation_level=880.0,
                      close_at_add=1000.0, market_sector=yahoo["sector"],

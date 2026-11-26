@@ -218,12 +218,17 @@ def run_post_review_pipeline(review_date: date) -> dict:
         shelf_ideas: list = []
         all_ideas: list = []          # PR-009: any status, for a holding's invalidation level
         try:
-            from core.discovery.shelf import ShelfStore, with_history_identity
+            from core.discovery.shelf import (
+                ShelfStore, with_history_identity, with_model_verdicts)
             all_ideas = list(ShelfStore().load().ideas)
             # FIX-033: an idea shelved before it kept the symbol its analysis
             # was of is read with the one its score history shows (fails
             # open per idea: an unread history leaves it as loaded).
-            shelf_ideas = with_history_identity([i for i in all_ideas if i.status == "active"])
+            # PR-047: and with the verdict its own model wrote, from the
+            # verdict-shadow log (fails closed: one that cannot be told is
+            # not bought).
+            shelf_ideas = with_model_verdicts(
+                with_history_identity([i for i in all_ideas if i.status == "active"]))
         except Exception as exc:
             logger.debug("[portfolio_pipeline] shelf unavailable (non-fatal): %s", exc)
         # FIX-033: the holdings bought on another symbol's analysis, EXITed

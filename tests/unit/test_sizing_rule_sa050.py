@@ -72,7 +72,7 @@ def _idea(sym, lo, hi, inval, sector="pharma"):
     """Its analysis named `sector` (FIX-030: a key no analysis named is not offered)."""
     from backend.shared.schemas.discovery import SectorReading
     return ShelfIdea(symbol=sym, sector=sector, added="2026-07-01", conviction=0.9,
-                     verdict="BUY", entry_low=lo, entry_high=hi, invalidation_level=inval,
+                     verdict="BUY", model_verdict="BUY", entry_low=lo, entry_high=hi, invalidation_level=inval,
                      data_gate="actionable",
                      sector_reading=SectorReading(answer=sector, reason="stub analysis"))
 

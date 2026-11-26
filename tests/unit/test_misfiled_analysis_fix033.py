@@ -199,7 +199,7 @@ def dive_world(tmp_path, monkeypatch):
             asked.append((symbol, exact_symbol))
             ticker, thesis = answers[symbol]
             return SimpleNamespace(
-                ticker=ticker, final_score=0.64, verdict="BUY", investment_thesis=thesis,
+                ticker=ticker, final_score=0.64, verdict="BUY", model_verdict="BUY", investment_thesis=thesis,
                 decision_gate=SimpleNamespace(status="actionable", run_id=f"r-{symbol}",
                                               reasons=[]),
                 sector_answer={"key": "chemicals", "reason": "chemicals", "yahoo_fits": None})
@@ -367,7 +367,7 @@ def _rows(*pairs, run_at="2026-11-14T07:09:00"):
 
 def _legacy(symbol, thesis):
     return ShelfIdea(symbol=symbol, sector="chemicals", added="2026-11-14", conviction=0.64,
-                     verdict="BUY", thesis=thesis[:800], dived="2026-11-14",
+                     verdict="BUY", model_verdict="BUY", thesis=thesis[:800], dived="2026-11-14",
                      data_gate="actionable")
 
 

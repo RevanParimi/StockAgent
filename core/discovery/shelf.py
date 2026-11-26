@@ -30,6 +30,11 @@ PR-004, enough diverse, checked ideas to fill 12 holdings:
   (FIX-030), so it does not take a weekly re-dive for good.
 - Only a dive the analysis rates BUY or STRONG BUY is shelved (FIX-029);
   the conviction floor reads the model's score, the verdict a separate number.
+  The analysis's own model must say BUY too, not only the composite's band
+  (PR-047, `verdict_wait`). An idea shelved before an idea kept the model's
+  verdict reads it from the verdict-shadow log (`with_model_verdicts`): the
+  weekly run drops one the model did not rate a BUY and re-dives first one
+  that cannot be told.
 - An idea NSE lists as something other than a company is dropped.
 - When a stock may be bought back after its exit is one rule
   (`resale_wait`), read by the candidate list and every buy door.
@@ -160,19 +165,55 @@ def ledger_sales(transactions) -> Sales:
 BUY_VERDICTS = ("BUY", "STRONG BUY")
 
 
+def plain_verdict(value) -> str:
+    """The verdict a model wrote, as the buy doors compare it: upper case,
+    single spaces, an underscore read as a space; "" for none. "strong_buy"
+    -> "STRONG BUY". The composite's band is read as FIX-029 read it
+    (`band_verdict`), so requiring the model's BUY cannot widen it."""
+    return " ".join(str(value or "").replace("_", " ").split()).upper()
+
+
+def band_verdict(idea) -> str:
+    """The verdict an idea keeps (with hard-bind, the composite's band), read
+    as FIX-029 read it: stripped and upper case."""
+    return str(getattr(idea, "verdict", "") or "").strip().upper()
+
+
 def verdict_wait(idea) -> str:
     """Why the analysis behind `idea` does not rate it a BUY, or "" when it
-    does (FIX-029; the owner's D1: "the ideas the analysis rates BUY"). The
-    shelf's conviction floor reads the model's `final_score`; the verdict is
-    bound to the composite, a separate number, so both are read. An idea with
-    no stored verdict waits for its re-dive, which `redive_due` puts first."""
-    verdict = str(getattr(idea, "verdict", "") or "").strip().upper()
-    if verdict in BUY_VERDICTS:
-        return ""
-    what = "analysis" if getattr(idea, "source", "") == "watchlist" else "deep dive"
+    does. Two verdicts are read, and each must be a BUY or a STRONG BUY:
+
+    - `verdict`, the composite's band (FIX-029; the owner's D1: "the ideas
+      the analysis rates BUY"). The shelf's conviction floor reads the
+      model's `final_score`; the verdict is bound to the composite, a
+      separate number, so both are read.
+    - `model_verdict`, the verdict the analysis's own model wrote before the
+      band replaced it (PR-047, the owner's option A, 21 Nov 2026). The band
+      re-weighs the same analysts with fixed weights; it may not overrule the
+      conclusion the analysis reached. Requiring both can only refuse a buy,
+      never add one.
+
+    A missing verdict refuses too. A shelf idea then waits for its re-dive,
+    which `redive_due` puts first (one shelved before PR-047 is read from the
+    verdict-shadow log first, `with_model_verdicts`); a watchlist idea waits
+    for a new analysis. Example: TVSMOTOR's dive of 14 Nov, band BUY, model
+    NEUTRAL: "its deep dive's own verdict is NEUTRAL, not a BUY (the
+    composite's band says BUY)"."""
+    watch = getattr(idea, "source", "") == "watchlist"
+    what = "analysis" if watch else "deep dive"
+    verdict = band_verdict(idea)
     if not verdict:
         return f"its {what} stored no verdict; waits for its re-dive"
-    return f"its {what} rates it {verdict}, not a BUY"
+    if verdict not in BUY_VERDICTS:
+        return f"its {what} rates it {verdict}, not a BUY"
+    model = plain_verdict(getattr(idea, "model_verdict", ""))
+    if model in BUY_VERDICTS:
+        return ""
+    if not model:
+        later = "a new analysis" if watch else "its re-dive"
+        return f"its {what} kept no verdict of the model's own; waits for {later}"
+    return (f"its {what}'s own verdict is {model}, not a BUY (the composite's band "
+            f"says {verdict})")
 
 
 def plain_symbol(value) -> str:
@@ -269,6 +310,103 @@ def with_history_identity(ideas: list, rows_on: Callable[[date], list[dict]] | N
                 days[day] = []
         found = history_identity(idea, days[day])
         out.append(idea.model_copy(update={"analysed_symbol": found}) if found else idea)
+    return out
+
+
+def shadow_rows(path: str | Path | None = None) -> Callable[[date], list[dict]]:
+    """A reader of the verdict-shadow log (`verdict_shadow.log_verdict_shadow`:
+    one row per analysis with its symbol, the model's score and verdict and
+    the composite's band). Asked for an IST day, it answers the rows written
+    on that day or the next (a run that crosses midnight still matches). The
+    file is read once, at the first question; a line that is not a JSON
+    object is skipped (an append in progress), a file that cannot be read
+    raises, and a missing file answers none."""
+    if path is None:
+        from backend.shared.pipeline.verdict_shadow import _SHADOW_LOG
+        path = _SHADOW_LOG
+    by_day: dict[date, list[dict]] | None = None
+
+    def rows_on(day: date) -> list[dict]:
+        nonlocal by_day
+        if by_day is None:
+            by_day = defaultdict(list)
+            source = Path(path)
+            lines = (source.read_text(encoding="utf-8").splitlines()
+                     if source.exists() else [])
+            for line in lines:
+                try:
+                    row = json.loads(line)
+                    at = datetime.fromisoformat(str(row["ts"]).replace("Z", "+00:00"))
+                except (ValueError, TypeError, KeyError):
+                    continue
+                if not isinstance(row, dict):
+                    continue
+                if at.tzinfo is None:
+                    at = at.replace(tzinfo=timezone.utc)
+                by_day[at.astimezone(IST).date()].append(row)
+        return by_day.get(day, []) + by_day.get(day + timedelta(days=1), [])
+    return rows_on
+
+
+def model_verdict_from_shadow(idea, rows: list[dict]) -> str:
+    """The verdict the model of a shelf idea's deep dive wrote, read from the
+    verdict-shadow log, or "" when it cannot be told (PR-047, for an idea
+    shelved before ideas kept it). `rows` are the dive day's
+    (`shadow_rows`). A row is the dive's when it is of the idea's symbol, its
+    model score is the idea's conviction to the four decimals the log keeps,
+    and its band verdict is the idea's (where the idea has one). Every such
+    row must give the same model verdict: none, or two that differ, is "".
+    Example: an idea dived on 14 Nov at 0.62, band BUY, and that day's row of
+    the stock at 0.62, band BUY, model NEUTRAL: "NEUTRAL"."""
+    symbol = plain_symbol(getattr(idea, "symbol", ""))
+    band = band_verdict(idea)
+    try:
+        score = round(float(getattr(idea, "conviction", "")), 4)
+    except (TypeError, ValueError):
+        return ""
+    found: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict) or plain_symbol(row.get("ticker")) != symbol:
+            continue
+        try:
+            if round(float(row.get("llm_final_score")), 4) != score:
+                continue
+        except (TypeError, ValueError):
+            continue
+        if band and plain_verdict(row.get("threshold_verdict")) != band:
+            continue
+        found.add(plain_verdict(row.get("llm_verdict")))
+    return found.pop() if len(found) == 1 else ""
+
+
+def with_model_verdicts(ideas: list, rows_on: Callable[[date], list[dict]] | None = None
+                        ) -> list:
+    """`ideas` with each discovery idea that keeps no `model_verdict` given
+    the one the verdict-shadow log shows (`model_verdict_from_shadow`), as
+    copies; the stored shelf is not written. Each dive day is read once. An
+    idea that cannot be told keeps "" and is not bought (`verdict_wait`)
+    until the weekly check or its re-dive supplies one: it fails closed, an
+    unread log included. The daily review reads the shelf through this, so an
+    idea the model did not rate a BUY is refused from the first review after
+    the deploy, and one it did is still bought."""
+    reader = rows_on or shadow_rows()
+    days: dict[date, list[dict]] = {}
+    out = []
+    for idea in ideas:
+        day = last_dived(idea)
+        if (getattr(idea, "model_verdict", "") or getattr(idea, "source", "") == "watchlist"
+                or day is None):
+            out.append(idea)
+            continue
+        if day not in days:
+            try:
+                days[day] = reader(day)
+            except Exception as exc:
+                logger.warning("[shelf] verdict-shadow log of %s unread, ideas dived then "
+                               "are not bought until it is read: %s", day, exc)
+                days[day] = []
+        found = model_verdict_from_shadow(idea, days[day])
+        out.append(idea.model_copy(update={"model_verdict": found}) if found else idea)
     return out
 
 
@@ -455,7 +593,9 @@ class ShelfStore:
         paper lane runs and its re-dive asks again, but nothing buys it. A
         dive whose analysis does not rate the stock a BUY (`verdict_wait`) is
         skipped (`not_buy`, FIX-029) in either gate mode, and so is one whose
-        analysis is of another company (`other_company`, FIX-033)."""
+        analysis is of another company (`other_company`, FIX-033). PR-047: a
+        dive the composite's band rates BUY and its own model does not is a
+        `not_buy` too, also listed as `not_buy_model`."""
         shelf = self.load()
         added: list[str] = []
         displaced: list[str] = []
@@ -463,6 +603,7 @@ class ShelfStore:
         capped: list[str] = []
         gated: list[str] = []
         not_buy: list[str] = []
+        not_buy_model: list[str] = []
         misfiled: list[str] = []
         cap = settings.DISCOVERY_MAX_IDEAS_PER_SECTOR
         enforced = dg.enforcing()
@@ -491,6 +632,8 @@ class ShelfStore:
                 # one it does not would hold a slot nothing may buy from.
                 skipped.append(dive.symbol)
                 not_buy.append(dive.symbol)
+                if band_verdict(dive) in BUY_VERDICTS:
+                    not_buy_model.append(dive.symbol)      # PR-047
                 logger.info("[shelf] %s not added: %s", dive.symbol, not_a_buy)
                 continue
             if any(i.symbol == dive.symbol and i.status == "active"
@@ -528,7 +671,7 @@ class ShelfStore:
             shelf.ideas.append(ShelfIdea(
                 symbol=dive.symbol, sector=dive.sector, graph=dive.graph,
                 added=on.isoformat(), conviction=dive.conviction,
-                verdict=dive.verdict, thesis=dive.thesis,
+                verdict=dive.verdict, model_verdict=dive.model_verdict, thesis=dive.thesis,
                 entry_low=dive.entry_low, entry_high=dive.entry_high,
                 invalidation_level=dive.invalidation_level,
                 close_at_add=dive.close, source_screen_date=dive.dive_date,
@@ -549,6 +692,8 @@ class ShelfStore:
             summary["gated"] = gated
         if not_buy:
             summary["not_buy"] = not_buy
+        if not_buy_model:
+            summary["not_buy_model"] = not_buy_model
         if misfiled:
             summary["other_company"] = misfiled
         return summary
@@ -632,6 +777,7 @@ class ShelfStore:
             before = idea.conviction
             idea.conviction = dive.conviction
             idea.verdict, idea.thesis = dive.verdict, dive.thesis
+            idea.model_verdict = dive.model_verdict          # PR-047
             idea.entry_low, idea.entry_high = dive.entry_low, dive.entry_high
             idea.invalidation_level = dive.invalidation_level
             idea.data_gate, idea.dived = dive.data_gate, dive.dive_date
@@ -704,14 +850,56 @@ class ShelfStore:
             self._forget_dives(set(dropped))
         return {"verified": verified, "dropped": dropped, "unverified": unverified}
 
+    def verify_model_verdicts(self, rows_on: Callable[[date], list[dict]] | None = None
+                              ) -> dict:
+        """PR-047, for the ideas shelved before each kept the verdict its
+        analysis's own model wrote: read it from the verdict-shadow log
+        (`with_model_verdicts`). An idea the model rated a BUY keeps the
+        verdict; one it did not is dropped with the reason, as a new dive the
+        model does not rate a BUY takes no slot (it would hold one nothing may
+        buy from); one that cannot be told stays and is re-dived first
+        (`redive_due`). The dive memo is kept: the dive was of the stock, and
+        its answer stands for the month. The weekly run calls it before the
+        re-dives. Example: an idea dived 14 Nov at 0.62, band BUY, whose model
+        wrote NEUTRAL, is dropped with "its deep dive's own verdict is NEUTRAL,
+        not a BUY (the composite's band says BUY); deep dive of 2026-11-14,
+        read from the verdict-shadow log"."""
+        shelf = self.load()
+        verified: list[str] = []
+        unverified: list[str] = []
+        dropped: dict[str, str] = {}
+        pending = [i for i in shelf.ideas if i.status == "active" and not i.model_verdict]
+        if not pending:
+            return {"verified": verified, "dropped": dropped, "unverified": unverified}
+        for idea, read in zip(pending, with_model_verdicts(pending, rows_on)):
+            if not read.model_verdict:
+                unverified.append(idea.symbol)
+                continue
+            idea.model_verdict = read.model_verdict
+            if plain_verdict(idea.model_verdict) in BUY_VERDICTS:
+                verified.append(idea.symbol)
+                continue
+            idea.status = "dropped"
+            reason = (f"its deep dive's own verdict is {plain_verdict(idea.model_verdict)}, "
+                      f"not a BUY (the composite's band says "
+                      f"{band_verdict(idea) or 'nothing'}); deep dive of "
+                      f"{last_dived(idea)}, read from the verdict-shadow log")
+            dropped[idea.symbol] = reason
+            self._event("dropped", idea.symbol, reason)
+            logger.info("[shelf] %s dropped: %s", idea.symbol, reason)
+        if verified or dropped:
+            self.save(shelf)
+        return {"verified": verified, "dropped": dropped, "unverified": unverified}
+
     def redive_due(self, on: date, sold: dict[str, date] | None = None) -> list[ShelfIdea]:
         """Active ideas to re-dive, most urgent first, each group oldest dive
         first: those whose stock was sold on or after their latest dive
         (`sold` maps a symbol to its latest autopilot sale), since a re-dive is
         all that can bring them back; those not yet verified: shelved before
         the data gate existed (no gate status), with no sector key named
-        (FIX-026) or with no verdict stored (FIX-029), which nothing buys until
-        a re-dive supplies it; then those
+        (FIX-026), with no verdict stored (FIX-029) or with no model verdict
+        the weekly check could read (PR-047, `verify_model_verdicts`), which
+        nothing buys until a re-dive supplies it; then those
         whose latest dive is older than DISCOVERY_REDIVE_AFTER_DAYS. An idea
         that rotates out this run (its latest dive more than
         DISCOVERY_STALE_DAYS old) is left to rotate. [] when re-dives are off
@@ -728,7 +916,8 @@ class ShelfStore:
         was_sold = [i for i in active if sold_since_dive(i, sold.get(i.symbol))]
         rest = [i for i in active if not sold_since_dive(i, sold.get(i.symbol))]
         unverified = {i.symbol for i in rest if not i.data_gate or unnamed_why(i, keys)
-                      or not str(i.verdict or "").strip()}
+                      or not str(i.verdict or "").strip()
+                      or not str(i.model_verdict or "").strip()}
         pre_gate = sorted((i for i in rest if i.symbol in unverified), key=oldest)
         stale = sorted((i for i in rest if i.symbol not in unverified
                         and not dive_is_fresh(i, on)), key=oldest)

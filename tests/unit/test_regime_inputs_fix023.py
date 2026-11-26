@@ -439,7 +439,7 @@ def _idea(sym, price, conviction, sector, dived, source="discovery"):
                      conviction=conviction, data_gate="actionable", close_at_add=price,
                      entry_low=round(price * 0.96, 2), entry_high=round(price * 1.04, 2),
                      invalidation_level=round(price * 0.90, 2), thesis=f"why {sym}",
-                     source=source, verdict="BUY",
+                     source=source, verdict="BUY", model_verdict="BUY",
                      sector_reading=SectorReading(answer=sector, reason="stub analysis"))
 
 

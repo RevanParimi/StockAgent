@@ -407,7 +407,7 @@ def test_a_run_without_a_bundle_abstains(monkeypatch, gate_mode):
     with patch.object(bo_mod, "get_llm_client", return_value=MagicMock()):
         orch = _AutoOrchestrator()
     orch._last_gate_inputs = None
-    report = FinalReport(ticker="X", company_name="X", final_score=0.8, verdict="BUY",
+    report = FinalReport(ticker="X", company_name="X", final_score=0.8, verdict="BUY", model_verdict="BUY",
                          weighted_agent_scores={})
     orch._apply_decision_gate(report, "X", "undescribed-run")
     assert report.verdict == "INSUFFICIENT DATA"
@@ -424,7 +424,7 @@ def test_a_failing_gate_abstains_rather_than_passes(monkeypatch, gate_mode):
                               "dimensions_expected": ["a"], "dimensions_missing": []}
     monkeypatch.setattr(dg, "assess_analysis",
                         lambda **k: (_ for _ in ()).throw(RuntimeError("boom")))
-    report = FinalReport(ticker="X", company_name="X", final_score=0.8, verdict="BUY",
+    report = FinalReport(ticker="X", company_name="X", final_score=0.8, verdict="BUY", model_verdict="BUY",
                          weighted_agent_scores={})
     orch._apply_decision_gate(report, "X", "r")
     assert report.verdict == "INSUFFICIENT DATA"
@@ -436,7 +436,7 @@ def test_a_failing_gate_abstains_rather_than_passes(monkeypatch, gate_mode):
 # ---------------------------------------------------------------------------
 
 def _gated_report(status: str) -> FinalReport:
-    return FinalReport(ticker="NEWCO", company_name="NEWCO", final_score=0.9, verdict="BUY",
+    return FinalReport(ticker="NEWCO", company_name="NEWCO", final_score=0.9, verdict="BUY", model_verdict="BUY",
                        weighted_agent_scores={},
                        decision_gate=DecisionGate(status=status, run_id="dive-run",
                                                   reasons=["essential technicals=empty"]))

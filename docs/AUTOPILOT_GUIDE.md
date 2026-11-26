@@ -190,8 +190,12 @@ portfolio's candidates
   are first offered by Tuesday's run, which reviews Monday, and a dive from a
   manual discovery run on Monday evening by Wednesday's. The deep dive's
   verdict must be a BUY or STRONG BUY: the 0.55 floor reads the model's
-  score, the verdict a separate number. An idea with no verdict stored waits
-  for its re-dive, which comes before the stale ones.
+  score, the verdict a separate number. So must the verdict the analysis's
+  own model wrote, not only the composite's band (PR-047): a band BUY whose
+  model said NEUTRAL is not bought. An idea with no verdict stored waits
+  for its re-dive, which comes before the stale ones; one shelved before
+  ideas kept the model's verdict is read from the verdict-shadow log, and
+  waits for its re-dive when that cannot tell.
 - the user's own watchlist stocks whose newest analysis run before the
   review session's close is a BUY or STRONG BUY with an actionable data gate,
   conviction 0.55 or more, at most 30 days old, for a stock NSE lists as a
@@ -485,8 +489,9 @@ The steps, after the day's sells, switch legs and ADDs:
    before the review session's close), highest conviction first: not held;
    not sold since it was decided, by the list's rule read again with the
    run's own exits (`shelf.resale_wait`, section 3; the sale counts from the
-   day the run decided it, `shelf.sale_day`); rated BUY by its analysis
-   (`shelf.verdict_wait`); a close struck after its
+   day the run decided it, `shelf.sale_day`); rated BUY by its analysis,
+   by the composite's band and by its own model (`shelf.verdict_wait`,
+   PR-047); a close struck after its
    latest deep dive or watchlist analysis, in either gate mode
    (`shelf.close_before_dive`: "close of 2026-10-30 is before the deep dive
    of 2026-10-31", "analysis of 2026-11-02 20:00 IST is after the close of
@@ -865,6 +870,7 @@ run is hermetic (KT section 13). A quick loop:
 | `test_autopilot_isolation.py` | Executor writes stay inside `data/portfolio/<user>/` |
 | `test_executable_prices_pr016.py` | Prices that could be had: never a bar on or before the booked close (a random-ledger property test), the run's own open, a split on the next session, a booked close that may already be adjusted, no price and waiting, once per transaction, the ledger's bytes, the book and its line worked by hand, charged costs at the real price, and the predeclared rule at 29, 30 and exactly 0.5 |
 | `test_every_door_fix029.py` | Every door reads the same facts: the day's regime over every label with or without an entry of its own, the newest analysis before the close from the real score store, one sale rule against an oracle over three weeks (the Saturday after an autopilot sale for the watchlist), a SWITCH that takes its next-best idea through the real pipeline, no buy of an idea not rated BUY |
+| `test_model_verdict_pr047.py` | Buy what the analysis itself would buy: every door (the shelf's add, a re-dive, the list, deployment, a SWITCH leg, the watchlist) against a hand-written table of band and model verdicts, a property test that the rule only refuses, the card's TVSMOTOR case through the real aggregator, deep dive, dive record and shelf, and ideas shelved before PR-047 read from the verdict-shadow log (their own row only, failing closed) in the daily review and the weekly check |
 | `test_sold_stock_leaves_review_fix028.py` | The managed list follows the holdings, through the real executor and a real managed file: a full exit and a last-share TRIM release, while a partial TRIM, another portfolio's holding, a user's own watchlist and an original entry do not; a stock sold earlier leaves on the next run; a re-buy re-enables the old sector; a sale's room before the same run's buy; a capped buy named in the digest, its text and the brief on every run until it gets an entry; an unreadable portfolio, no managed file, the lock and a failed save |
 | `test_autopilot_wave1.py`, `test_portfolio_locking.py`, `test_portfolio_reconcile.py` | Locking with a fresh reload, future-date refusal, reconciliation |
 | `test_portfolio_advisor.py`, `test_portfolio_advisor_switch.py`, `test_portfolio_store_switch_evals.py` | The cascade, SWITCH and candidate evaluation rows |

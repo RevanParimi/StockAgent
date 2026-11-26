@@ -2639,6 +2639,13 @@
       "fields": {
         "sequencing_note": "Owner's order, 26 Nov 2026 (second word): OPS-002, OPS-003, OPS-004, OPS-006, then PR-047, then OPS-005, then the map."
       }
+    },
+    {
+      "id": "OPS-003",
+      "moved": "2026-11-26",
+      "fields": {
+        "sequencing_note": "Owner's order, 26 Nov 2026 (second word): OPS-002, OPS-003, OPS-004, OPS-006, then PR-047, then OPS-005, then the map."
+      }
     }
   ]
 }

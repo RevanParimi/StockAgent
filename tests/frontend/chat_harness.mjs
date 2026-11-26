@@ -223,3 +223,23 @@ export async function sendChat(page, plan, settleMs = 1200) {
 export async function launch() {
   return chromium.launch({ headless: true });
 }
+
+/**
+ * Stop CSS animations and transitions in every page of a context (OPS-003).
+ *
+ * The app's rotating sphere and pulsing dots repaint on every frame, and
+ * headless Chromium draws them in software: on the two-CPU build box one open
+ * page held about one CPU while its test only waited. The screen suites read
+ * text, the DOM and clicks, none of which an animation changes, and no screen
+ * waits for an animation event. The chat Markdown suite does not use this: a
+ * security suite should not switch off anything a hostile fixture could run on.
+ */
+export async function stopAnimations(context) {
+  await context.addInitScript(() => {
+    document.addEventListener('DOMContentLoaded', () => {
+      const style = document.createElement('style');
+      style.textContent = '*, *::before, *::after { animation: none !important; transition: none !important; }';
+      document.documentElement.appendChild(style);
+    }, { once: true });
+  });
+}

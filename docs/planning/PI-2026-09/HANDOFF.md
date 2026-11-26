@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-26 (NEXT OPS-003, the slow browser test; push waits for a window)
+# Current handoff - 2026-11-26 (NEXT OPS-004, the autopilot reads the crash log; push waits for a window)
 
 ## Now
 
@@ -8,12 +8,13 @@
 - **21 Nov:** the [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against
   their own analysis; DEEPA (Deepak Nitrite's case) sold. FIX-033 (P0), PR-047 (option A). No hand
   trades.
-- **26 Nov, evening** (autopilot `1126-1449-p1`): **OPS-002 done**
-  ([receipt](evidence/OPS-002.md)). On this box the full suite runs through
-  `scripts/ci/guarded_suite.py` (two steps; stopped over 2,400 MB anon; test leftovers ended),
-  and `prepush-suite.sh` calls it. Full run: 7,053 passed, peak anon 1,676 MB.
-- **Next `continue`:** **OPS-003** (the slow browser test), OPS-004, OPS-006, **PR-047** (option A;
-  step 1 light), OPS-005, MAP-001 to MAP-005, PR-007 (your order, 26 Nov). **Autopilot, your word
+- **26 Nov, evening:** **OPS-002** and **OPS-003 done** ([OPS-002](evidence/OPS-002.md),
+  [OPS-003](evidence/OPS-003.md)). On this box the full suite runs through
+  `scripts/ci/guarded_suite.py` (and `prepush-suite.sh` calls it). The slow browser test takes
+  about 105 s (was 167 s, over 900 s at 06:16): the app's animations held one of the box's 2
+  CPUs per open page. Full run: 7,053 passed, peak anon 1,859 MB.
+- **Next `continue`:** **OPS-004** (the autopilot reads the crash log), OPS-006, **PR-047**
+  (option A; step 1 light), OPS-005, MAP-001 to MAP-005, PR-007 (your order, 26 Nov). **Autopilot, your word
   (26 Nov):** run to MAP-005; the phase that accepts MAP-005 runs
   `/home/coder/project/autopilot/autopilot.sh stop` before writing its status.
   `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`: production reads, your word.
@@ -24,7 +25,8 @@
   `origin/main` = `53461ab` (04:17 Mon 23 Nov); `main` is ahead by `f893dc4`, `8fae35d` (your
   walkthrough copy), `370d802`, `4a9ae8d` (B-12) and the OPS commits (B-12's email wording:
   next weekly review Sun 29 Nov). After the push, confirm
-  `docs/architecture-map/walkthrough-2026-11-26.md` on `origin/main` (your word, 26 Nov).
+  `docs/architecture-map/walkthrough-2026-11-26.md` on `origin/main` (your word, 26 Nov); that
+  is also OPS-003's last acceptance line, not yet seen.
   `story/PR-015`, `story/PR-017` and `story/FIX-033` merged.
 
 ## Waits for you

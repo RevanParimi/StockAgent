@@ -14,6 +14,15 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 26 Nov (autopilot `1126-1550-p2`): OPS-003 → ACCEPTED (light)
+
+- **26 Nov, OPS-003 done** (light, [receipt](evidence/OPS-003.md)): the two screen suites stop
+  the app's CSS animations (an idle page held about one CPU) and the slow suite runs two cases
+  at a time: 167 s to about 105 s (135 s on one core). BACKLOG B-36's three reads wait for the
+  text. A run cut at 25 s leaves browser processes; the guard ends them. Opus check: two medium
+  findings fixed, B-39 recorded. Full guarded suite 7,053 passed. Push pending (window
+  00:10-06:20 IST).
+
 ## 26 Nov (autopilot `1126-1449-p1`): OPS-002 → ACCEPTED (light)
 
 - **26 Nov, OPS-002 done** (light, [receipt](evidence/OPS-002.md)): `scripts/ci/guarded_suite.py`

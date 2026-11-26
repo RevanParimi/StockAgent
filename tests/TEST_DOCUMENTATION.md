@@ -11,7 +11,7 @@ April 2026 version of this page described a layout that no longer exists.
 | `tests/integration/` | Several modules together: API routes, fetchers with mocked transports, stores. |
 | `tests/contract/` | JSON shapes and settings other components rely on. |
 | `tests/test_*.py` | Older top-level tests, collected with the rest. |
-| `tests/frontend/` | The browser suites (Node and Chromium), run by `npm run test:frontend`: the chat Markdown boundary, the Logs screen, and real figures with owner-only operator tools (`no_invented_figures.test.mjs`). Each serves the real prototype files and answers the API from the test's own plan; nothing reaches the network. |
+| `tests/frontend/` | The browser suites (Node and Chromium), run by `npm run test:frontend`: the chat Markdown boundary, the Logs screen, real figures with owner-only operator tools (`no_invented_figures.test.mjs`) and the member screens (`member_screens.test.mjs`). Each serves the real prototype files and answers the API from the test's own plan; nothing reaches the network. |
 | `tests/fixtures/` | Captured payloads. Read them through `Path(__file__)`, never a relative path. |
 | `tests/hermetic.py` | The suite's hermetic boundary, described below. |
 | `tests/guard_plugin.py`, `tests/proc_tree.py` | The memory guard's pytest plugin and its process-tree helpers, described below. |
@@ -31,6 +31,25 @@ On this Windows checkout, use the project virtual environment
 
 No `.env`, network flag or `RL_LEARNING_MODE` setting is needed. The suite
 ignores all three (see "The hermetic boundary").
+
+## The two screen suites
+
+`no_invented_figures.test.mjs` and `member_screens.test.mjs` open the real app
+afresh for most cases. Both stop CSS animations and transitions in every page
+(`stopAnimations` in `chat_harness.mjs`): the app's rotating sphere and pulsing
+dots repaint on every frame, headless Chromium draws them in software, and one
+open page held about one of the build box's two CPUs while its test only
+waited. The suites read text, the DOM and clicks, which animations do not
+change. The chat Markdown suite does not use it: a security suite should not
+switch off anything a hostile fixture could run on.
+
+`no_invented_figures.test.mjs` also runs its cases two at a time. Add a case
+above the suite at the end of that file; one added after it, or one without a
+body, fails the file instead of silently not running. A case that needs an
+answer to arrive late holds it with `gate()` and opens it itself, not with a
+timed delay. `member_screens.test.mjs`'s "unavailable" checks wait for the text
+(`shown`); a new check of text a screen may still be drawing should do the same.
+Older checks still follow fixed pauses.
 
 ## The memory guard (the build box, Linux)
 
@@ -165,8 +184,9 @@ Local runs use Python 3.13 on Windows; CI and production use 3.11 on Linux.
   to fail `test_delivery_api`, `test_ops_alerts` and `test_portfolio_locking`
   intermittently.
 - The browser suites run inside pytest too (`test_chat_markdown_boundary.py`,
-  `test_ui_no_invented_figures_pr001.py`) and skip there when Node or Chromium
-  is missing. CI runs them as a separate job, so there they cannot be skipped.
+  `test_member_screens_pr040.py`, `test_ui_no_invented_figures_pr001.py`) and
+  skip there when Node or Chromium is missing. CI runs them as a separate job,
+  so there they cannot be skipped.
 
 ## Adding a test
 

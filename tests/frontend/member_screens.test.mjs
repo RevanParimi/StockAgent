@@ -29,7 +29,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import { launch, ORIGIN, REPO, FRONTEND, CDN_FILES, CONTENT_TYPES } from './chat_harness.mjs';
+import { launch, stopAnimations, ORIGIN, REPO, FRONTEND, CDN_FILES, CONTENT_TYPES } from './chat_harness.mjs';
 
 const OPERATOR_FILES = ['agents-page.jsx', 'analytics.jsx', 'logs.jsx', 'rl-data.jsx', 'rl-monitor.jsx'];
 const REMOVED_FILES = ['learn.jsx', 'tweaks-panel.jsx', 'prompt-lab.jsx'];
@@ -90,6 +90,7 @@ async function openApp(browser, plan = {}) {
     viewport: plan.viewport || { width: 1280, height: 900 },
     timezoneId: 'Asia/Kolkata',
   });
+  await stopAnimations(context);
   const requests = [];
   const calls = [];
   const user = plan.user || MEMBER;
@@ -164,6 +165,16 @@ async function goTo(page, screen) {
 }
 
 const text = (page) => page.evaluate(() => document.body.innerText);
+
+// The page's text matches within the bound, else the assertion fails with the
+// text it did show. A screen drawn late on a loaded box is not a missing one
+// (BACKLOG B-36, OPS-003).
+async function shown(page, pattern, timeout = 10000) {
+  await page.waitForFunction(([src, flags]) => new RegExp(src, flags).test(document.body.innerText),
+                             [pattern.source, pattern.flags], { timeout }).catch(() => {});
+  assert.match(await text(page), pattern);
+}
+
 const labels = async (locator) => (await locator.allInnerTexts()).map(t => t.replace(/\s+/g, ' ').trim())
   .filter(t => t && t !== '☾' && t !== '☀');                        // the theme toggle is not a screen
 
@@ -399,8 +410,7 @@ test('every member screen says unavailable when its API fails', async () => {
   const app = await openApp(browser, { user: MEMBER, api: { '/ui/bootstrap': json({ detail: 'down' }, 500) } });
   try {
     await settled(app.page);
-    const today = await text(app.page);
-    assert.match(today, /Market data unavailable/);
+    await shown(app.page, /Market data unavailable/);
     for (const tab of ['Brief', 'Digest', 'Weekly', 'Alerts']) {
       await app.page.getByRole('button', { name: tab, exact: true }).click();
       await app.page.waitForTimeout(400);           // the previous tab's message must not count
@@ -409,10 +419,9 @@ test('every member screen says unavailable when its API fails', async () => {
       assert.equal(await app.page.locator('.sa-inbox-panel [aria-pressed="true"]').innerText(), tab);
     }
     await app.page.getByRole('button', { name: 'Watchlist' }).first().click();
-    await app.page.waitForTimeout(300);
-    assert.match(await text(app.page), /Your watchlist is unavailable right now/);
+    await shown(app.page, /Your watchlist is unavailable right now/);
     await goTo(app.page, 'portfolio');
-    assert.match(await text(app.page), /Your portfolio is unavailable right now/);
+    await shown(app.page, /Your portfolio is unavailable right now/);
     assert.deepEqual(app.errors, []);
   } finally { await app.context.close(); }
 });

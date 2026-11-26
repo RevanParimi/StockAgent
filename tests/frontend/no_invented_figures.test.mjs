@@ -32,11 +32,11 @@
  *  - the watchlist (FIX-032) sends only the stock added or removed, never its
  *    whole list, and then shows the list the server answers.
  */
-import { test, before, after } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
-import { launch, ORIGIN, REPO, FRONTEND, CDN_FILES, CONTENT_TYPES } from './chat_harness.mjs';
+import { launch, stopAnimations, ORIGIN, REPO, FRONTEND, CDN_FILES, CONTENT_TYPES } from './chat_harness.mjs';
 
 const API_PREFIXES = ['/ui/', '/auth/', '/portfolio', '/history/', '/delivery/', '/discovery/',
                       '/analyse', '/ws/', '/ops/', '/scheduler', '/analytics', '/prompts', '/health'];
@@ -57,6 +57,14 @@ function json(body, status = 200) {
   return { status, contentType: 'application/json', body: JSON.stringify(body) };
 }
 
+// An answer a case holds back until it calls open(): the case decides what has
+// happened by then, however slow the machine is.
+function gate() {
+  let open;
+  const opened = new Promise((resolve) => { open = resolve; });
+  return { open, opened };
+}
+
 const MEMBER = { user_id: 'u-ravi', email: 'ravi@example.test', display_name: 'Ravi Kumar', role: 'member' };
 const OWNER = { user_id: 'primary', email: 'owner@example.test', display_name: 'Meera Rao', role: 'owner' };
 
@@ -71,6 +79,7 @@ async function openApp(browser, plan = {}) {
     viewport: plan.viewport || { width: 1280, height: 900 },
     timezoneId: plan.timezoneId || 'Asia/Kolkata',
   });
+  await stopAnimations(context);
   if (plan.time) await context.clock.setFixedTime(new Date(plan.time));
   const calls = [];
   const unplanned = [];
@@ -118,6 +127,12 @@ async function openApp(browser, plan = {}) {
   await page.goto(`${ORIGIN}/${plan.query || ''}`);
   if (plan.signedOut) await page.getByPlaceholder('you@example.com').waitFor({ timeout: 30000 });
   else await page.locator('h1').first().waitFor({ timeout: 30000 });   // the hero: React and Babel are up
+  // OPS-003: a page left animating holds a CPU for as long as its case waits.
+  const animating = await page.evaluate(() => document.getAnimations().length);
+  if (animating) {
+    await context.close();   // not left running beside the other cases
+    assert.fail(`${animating} animations still run on the page (OPS-003)`);
+  }
   return { context, page, calls, unplanned, errors };
 }
 
@@ -172,6 +187,17 @@ async function memberViews(page) {
 let browser;
 before(async () => { browser = await launch(); });
 after(async () => { await browser?.close(); });
+
+// Two cases run at a time (OPS-003): each has its own browser context, nothing a
+// case changes is shared, most of a case is waiting, and the build box has two
+// CPUs. test() collects them; the suite at the end of this file runs them.
+const CASES = [];
+let suiteBuilt = false;
+function test(name, ...rest) {   // name, node:test's options if any, the body
+  assert.ok(!suiteBuilt, `"${name}" would not run: add it above the suite at the end of this file`);
+  assert.equal(typeof rest.at(-1), 'function', `"${name}" has no body to run`);
+  CASES.push([name, ...rest]);
+}
 
 test('the fixture module is read: the invariants below have sample values to look for', () => {
   assert.ok(SAMPLE_SYMS.length >= 8, SAMPLE_SYMS.join(','));
@@ -299,19 +325,23 @@ test('with the APIs answering, every figure on screen is one an API sent', async
 });
 
 test('a bootstrap that lands after the watchlist opens still fills it; a missing section is unavailable', async () => {
-  // /ui/watchlist fails, and bootstrap answers 4 s late, after the tab is open.
+  // /ui/watchlist fails, and bootstrap's answer is held until the tab is open.
   // Bootstrap also leaves out MARKET_MONTH: that pane says unavailable, not "Loading".
   const boot = JSON.parse(liveApi()['/ui/bootstrap'].body);
   delete boot.MARKET_MONTH;
+  const held = gate();
   const { context, page, errors } = await openApp(browser, {
     user: MEMBER,
     api: liveApi({
-      '/ui/bootstrap': async () => { await new Promise(r => setTimeout(r, 4000)); return json(boot); },
+      '/ui/bootstrap': async () => { await held.opened; return json(boot); },
       '/ui/watchlist': json({ detail: 'down' }, 503),
     }),
   });
   try {
     await page.getByRole('button', { name: 'Watchlist' }).first().click();
+    assert.equal(await page.evaluate(() => window.__apiState), 'loading',
+                 'bootstrap is still in flight when the tab is open');
+    held.open();
     await page.waitForFunction(() => window.__apiState === 'ready', null, { timeout: 15000 });
     await page.waitForTimeout(800);
     const watch = await visibleText(page);
@@ -652,6 +682,8 @@ test('signing out drops the verdict changes; a failed fetch for the next account
 
 test('an answer for the previous viewer that arrives after the next sign-in is discarded', async () => {
   const own = vChange('QMYOWN', 'BUY', 'SELL', '2026-10-13', 'turned-bearish');
+  const held = gate();
+  let lateAnswerAsked = false;
   let lateAnswerSent = false;
   const { context, page, errors } = await openApp(browser, { user: MEMBER, api: liveApi({
     '/auth/logout': json({ ok: true }),
@@ -661,13 +693,17 @@ test('an answer for the previous viewer that arrives after the next sign-in is d
       if ((req.headers()['authorization'] || '') !== 'Bearer test-session') {
         return json({ detail: 'unavailable' }, 503);
       }
-      await new Promise(r => setTimeout(r, 4000));   // still in flight at sign-out and sign-in
+      lateAnswerAsked = true;
+      await held.opened;                              // in flight until after the next sign-in
       lateAnswerSent = true;
       return json({ items: [own], since: '2026-09-16' });
     } }) });
   try {
     await settled(page);
+    for (let i = 0; i < 80 && !lateAnswerAsked; i++) await page.waitForTimeout(100);
+    assert.ok(lateAnswerAsked, 'the first viewer\'s answer is in flight at sign-out');
     await signOutThenIn(page, SECOND);
+    held.open();
     for (let i = 0; i < 80 && !lateAnswerSent; i++) await page.waitForTimeout(100);
     assert.ok(lateAnswerSent, 'the slow answer was delivered during the test');
     await page.waitForTimeout(800);
@@ -1207,3 +1243,8 @@ test("a verdict card's Ask why opens the chat with that card's question; Open as
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });
+
+describe('PR-001 screens', { concurrency: 2 }, () => {
+  for (const testCase of CASES) it(...testCase);
+});
+suiteBuilt = true;

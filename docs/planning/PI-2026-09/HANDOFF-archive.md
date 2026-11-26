@@ -14,6 +14,13 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 26 Nov, night (autopilot): PR-047 step 2, `review_required`
+
+- **Autopilot `1126-1901-p7`** (Opus), no production read: `story/PR-047` `8541b37`
+  ([receipt](evidence/PR-047-implementation.md)). Every buy door needs the band's BUY and the
+  model's own; older ideas read it from `verdict_shadow.jsonl`, failing closed. TVSMOTOR (14 Nov)
+  would be refused. 168 new tests, mutants 17 of 17; full suite 7,221 passed, 0 failed.
+
 ## 26 Nov (autopilot `1126-1754-p5`): the notes on OPS-002 to OPS-006 and the box event, as they stood
 
 - **26 Nov, evening:** **OPS-002, 003, 004, 006 done** ([002](evidence/OPS-002.md),

@@ -4408,7 +4408,7 @@ section 10) are part of the current design.
 | [PR-041](planning/PI-2026-09/stories/PR-041.md) | Grade the screen's cut forward before it is widened | Open | 8 Discovery | None |
 | [PR-045](planning/PI-2026-09/stories/PR-045.md) | The trades on the portfolio screen: price, result and reason, and why a BUY was not bought | Done | 7 Marksheets; 10 Interface | SA-049, SA-051 |
 | [PR-046](planning/PI-2026-09/stories/PR-046.md) | "Ask why" asks the card's own question; text cut short says so | Done | 10 Interface | PR-045 |
-| [PR-047](planning/PI-2026-09/stories/PR-047.md) | Buy what the analysis itself would buy, at the price it names | Open | 6 Portfolio; 8 Discovery | FIX-033 |
+| [PR-047](planning/PI-2026-09/stories/PR-047.md) | Buy what the analysis itself would buy, at the price it names | Done | 6 Portfolio; 8 Discovery | FIX-033 |
 | [CLEAN-007](planning/PI-2026-09/stories/CLEAN-007.md) | The nightly backup stops emailing the archive | Done | 1 Production state; 10 Operations | None |
 | [FIX-017](planning/PI-2026-09/stories/FIX-017.md) | The holding sync reads every NSE corporate-action row it is given, under NSE's code | Open | 6 Portfolio | None |
 | [FIX-018](planning/PI-2026-09/stories/FIX-018.md) | The switch gate sets aside a decision whose result can never be known: named, and within a cap | Done | 6 Portfolio; 7 Marksheets | FIX-016 |

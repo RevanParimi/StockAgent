@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-26 (NEXT PR-047 step 2's fresh review; push waits for a window)
+# Current handoff - 2026-11-26 (NEXT OPS-005; PR-047 accepted, its push waits for a window)
 
 ## Now
 
@@ -8,21 +8,22 @@
 - **21 Nov:** the [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against
   their own analysis; DEEPA (Deepak Nitrite's case) sold. FIX-033 (P0), PR-047 (option A). No hand
   trades.
-- **26 Nov, PR-047:** step 1's measure built ([receipt](evidence/PR-047-step1.md)); step 2
-  `review_required` (below).
+- **26 Nov, PR-047 accepted** by its fresh review (autopilot `1126-2234-p8`,
+  [receipt](evidence/PR-047-review.md)), merged as `6eca615`, not yet pushed: a buy needs the
+  band's BUY and the model's own, so TVSMOTOR's kind is refused. BACKLOG B-42: a top-up (ADD)
+  reads neither verdict, for `PR-014-R1`. Step 1's read, `PR-047-S1`, waits for your word.
 - **26 Nov, OPS-002, 003, 004, 006 done** (`evidence/OPS-00*.md`): the full suite runs only via
   `scripts/ci/guarded_suite.py`; a box event holds the autopilot until you say `autopilot.sh seen`.
-- **Next `continue`:** **PR-047 step 2's fresh review** (Opus, `REVIEW.md`; on acceptance:
-  merge, guarded suite, window push, `PR-047-W1`), then OPS-005, MAP-001 to MAP-005, PR-007 (your
-  order, 26 Nov). **Autopilot, your word:** run to MAP-005; the phase that accepts it runs `/home/coder/project/autopilot/autopilot.sh stop` before
+- **Next `continue`:** **OPS-005** (light), then MAP-001 to MAP-005, PR-007 (your order,
+  26 Nov). **Autopilot, your word:** run to MAP-005; the phase that accepts it runs `/home/coder/project/autopilot/autopilot.sh stop` before
   writing its status. `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`: production reads,
   your word.
 - **Autopilot** started by you 14:49 IST, 26 Nov; its retries check box events only after your
   next `start`.
 - **Git, push pending** (OPS-002's hold met): next window 00:10–06:20 IST; the runner pushes
-  between phases after the guarded suite. `origin/main` = `53461ab` (23 Nov); `main` is 13 ahead
-  (your walkthrough copy, B-12's email wording for Sun 29 Nov, OPS, PR-047's records);
-  `story/PR-047` stays local until its review. After the push, confirm
+  between phases after the guarded suite. `origin/main` = `53461ab` (23 Nov); `main` is 17 ahead
+  (your walkthrough copy, B-12's email wording for Sun 29 Nov, OPS, PR-047's merge and records).
+  After the push: the deploy, `/health`, `PR-047-W1` from the next 16:30 review; confirm
   `docs/architecture-map/walkthrough-2026-11-26.md` on `origin/main` (your word; OPS-003's last
   acceptance line).
 
@@ -68,6 +69,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Wed 25 Nov‡ | `PR-005-W1` | the first cases written at purchase, and any price retried |
 | Thu 26 Nov | `PR-036-W5` | share invested and holdings, 5 sessions after the deposit |
 | Fri 27 Nov | `PR-042-W1` | a week of enforce: what it stopped; no exit or trim stopped |
+| Fri 27 Nov§ | `PR-047-W1` | after the deploy's 16:30 review: no buy whose own model did not say BUY; Sat 28 Nov: `hygiene.model_verdicts`, `not_buy_model` |
 | Tue 1 Dec | `PR-047-S1` | PR-047's measure, at your word; best 12-13 Dec |
 | Tue 1 Dec | `PR-014-D1` | the door read: what the buy list offered and refused (and BACKLOG B-13) |
 | Tue 1 Dec | `FIX-015-W1` | every shock sale since the deploy, read with `PR-014-D1` |
@@ -80,6 +82,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 
 ‡ If that day's review opens a position; a later first buy moves it. `PR-014-D1`, `R1` and
 `R2` keep their dates; their baseline note says capital changes on the deposit day.
+§ If the runner pushes in tonight's window; otherwise the first review after the deploy.
 
 ## 18 Nov, morning (autopilot): PR-038's rule predeclared; its read waits for your word
 
@@ -105,13 +108,6 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 
 - **Autopilot `1119-1629-p1`**, no production read. 15 November deploys shaped and in the same
   probe (dry run: 2 passed); CLEAN-007 verified from `CLEAN-007-W1`; no November closure.
-
-## 26 Nov, night (autopilot): PR-047 step 2, `review_required`
-
-- **Autopilot `1126-1901-p7`** (Opus), no production read: `story/PR-047` `8541b37`
-  ([receipt](evidence/PR-047-implementation.md)). Every buy door needs the band's BUY and the
-  model's own; older ideas read it from `verdict_shadow.jsonl`, failing closed. TVSMOTOR (14 Nov)
-  would be refused. 168 new tests, mutants 17 of 17; full suite 7,221 passed, 0 failed.
 
 # START HERE — standing rules
 

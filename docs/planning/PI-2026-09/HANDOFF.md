@@ -2,14 +2,16 @@
 
 ## Now
 
-- **Deployed:** `4c7f611`, 04:07 IST Mon 23 Nov (`5f33208f` SUCCESS, `/health` 200 at 04:07):
-  PR-015's switch on `b9578e5` (02:40, PR-017), on `aeb38b9` (01:49, FIX-033 and PR-046).
-  Cards `pending_observation`. The evidence rule decides from 23 Nov's 16:30 review.
+- **Deployed:** `809a5ea`, pushed 03:59 IST Fri 27 Nov by the autopilot after its guarded suite
+  (`dd834a35` SUCCESS, `/health` 200 at 04:31): OPS, B-12's wording (Sun 29 Nov), PR-047, MAP-001
+  and your walkthrough copy, which is on `origin/main` (OPS-003's last line). `PR-047-W1` reads
+  today's 16:30 review. Since 23 Nov (`4c7f611`) the evidence exit rule decides; PR-015, PR-017,
+  FIX-033 and PR-046 stay `pending_observation`.
 - **21 Nov:** the [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against
   their own analysis; DEEPA sold. FIX-033, PR-047. No hand trades.
 - **26 Nov, PR-047 accepted** by its fresh review ([receipt](evidence/PR-047-review.md)), merged
-  as `6eca615`, not yet pushed: a buy needs the band's BUY and the model's own, so TVSMOTOR's kind
-  is refused. B-42: a top-up reads neither verdict (`PR-014-R1`). `PR-047-S1` waits for your word.
+  as `6eca615`: a buy needs the band's BUY and the model's own, so TVSMOTOR's kind is refused.
+  B-42: a top-up reads neither verdict (`PR-014-R1`). `PR-047-S1` waits for your word.
 - **Box rules** (OPS-002 to 006): full suite only via `scripts/ci/guarded_suite.py`; a box event
   holds the autopilot until `autopilot.sh seen`; `autopilot.sh health` writes a daily box line.
 - **27 Nov, MAP-001 done** ([receipt](evidence/MAP-001.md),
@@ -20,12 +22,8 @@
   your word.
 - **Autopilot** (started 14:49 IST, 26 Nov): its retry box checks and health line need your next
   `start`.
-- **Git, push pending:** next window 00:10–06:20 IST; the runner pushes between phases after
-  the guarded suite. `origin/main` = `53461ab` (23 Nov); `main` is 19 ahead (your walkthrough
-  copy, B-12's email wording for Sun 29 Nov, OPS, PR-047, MAP-001).
-  After the push: the deploy, `/health`, `PR-047-W1` from the next 16:30 review; confirm
-  `docs/architecture-map/walkthrough-2026-11-26.md` on `origin/main` (your word; OPS-003's last
-  acceptance line).
+- **Git:** `origin/main` = `809a5ea`. The next push window is 00:10–06:20 IST; the runner pushes
+  between phases after the guarded suite, then check the deploy and `/health`.
 
 ## Waits for you
 
@@ -69,7 +67,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Wed 25 Nov‡ | `PR-005-W1` | the first cases written at purchase, and any price retried |
 | Thu 26 Nov | `PR-036-W5` | share invested and holdings, 5 sessions after the deposit |
 | Fri 27 Nov | `PR-042-W1` | a week of enforce: what it stopped; no exit or trim stopped |
-| Fri 27 Nov§ | `PR-047-W1` | after the deploy's 16:30 review: no buy whose own model did not say BUY; Sat 28 Nov: `hygiene.model_verdicts`, `not_buy_model` |
+| Fri 27 Nov | `PR-047-W1` | after the 16:30 review: no buy whose own model did not say BUY; Sat 28 Nov: `hygiene.model_verdicts`, `not_buy_model` |
 | Tue 1 Dec | `PR-047-S1` | PR-047's measure, at your word; best 12-13 Dec |
 | Tue 1 Dec | `PR-014-D1` | the door read: what the buy list offered and refused (and BACKLOG B-13) |
 | Tue 1 Dec | `FIX-015-W1` | every shock sale since the deploy, read with `PR-014-D1` |
@@ -82,7 +80,6 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 
 ‡ If that day's review opens a position; a later first buy moves it. `PR-014-D1`, `R1` and
 `R2` keep their dates; their baseline note says capital changes on the deposit day.
-§ If the runner pushes in tonight's window; otherwise the first review after the deploy.
 
 ## 18 Nov, morning (autopilot): PR-038's rule predeclared; its read waits for your word
 

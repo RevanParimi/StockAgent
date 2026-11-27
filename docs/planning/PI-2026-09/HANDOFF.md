@@ -1,26 +1,25 @@
-# Current handoff - 2026-11-27 (NEXT PR-032's fresh review; PR-041's run waits for you; push pending)
+# Current handoff - 2026-11-28 (NEXT MAP-006; PR-032 accepted, blocked on its bench; push held by B-53)
 
 ## Now
 
 - **Deployed:** `69e7c28` (MAP-002), pushed 06:05 IST Fri 27 Nov (`8624f234` SUCCESS, `/health`
-  200 at 08:52, CI green). `809a5ea` (03:59) brought OPS, PR-047 and MAP-001; B-12's
-  wording shows Sun 29 Nov. The evidence exit rule decides since 23 Nov; PR-015, PR-017,
-  FIX-033 and PR-046 stay `pending_observation`.
-- **Accepted:** [PR-047](evidence/PR-047-review.md) (B-42: a top-up reads neither verdict,
-  `PR-014-R1`), [PR-007](evidence/PR-007-implementation.md),
-  [PR-018](evidence/PR-018-implementation.md).
+  200 at 08:52, CI green); B-12's wording shows Sun 29 Nov. The evidence exit rule decides
+  since 23 Nov; PR-015, PR-017, FIX-033 and PR-046 stay `pending_observation`.
+- **Accepted:** **PR-032 (code)** by its fresh review ([receipt](evidence/PR-032-review.md)),
+  merged as `2db3347`. It stays **blocked** on its bench (`PR-032-B1`); `lenses.enabled` ships
+  off. Earlier: PR-047 (B-42), PR-007, PR-018.
 - **PR-041** ([receipt](evidence/PR-041.md)): built and checked; **blocked** on its one
   production run.
 - **Box:** full suite only via `scripts/ci/guarded_suite.py`; limit 8 GB. After a redeploy
   check `~/devbox/boot.log` (the Chromium reinstall is unproven).
-- **PR-032** ([receipt](evidence/PR-032-implementation.md)): built on `story/PR-032` (`f705a86`),
-  **`review_required`**; `lenses.enabled` ships off, so a deploy changes no query.
-- **Next `continue`:** **PR-032's fresh review** (decision path: Opus).
+- **Push held:** at 00:31 IST on Sat 28 Nov, the autopilot's pre-push suite failed on B-53 (the
+  map's galaxy test, a third time), so nothing was pushed. B-53 and B-59 are now **MAP-006**.
+- **Next `continue`:** **MAP-006** (light), then PR-044 (decision path: Opus).
 - **Production reads, your word:** `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`.
-- **Git:** `origin/main` = `69e7c28`; unpushed on `main`: its deploy record, MAP-003 to MAP-005,
-  PR-007, PR-018, PR-041, PR-032's records (code on `story/PR-032`). Push from 00:10 IST Sat
-  28 Nov after the guarded suite (B-53 and B-59 are flaky in its browser step); then check the
-  deploy, `/health` and CI's browser job (B-46).
+- **Git:** `origin/main` = `69e7c28`. Unpushed on `main`: its deploy record, MAP-003 to MAP-005,
+  PR-007, PR-018, PR-041, and PR-032 (`2db3347`) with its records. Push in a window once the
+  guarded suite passes on the exact commit; then check the deploy, `/health` and CI's browser
+  job (B-46).
 
 ## Waits for you
 
@@ -45,8 +44,8 @@
 - **PR-005's backfill:** say "run the PR-005 backfill" (a dry run, then `--apply`).
 - **PR-038's re-read** (Sat 21 Nov, `PR-038-R1`) and **PR-040's walk-through** (`PR-040-W1`,
   guide 11-M).
-- **PR-032's reads**, after its review and a deploy: "run the PR-032 coverage" (read-only), then
-  "run the PR-032 bench" (it spends). Lenses go on only at your word after it (B-61).
+- **PR-032's reads**, after the deploy: "run the PR-032 coverage" (read-only), then "run the
+  PR-032 bench" (it spends; B-62 is fixed first). Lenses go on only at your word after it (B-61).
 - **Optional:** remove the weekly off-site-copy watchdog line.
 
 ## Watched, and from when

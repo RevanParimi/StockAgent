@@ -284,7 +284,8 @@ const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2],
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
 /** The camera position that frames the whole box from `dir`, for this field of view and
- *  shape of window: every corner lands inside the frustum. */
+ *  shape of window: every corner lands inside the frustum, or, where the box carries its
+ *  own `points`, every one of those. */
 export function fitCamera(bounds, dir, fovDegrees, aspect, margin = 1.08) {
   const toCamera = unit(dir);
   const forward = scale(toCamera, -1);
@@ -296,15 +297,13 @@ export function fitCamera(bounds, dir, fovDegrees, aspect, margin = 1.08) {
   const tanH = tanV * aspect;
   let distance = 1;
   const { min, max, centre } = bounds;
-  for (const x of [min[0], max[0]]) {
-    for (const y of [min[1], max[1]]) {
-      for (const z of [min[2], max[2]]) {
-        const c = sub([x, y, z], centre);
-        const depth = dot(c, forward);
-        distance = Math.max(distance, Math.abs(dot(c, right)) / tanH - depth,
-          Math.abs(dot(c, up)) / tanV - depth);
-      }
-    }
+  const points = bounds.points ?? [min[0], max[0]].flatMap((x) => [min[1], max[1]]
+    .flatMap((y) => [min[2], max[2]].map((z) => [x, y, z])));
+  for (const point of points) {
+    const c = sub(point, centre);
+    const depth = dot(c, forward);
+    distance = Math.max(distance, Math.abs(dot(c, right)) / tanH - depth,
+      Math.abs(dot(c, up)) / tanV - depth);
   }
   return { position: add(centre, scale(toCamera, distance * margin)), target: [...centre] };
 }

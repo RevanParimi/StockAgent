@@ -249,8 +249,8 @@ StockAgent-main/
 │       │                          #  and curated/ (YAML); check.py is the CI guard
 │       └── viewer/                # The map's 3D page (MAP-002): its own npm project (React,
 │                                  #  three.js, ELK): the world, the panel, the day on the
-│                                  #  clock, one stock's trace and the tour; npm run build
-│                                  #  writes docs/architecture-map/index.html, one offline file
+│                                  #  clock, one stock's trace, the tour and the code galaxy;
+│                                  #  npm run build writes docs/architecture-map/index.html
 ├── config/
 │   ├── instruments.yaml           # Instrument registry (ticker → symbol, basis, identity status)
 │   └── sector_toggles.json        # Enable/disable sectors at runtime

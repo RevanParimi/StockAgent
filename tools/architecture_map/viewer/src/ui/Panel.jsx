@@ -15,9 +15,19 @@ const PartLink = ({ id, audience, onSelect, children }) => (
     }}>{children}</a>
 );
 
-const Code = ({ children }) => <code translate="no">{children}</code>;
+export const Code = ({ children }) => <code translate="no">{children}</code>;
 
-function Section({ title, children, empty }) {
+/** A link to a place of the code galaxy: a module, a part, the shared files or a file. */
+export const GalaxyLink = ({ id, file, onGo, children }) => (
+  <a href={formatHash({ id, file, code: true, audience: 'developer' })}
+    onClick={(e) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+      e.preventDefault();
+      onGo();
+    }}>{children}</a>
+);
+
+export function Section({ title, children, empty }) {
   return (
     <section>
       <h3>{title}</h3>
@@ -124,12 +134,14 @@ function Settings({ model, sub }) {
   );
 }
 
-function CodeAndFiles({ model, sub }) {
+function CodeAndFiles({ model, sub, onFile }) {
   const routes = routesFor(model, sub.id);
   return (
     <>
       <Section title="Where it lives" empty={!sub.files.length ? 'No file is listed.' : null}>
-        <ul className="paths">{sub.python_files.map((f) => <li key={f}><Code>{f}</Code></li>)}
+        <ul className="paths">{sub.python_files.map((f) => (
+          <li key={f}><GalaxyLink file={f} onGo={() => onFile(f)}><Code>{f}</Code></GalaxyLink></li>
+        ))}
           {sub.files.filter((f) => !f.endsWith('.py')).map((f) => <li key={f}><Code>{f}</Code></li>)}</ul>
       </Section>
       <Section title="Functions" empty={!sub.code.length ? 'No function is listed.' : null}>
@@ -147,7 +159,7 @@ function CodeAndFiles({ model, sub }) {
 }
 
 const Panel = forwardRef(function Panel({
-  model, part, audience, wide, onWide, onClose, onSelect,
+  model, part, audience, wide, onWide, onClose, onSelect, onCode, onFile,
 }, ref) {
   const { module, sub } = part;
   const developer = audience === 'developer';
@@ -172,6 +184,11 @@ const Panel = forwardRef(function Panel({
         ) : null}
       </div>
       <p className="summary">{prose(sub ? sub.summary : module.summary)}</p>
+      {developer ? (
+        <p className="to-code">
+          <GalaxyLink id={id} onGo={() => onCode(id)}>Show its code in the galaxy</GalaxyLink>
+        </p>
+      ) : null}
 
       {sub ? (
         <Section title="How it decides">
@@ -197,7 +214,7 @@ const Panel = forwardRef(function Panel({
       {sub && developer ? (
         <>
           <Settings model={model} sub={sub} />
-          <CodeAndFiles model={model} sub={sub} />
+          <CodeAndFiles model={model} sub={sub} onFile={onFile} />
         </>
       ) : null}
       <Stores model={model} id={id} developer={developer} />

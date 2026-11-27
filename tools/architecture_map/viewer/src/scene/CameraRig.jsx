@@ -20,12 +20,14 @@ export default function CameraRig({ command, goal, nudge, reduced, rootRef }) {
   const flight = useRef(null);
   const moved = useRef(false);
   const started = useRef(false);
+  // where the camera stood when the person took hold of it; null while nobody holds it
+  const held = useRef(null);
 
   const frame = () => {
     const aspect = size.width / Math.max(1, size.height);
     if (goal.focus) return focusCamera(goal.focus.module, goal.focus.subs, aspect);
     const { dir, fov } = PRESETS[goal.preset];
-    return { ...fitCamera(goal.bounds, dir, fov, aspect), fov };
+    return { ...fitCamera(goal.bounds, goal.dir ?? dir, fov, aspect, goal.margin), fov };
   };
 
   const lens = (fov) => {
@@ -136,7 +138,12 @@ export default function CameraRig({ command, goal, nudge, reduced, rootRef }) {
       maxPolarAngle={Math.PI - 0.02}
       minDistance={8}
       maxDistance={600}
-      onStart={() => { moved.current = true; flight.current = null; }}
+      onStart={() => { flight.current = null; held.current = camera.position.clone(); }}
+      // a click is no move: the view is still framed again when the window changes shape
+      onChange={() => {
+        if (held.current && camera.position.distanceTo(held.current) > 0.01) moved.current = true;
+      }}
+      onEnd={() => { held.current = null; }}
     />
   );
 }

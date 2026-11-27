@@ -4511,8 +4511,9 @@ the map lacks. After a code change,
 from the model by `tools/architecture_map/viewer/` (its own npm project,
 `npm run build`); a test fails when the page was not built from the committed
 viewer, or shows other modules, logic, flows, stores, jobs, settings,
-production values, trace or tour than `model.json`. The map is developer documentation:
-nothing of it ships in the image.
+production values, trace or tour than `model.json`. Its code galaxy draws every
+Python file and import from the model as it stood at the page's last build. The
+map is developer documentation: nothing of it ships in the image.
 
 The broad-exception guard fails when new code catches every exception without logging,
 re-raising or using it. The 154 handlers that already did so are grandfathered

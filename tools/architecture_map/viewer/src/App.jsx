@@ -1,14 +1,18 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { findPart, formatHash, parseHash, related, searchIndex } from './lib/select.js';
 import {
+  FRONT, MARGIN, codeGraph, fileLabel, galaxyLabels, galaxyLights, layoutGalaxy, ownerName, pickOf,
+} from './lib/galaxy.js';
+import {
   MODES, beads, clockBounds, clockRing, highlighted, moments, openingPlay, ringPoint, stepsOf,
   viewOf,
 } from './lib/play.js';
 import { layoutSubmodules, layoutWorld } from './lib/world.js';
-import { PLANE, SURFACE, moduleColour, moduleOf } from './theme.js';
+import { PLANE, SHARED, SURFACE, moduleColour, moduleOf } from './theme.js';
 import Scene from './scene/Scene.jsx';
 import Panel from './ui/Panel.jsx';
 import ClockPanel from './ui/ClockPanel.jsx';
+import CodePanel from './ui/CodePanel.jsx';
 import Player from './ui/Player.jsx';
 import { HelpDialog, SearchDialog } from './ui/Dialogs.jsx';
 import { Labels, Legend, Tooltip, TopBar } from './ui/Chrome.jsx';
@@ -22,7 +26,7 @@ const save = (value) => {
 };
 
 const NO_VIEW = 'The 3D view needs WebGL, which this browser does not offer here. The legend, search '
-  + 'and the panel still show every module.';
+  + 'and the panel still show every module';
 
 function hasWebGL() {
   try { return Boolean(document.createElement('canvas').getContext('webgl2')); } catch { return false; }
@@ -35,7 +39,7 @@ class SceneGuard extends Component {
 
   render() {
     return this.state.error
-      ? <p className="no-view" role="alert">{NO_VIEW} ({String(this.state.error.message)})</p>
+      ? <p className="no-view" role="alert">{NO_VIEW}. ({String(this.state.error.message)})</p>
       : this.props.children;
   }
 }
@@ -90,17 +94,24 @@ export default function App({ model }) {
     ...model.modules.map((m) => [m.id, `${m.id} ${m.short}`]),
     ...(model.externals ?? []).map((e) => [e.id, e.name]),
   ]), [model]);
+  const graph = useMemo(() => codeGraph(model), [model]);
   const [first] = useState(() => parseHash(window.location.hash, model));
-  const [selected, setSelected] = useState(first.id);
+  // The world, or the code galaxy; in the galaxy a file may be chosen, and `selected` is
+  // then the part, module or shared files that hold it.
+  const [tab, setTab] = useState(first.code ? 'code' : 'world');
+  const [file, setFile] = useState(first.file ?? null);
+  const [selected, setSelected] = useState(first.file ? pickOf(graph, first.file) : first.id);
   const [notice, setNotice] = useState(first.unknown
     ? `Nothing on the map is called “${first.unknown}”. Choose a module from the legend.` : '');
-  const [audience, setAudience] = useState(first.audience
+  // the galaxy belongs to the developer view, so its address opens that view
+  const [audience, setAudience] = useState(first.code ? 'developer' : first.audience
     ?? (readSaved() === 'developer' ? 'developer' : 'manager'));
   // The clock, the trace or the tour, and its step; null while the map is explored.
   const [play, setPlay] = useState(() => openingPlay(model, first, audience));
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
-  const [view, setView] = useState({ preset: 'front', focus: Boolean(first.id), turn: 0 });
+  const [view, setView] = useState({ preset: 'front', focus: Boolean(first.id) && !first.code,
+    turn: 0 });
   const [paused, setPaused] = useState(false);
   const reduced = useReducedMotion();
   const moving = !paused && !reduced;
@@ -120,52 +131,106 @@ export default function App({ model }) {
   const wantsPlayer = useRef(false);
   const playOpener = useRef(null);
   const focusAfter = useRef(null);
-  const part = findPart(model, selected);
+  const inCode = tab === 'code';
+  const part = inCode ? null : findPart(model, selected);
+  // whether the galaxy has a panel: a file, or a choice of files
+  const codePanel = inCode && Boolean(file || selected);
+  // laid out when first shown, and kept: the same model always gives the same galaxy
+  const placed = useRef(null);
+  const galaxy = useMemo(() => {
+    if (!inCode) return null;
+    placed.current ??= layoutGalaxy(model, world);
+    return placed.current;
+  }, [inCode, model, world]);
+  const codeLights = useMemo(() => (galaxy ? galaxyLights(graph, { selected, file }) : null),
+    [file, galaxy, graph, selected]);
 
   const steps = useMemo(() => (play ? stepsOf(model, play.mode) : []), [model, play?.mode]);
   // what the step of the mode shows: a view, a part opened up, what is lit, a job
   const stage = useMemo(() => (play ? viewOf(model, play.mode, steps[play.step]) : null),
     [model, play, steps]);
-  const shown = stage ? stage.selected : selected;
+  const shown = inCode ? null : stage ? stage.selected : selected;
   const lit = stage?.lit ?? null;
 
-  const show = useCallback((id) => {
+  /** Show a place of the world or, with `code`, of the galaxy. */
+  const show = useCallback((id, { code = false, path = null } = {}) => {
+    setTab(code ? 'code' : 'world');
+    setFile(path);
     setSelected(id);
     setNotice('');
     setHover(null);
     setPointing(false);
-    setView((v) => ({ preset: v.preset, focus: Boolean(id), turn: v.turn + 1 }));
-  }, []);
+    // Arriving from the other tab starts from the front. In the galaxy a choice moves no
+    // camera; in the world it flies to what was chosen.
+    if (code !== inCode) setView((v) => ({ preset: 'front', focus: !code && Boolean(id),
+      turn: v.turn + 1 }));
+    else if (!code) setView((v) => ({ preset: v.preset, focus: Boolean(id), turn: v.turn + 1 }));
+  }, [inCode]);
 
   const stopPlaying = useCallback(() => {
     setPlay(null);
     setPlaying(false);
   }, []);
 
+  /** Open a part or module in the tab that shows; in the galaxy that lights its files,
+   *  and the shared files can be chosen too. */
   const open = useCallback((id, options = {}) => {
-    if (!findPart(model, id)) return;
+    if (!findPart(model, id) && !(inCode && id === SHARED)) return;
     if (play) opener.current = null;
-    else if (!part) opener.current = document.activeElement;
-    address({ id, audience }, 'pushState');
+    else if (!part && !codePanel) opener.current = document.activeElement;
+    address({ id, audience, code: inCode }, 'pushState');
     wantsHeading.current = Boolean(options.focusPanel);
     stopPlaying();
+    show(id, { code: inCode });
+  }, [audience, codePanel, inCode, model, part, play, show, stopPlaying]);
+
+  /** The code galaxy, from anywhere: a part's files lit, or one file chosen. */
+  const openCode = useCallback(({ id = null, path = null, focusPanel = false } = {}) => {
+    if (path && !graph.byPath.has(path)) return;
+    const choice = path ? pickOf(graph, path) : id;
+    if (play) opener.current = null;
+    else if (!part && !codePanel) opener.current = document.activeElement;
+    if (!inCode) setWide(false);
+    setAudience('developer');
+    address({ id: choice, file: path, audience: 'developer', code: true }, 'pushState');
+    // what held the focus may be about to go: the new panel takes it, or the galaxy's button
+    const held = Boolean(document.activeElement?.closest('.panel, .player'));
+    wantsHeading.current = focusPanel || (held && Boolean(choice));
+    if (held && !wantsHeading.current) document.querySelector('[data-galaxy]')?.focus();
+    stopPlaying();
+    show(choice, { code: true, path });
+  }, [codePanel, graph, inCode, part, play, show, stopPlaying]);
+
+  /** Back from the galaxy to the world, which shows the module of what was chosen. */
+  const showWorld = useCallback(({ focusPanel = false, as = audience } = {}) => {
+    const id = findPart(model, selected) ? selected : null;
+    address({ id, audience: as }, 'pushState');
+    wantsHeading.current = focusPanel && Boolean(id);
+    // what held the focus is about to go: the galaxy's button takes it
+    if (!wantsHeading.current && document.activeElement?.closest('.panel')) {
+      document.querySelector('[data-galaxy]')?.focus();
+    }
+    opener.current = null;
+    setWide(false);
     show(id);
-  }, [audience, model, part, play, show, stopPlaying]);
+  }, [audience, model, selected, show]);
 
   const close = useCallback(() => {
     const was = selected;
-    address({ id: null, audience }, 'pushState');
-    show(null);
+    address({ id: null, audience, code: inCode }, 'pushState');
+    show(null, { code: inCode });
     setWide(false);
     const back = opener.current;
     const target = back && back.isConnected && back !== document.body
       ? back : document.querySelector(`[data-module="${moduleOf(was ?? '')}"]`);
     target?.focus?.();
     opener.current = null;
-  }, [audience, selected, show]);
+  }, [audience, inCode, selected, show]);
 
   /** Show a mode's step in place of whatever is open. */
   const playAt = useCallback((next) => {
+    setTab('world');
+    setFile(null);
     setSelected(null);
     setWide(false);
     setNotice('');
@@ -239,7 +304,14 @@ export default function App({ model }) {
     setPaused(!paused);
   }, [paused]);
 
+  /** The galaxy's button and key: in, with the open part's files lit, and out again. */
+  const toggleCode = useCallback(() => {
+    if (inCode) showWorld();
+    else openCode({ id: findPart(model, selected) ? selected : null });
+  }, [inCode, model, openCode, selected, showWorld]);
+
   const choosePreset = useCallback((preset) => {
+    // the clock is the world's: it leaves the galaxy
     if (preset === 'clock') {
       if (play?.mode !== 'clock') enter('clock');
     } else if (play) leave(preset);
@@ -249,17 +321,22 @@ export default function App({ model }) {
   const changeAudience = useCallback((value) => {
     setAudience(value);
     save(value);
-    address({ id: selected, audience: value, play }, 'replaceState');
-  }, [play, selected]);
+    // the manager view has no galaxy
+    if (inCode && value === 'manager') showWorld({ as: value });
+    else address({ id: selected, audience: value, play, code: inCode, file }, 'replaceState');
+  }, [file, inCode, play, selected, showWorld]);
 
   useEffect(() => {
     // Back, Forward and hand-typed addresses. The address says what is shown, so one
     // without v=dev is the manager's view.
     const read = () => {
       const next = parseHash(window.location.hash, model);
-      setAudience(next.audience ?? 'manager');
-      if (next.unknown) setNotice(`Nothing on the map is called “${next.unknown}”.`);
+      setAudience(next.code ? 'developer' : next.audience ?? 'manager');
+      const unknown = () => {
+        if (next.unknown) setNotice(`Nothing on the map is called “${next.unknown}”.`);
+      };
       if (next.play) {
+        unknown();
         if (next.play.mode !== play?.mode || next.play.step !== play?.step) playAt(next.play);
         return;
       }
@@ -268,7 +345,16 @@ export default function App({ model }) {
         stopPlaying();
         setView((v) => ({ preset: 'front', focus: false, turn: v.turn + 1 }));
       }
-      if (next.id !== selected) show(next.id);
+      const path = next.file ?? null;
+      const id = path ? pickOf(graph, path) : next.id;
+      if (Boolean(next.code) !== inCode || id !== selected || path !== file) {
+        // the galaxy's panels replace one another: focus that stood in one follows
+        if ((next.code || inCode) && document.activeElement?.closest('.panel')) {
+          wantsHeading.current = true;
+        }
+        show(id, { code: Boolean(next.code), path });
+      }
+      unknown();
     };
     window.addEventListener('popstate', read);
     window.addEventListener('hashchange', read);
@@ -276,13 +362,13 @@ export default function App({ model }) {
       window.removeEventListener('popstate', read);
       window.removeEventListener('hashchange', read);
     };
-  }, [keepFocus, model, play, playAt, selected, show, stopPlaying]);
+  }, [file, graph, inCode, keepFocus, model, play, playAt, selected, show, stopPlaying]);
 
   useEffect(() => {
     // What the page opened with may be more than its address says (the tour a manager
     // starts on, the developer view someone kept): write it there, so the two agree.
-    if (play || (audience === 'developer' && first.audience === null)) {
-      address({ id: first.id, audience, play }, 'replaceState');
+    if (play || inCode || (audience === 'developer' && first.audience === null)) {
+      address({ id: first.id, audience, play, code: inCode, file }, 'replaceState');
     }
     // only for the address the page was opened with
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -294,7 +380,7 @@ export default function App({ model }) {
       heading.current.focus();
       wantsHeading.current = false;
     }
-  }, [dialog, selected]);
+  }, [dialog, file, selected, tab]);
 
   useEffect(() => {
     // A mode someone opened takes the focus; one left gives it back.
@@ -315,10 +401,15 @@ export default function App({ model }) {
       document.title = `${what} · StockAgent architecture`;
       return;
     }
+    if (inCode) {
+      const chosen = file ? fileLabel(file) : selected ? ownerName(model, selected) : null;
+      document.title = `${chosen ? `${chosen} · ` : ''}Code galaxy · StockAgent architecture`;
+      return;
+    }
     document.title = part
       ? `${selected} ${(part.sub ?? part.module).name} · StockAgent architecture`
       : 'StockAgent architecture';
-  }, [part, play, selected, steps]);
+  }, [file, inCode, model, part, play, selected, steps]);
 
   useEffect(() => {
     const keys = (event) => {
@@ -329,6 +420,7 @@ export default function App({ model }) {
       if (event.target instanceof Element && event.target.closest(TYPING)) return;
       const inView = event.target === document.body
         || (event.target instanceof Element && Boolean(event.target.closest('.world')));
+      if (inView && (PANS[event.key] && event.shiftKey || NUDGES[event.key])) setHover(null);
       if (inView && event.shiftKey && PANS[event.key]) {
         event.preventDefault();
         setNudge({ turn: 0, tilt: 0, zoom: 1, pan: PANS[event.key] });
@@ -345,12 +437,15 @@ export default function App({ model }) {
       else if (event.key === '/') { event.preventDefault(); setDialog('search'); }
       else if (event.key === '?') { event.preventDefault(); setDialog('help'); }
       else if ((event.key === 'p' || event.key === 'P') && !reduced) toggleMotion();
+      else if ((event.key === 'g' || event.key === 'G') && audience === 'developer') toggleCode();
       else if (event.key === 'Escape' && play) leave();
-      else if (event.key === 'Escape' && selected) close();
+      else if (event.key === 'Escape' && (selected || file)) close();
+      else if (event.key === 'Escape' && inCode) showWorld();
     };
     document.addEventListener('keydown', keys);
     return () => document.removeEventListener('keydown', keys);
-  }, [choosePreset, close, leave, play, reduced, selected, toggleMotion]);
+  }, [audience, choosePreset, close, file, inCode, leave, play, reduced, selected, showWorld,
+    toggleCode, toggleMotion]);
 
   // A dialog's late "closed" event must not shut the one opened since.
   const shut = useCallback((name) => setDialog((now) => (now === name ? null : now)), []);
@@ -368,12 +463,15 @@ export default function App({ model }) {
   const preset = stage ? stage.preset : view.preset;
   const whole = stage ? !shown : !view.focus;
   const framed = !whole && shown ? shown : '';
-  const goal = useMemo(() => ({
+  const goal = useMemo(() => (galaxy ? { preset, bounds: galaxy.bounds, focus: null,
+    dir: preset === 'front' ? FRONT : undefined, margin: MARGIN } : {
     preset,
     bounds: preset === 'clock' ? day.bounds : world.bounds,
     focus: framed && parts ? { module: parts.block, subs: parts.blocks } : null,
-  }), [day, framed, parts, preset, world]);
-  const command = `${view.turn} ${preset} ${framed}`;
+  }), [day, framed, galaxy, parts, preset, world]);
+  const command = `${view.turn} ${tab} ${preset} ${framed}`;
+  const codeItems = useMemo(() => (galaxy ? galaxyLabels(model, galaxy, { selected, file }) : null),
+    [file, galaxy, model, selected]);
 
   const clock = useMemo(() => {
     if (preset !== 'clock' || !stage) return null;
@@ -465,11 +563,14 @@ export default function App({ model }) {
     return list;
   }, [clock, lit, model, parts, preset, shown, touched, whole, world]);
 
-  const panelled = part || play?.mode === 'clock';
+  const panelled = part || codePanel || play?.mode === 'clock';
+  const anchors = codeItems ?? items;
+  const pick = (id, item) => (item?.file ? openCode({ path: item.file }) : open(id));
   return (
-    <div className={`app${panelled ? ' with-panel' : ''}${part && wide ? ' wide' : ''}${
+    <div className={`app${panelled ? ' with-panel' : ''}${(part || codePanel) && wide ? ' wide' : ''}${
       play ? ' playing' : ''}`} ref={rootRef}
       data-app data-selected={selected ?? ''} data-preset={preset} data-audience={audience}
+      data-tab={tab} data-file={file ?? ''}
       data-motion={moving ? 'on' : 'off'} data-mode={play?.mode ?? ''}
       data-step={play ? play.step + 1 : ''} data-job={stage?.job?.id ?? ''}
       data-playing={playing ? 'true' : 'false'}>
@@ -481,27 +582,44 @@ export default function App({ model }) {
         }}>Skip to the list of modules</a>
       <TopBar model={model} preset={play ? (play.mode === 'clock' ? 'clock' : null)
         : view.focus ? null : view.preset}
-        mode={play?.mode} audience={audience} motion={moving}
+        mode={play?.mode} code={inCode} audience={audience} motion={moving}
         reduced={reduced} onPreset={choosePreset} onReset={() => choosePreset('front')}
-        onStory={(mode) => (play?.mode === mode ? leave() : enter(mode))}
+        onStory={(mode) => (play?.mode === mode ? leave() : enter(mode))} onCode={toggleCode}
         onSearch={() => setDialog('search')} onAudience={changeAudience}
         onMotion={toggleMotion} onHelp={() => setDialog('help')} />
-      <Legend model={model} selected={shown} audience={audience} onSelect={(id) => open(id)} />
+      <Legend model={model} selected={inCode ? selected : shown} audience={audience} code={inCode}
+        onSelect={(id) => open(id)} />
       <main className={`world${pointing ? ' pointing' : ''}`} tabIndex={0}
-        aria-label="3D view of the product. Arrow keys turn it; plus and minus zoom.">
+        aria-label={inCode
+          ? 'Code galaxy: a 3D view of the Python files. Arrow keys turn it; plus and minus zoom. The panels list every file.'
+          : '3D view of the product. Arrow keys turn it; plus and minus zoom.'}>
         {webgl ? (
           <SceneGuard>
             <Scene world={world} goal={goal} command={command} nudge={nudge} selected={shown}
-              touched={touched} lit={lit} clock={clock} parts={parts} anchors={items}
+              touched={touched} lit={lit} clock={clock} parts={parts} anchors={anchors}
               labels={labels} rootRef={rootRef} reduced={reduced} moving={moving}
-              preset={whole ? preset : null} hovered={hover?.flow.key}
+              preset={whole ? preset : null} hovered={hover?.flow?.key}
               onSelect={(id) => open(id)}
               onMoment={(i) => (play?.mode === 'clock' ? go(i) : enter('clock', i))}
-              onHoverFlow={setHover} onHoverBlock={setPointing} />
+              onHoverFlow={setHover} onHoverBlock={setPointing} galaxy={galaxy}
+              codeLights={codeLights} hoveredFile={hover?.path ?? null}
+              onPickFile={(path) => openCode({ path })}
+              onHoverFile={(over) => { setHover(over); setPointing(Boolean(over)); }} />
           </SceneGuard>
-        ) : <p className="no-view" role="alert">{NO_VIEW}</p>}
-        <Labels items={items.filter((i) => !i.hidden)} labels={labels}
-          onSelect={(id) => open(id)} />
+        ) : (
+          <p className="no-view" role="alert">
+            {NO_VIEW}{inCode ? '; the panels list every file' : ''}.
+          </p>
+        )}
+        <Labels items={anchors.filter((i) => !i.hidden)} labels={labels} onSelect={pick} />
+        {galaxy && webgl ? (
+          <p className="ring-key code-key">
+            {galaxy.nodes.length} Python files. A dot is a file: its size, its lines; its colour, its
+            module. A line is an import. {file
+              ? <><strong>Solid</strong> lines: files it imports. <strong>Dashed</strong>: files that import it.</>
+              : 'A ring: six or more other modules import the file.'}
+          </p>
+        ) : null}
         {clock && webgl ? (
           <p className="ring-key">Rings, inner to outer: <strong>daily</strong>,{' '}
             <strong>weekly</strong>, <strong>monthly and yearly</strong>. 00:00 is at the back.</p>
@@ -516,15 +634,31 @@ export default function App({ model }) {
       ) : null}
       {part ? (
         <Panel ref={heading} model={model} part={part} audience={audience} wide={wide}
-          onWide={() => setWide((w) => !w)} onClose={close} onSelect={(id) => open(id)} />
+          onWide={() => setWide((w) => !w)} onClose={close} onSelect={(id) => open(id)}
+          onCode={(id) => openCode({ id, focusPanel: true })}
+          onFile={(path) => openCode({ path, focusPanel: true })} />
+      ) : codePanel ? (
+        <CodePanel ref={heading} model={model} graph={graph} file={file} selected={selected}
+          wide={wide} onWide={() => setWide((w) => !w)} onClose={close}
+          onFile={(path) => openCode({ path, focusPanel: true })}
+          onCode={(id) => openCode({ id, focusPanel: true })}
+          onWorld={() => showWorld({ focusPanel: true })} />
       ) : play?.mode === 'clock' ? (
         <ClockPanel model={model} moments={steps} step={play.step}
           names={names} audience={audience} onOpen={(id) => open(id, { focusPanel: true })}
           onMoment={go} onClose={() => leave()} />
       ) : null}
-      <Tooltip hover={hover} names={names} />
+      <Tooltip hover={hover} names={names} model={model} />
       <SearchDialog open={dialog === 'search'} index={index} onClose={() => shut('search')}
-        onPick={(item) => { shut('search'); open(item.id, { focusPanel: true }); }} />
+        onPick={(item) => {
+          shut('search');
+          // A file opens in the galaxy when that shows, when no part of the world holds it,
+          // or when a developer picks one that no panel of the world lists (a module's own).
+          if (item.file && (inCode || !findPart(model, item.id)
+              || (audience === 'developer' && item.kind === 'file' && !item.id.includes('.')))) {
+            openCode({ path: item.file, focusPanel: true });
+          } else open(item.id, { focusPanel: true });
+        }} />
       <HelpDialog open={dialog === 'help'} onClose={() => shut('help')} />
     </div>
   );

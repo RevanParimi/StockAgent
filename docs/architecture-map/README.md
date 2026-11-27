@@ -47,18 +47,45 @@ Three things play step by step in a bar under the world, with Back, Next, Play o
 
 Their addresses can be shared: `index.html#p=clock&s=16`, `#p=trace&s=6`, `#p=tour&s=1`.
 
+## The code galaxy
+
+In the **Developer** view, **Code galaxy** (`G`) shows the code as it is: one dot for each Python
+file under `core/`, `services/`, `src/backend/` and `scripts/`, and a line for each import between
+two of them. A dot's size grows with the file's lines and its colour is its module's. Each module's
+files gather in a ball that stands where the module stands in the world; files that belong to no one
+module have a ball of their own. A file that many modules import sits on the side facing them, and
+one imported by six or more other modules has a ring and its name.
+
+- Choose a module in the legend (or **Shared files**) to light its files; the panel counts what they
+  import from outside and what imports them, and lists them, largest first.
+- Click a dot, a name or a listed file, or search a file by its name (`/`), for its panel: path,
+  lines, the part it belongs to, what it imports and what imports it, each a link.
+- The galaxy and the world share what is chosen: **Show in the world** opens the file's part, and
+  in the developer view a part's panel links to its code. The world's panel lists each part's files
+  as links into the galaxy.
+- Views `1` to `4` and `R` frame the galaxy; `5` leaves it for the clock; `Esc` closes the panel,
+  then the galaxy. Without WebGL the panels still list every file.
+
+Imports are read from `import` statements. A file loaded by name at run time, and a script someone
+runs, may show as imported by nothing. The galaxy holds the files and line counts of the page's last
+rebuild (the header's `Code inspected`).
+
+Addresses: `index.html#g` is the galaxy, `#g&m=M5` lights a module's files and
+`#g&f=core/portfolio/advisor.py` opens a file.
+
 ## Keys
 
 | Key | What it does |
 |---|---|
 | `1` `2` `3` `4` | Front, top, side and below views (see DESIGN.md for what each answers) |
 | `5` | The clock |
+| `G` | The code galaxy (developer view) |
 | `R` | Reset the view |
 | `/` | Search modules, parts, stores, jobs, settings, functions and files |
 | `P` | Pause or resume motion |
 | `← → ↑ ↓` and `+ −` | Turn and zoom the 3D view, once it has the focus (Tab to it) |
 | `Shift` + arrows | Move the 3D view sideways, once it has the focus |
-| `Esc` | Close the dialog, then the clock, trace or tour, then the panel |
+| `Esc` | Close the dialog, then the clock, trace or tour, then the panel, then the galaxy |
 | `?` | The list of keys |
 
 A part has its own address, so a document or a chat can point into the map: `index.html#m=M5.2`
@@ -101,6 +128,8 @@ the commit shown in the header (`Code inspected`) are only as new as the last re
 ## Tests
 
 `npm run test:frontend` at the repository root runs `tests/frontend/architecture_map.test.mjs`
-(the built page in Chromium with software WebGL, opened from disk with the network off) and
-`architecture_map_logic.test.mjs` (layout, flowchart rules, what each step lights, the clock ring,
-colours and contrast, the rebuild check). Neither needs the viewer's own packages.
+(the built page in Chromium with software WebGL, opened from disk with the network off),
+`architecture_map_galaxy.test.mjs` (the code galaxy, the same way) and
+`architecture_map_logic.test.mjs` (layout, flowchart rules, what each step and choice lights, the
+clock ring, the galaxy's balls and dots, colours and contrast, the rebuild check). None needs the
+viewer's own packages.

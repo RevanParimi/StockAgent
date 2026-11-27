@@ -8,12 +8,12 @@
  * either behind fails. What is on the map is read from the model inside the page, so a
  * regenerated model needs no change here.
  */
-import { test, before, after } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { chromium } from 'playwright';
 
+import {
+  PAGE, SLOW, data, focus, model, onScreen, open, settled, still, useBrowser,
+} from './architecture_map_harness.mjs';
 import {
   PRESETS, curvePoint, fitCamera, layoutWorld,
 } from '../../tools/architecture_map/viewer/src/lib/world.js';
@@ -21,64 +21,11 @@ import {
   beads, clockBounds, clockRing, moments,
 } from '../../tools/architecture_map/viewer/src/lib/play.js';
 
-const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const PAGE = pathToFileURL(path.join(REPO, 'docs', 'architecture-map', 'index.html')).href;
 const MONEY_PATH = ['M3.1', 'M3.2', 'M3.3', 'M3.4', 'M3.5', 'M4.2', 'M5.2', 'M5.3',
   'M6.1', 'M6.2', 'M6.3', 'M6.4', 'M6.5'];
-const SLOW = { timeout: 180_000 };
 
-let browser;
-before(async () => {
-  browser = await chromium.launch({
-    args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
-  });
-});
-after(async () => { await browser?.close(); });
+const theBrowser = useBrowser();
 
-/** A page on the map, and what went wrong on it. Reduced motion unless a test says. A
- *  page opened with no address starts on the guided tour; unless a test wants it, Esc
- *  leaves it first and the test begins on the map. A test that opens several pages in
- *  turn calls `close` on each: drawn in software, every open one holds much memory. */
-async function open(t, { hash = '', motion = false, size = [1280, 800], tour = false } = {}) {
-  const context = await browser.newContext({
-    viewport: { width: size[0], height: size[1] }, offline: true,
-    reducedMotion: motion ? 'no-preference' : 'reduce',
-  });
-  const page = await context.newPage();
-  const wrong = [];
-  const asked = [];
-  page.on('console', (m) => { if (m.type() === 'error') wrong.push(m.text().slice(0, 500)); });
-  page.on('pageerror', (e) => wrong.push(`page error: ${e.message}`));
-  page.on('request', (r) => asked.push(r.url()));
-  t.after(async () => { await context.close(); });
-  await page.goto(PAGE + hash);
-  await page.waitForSelector('[data-app][data-ready="true"]', { timeout: 90_000 });
-  if (!hash && !tour) {
-    await page.keyboard.press('Escape');
-    await page.waitForSelector('[data-app][data-mode=""]');
-    await page.waitForTimeout(300);
-    await still(page);
-  }
-  const clean = () => {
-    assert.deepEqual(wrong, [], 'console errors');
-    assert.deepEqual(asked.filter((u) => u.split('#')[0] !== PAGE), [],
-      'the page asks for nothing but itself');
-  };
-  return { page, clean, close: () => context.close() };
-}
-
-const data = (page, name) => page.getAttribute('[data-app]', `data-${name}`);
-const model = (page) => page.evaluate(() => JSON.parse(document.getElementById('model').textContent));
-const still = (page) => page.waitForFunction(
-  () => document.querySelector('[data-app]').dataset.moving === 'false', null, { timeout: 60_000 });
-async function settled(page, since) {
-  // the camera has left where it was and stopped
-  await page.waitForFunction((from) => {
-    const app = document.querySelector('[data-app]');
-    return app.dataset.camera !== from && app.dataset.moving === 'false';
-  }, since, { timeout: 60_000 });
-  return data(page, 'camera');
-}
 const drawn = (page, id) => page.waitForSelector(
   `.flowchart[data-flowchart="${id}"][data-ready="true"]`, { timeout: 90_000 });
 
@@ -244,25 +191,6 @@ test('clicking a block itself, not its name, selects it', SLOW, async (t) => {
   clean();
 });
 
-/** Where a point of the world lands on the 3D view: the camera's own geometry. */
-function onScreen(camera, fov, view, point) {
-  const sub = (a, b) => a.map((v, i) => v - b[i]);
-  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-  const unit = (a) => a.map((v) => v / Math.hypot(...a));
-  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2],
-    a[0] * b[1] - a[1] * b[0]];
-  const forward = unit(sub(camera.target, camera.position));
-  const right = unit(cross(forward, [0, 1, 0]));
-  const up = cross(right, forward);
-  const rel = sub(point, camera.position);
-  const tan = Math.tan((fov * Math.PI) / 360);
-  const depth = dot(rel, forward);
-  return {
-    x: view.x + ((dot(rel, right) / (depth * tan * (view.width / view.height)) + 1) / 2) * view.width,
-    y: view.y + ((1 - dot(rel, up) / (depth * tan)) / 2) * view.height,
-  };
-}
-
 test('pointing at a flow says what travels on it', SLOW, async (t) => {
   const { page, clean } = await open(t);
   await still(page);
@@ -394,17 +322,6 @@ test('the skip link moves to the modules and leaves what is open', SLOW, async (
   clean();
 });
 
-/** The focused element, and whether a person can see that it is focused. */
-const focus = (page) => page.evaluate(() => {
-  const el = document.activeElement;
-  const style = getComputedStyle(el);
-  return {
-    tag: el.tagName, text: el.textContent.trim().slice(0, 60), module: el.dataset.module ?? '',
-    inDialog: Boolean(el.closest('dialog')), id: el.id,
-    ring: style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) >= 2,
-  };
-});
-
 test('views, search, the panel and help work from the keyboard, focus always seen', SLOW, async (t) => {
   const { page, clean } = await open(t);
   await still(page);
@@ -489,7 +406,7 @@ test('views, search, the panel and help work from the keyboard, focus always see
 });
 
 test('without WebGL it says so, and the legend and panel still work', SLOW, async (t) => {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 },
+  const context = await theBrowser().newContext({ viewport: { width: 1280, height: 800 },
     offline: true, reducedMotion: 'reduce' });
   t.after(async () => { await context.close(); });
   await context.addInitScript(() => {

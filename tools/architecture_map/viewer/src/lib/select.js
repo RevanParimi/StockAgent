@@ -1,7 +1,7 @@
 // What a selection means: the address, what it touches, the facts the panel shows, and
 // search. Pure functions over the model.
 
-import { moduleOf, nodeOf } from '../theme.js';
+import { SHARED, moduleOf, nodeOf } from '../theme.js';
 import { flowKey } from './world.js';
 
 export function findPart(model, id) {
@@ -27,7 +27,9 @@ const stepCount = (model, mode) => (Object.hasOwn(STEPS, mode) ? STEPS[mode](mod
 
 /** `#m=M5.2&v=dev` or `#p=tour&s=3` to `{id, audience, play, unknown}`; `audience` is
  *  null when not given. `play` is `{mode, step}` with the step counted from 0, kept inside
- *  the mode's steps; a mode and a part together show the mode. */
+ *  the mode's steps; a mode and a part together show the mode. A code galaxy address, `#g`,
+ *  `#g&m=M5` or `#g&f=core/portfolio/advisor.py`, adds `code: true` and `file`; there a part
+ *  may also be `shared`, and a file wins over a part. */
 export function parseHash(hash, model) {
   const params = new URLSearchParams(String(hash).replace(/^#/, ''));
   const view = params.get('v');
@@ -40,14 +42,26 @@ export function parseHash(hash, model) {
       play: count ? { mode, step: Math.min(count, Math.max(1, asked)) - 1 } : null };
   }
   const asked = params.get('m');
+  if (params.has('g')) {
+    const path = params.get('f');
+    const file = path !== null && model.files.some((f) => f.path === path) ? path : null;
+    const id = !file && asked && (asked === SHARED || findPart(model, asked)) ? asked : null;
+    const unknown = path !== null ? (file ? null : path) : (asked && !id ? asked : null);
+    return { id, audience, play: null, unknown, code: true, file };
+  }
   const id = asked && findPart(model, asked) ? asked : null;
   return { id, audience, play: null, unknown: asked && !id ? asked : null };
 }
 
-export function formatHash({ id, audience, play }) {
+export function formatHash({ id, audience, play, code, file }) {
   const parts = [];
   if (play) parts.push(`p=${play.mode}`, `s=${play.step + 1}`);
-  else if (id) parts.push(`m=${encodeURIComponent(id)}`);
+  else {
+    if (code) parts.push('g');
+    // a path reads better with its slashes
+    if (code && file) parts.push(`f=${encodeURIComponent(file).replaceAll('%2F', '/')}`);
+    else if (id) parts.push(`m=${encodeURIComponent(id)}`);
+  }
   if (audience === 'developer') parts.push('v=dev');
   return parts.length ? `#${parts.join('&')}` : '';
 }
@@ -128,24 +142,30 @@ export const settingsFor = (model, sub) => (sub.config ?? []).map((key) => setti
 
 export function searchIndex(model) {
   const items = [];
-  // `name` is what a title is ranked by: for a module or part, the words after its ID.
-  const add = (kind, id, title, detail, name = title) => items.push({
+  // `name` is what a title is ranked by: for a module or part, the words after its ID; for
+  // a file, its name without the folders. `file` is a Python file the galaxy can open.
+  const add = (kind, id, title, detail, name = title, file = null) => items.push({
     kind, id, title, name, detail, haystack: `${id} ${title} ${detail}`.toLowerCase(),
+    ...(file ? { file } : {}),
   });
-  const owner = new Map();
+  const python = new Set((model.files ?? []).map((f) => f.path));
+  const addFile = (id, path, detail) => add('file', id, path, detail, path.split('/').at(-1),
+    path);
   for (const m of model.modules) {
     add('module', m.id, `${m.id} ${m.short}`, `${m.name}: ${m.summary}`, m.short);
+    for (const file of m.python_files ?? []) addFile(m.id, file, `${m.id} ${m.short}`);
     for (const s of m.submodules) {
       add('part', s.id, `${s.id} ${s.name}`, s.summary, s.name);
-      for (const file of s.python_files ?? []) {
-        owner.set(file, s.id);
-        add('file', s.id, file, `${s.id} ${s.name}`);
-      }
+      for (const file of s.python_files ?? []) addFile(s.id, file, `${s.id} ${s.name}`);
       for (const code of s.code ?? []) {
-        add('function', s.id, code.split('::')[1] ?? code, code.split('::')[0]);
+        const [path, fn] = code.split('::');
+        add('function', s.id, fn ?? code, path, fn ?? code, python.has(path) ? path : null);
       }
       for (const key of s.config ?? []) add('setting', s.id, key, `${s.id} ${s.name}`);
     }
+  }
+  for (const file of model.shared?.python_files ?? []) {
+    addFile(SHARED, file, 'Shared: it belongs to no one module');
   }
   for (const store of model.stores) {
     const target = store.writers.find((w) => findPart(model, w));

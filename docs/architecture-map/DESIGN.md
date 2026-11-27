@@ -69,7 +69,9 @@ every module also shows its ID and short name.
 | M12 | `#ad620e` | Operations |
 
 A module the model gains later takes `planeMiddle` until it has a token here; add one (and re-run
-the validator) in the same change.
+the validator) in the same change. In the code galaxy a file that belongs to no one module
+(“shared”) takes `edge`, and every ball of files is labelled, so colour still carries nothing
+alone.
 
 ## 3. Type
 
@@ -113,6 +115,22 @@ the validator) in the same change.
 | Job marker (3D) | a bead on its ring at its time, in its module's colour; a job that runs three times has three beads; beads at one time on one ring stand one outside the other | the current time: larger, with a `focus` ring and a radial `focus` hand across the three rings; one label, the job's time and name |
 | Job panel (clock) | the panel names the job, its trigger, its gate switches (with the repository default and, where KT section 1 states it, the production value), what it does, what it lights and what flows; below, every time of the day as a list of buttons, the current one marked `aria-current` | |
 
+### The code galaxy (MAP-004)
+
+| Component | Look | States |
+|---|---|---|
+| Code galaxy button | a toggle in the top bar, developer view only (`aria-pressed`, key `G`) | pressed while the galaxy shows; the manager view has no galaxy, so changing to it returns to the world |
+| File dot (3D) | one dot for each Python file in the model, in its module's colour (shared files `edge`); its area grows with its lines, with a smallest size so an empty file can still be pointed at | rest: the colour; lit: a step towards white, so it glows; unrelated: mixed towards `bg` (the look of opacity 0.12) |
+| Chosen file ring (3D) | a `focus` ring facing the viewer around the chosen file's dot, drawn over the dots so it is found even behind others | one at a time |
+| Bridge ring (3D) | a thin `ink2` ring facing the viewer around a file that files of six or more other modules import | gone when its file is unrelated |
+| Import lines (3D) | one thin line for each import, shading from the importer's colour to the imported file's, added light so lines never hide a dot | rest: faint, fainter across modules; a lit module: lines inside it bright, lines to or from another module fainter (under half), others all but gone; a chosen file: all but gone, its own lines drawn as below |
+| Chosen file's lines (3D) | solid `ink` lines to the files it imports, dashed `link` lines from the files that import it | the view's key says which is which, and the panel lists both |
+| Galaxy labels | a label above each ball: the module's ID and short name, or “Shared files”; file names (with the folder for an `__init__.py`) for the bridge files, up to six of the largest files of a lit module, or, with a file chosen, that file and up to six of its largest neighbours only | as Label; a file label is smaller, in a `code` face, and opens its file |
+| Galaxy key | one line in the view's lower left: what a dot, its size, a ring, a line and a colour mean; with a chosen file, what solid and dashed mean | |
+| File tooltip | `raised`: the path, then its lines and module | on hover only; the panel holds the same facts |
+| Code panel | for a lit module, part or the shared files: how many files and lines, what they import from other modules and what other modules import from them, then the files, largest first, as links | a part without a Python file says so |
+| File panel | the file's name and path, its lines and owner, “Imports” and “Imported by” as lists of links, “Show in the world” | an empty list says so in words |
+
 Shape carries meaning beside colour: pill = start or end, diamond = decision, rectangle = step,
 dashed rectangle = a list of details.
 
@@ -139,6 +157,15 @@ dashed rectangle = a list of details.
     names are hidden.
 - A tour stop chooses a view (front, top, side, below, clock) or flies to one module (“focus”),
   which then unfolds into its parts; a trace step is shown from the front.
+- Code galaxy (MAP-004): each module's files gather in one ball. A ball stands where its module
+  stands in the world (the same left to right order and height, drawn further apart) and is then
+  pushed apart from the others until none touches; the shared files have a ball of their own under
+  the base frame. Inside a ball, files that import each other draw together, and a file that other
+  modules import is pulled to the side that faces them, so it reads as a bridge. Every position
+  comes from a seeded calculation: the same on every load. The legend lists “Shared files” too.
+  Keys `1` to `4` and `R` frame the galaxy from the same four sides as the world (its front view
+  looks down more steeply, so that balls behind one another come apart); `5` leaves it for the
+  clock. Choosing a module or a file moves no camera. `Esc` closes the panel, then the galaxy.
 
 ## 6. Glow and depth
 
@@ -150,6 +177,7 @@ dashed rectangle = a list of details.
 ## 7. Motion
 
 - Camera flights: 700 ms, ease in and out, stop as soon as the user drags or presses a preset.
+- The code galaxy has no motion of its own; only a change of view flies the camera.
 - Autoplay: one step every 6 s (trace, tour) or 2.4 s (clock) at 1×, divided by the speed. It
   never starts by itself (the guided tour opens at its first stop and waits), stops at the last
   step, and is stopped by Back, Next, the slider, Pause or **Pause motion**.
@@ -171,6 +199,9 @@ dashed rectangle = a list of details.
   the top bar, turning and zooming with the arrow keys and `+`/`−`, moving with Shift and the
   arrows, once the view has the focus (it shows the focus ring inside its edge), flows listed in
   the panel.
+- In the code galaxy every file is reached without pointing at a dot: a module in the legend opens
+  its code panel, which lists its files; search finds a file by its name. The panels are the
+  galaxy's text equivalent, with or without a 3D view.
 
 ## 9. Do and don't
 

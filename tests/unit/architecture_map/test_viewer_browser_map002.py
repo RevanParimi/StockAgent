@@ -1,10 +1,11 @@
-"""MAP-002 and MAP-003: the committed architecture map in a real browser.
+"""MAP-002 to MAP-004: the committed architecture map in a real browser.
 
 The checks are in tests/frontend/architecture_map.test.mjs (the built page, opened from
-disk with the network off: the world, the panel, the clock, the trace and the tour) and
-architecture_map_logic.test.mjs (layout, flowcharts, what each step lights, colours, and
-that the page was built from the committed viewer). This runs both in the full suite; CI's
-browser job runs them through `npm run test:frontend`.
+disk with the network off: the world, the panel, the clock, the trace and the tour),
+architecture_map_galaxy.test.mjs (the code galaxy) and architecture_map_logic.test.mjs
+(layout, flowcharts, what each step and choice lights, colours, and that the page was built
+from the committed viewer). This runs them in the full suite; CI's browser job runs them
+through `npm run test:frontend`.
 """
 from __future__ import annotations
 
@@ -17,15 +18,16 @@ import pytest
 REPO = Path(__file__).resolve().parents[3]
 
 
-def test_architecture_map_browser_suite():
-    """Needs node, `npm ci` at the repository root, and Playwright's Chromium."""
+def run_node(arguments: list[str]) -> None:
+    """Needs node, `npm ci` at the repository root, and Playwright's Chromium. Each test
+    below writes its command out in full: the memory guard's own test finds the browser
+    files by those words."""
     node = shutil.which("node")
     if not node:
         pytest.skip("node is not on PATH")
     if not (REPO / "node_modules" / "playwright").exists():
         pytest.skip("node_modules missing: run `npm ci`")
-    proc = subprocess.run([node, "--test", "tests/frontend/architecture_map.test.mjs",
-                           "tests/frontend/architecture_map_logic.test.mjs"], cwd=REPO,
+    proc = subprocess.run([node, *arguments], cwd=REPO,
                           # about 6 minutes in software rendering on a small box (MAP-003);
                           # the memory guard allows a browser test 960 s
                           capture_output=True, text=True, encoding="utf-8", timeout=900)
@@ -33,3 +35,13 @@ def test_architecture_map_browser_suite():
     if "Executable doesn't exist" in out:
         pytest.skip("Chromium missing: run `npx playwright install chromium`")
     assert proc.returncode == 0, out[-4000:]
+
+
+def test_architecture_map_browser_suite():
+    run_node(["--test", "tests/frontend/architecture_map.test.mjs",
+              "tests/frontend/architecture_map_logic.test.mjs"])
+
+
+def test_architecture_map_galaxy_browser_suite():
+    # a run of its own: one browser drawing 3D at a time keeps the memory low
+    run_node(["--test", "tests/frontend/architecture_map_galaxy.test.mjs"])

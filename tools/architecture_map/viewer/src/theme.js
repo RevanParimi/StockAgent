@@ -40,6 +40,8 @@ export const MODULE = {
 };
 
 export const moduleOf = (id) => String(id).split('.')[0];
+// What the model calls the owner of a Python file that belongs to no one module.
+export const SHARED = 'shared';
 // Who a flow or a store names: an outside party by its own id, else the module.
 export const nodeOf = (who) => (String(who).startsWith('ext.') ? String(who) : moduleOf(who));
 export const moduleColour = (id) => MODULE[moduleOf(id)] ?? PLANE.planeMiddle;

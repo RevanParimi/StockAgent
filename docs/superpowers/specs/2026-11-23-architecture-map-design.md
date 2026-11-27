@@ -2,9 +2,9 @@
 
 Status: **adopted as the plan** on 2026-11-23 (the owner, about 00:10 IST: "take it like phases
 that we do and complete all phases of this plan using our autopilot"). MAP-001 (the model, its
-generators and the guard), MAP-002 (the 3D world and the detail panel) and MAP-003 (the day
-player, the stock trace and the guided tour) are implemented; MAP-004 and MAP-005 are
-not. Author: Claude + Revan. Date: 2026-11-23. Stories:
+generators and the guard), MAP-002 (the 3D world and the detail panel), MAP-003 (the day
+player, the stock trace and the guided tour) and MAP-004 (the code galaxy) are implemented;
+MAP-005 is not. Author: Claude + Revan. Date: 2026-11-23. Stories:
 [MAP-001](../../planning/PI-2026-09/stories/MAP-001.md) to
 [MAP-005](../../planning/PI-2026-09/stories/MAP-005.md).
 

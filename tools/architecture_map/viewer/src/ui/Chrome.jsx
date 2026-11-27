@@ -2,11 +2,12 @@
 import { formatHash } from '../lib/select.js';
 import { PRESETS } from '../lib/world.js';
 import { MODES, stepsOf } from '../lib/play.js';
-import { moduleColour, nodeOf } from '../theme.js';
+import { clusterName, clusterOf, ownerName } from '../lib/galaxy.js';
+import { SHARED, SURFACE, moduleColour, nodeOf } from '../theme.js';
 
 export function TopBar({
-  model, preset, mode, audience, motion, reduced, onPreset, onReset, onStory, onSearch,
-  onAudience, onMotion, onHelp,
+  model, preset, mode, code, audience, motion, reduced, onPreset, onReset, onStory, onCode,
+  onSearch, onAudience, onMotion, onHelp,
 }) {
   const commit = model.stamp.commit.slice(0, 7);
   return (
@@ -21,9 +22,16 @@ export function TopBar({
       <div className="controls" role="group" aria-label="Views">
         {Object.entries(PRESETS).map(([id, p]) => (
           <button key={id} type="button" data-view={id} onClick={() => onPreset(id)}
-            aria-pressed={preset === id} title={p.asks}>{p.label} <kbd aria-hidden="true">{p.key}</kbd></button>
+            aria-pressed={preset === id}
+            title={code && id !== 'clock' ? 'Frame the galaxy from this side' : p.asks}>
+            {p.label} <kbd aria-hidden="true">{p.key}</kbd></button>
         ))}
         <button type="button" onClick={onReset}>Reset <kbd aria-hidden="true">R</kbd></button>
+        {audience === 'developer' ? (
+          <button type="button" data-galaxy onClick={onCode} aria-pressed={code}
+            title="Every Python file and what it imports">
+            Code galaxy <kbd aria-hidden="true">G</kbd></button>
+        ) : null}
       </div>
       <div className="controls" role="group" aria-label="Stories">
         {[['trace', 'Trace a stock'], ['tour', 'Tour']].map(([id, label]) => (
@@ -51,28 +59,35 @@ export function TopBar({
   );
 }
 
-export function Legend({ model, selected, audience, onSelect }) {
-  const current = selected ? selected.split('.')[0] : null;
+export function Legend({ model, selected, audience, code, onSelect }) {
+  const current = selected ? clusterOf(selected) : null;
+  // in the galaxy the shared files are a ball of their own
+  const entries = [...model.modules.map((m) => ({ id: m.id, name: m.short })),
+    ...(code ? [{ id: SHARED, name: 'Shared files' }] : [])];
   return (
     <nav id="modules" className="legend" aria-label="Modules">
       <h2>Modules</h2>
       <ul>
-        {model.modules.map((m) => (
-          <li key={m.id}>
-            <a href={formatHash({ id: m.id, audience })} data-module={m.id}
-              aria-current={current === m.id ? 'true' : undefined}
+        {entries.map(({ id, name }) => (
+          <li key={id}>
+            <a href={formatHash({ id, audience, code })} data-module={id}
+              aria-current={current === id ? 'true' : undefined}
               onClick={(e) => {
                 if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
                 e.preventDefault();
-                onSelect(m.id);
+                onSelect(id);
               }}>
-              <span className="swatch" style={{ background: moduleColour(m.id) }} aria-hidden="true" />
-              <span className="part-id">{m.id}</span> {m.short}
+              <span className="swatch" aria-hidden="true"
+                style={{ background: id === SHARED ? SURFACE.edge : moduleColour(id) }} />
+              {id === SHARED ? null : <><span className="part-id">{id}</span>{' '}</>}{name}
             </a>
           </li>
         ))}
       </ul>
-      <p className="hint">Choose a module, or click its block. Press <kbd>/</kbd> to search.</p>
+      <p className="hint">
+        {code ? 'Choose a module to light its files. Press ' : 'Choose a module, or click its block. Press '}
+        <kbd>/</kbd>{code ? ' to find a file by name.' : ' to search.'}
+      </p>
     </nav>
   );
 }
@@ -94,7 +109,8 @@ export function Labels({ items, labels, onSelect }) {
             /* a mouse press must not leave the focus on something hidden from assistive tech */
             <button type="button" tabIndex={-1} className={`label label-${item.kind} ${item.state}`}
               style={{ '--tone': item.colour }} data-target={item.select}
-              onMouseDown={(e) => e.preventDefault()} onClick={() => onSelect(item.select)}>
+              translate={item.file ? 'no' : undefined}
+              onMouseDown={(e) => e.preventDefault()} onClick={() => onSelect(item.select, item)}>
               {item.id ? <span className="part-id">{item.id}</span> : null} {item.text}
             </button>
           ) : (
@@ -108,15 +124,25 @@ export function Labels({ items, labels, onSelect }) {
   );
 }
 
-export function Tooltip({ hover, names }) {
+export function Tooltip({ hover, names, model }) {
   if (!hover) return null;
-  const { flow, x, y } = hover;
+  const { flow, path, x, y } = hover;
   const name = (who) => names.get(nodeOf(who)) ?? who;
   const left = Math.min(x + 14, window.innerWidth - 340);
+  const file = path ? model.files.find((f) => f.path === path) : null;
   return (
     <div className="tooltip" role="tooltip" style={{ left: Math.max(8, left), top: y + 14 }}>
-      <strong>{name(flow.from)} → {name(flow.to)}</strong>
-      <span>{flow.what}</span>
+      {file ? (
+        <>
+          <strong translate="no">{file.path}</strong>
+          <span>{file.lines.toLocaleString('en-US')} lines · {ownerName(model, file.owner)}</span>
+        </>
+      ) : flow ? (
+        <>
+          <strong>{name(flow.from)} → {name(flow.to)}</strong>
+          <span>{flow.what}</span>
+        </>
+      ) : null}
     </div>
   );
 }

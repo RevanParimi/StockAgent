@@ -12,7 +12,9 @@ function Modal({ open, onClose, labelledBy, className, children }) {
   }, [open]);
   return (
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
-    <dialog ref={ref} className={className} aria-labelledby={labelledBy} onClose={onClose}
+    <dialog ref={ref} className={className} aria-labelledby={labelledBy}
+      // a "closed" event can arrive after the dialog was opened again: it is not for this one
+      onClose={() => { if (!ref.current.open) onClose(); }}
       onClick={(e) => { if (e.target === ref.current) onClose(); }}>
       <div className="dialog-body">{children}</div>
     </dialog>
@@ -25,14 +27,20 @@ const KIND_WORD = { module: 'Module', part: 'Part', store: 'Store', job: 'Job',
 export function SearchDialog({ open, index, onClose, onPick }) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
+  const [was, setWas] = useState(open);
   const input = useRef(null);
   const results = useMemo(() => search(index, query), [index, query]);
 
+  // Emptied on closing, so it opens empty: Esc in a search field that still holds text
+  // clears the field and leaves the dialog open. Done while rendering the closing itself:
+  // done later, words typed on a slow machine could be added to the old ones.
+  if (was !== open) {
+    setWas(open);
+    if (!open) { setQuery(''); setActive(0); }
+  }
+
   useEffect(() => {
-    // Emptied on closing, so it opens empty: Esc in a search field that still holds
-    // text clears the field and leaves the dialog open.
     if (open) input.current?.focus();
-    else { setQuery(''); setActive(0); }
   }, [open]);
 
   const move = (to) => {
@@ -86,13 +94,14 @@ const KEYS = [
   ['3', 'Side view: what people see, what decides, what is stored'],
   ['4', 'Below view: which module writes which file'],
   ['5', 'The clock: what runs when, played as a day'],
+  ['G', 'The code galaxy: every Python file (developer view)'],
   ['R', 'Reset the view'],
   ['/', 'Search'],
   ['P', 'Pause or resume motion'],
   ['← → ↑ ↓', 'Turn the 3D view (when it has the focus)'],
   ['+ −', 'Zoom the 3D view (when it has the focus)'],
   ['Shift + arrows', 'Move the 3D view sideways (when it has the focus)'],
-  ['Esc', 'Close the dialog, then the clock, trace or tour, then the panel'],
+  ['Esc', 'Close the dialog, then the clock, trace or tour, then the panel, then the galaxy'],
   ['?', 'This list'],
 ];
 
@@ -112,6 +121,9 @@ export function HelpDialog({ open, onClose }) {
         panel lists the same flows. Trace a stock and the Tour, in the top bar, play step by step
         with Back, Next and Play; on the clock the slider and the list in the panel jump to a
         time.</p>
+      <p>In the developer view, the Code galaxy shows every Python file as a dot. Click a dot, or
+        choose a module in the legend and then a file in the panel, or search a file by its name.
+        Views 1 to 4 frame the galaxy; 5 leaves it for the clock.</p>
       <button type="button" onClick={onClose}>Close</button>
     </Modal>
   );

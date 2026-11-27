@@ -53,7 +53,7 @@ export const zoneOf = (job) => (job.timezone === 'Asia/Kolkata' ? 'IST' : job.ti
  *  parseHash read it. */
 export function openingPlay(model, parsed, audience) {
   if (parsed.play) return parsed.play;
-  if (parsed.id || parsed.unknown || audience !== 'manager') return null;
+  if (parsed.id || parsed.unknown || parsed.code || audience !== 'manager') return null;
   return stepsOf(model, 'tour').length ? { mode: 'tour', step: 0 } : null;
 }
 

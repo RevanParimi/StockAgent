@@ -25,6 +25,10 @@ import {
   BEAD, TOUR_PRESETS, TRACKS, beads, captionOf, clockBounds, clockRing, highlighted, jobLights,
   moments, openingPlay, ringPoint, stepsOf, stopView, traceLights, viewOf,
 } from '../../tools/architecture_map/viewer/src/lib/play.js';
+import {
+  BRIDGE_MODULES, FRONT, MARGIN, codeGraph, codeSummary, dotAt, edgeState, fileLabel, galaxyLabels,
+  galaxyLights, importingModules, layoutGalaxy, pickOf,
+} from '../../tools/architecture_map/viewer/src/lib/galaxy.js';
 import { MODULE, PLANE, SURFACE } from '../../tools/architecture_map/viewer/src/theme.js';
 import { sourceHash } from '../../tools/architecture_map/viewer/scripts/source-hash.mjs';
 
@@ -783,6 +787,300 @@ test('the clock view frames the whole ring in any window', () => {
     const reach = Math.max(...inside(camera, fov, aspect, rim));
     assert.ok(reach <= 1.0001, `ring cut off at ${aspect}`);
     assert.ok(reach > 0.55, `ring tiny at ${aspect}: ${reach}`);
+  }
+});
+
+// -- the code galaxy (MAP-004) ---------------------------------------------------------
+
+// Worked out here from the model's own words, so the viewer's helpers are not the proof.
+const ballOf = (file) => (file.owner === 'shared' ? 'shared' : file.owner.split('.')[0]);
+const fileAt = new Map(MODEL.files.map((f) => [f.path, f]));
+const importersOf = (path) => MODEL.files.filter((f) => f.imports.includes(path)).map((f) => f.path);
+const apart = (a, b) => Math.hypot(...a.map((v, i) => v - b[i]));
+const GALAXY = layoutGalaxy(MODEL);
+const ball = (id) => GALAXY.balls.find((b) => b.id === id);
+
+test('the galaxy holds every file of the model once, each in its module’s ball', () => {
+  assert.deepEqual(GALAXY.nodes.map((n) => n.path).sort(), MODEL.files.map((f) => f.path).sort());
+  for (const node of GALAXY.nodes) assert.equal(node.cluster, ballOf(fileAt.get(node.path)), node.path);
+  const wanted = new Map();
+  for (const f of MODEL.files) wanted.set(ballOf(f), (wanted.get(ballOf(f)) ?? 0) + 1);
+  assert.deepEqual(new Map(GALAXY.balls.map((b) => [b.id, b.count])), wanted);
+  // one line for each import between two files of the model
+  const imports = MODEL.files.flatMap((f) => f.imports
+    .filter((to) => to !== f.path && fileAt.has(to)).map((to) => `${f.path}>${to}`));
+  assert.deepEqual(GALAXY.graph.edges.map((e) => `${e.from}>${e.to}`).sort(), imports.sort());
+  for (const f of GALAXY.graph.files) {
+    assert.deepEqual(f.importedBy, importersOf(f.path).filter((p) => p !== f.path).sort(), f.path);
+  }
+});
+
+test('the same model gives the same galaxy, in whatever order it lists the files', () => {
+  const shuffled = structuredClone(MODEL);
+  shuffled.files.reverse();
+  for (const f of shuffled.files) f.imports.reverse();
+  const again = layoutGalaxy(shuffled);
+  assert.deepEqual(again.nodes, GALAXY.nodes);
+  assert.deepEqual(again.balls, GALAXY.balls);
+});
+
+test('balls touch nothing, every dot stays in its own ball, and no two dots overlap', () => {
+  for (let i = 0; i < GALAXY.balls.length; i += 1) {
+    for (let j = i + 1; j < GALAXY.balls.length; j += 1) {
+      const [a, b] = [GALAXY.balls[i], GALAXY.balls[j]];
+      assert.ok(apart(a.centre, b.centre) > a.radius + b.radius, `${a.id} and ${b.id} touch`);
+    }
+  }
+  for (const node of GALAXY.nodes) {
+    const own = ball(node.cluster);
+    assert.ok(apart(node.pos, own.centre) + node.radius <= own.radius + 1e-6, `${node.path} outside`);
+    // so each module's files gather: a file is nearer its own ball than any other
+    for (const other of GALAXY.balls.filter((b) => b !== own)) {
+      assert.ok(apart(node.pos, own.centre) < apart(node.pos, other.centre), node.path);
+    }
+  }
+  for (let i = 0; i < GALAXY.nodes.length; i += 1) {
+    for (let j = i + 1; j < GALAXY.nodes.length; j += 1) {
+      const [a, b] = [GALAXY.nodes[i], GALAXY.nodes[j]];
+      assert.ok(apart(a.pos, b.pos) >= a.radius + b.radius, `${a.path} overlaps ${b.path}`);
+    }
+  }
+});
+
+test('balls keep the world’s order: columns left to right, planes top to bottom', () => {
+  const flat = MODEL.modules.filter((m) => m.plane !== 'ring' && ball(m.id));
+  for (const a of flat) {
+    for (const b of flat) {
+      if (a.column < b.column) {
+        assert.ok(ball(a.id).centre[0] < ball(b.id).centre[0], `${a.id} left of ${b.id}`);
+      }
+    }
+  }
+  const height = (plane) => flat.filter((m) => m.plane === plane).map((m) => ball(m.id).centre[1]);
+  assert.ok(Math.min(...height('top')) > Math.max(...height('middle')));
+  assert.ok(Math.min(...height('middle')) > Math.max(...height('base')));
+  assert.ok(ball('shared').centre[1] < Math.min(...height('base')));
+});
+
+test('a dot’s area grows with its file’s lines, and the smallest can still be seen', () => {
+  const size = new Map(GALAXY.nodes.map((n) => [n.path, n.radius]));
+  const byLines = [...MODEL.files].sort((a, b) => a.lines - b.lines);
+  for (let i = 1; i < byLines.length; i += 1) {
+    assert.ok(size.get(byLines[i - 1].path) <= size.get(byLines[i].path), byLines[i].path);
+  }
+  assert.ok(size.get(byLines[0].path) > 0.2, 'an empty file has a dot');
+  const [mid, big] = [byLines.at(-30), byLines.at(-1)];
+  const ratio = (size.get(big.path) / size.get(mid.path)) ** 2;
+  assert.ok(Math.abs(ratio - big.lines / mid.lines) < 0.01, 'area in proportion to lines');
+});
+
+test('a file many modules import is a bridge on the side that faces them', () => {
+  const users = (f) => new Set(importersOf(f.path).map((p) => ballOf(fileAt.get(p)))
+    .filter((id) => id !== ballOf(f) && id !== 'shared'));
+  const bridges = MODEL.files.filter((f) => users(f).size >= BRIDGE_MODULES);
+  assert.ok(bridges.length >= 3, 'the model has files imported across many modules');
+  assert.deepEqual([...GALAXY.bridges].sort(), bridges.map((f) => f.path).sort());
+  // “other modules” for every file: not its own
+  for (const f of MODEL.files) {
+    assert.deepEqual(importingModules(GALAXY.graph, f.path), [...users(f)]
+      .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1))), f.path);
+  }
+  // and the shared files are no module, even when one of them imports it
+  const probed = 'core/portfolio/advisor.py';
+  const odd = structuredClone(MODEL);
+  odd.files.push({ path: 'scripts/zz_probe.py', lines: 1, owner: 'shared', imports: [probed] });
+  assert.deepEqual(importingModules(codeGraph(odd), probed),
+    importingModules(GALAXY.graph, probed));
+  for (const f of bridges) {
+    const own = ball(ballOf(f));
+    const out = GALAXY.byPath.get(f.path).pos.map((v, i) => v - own.centre[i]);
+    const centres = importersOf(f.path).map((p) => ballOf(fileAt.get(p)))
+      .filter((id) => id !== own.id).map((id) => ball(id).centre);
+    const towards = [0, 1, 2].map(
+      (i) => centres.reduce((sum, c) => sum + c[i], 0) / centres.length - own.centre[i]);
+    const cos = out.reduce((s, v, i) => s + v * towards[i], 0)
+      / (Math.hypot(...out) * Math.hypot(...towards));
+    assert.ok(cos > 0.8, `${f.path} faces away from its users (${cos.toFixed(2)})`);
+    assert.ok(Math.hypot(...out) > own.radius * 0.5, `${f.path} is not at its ball's side`);
+  }
+});
+
+test('a choice lights its files: a module, a part, the shared files or one file', () => {
+  const graph = codeGraph(MODEL);
+  const lit = (choice) => [...(galaxyLights(graph, choice)?.files ?? [])].sort();
+  const owned = (test_) => MODEL.files.filter((f) => test_(f.owner)).map((f) => f.path).sort();
+  assert.equal(galaxyLights(graph, { selected: null, file: null }), null);
+  assert.deepEqual(lit({ selected: 'M5' }), owned((o) => o === 'M5' || o.startsWith('M5.')));
+  // M1 is not M10, M11 or M12
+  assert.deepEqual(lit({ selected: 'M1' }), owned((o) => o === 'M1' || o.startsWith('M1.')));
+  assert.deepEqual(lit({ selected: 'M5.2' }), owned((o) => o === 'M5.2'));
+  assert.deepEqual(lit({ selected: 'shared' }), owned((o) => o === 'shared'));
+  const file = 'core/portfolio/advisor.py';
+  const wanted = [...new Set([file, ...fileAt.get(file).imports, ...importersOf(file)])].sort();
+  const chosen = galaxyLights(graph, { selected: 'M5.2', file });
+  assert.deepEqual([...chosen.files].sort(), wanted, 'a file wins over its part');
+  assert.equal(chosen.file, file);
+  // a part without a Python file dims nothing
+  const bare = MODEL.modules.flatMap((m) => m.submodules).find((s) => !s.python_files.length);
+  if (bare) assert.equal(galaxyLights(graph, { selected: bare.id }), null);
+  assert.equal(pickOf(graph, file), fileAt.get(file).owner);
+  assert.equal(pickOf(graph, 'no/such.py'), null);
+});
+
+test('an import’s line says whether it lies inside the lit files or bridges out of them', () => {
+  const graph = codeGraph(MODEL);
+  const within = (e) => ballOf(fileAt.get(e.from)) === ballOf(fileAt.get(e.to));
+  for (const edge of graph.edges) {
+    assert.equal(edgeState(graph, null, edge), within(edge) ? 'near' : 'far');
+  }
+  const m5 = galaxyLights(graph, { selected: 'M5' });
+  const inM5 = (p) => ballOf(fileAt.get(p)) === 'M5';
+  const seen = new Set();
+  for (const edge of graph.edges) {
+    const ends = Number(inM5(edge.from)) + Number(inM5(edge.to));
+    assert.equal(edgeState(graph, m5, edge), ['faded', 'bridge', 'inside'][ends]);
+    seen.add(ends);
+  }
+  assert.equal(seen.size, 3);
+  const file = 'core/portfolio/advisor.py';
+  const one = galaxyLights(graph, { file });
+  for (const edge of graph.edges) {
+    const own = edge.from === file || edge.to === file;
+    assert.equal(edgeState(graph, one, edge), own ? 'own' : 'faded');
+  }
+});
+
+test('the code panel counts its files, lines and what crosses its border', () => {
+  const graph = codeGraph(MODEL);
+  for (const id of ['M5', 'M5.2', 'shared']) {
+    const mine = MODEL.files.filter((f) => (id.includes('.') || id === 'shared'
+      ? f.owner === id : ballOf(f) === id));
+    const paths = new Set(mine.map((f) => f.path));
+    const got = codeSummary(graph, id);
+    assert.deepEqual(got.files.map((f) => f.path).sort(), [...paths].sort(), id);
+    assert.equal(got.lines, mine.reduce((s, f) => s + f.lines, 0), id);
+    for (let i = 1; i < got.files.length; i += 1) {
+      assert.ok(got.files[i - 1].lines >= got.files[i].lines, `${id}: largest first`);
+    }
+    const count = (pairs) => {
+      const by = {};
+      for (const other of pairs) {
+        if (!paths.has(other)) by[ballOf(fileAt.get(other))] = (by[ballOf(fileAt.get(other))] ?? 0) + 1;
+      }
+      return by;
+    };
+    assert.deepEqual(Object.fromEntries(got.imports), count(mine.flatMap((f) => f.imports)), id);
+    assert.deepEqual(Object.fromEntries(got.importedBy),
+      count(mine.flatMap((f) => importersOf(f.path))), id);
+  }
+});
+
+test('the galaxy’s address holds a part, the shared files or a file, and refuses the rest', () => {
+  const none = { id: null, audience: null, play: null, unknown: null, code: true, file: null };
+  assert.deepEqual(parseHash('#g', MODEL), none);
+  assert.deepEqual(parseHash('#g&m=M5.2&v=dev', MODEL),
+    { ...none, id: 'M5.2', audience: 'developer' });
+  assert.deepEqual(parseHash('#g&m=shared', MODEL), { ...none, id: 'shared' });
+  assert.deepEqual(parseHash('#g&f=core/portfolio/advisor.py', MODEL),
+    { ...none, file: 'core/portfolio/advisor.py' });
+  assert.deepEqual(parseHash('#g&m=M2&f=core/portfolio/advisor.py', MODEL),
+    { ...none, file: 'core/portfolio/advisor.py' }, 'a file wins over a part');
+  for (const bad of ['core/nothing.py', 'constructor', '<img src=x>']) {
+    const got = parseHash(`#g&f=${encodeURIComponent(bad)}`, MODEL);
+    assert.deepEqual([got.code, got.file, got.unknown], [true, null, bad]);
+  }
+  assert.deepEqual(parseHash('#g&m=M99', MODEL), { ...none, unknown: 'M99' });
+  // the world has no shared part
+  assert.equal(parseHash('#m=shared', MODEL).unknown, 'shared');
+  assert.equal(formatHash({ code: true, file: 'core/portfolio/advisor.py', id: 'M5.2',
+    audience: 'developer' }), '#g&f=core/portfolio/advisor.py&v=dev');
+  assert.equal(formatHash({ code: true, audience: 'developer' }), '#g&v=dev');
+  for (const state of [{ id: 'M3', file: null }, { id: 'shared', file: null },
+    { id: null, file: 'services/api/server.py' }]) {
+    const back = parseHash(formatHash({ ...state, code: true, audience: 'developer' }), MODEL);
+    assert.deepEqual([back.id, back.file, back.code], [state.id, state.file, true]);
+  }
+  // a path with characters an address would read otherwise survives the round trip
+  const odd = { ...MODEL, files: [...MODEL.files, { path: 'core/a&b #1.py', lines: 1,
+    owner: 'shared', imports: [] }] };
+  assert.equal(parseHash(formatHash({ code: true, file: 'core/a&b #1.py' }), odd).file,
+    'core/a&b #1.py');
+  // an address into the galaxy starts no tour
+  assert.equal(openingPlay(MODEL, parseHash('#g', MODEL), 'manager'), null);
+});
+
+test('search finds every Python file by its name, the exact name first', () => {
+  const index = searchIndex(MODEL);
+  for (const f of MODEL.files) {
+    const hits = search(index, f.path, 50).filter((r) => r.kind === 'file' && r.file === f.path);
+    assert.equal(hits.length, 1, f.path);
+  }
+  const first = search(index, 'advisor.py')[0];
+  assert.deepEqual([first.kind, first.file], ['file', 'core/portfolio/advisor.py']);
+  const shared = MODEL.files.find((f) => f.owner === 'shared');
+  assert.equal(search(index, shared.path)[0].id, 'shared');
+  // a function that lives in a Python file can open it
+  const fn = search(index, 'assess_analysis').find((r) => r.kind === 'function');
+  assert.ok(fileAt.has(fn.file));
+});
+
+test('pointing finds the dot under the cursor, the nearer one first, within a 24 px target', () => {
+  const dot = (path, x, radius, depth) => ({ path, x, y: 100, radius, depth });
+  const dots = [dot('far', 100, 20, 50), dot('near', 110, 15, 20), dot('small', 200, 2, 10),
+    dot('other', 218, 2, 10)];
+  const at = (x, y = 100) => dotAt(dots, x, y)?.path ?? null;
+  assert.equal(at(105), 'near', 'both discs hold it: the nearer to the viewer');
+  assert.equal(at(82), 'far', 'only the far disc holds it');
+  assert.equal(at(190), 'small', '10 px from a 2 px dot is still on its target');
+  assert.equal(at(212), 'other', 'between two small dots, the closer');
+  assert.equal(at(200, 111), 'small');
+  assert.equal(at(200, 113), null, 'beyond 12 px, nothing');
+  assert.equal(at(160), null);
+});
+
+test('the galaxy names every ball, its bridges, and the files a choice is about', () => {
+  const items = (choice) => galaxyLabels(MODEL, GALAXY, choice);
+  const files = (list) => list.filter((i) => i.kind === 'file');
+  const rest = items({ selected: null, file: null });
+  assert.deepEqual(rest.filter((i) => i.kind === 'module').map((i) => i.select).sort(),
+    GALAXY.balls.map((b) => b.id).sort());
+  assert.deepEqual(files(rest).map((i) => i.file).sort(), [...GALAXY.bridges].sort());
+  assert.ok(rest.every((i) => i.state === 'rest' && !i.hidden));
+  assert.equal(new Set(rest.map((i) => i.key)).size, rest.length, 'one element for each name');
+  const m5 = items({ selected: 'M5', file: null });
+  assert.equal(m5.find((i) => i.select === 'M5').state, 'selected');
+  assert.equal(m5.find((i) => i.select === 'M2').state, 'faded');
+  const largest = MODEL.files.filter((f) => ballOf(f) === 'M5').sort((a, b) => b.lines - a.lines);
+  for (const f of largest.slice(0, 6)) assert.ok(m5.some((i) => i.file === f.path), f.path);
+  assert.ok(!m5.some((i) => i.file === largest[8].path));
+  // names of files that are not lit are not shown
+  assert.ok(files(m5).every((i) => ballOf(fileAt.get(i.file)) === 'M5'));
+  const file = 'core/portfolio/advisor.py';
+  const one = items({ selected: 'M5.2', file });
+  const chosen = one.find((i) => i.file === file);
+  assert.equal(chosen.state, 'selected');
+  assert.ok(chosen.priority < Math.min(...one.filter((i) => i !== chosen).map((i) => i.priority)));
+  const near = new Set([...fileAt.get(file).imports, ...importersOf(file)]);
+  assert.ok(files(one).every((i) => i.file === file || near.has(i.file)));
+  // the chosen file and six neighbours at most, even where many neighbours are bridges
+  assert.equal(files(one).length, 1 + Math.min(6, near.size));
+  const hub = 'core/config/settings/__init__.py';
+  assert.equal(files(items({ selected: pickOf(GALAXY.graph, hub), file: hub })).length, 7);
+  assert.equal(fileLabel('core/config/settings/__init__.py'), 'settings/__init__.py');
+  assert.equal(fileLabel(file), 'advisor.py');
+});
+
+test('every view of the galaxy holds every dot, in any window, without wasting it', () => {
+  const corners = GALAXY.nodes.flatMap((n) => [-1, 1].flatMap((x) => [-1, 1].flatMap((y) => [-1, 1]
+    .map((z) => [n.pos[0] + x * n.radius, n.pos[1] + y * n.radius, n.pos[2] + z * n.radius]))));
+  for (const [name, preset] of Object.entries(PRESETS).filter(([id]) => id !== 'clock')) {
+    for (const aspect of [0.7, 1, 1.6, 2.4]) {
+      const dir = name === 'front' ? FRONT : preset.dir;
+      const camera = fitCamera(GALAXY.bounds, dir, preset.fov, aspect, MARGIN);
+      const reach = Math.max(...inside(camera, preset.fov, aspect, corners));
+      assert.ok(reach <= 0.9, `${name} at ${aspect} leaves no room round the galaxy (${reach})`);
+      assert.ok(reach > 0.6, `${name} at ${aspect} leaves it tiny (${reach})`);
+    }
   }
 });
 

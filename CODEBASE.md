@@ -225,6 +225,8 @@ StockAgent-main/
 │   ├── seed_autopilot.py          # One-time Autopilot seed: equal-weight holdings + autopilot=True
 │   ├── missed_risers.py           # Read-only report: where the discovery funnel lost the stocks
 │   │                              #  that rose (and the ones that fell) over the last 60 sessions
+│   ├── screen_cut.py              # Read-only report: does the weekly screen's cut choose? Each
+│   │                              #  stored screen's candidates against the rest, graded forward
 │   ├── ci/check_broad_except.py   # CI guard: no new unlogged broad except; the
 │   │                              #  grandfathered handlers are in broad_except_baseline.txt
 │   ├── ci/guarded_suite.py        # Runs the tests in two steps under a memory and time guard

@@ -2077,6 +2077,18 @@
   },
   {
    "imports": [
+    "core/config/settings/__init__.py",
+    "core/discovery/shelf.py",
+    "core/discovery/universe.py",
+    "scripts/missed_risers.py",
+    "services/data/fetchers/bhavcopy.py"
+   ],
+   "lines": 651,
+   "owner": "M11.2",
+   "path": "scripts/screen_cut.py"
+  },
+  {
+   "imports": [
     "core/portfolio/autopilot.py",
     "core/portfolio/pricing.py",
     "core/portfolio/store.py",
@@ -9106,7 +9118,8 @@
      "files": [
       "core/intelligence/rl/eval/*.py",
       "src/backend/shared/schemas/scorecard.py",
-      "scripts/missed_risers.py"
+      "scripts/missed_risers.py",
+      "scripts/screen_cut.py"
      ],
      "id": "M11.2",
      "logic": [
@@ -9126,7 +9139,7 @@
       },
       {
        "children": [],
-       "text": "A missed-risers report runs by hand (read only)"
+       "text": "Two screen reports run by hand (read only): missed risers (hindsight), and\nwhether the screen's cut chooses, graded forward from each stored screen"
       }
      ],
      "name": "Monthly scorecard",
@@ -9140,6 +9153,7 @@
       "core/intelligence/rl/eval/scorecard.py",
       "core/intelligence/rl/eval/synthetic.py",
       "scripts/missed_risers.py",
+      "scripts/screen_cut.py",
       "src/backend/shared/schemas/scorecard.py"
      ],
      "summary": "forecast accuracy against simple baselines"
@@ -10273,7 +10287,7 @@
   ]
  },
  "stamp": {
-  "commit": "5d83226c361a7a30e09a50fd23bed1e6e2edaa4e",
+  "commit": "fc01cb407ffad562ed1c12135bebeb8d9f5404a9",
   "uncommitted_code": true
  },
  "stores": [

@@ -3452,6 +3452,39 @@ band on 20 Oct is "5, on the shelf from 2026-10-17; buy step, session
 2026-10-20: band". It is hindsight over one market period, and says so in its
 output.
 
+**Does the screen's cut choose** (`scripts/screen_cut.py`, a read-only report
+run by hand). It grades every stored weekly screen forward from its own date.
+The *cut* is that screen's candidates (40 on screens from the older settings,
+up to 60 from the wider ones). The *rest* is every stock with a session on the
+screen's date that is inside the screen's bhavcopy floors as of that date (and
+is a company in today's listing) and was neither a candidate nor rejected by
+its guards. The guards'
+rejected, and the first and second half of the candidate list, are shown and
+not tested. Entry is the close of the first session after the run (a file with
+no recorded run day is taken as run on the Saturday after its session), and
+returns are chained on NSE's previous close at 10, 30 and 60 sessions, each
+counted only once matured. A screen's *lead* is the cut's mean return less the
+rest's (the gap between the two medians is shown beside it). Over the screens,
+each weighted equally, it prints the mean and median lead and the share of
+screens the cut led. The rule, fixed before any data, is read at 30 sessions:
+**the cut chooses** if the mean and median lead are each above +1 point and
+the cut led in at least 60% of the screens; **it does not choose** if the mean
+lead is 0 or below; otherwise, or with fewer than 8 screens matured, **not yet
+decidable**, to be read again four weeks later. For the candidates that
+trailed their screen's rest it shows how each signal ranked them. Because a
+few distorted returns can move a mean of 40 to 60 stocks, it also shows, and
+does not test, how many stocks had a restated close and the leads without
+them, each candidate that moved 50% or more, the lowest and highest screen
+lead, and the 40-stock and wider cuts apart. It reads one price row a stock a
+day, its equity series'; a stock with no close at the entry or exit, or an
+unreadable price between, is left out and counted. Example: a
+screen of Fri 9 Oct enters at Mon 12 Oct's close; a cut that averages +3.0%
+at 30 sessions against the rest's +0.5% leads by 2.5 points. It reads the
+stored bhavcopy, screens and listing only, and states its limits in its output:
+one market period, and neighbouring screens' windows overlap. It changes
+nothing: a change to the screen's signals, weights, floors or cut would be its
+own change.
+
 **Limits.**
 
 - Without a Surveillance Indicator report of the last 7 days, a stock under
@@ -4321,7 +4354,9 @@ learning to `observe`. SA-023 puts learned lessons on measurable probation.
   week. PR-038 tests whether an idea that has risen past its
   band should still be bought. PR-039's report (section 8) says where the
   funnel lost the stocks that rose, and where it kept the book out of those
-  that fell.
+  that fell. Whether the screen's cut chooses is graded forward by
+  `scripts/screen_cut.py` (section 8). **Planned:** its first run on
+  production data.
 
 ### Product results
 

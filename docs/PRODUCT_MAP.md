@@ -428,6 +428,7 @@ KT section 8.
 | Paper lane | `core/discovery/paper_lane.py` | Real forecasts under an isolated store root, with no learning writes |
 | IPO tracker | `core/discovery/ipo_tracker.py` | Recent listings ranked on listing evidence, delivery, accumulation and subscription |
 | Missed risers (report) | `scripts/missed_risers.py` | Read-only, run by hand: the 50 stocks that rose most and the 50 that fell most inside the screen's floors over the last 60 sessions, each with the furthest funnel place it reached (floors, rank cut, dive budget, analyst or shelf, buy step, or the book), the date and the reason on record; totals by place in rupees of a 3.2% position |
+| Screen cut (report) | `scripts/screen_cut.py` | Read-only, run by hand: every stored weekly screen graded forward from its own date, its candidates against the rest inside the floors, returns at 10, 30 and 60 sessions from the close after the run; per screen and over the screens the cut's lead, with a rule fixed before the data (read at 30 sessions) for "the cut chooses", "does not choose" or "not yet decidable", and the signals of the candidates that trailed; shown beside the verdict, not tested: restated closes and the leads without them, candidates that moved 50% or more, the spread of the screens' leads, and the two cut sizes apart |
 | Schemas | `src/backend/shared/schemas/discovery.py` | Screen, deep dive, shelf |
 
 **Pattern worth extracting: dark-signal renormalization.** A score is

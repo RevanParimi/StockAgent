@@ -40,6 +40,7 @@ submodules:
       - core/intelligence/rl/eval/*.py
       - src/backend/shared/schemas/scorecard.py
       - scripts/missed_risers.py
+      - scripts/screen_cut.py
     code: ["core/intelligence/rl/eval/scorecard.py::build_scorecard"]
     config: [rl.scorecard_enabled]
     logic: |
@@ -48,7 +49,8 @@ submodules:
         | (persistence, always-up): the "baseline duel"
         > learning-evidence report (did the learned weights beat the base weights?) with
         | the auditor's money section, emailed to the owner
-      A missed-risers report runs by hand (read only)
+      Two screen reports run by hand (read only): missed risers (hindsight), and
+      | whether the screen's cut chooses, graded forward from each stored screen
   - id: M11.3
     name: Weekly results
     summary: the money line, on Sunday (M5.7)

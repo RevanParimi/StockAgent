@@ -1,34 +1,34 @@
-# Current handoff - 2026-11-27 (NEXT PR-041; PR-018 accepted; push pending)
+# Current handoff - 2026-11-27 (NEXT PR-032; PR-041's run waits for you; push pending)
 
 ## Now
 
 - **Deployed:** `69e7c28` (MAP-002), pushed 06:05 IST Fri 27 Nov (`8624f234` SUCCESS, `/health`
   200 at 08:52, CI green). `809a5ea` (03:59) brought OPS, PR-047 and MAP-001; B-12's
-  wording shows Sun 29 Nov. `PR-047-W1` reads the 27 Nov 16:30 review. Since 23 Nov
-  (`4c7f611`) the evidence exit rule decides; PR-015, PR-017, FIX-033 and PR-046 stay
-  `pending_observation`.
-- **PR-047** (accepted 26 Nov, [receipt](evidence/PR-047-review.md)): a buy needs the band's BUY
-  and the model's own. B-42: a top-up reads neither verdict (`PR-014-R1`).
-- **Box rules** (OPS-002 to 006): full suite only via `scripts/ci/guarded_suite.py`.
-- **Box, 27 Nov:** limit 8 GB, warning 4,000 MB; the day's `ANOMALY` (B-50) and `BOOT` are seen.
-  A redeploy removes system packages: your startup script reinstalls Chromium's libraries (not
-  yet proven at a boot, `~/devbox/boot.log`).
-- **PR-007** ([receipt](evidence/PR-007-implementation.md)): plain reasons, display only.
-- **PR-018** (accepted 27 Nov, [receipt](evidence/PR-018-implementation.md)): a first-Sunday
-  "Conviction check" scorecard line; it sizes nothing.
-- **Next `continue`:** **PR-041** (light).
+  wording shows Sun 29 Nov. The evidence exit rule decides since 23 Nov; PR-015, PR-017,
+  FIX-033 and PR-046 stay `pending_observation`.
+- **Accepted:** [PR-047](evidence/PR-047-review.md) (B-42: a top-up reads neither verdict,
+  `PR-014-R1`), [PR-007](evidence/PR-007-implementation.md),
+  [PR-018](evidence/PR-018-implementation.md).
+- **PR-041** ([receipt](evidence/PR-041.md)): built and checked; **blocked** on its one
+  production run.
+- **Box:** full suite only via `scripts/ci/guarded_suite.py`; limit 8 GB. After a redeploy
+  check `~/devbox/boot.log` (the Chromium reinstall is unproven).
+- **Next `continue`:** **PR-032** (decision path: Opus).
 - **Production reads, your word:** `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`.
 - **Git:** `origin/main` = `69e7c28`; unpushed on `main`: its deploy record, MAP-003 to MAP-005,
-  PR-007 and PR-018. Push from 00:10 IST Sat 28 Nov after the guarded suite (its browser step has
-  the flaky B-53); then check the deploy, `/health` and CI's browser job (B-46).
+  PR-007, PR-018 and PR-041. Push from 00:10 IST Sat 28 Nov after the guarded suite (B-53 and
+  B-59 are flaky in its browser step); then check the deploy, `/health` and CI's browser job (B-46).
 
 ## Waits for you
 
+- **PR-041's run** (read-only, once the push has deployed; not 16:25–17:15 IST on a weekday or
+  12:00–15:00 on a Saturday): say "run the PR-041 report". To change its rule, say so first
+  (B-58); silence keeps it.
 - **PR-018, before its first look** (6 Dec at the earliest): its rule counts dives, not stocks,
   and looks never stop. Keep it, count one dive per stock a look, or also cap the looks
   (B-54, B-55); silence keeps it.
-- **[The map](../../architecture-map/index.html)'s walk-through** (guide 11-P; MAP-001 to 005
-  [done](evidence/MAP-005.md)), on a laptop and a phone.
+- **[The map](../../architecture-map/index.html)'s walk-through** (guide 11-P), on a laptop and
+  a phone.
 - **PR-007:** after its first review, read the reasons (guide 11-Q) and keep three examples; for
   earlier trades say "run the PR-007 backfill" (a dry run, then `--apply`).
 - **PR-047's read** (read-only; from Tue 1 Dec, best Sat 12 or Sun 13 Dec, before `PR-014-R1`):
@@ -71,6 +71,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Fri 27 Nov | `PR-042-W1` | a week of enforce: what it stopped; no exit or trim stopped |
 | Fri 27 Nov | `PR-047-W1` | after the 16:30 review: no buy whose own model did not say BUY; Sat 28 Nov: `hygiene.model_verdicts`, `not_buy_model` |
 | first review after deploy | `PR-007-W1` | the stored words, the model's share and tokens (your word) |
+| after deploy | `PR-041-W1` | the screen-cut report's one run (your word); B-57's count |
 | Tue 1 Dec | `PR-047-S1` | PR-047's measure, at your word; best 12-13 Dec |
 | Tue 1 Dec | `PR-014-D1` | the door read: what the buy list offered and refused (and BACKLOG B-13) |
 | Tue 1 Dec | `FIX-015-W1` | every shock sale since the deploy, read with `PR-014-D1` |

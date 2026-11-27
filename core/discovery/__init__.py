@@ -240,6 +240,14 @@ def run_discovery_cycle(on: date | None = None) -> dict:
         logger.warning("[discovery] sector summary failed (non-fatal): %s", exc)
         errors.append(f"sector summary failed: {exc}")
         sectors = {}
+    # PR-032: how many general-path dives had an industry lens, the default
+    # or no label, and which industries lack one (the next lens to write).
+    try:
+        from services.data.context.lenses import coverage as lens_coverage
+        lenses = lens_coverage(dives)
+    except Exception as exc:
+        logger.warning("[discovery] lens coverage failed (non-fatal): %s", exc)
+        lenses = {}
 
     redived: dict = {"refreshed": [], "dropped": {}, "capped": []}
     try:
@@ -299,6 +307,7 @@ def run_discovery_cycle(on: date | None = None) -> dict:
         "deep_dives": len(dives),
         "bare_judge": bare,
         "sectors": sectors,
+        "lenses": lenses,
         "redived": redived,
         "shelf": shelf_summary,
         "rotated_stale": rotated,

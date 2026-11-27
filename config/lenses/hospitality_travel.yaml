@@ -1,0 +1,25 @@
+# PR-032 industry lens (Hotels, travel and airlines). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: hospitality_travel
+display: "Hotels, travel and airlines"
+industries:
+  - "Lodging"
+  - "Resorts & Casinos"
+  - "Travel Services"
+  - "Leisure"
+  - "Airlines"
+  - "Airports & Air Services"
+kpis:
+  - "hotel occupancy and average room rate"
+  - "revenue per available room"
+  - "airline load factor and yields"
+  - "passenger traffic growth"
+  - "new rooms or aircraft added"
+  - "jet fuel cost"
+news_terms: "results occupancy demand traffic"
+sector_query: "India hotels travel tourism air traffic demand room rates news {month} {year}"
+policy_query: "{company_name} occupancy room rates traffic results commentary {year}"
+macro_drivers:
+  - "travel demand"
+  - "jet fuel prices"

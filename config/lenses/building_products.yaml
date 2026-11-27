@@ -1,0 +1,22 @@
+# PR-032 industry lens (Building products). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: building_products
+display: "Building products"
+industries:
+  - "Building Products & Equipment"
+  - "Lumber & Wood Production"
+kpis:
+  - "volume growth"
+  - "raw material prices: PVC, gas for ceramics, timber"
+  - "price changes"
+  - "dealer network expansion"
+  - "housing completions demand"
+  - "working capital"
+news_terms: "results volumes demand prices"
+sector_query: "India building products pipes tiles plywood demand prices news {month} {year}"
+policy_query: "{company_name} volumes pricing raw material demand results commentary {year}"
+macro_drivers:
+  - "housing construction activity"
+  - "PVC prices"
+  - "natural gas prices"

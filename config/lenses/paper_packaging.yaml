@@ -1,0 +1,21 @@
+# PR-032 industry lens (Paper and packaging). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: paper_packaging
+display: "Paper and packaging"
+industries:
+  - "Paper & Paper Products"
+  - "Packaging & Containers"
+kpis:
+  - "realisation per tonne"
+  - "sales volumes"
+  - "pulp, wood and polymer costs"
+  - "capacity utilisation"
+  - "pricing pressure from imports"
+news_terms: "results volumes prices margins"
+sector_query: "India paper packaging prices demand imports pulp news {month} {year}"
+policy_query: "{company_name} volumes realisation raw material margins results {year}"
+macro_drivers:
+  - "pulp prices"
+  - "polymer prices"
+  - "consumer demand"

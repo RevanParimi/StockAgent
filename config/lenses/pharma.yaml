@@ -1,0 +1,22 @@
+# PR-032 industry lens (Pharmaceuticals). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: pharma
+display: "Pharmaceuticals"
+industries:
+  - "Drug Manufacturers - Specialty & Generic"
+  - "Drug Manufacturers - General"
+  - "Biotechnology"
+kpis:
+  - "US sales and new product launches"
+  - "India branded sales growth against the market"
+  - "USFDA inspection outcomes and warning letters"
+  - "gross margin and API raw material costs"
+  - "R&D spend and the product pipeline"
+news_terms: "results USFDA launches approvals"
+sector_query: "India pharma USFDA approvals drug pricing exports news {month} {year}"
+policy_query: "{company_name} USFDA inspection product launches results commentary {year}"
+macro_drivers:
+  - "rupee dollar rate"
+  - "US drug pricing"
+  - "China API prices"

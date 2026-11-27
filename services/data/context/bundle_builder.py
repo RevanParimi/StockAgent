@@ -29,6 +29,13 @@ Design notes
   `settings.UNIFIED_BUNDLE_MAX_CHARS`.
 - NSE data is NEVER refetched here — it comes from `query.nse_data`,
   populated once by the orchestrator's existing prefetch step.
+- PR-032: on the general path ("generic") with `lenses.enabled` on, the four
+  web searches are worded from the stock's industry lens
+  (`services/data/context/lenses.py`), the lens is recorded in those four
+  sections' provenance (`lens`), and `industry_block` tells the analyst the
+  industry above the sections. The lens comes from the peers step's Yahoo
+  label: one peer choice per bundle, shared, so no extra lookup. Off, or on
+  a sector path, every query is today's.
 """
 
 from __future__ import annotations
@@ -188,11 +195,20 @@ class SectorDataBundle:
     # PR-043: the company search as sent and Serper's raw results
     # ({query, source, results}), for the search shadow. Never in the prompt.
     company_search: dict = field(default_factory=dict)
+    # PR-032: what the analyst is told about the stock's industry, above the
+    # sections; "" off the lens path. Not a section: no status, no health
+    # count, never essential. `lens` is the lens recorded ("" = not used).
+    industry_block: str = ""
+    lens: str = ""
 
     def to_prompt_text(self) -> str:
         """
         Render all sections as labelled `## SECTION_NAME` blocks in
         SECTION_ORDER, capped overall at settings.UNIFIED_BUNDLE_MAX_CHARS.
+
+        PR-032: an industry block goes above them as `## INDUSTRY`, outside
+        the cap (it is at most `lenses.BLOCK_MAX_CHARS`), so the sections
+        keep every character they had.
         """
         parts: list[str] = []
         for name in SECTION_ORDER:
@@ -203,6 +219,8 @@ class SectorDataBundle:
         max_chars = settings.UNIFIED_BUNDLE_MAX_CHARS
         if len(full_text) > max_chars:
             full_text = full_text[:max_chars]
+        if self.industry_block:
+            full_text = f"## INDUSTRY\n{self.industry_block}\n\n{full_text}"
         return full_text
 
 
@@ -244,17 +262,19 @@ def _safe(
     fetcher,
     *args,
     provenance: dict[str, dict] | None = None,
+    **kwargs,
 ) -> None:
     """Run one section fetcher, recording its text, outcome and provenance.
 
     Never raises: a failing fetcher degrades that section to UNAVAILABLE and
     records `failed:<ExceptionType>`. A FetchResult's status is taken as the
     producer states it; plain text is classified by `_classify_section`.
+    Keyword arguments go to the fetcher (PR-032's `lens` and `choice`).
     """
     if provenance is None:
         provenance = {}
     try:
-        result = fetcher(*args)
+        result = fetcher(*args, **kwargs)
     except Exception as exc:
         logger.warning("[bundle_builder] %s fetch failed: %s", name, exc,
                        exc_info=True)
@@ -276,16 +296,20 @@ def _safe(
 
 
 def _fetch_company_news(query: StockQuery, sector: str, serper_key: str,
-                        capture: dict | None = None) -> FetchResult:
+                        capture: dict | None = None, lens=None) -> FetchResult:
     """Serper search #1 — company news, results, guidance, management commentary.
 
     PR-043: when `capture` is a dict it receives the query and Serper's raw
     results ({query, source, results}) for the search shadow; the section's
-    text is the same either way."""
+    text is the same either way.
+
+    PR-032: a lens (`LensChoice`) with a written lens searches its
+    `news_terms`; the default lens and no label keep the path's terms."""
     from services.data.fetchers.news import fetch_news_result
 
     today = date.today()
-    terms = _bundle_cfg(sector)["company_news_terms"]
+    terms = ((lens.company_news_terms() if lens is not None else None)
+             or _bundle_cfg(sector)["company_news_terms"])
     queries = [
         f"{query.company_name} {query.ticker} latest news {terms} "
         f"{today.strftime('%B')} {today.year}"
@@ -301,17 +325,24 @@ def _fetch_company_news(query: StockQuery, sector: str, serper_key: str,
     return result
 
 
-def _fetch_sector_policy_news(query: StockQuery, sector: str, serper_key: str) -> FetchResult:
-    """Serper search #2 — sector demand, policy/regulatory, and competitive moves."""
+def _fetch_sector_policy_news(query: StockQuery, sector: str, serper_key: str,
+                              lens=None) -> FetchResult:
+    """Serper search #2 — sector demand, policy/regulatory, and competitive moves.
+
+    PR-032: a lens's `sector_query`, or the default lens's wording built from
+    the Yahoo label; no label keeps the path's query."""
     from services.data.fetchers.news import fetch_news_result
 
     today = date.today()
-    template = _bundle_cfg(sector)["sector_policy_news_query"]
-    queries = [template.format(month=today.strftime("%B"), year=today.year)]
+    worded = lens.sector_query(today) if lens is not None else None
+    if worded is None:
+        template = _bundle_cfg(sector)["sector_policy_news_query"]
+        worded = template.format(month=today.strftime("%B"), year=today.year)
+    queries = [worded]
     return fetch_news_result(queries, max_queries=1, api_key=serper_key)
 
 
-def _fetch_macro_context(sector: str, serper_key: str) -> FetchResult:
+def _fetch_macro_context(sector: str, serper_key: str, lens=None) -> FetchResult:
     """
     yfinance INR/USD + crude + factor regime, plus Serper search #3.
 
@@ -319,6 +350,9 @@ def _fetch_macro_context(sector: str, serper_key: str) -> FetchResult:
     section is `unavailable` and no news is fetched, exactly as when
     `get_macro_context` raised here before SA-002. News that found nothing is
     named in `reason`.
+
+    PR-032: with a lens the news search names the lens's macro drivers, or
+    the default lens's economy wording; it never names the graph.
     """
     from services.data.fetchers.macro import get_macro_result
 
@@ -329,10 +363,13 @@ def _fetch_macro_context(sector: str, serper_key: str) -> FetchResult:
     from services.data.fetchers.news import fetch_news_result
 
     today = date.today()
-    queries = [
-        f"India {sector} sector macro economy INR USD crude oil RBI "
-        f"{today.strftime('%B')} {today.year}"
-    ]
+    if lens is not None:
+        queries = [lens.macro_query(today)]
+    else:
+        queries = [
+            f"India {sector} sector macro economy INR USD crude oil RBI "
+            f"{today.strftime('%B')} {today.year}"
+        ]
     news = fetch_news_result(queries, max_queries=1, api_key=serper_key)
     return FetchResult(
         f"{macro.text}\n\n{news.text}", STATUS_OK, "yfinance+serper", as_of=news.as_of,
@@ -343,13 +380,20 @@ def _fetch_macro_context(sector: str, serper_key: str) -> FetchResult:
     )
 
 
-def _fetch_policy_deep_dive(query: StockQuery, sector: str) -> FetchResult:
-    """1 Tavily page (down from 2) — existing month cache. Sector-specific query."""
+def _fetch_policy_deep_dive(query: StockQuery, sector: str, lens=None) -> FetchResult:
+    """1 Tavily page (down from 2) — existing month cache. Sector-specific query.
+
+    PR-032: a written lens's `policy_query`; otherwise the path's query."""
     from services.clients.tavily_fetcher import fetch_tavily_result
 
     today = date.today()
-    template = _bundle_cfg(sector)["policy_deep_dive_query"]
-    queries = [template.format(company_name=query.company_name, ticker=query.ticker, year=today.year)]
+    worded = (lens.policy_query(query.company_name, query.ticker, today)
+              if lens is not None else None)
+    if worded is None:
+        template = _bundle_cfg(sector)["policy_deep_dive_query"]
+        worded = template.format(company_name=query.company_name, ticker=query.ticker,
+                                 year=today.year)
+    queries = [worded]
     return fetch_tavily_result(queries, max_queries=1, max_results_per_query=1)
 
 
@@ -454,7 +498,7 @@ def _fetch_flows_sentiment(query: StockQuery, sector: str) -> FetchResult:
     return FetchResult("\n\n".join(parts), STATUS_OK, "nse", reason=join_reasons(missing))
 
 
-def _fetch_peers_valuation(query: StockQuery, sector: str) -> FetchResult:
+def _fetch_peers_valuation(query: StockQuery, sector: str, choice=None) -> FetchResult:
     """Peer P/E + NSE dividend/bonus/corporate actions (prefetch context).
 
     SA-044: one rule chooses the peers for every graph: the stock's Yahoo
@@ -468,12 +512,16 @@ def _fetch_peers_valuation(query: StockQuery, sector: str) -> FetchResult:
     an abstaining gate drops a re-dived shelf idea and refuses a watchlist buy
     even in `record` mode, which would drop every stock whose industry has
     too few known symbols. The NSE corporate actions do not change it either.
+
+    PR-032: `choice` is the bundle's one peer choice, made before the
+    searches to find the stock's lens; None makes it here, as before.
     """
     from core.intelligence.algorithms.indicators.fetcher import get_valuation_result
     from services.data.context.peers import choose_peers
     from services.data.fetchers.nse_announcements import format_nse_context
 
-    choice = choose_peers(query.ticker, sector=sector)
+    if choice is None:
+        choice = choose_peers(query.ticker, sector=sector)
     valuation = get_valuation_result(query.ticker, peer_tickers=list(choice.symbols),
                                      peer_industry=choice.industry)
     header = choice.note()
@@ -519,6 +567,35 @@ def _fetch_dossier(query: StockQuery, sector: str) -> FetchResult:
 # build_sector_bundle
 # ---------------------------------------------------------------------------
 
+# PR-032: the sections whose searches a lens words, and whose provenance
+# records it.
+LENS_SECTIONS: tuple[str, ...] = (
+    "company_news", "sector_policy_news", "macro_context", "policy_deep_dive",
+)
+LENS_PATH = "generic"
+
+
+def _lens_and_peers(query: StockQuery, sector: str):
+    """(LensChoice, PeerChoice) for a general-path bundle with lenses on, else
+    (None, None). The peer choice is the bundle's one industry lookup: it is
+    handed to `_fetch_peers_valuation` too. Never raises: a failure keeps
+    today's wording."""
+    if sector != LENS_PATH:
+        return None, None
+    try:
+        from services.data.context.lenses import active_lenses
+        lens_set = active_lenses()
+        if lens_set is None:
+            return None, None
+        from services.data.context.peers import choose_peers
+        choice = choose_peers(query.ticker, sector=sector)
+        return lens_set.lens_for(choice.industry), choice
+    except Exception as exc:
+        logger.warning("[bundle_builder] lens for %s not chosen, today's wording: %s",
+                       query.ticker, exc, exc_info=True)
+        return None, None
+
+
 def build_sector_bundle(query: StockQuery, sector: str) -> SectorDataBundle:
     """
     Build the one-pass SectorDataBundle for `sector`.
@@ -537,17 +614,30 @@ def build_sector_bundle(query: StockQuery, sector: str) -> SectorDataBundle:
     prov: dict[str, dict] = {}
     company_search: dict = {}
 
+    # PR-032: off the lens path both are None and every call is as before.
+    lens, peer_choice = _lens_and_peers(query, sector)
+    by_lens = {"lens": lens} if lens is not None else {}
+    shared = {"choice": peer_choice} if peer_choice is not None else {}
+
     _safe(sections, status, "company_news", _fetch_company_news, query, sector, serper_key,
-          company_search, provenance=prov)
-    _safe(sections, status, "sector_policy_news", _fetch_sector_policy_news, query, sector, serper_key, provenance=prov)
-    _safe(sections, status, "macro_context", _fetch_macro_context, sector, serper_key, provenance=prov)
-    _safe(sections, status, "policy_deep_dive", _fetch_policy_deep_dive, query, sector, provenance=prov)
+          company_search, provenance=prov, **by_lens)
+    _safe(sections, status, "sector_policy_news", _fetch_sector_policy_news, query, sector, serper_key,
+          provenance=prov, **by_lens)
+    _safe(sections, status, "macro_context", _fetch_macro_context, sector, serper_key,
+          provenance=prov, **by_lens)
+    _safe(sections, status, "policy_deep_dive", _fetch_policy_deep_dive, query, sector,
+          provenance=prov, **by_lens)
     _safe(sections, status, "fundamentals", _fetch_fundamentals, query, provenance=prov)
     _safe(sections, status, "technicals", _fetch_technicals, query, sector, provenance=prov)
     _safe(sections, status, "commodities", _fetch_commodities, sector, provenance=prov)
     _safe(sections, status, "flows_sentiment", _fetch_flows_sentiment, query, sector, provenance=prov)
-    _safe(sections, status, "peers_valuation", _fetch_peers_valuation, query, sector, provenance=prov)
+    _safe(sections, status, "peers_valuation", _fetch_peers_valuation, query, sector,
+          provenance=prov, **shared)
     _safe(sections, status, "dossier", _fetch_dossier, query, sector, provenance=prov)
+
+    if lens is not None:
+        for name in LENS_SECTIONS:
+            prov[name] = {**(prov.get(name) or {}), "lens": lens.record}
 
     # UNCHANGED BY B2 — deliberately not re-expressed in terms of
     # `section_status`, because the two do not agree. This rule counts a
@@ -573,4 +663,6 @@ def build_sector_bundle(query: StockQuery, sector: str) -> SectorDataBundle:
         section_status=status,
         section_provenance=prov,
         company_search=company_search,
+        industry_block=lens.block() if lens is not None else "",
+        lens=lens.record if lens is not None else "",
     )

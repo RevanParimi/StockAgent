@@ -1,0 +1,22 @@
+# PR-032 industry lens (Textiles, apparel and footwear). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: textiles_apparel
+display: "Textiles, apparel and footwear"
+industries:
+  - "Textile Manufacturing"
+  - "Apparel Manufacturing"
+  - "Footwear & Accessories"
+kpis:
+  - "export orders and volume growth"
+  - "cotton and yarn prices"
+  - "EBITDA margin"
+  - "US and European retail demand"
+  - "capacity utilisation"
+news_terms: "results exports orders margins"
+sector_query: "India textiles apparel exports cotton prices US tariffs demand news {month} {year}"
+policy_query: "{company_name} exports volumes cotton margins results commentary {year}"
+macro_drivers:
+  - "cotton prices"
+  - "US Europe retail demand"
+  - "rupee dollar rate"

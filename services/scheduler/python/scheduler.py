@@ -646,6 +646,13 @@ class AutomobileScheduler:
             if sectors.get("no_yahoo"):
                 logger.info("[Scheduler] Discovery sectors no Yahoo labels: %s",
                             sectors["no_yahoo"])
+            # PR-032: the week's lens coverage; names the next lens to write.
+            try:
+                from services.data.context.lenses import coverage_line
+                logger.info("[Scheduler] Discovery lenses: %s",
+                            coverage_line(result.get("lenses")))
+            except Exception as exc:
+                logger.warning("[Scheduler] Discovery lens line failed (non-fatal): %s", exc)
             try:
                 from core.delivery.ops_alerts import alert_job_zero_output
                 alert_job_zero_output(

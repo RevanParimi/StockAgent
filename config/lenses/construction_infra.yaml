@@ -1,0 +1,22 @@
+# PR-032 industry lens (Construction and infrastructure). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: construction_infra
+display: "Construction and infrastructure"
+industries:
+  - "Engineering & Construction"
+  - "Infrastructure Operations"
+kpis:
+  - "order book and new wins"
+  - "execution pace and revenue growth"
+  - "EBITDA margin"
+  - "net debt and working capital"
+  - "toll and traffic collections for operators"
+  - "asset sales and monetisation"
+news_terms: "results orders order book execution"
+sector_query: "India infrastructure construction orders roads railways awarding news {month} {year}"
+policy_query: "{company_name} order book order inflow execution guidance {year}"
+macro_drivers:
+  - "government infrastructure spending"
+  - "interest rates"
+  - "cement steel prices"

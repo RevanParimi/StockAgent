@@ -47,10 +47,12 @@ submodules:
     summary: one checked fetch pass per analysis
     files:
       - services/data/context/**/*.py
+      - scripts/lenses/*.py
     code: ["services/data/context/bundle_builder.py::build_sector_bundle",
-           "services/data/context/fetch_result.py::FetchResult"]
+           "services/data/context/fetch_result.py::FetchResult",
+           "services/data/context/lenses.py::LensSet"]
     config: [unified_analyst.section_max_chars, unified_analyst.bundle_max_chars,
-             observability.data_health_essential_sections]
+             observability.data_health_essential_sections, lenses.enabled]
     logic: |
       build_sector_bundle(stock, sector)      one fetch pass per analysis; never raises
         10 sections, fixed order
@@ -72,6 +74,19 @@ submodules:
           failed:<ErrorType> ............. the fetcher raised; text = "unavailable"
           unverified ..................... plain text came back with no proof
         > capped per section and in total ─► to_prompt_text() for the analyst
+      Industry lenses (general path only; lenses.enabled, default off)
+        ? the graph is "generic" and the setting is on
+          ! no ─► every query is today's; the four sector paths never read a lens
+          yes ─► the stock's Yahoo industry, from the one peer choice the bundle makes
+            ? a lens file in config/lenses lists the label
+              yes ─► its words for the 4 searches; the analyst is told the industry
+              | and its KPIs above the sections (not a section; never essential)
+              no lens lists it ─► the default lens, worded from the label
+              no label at all ─► today's wording (the macro search drops "generic")
+            > the 4 search sections record lens: <id> / default / none
+        lens files are written offline (scripts/lenses/draft_lens.py) and reviewed;
+        | checked at startup (an ERROR line and today's wording if one is broken)
+        scripts/lenses/coverage_report.py and bench.py ─► the owner's production reads
   - id: M2.3
     name: Identity
     summary: which company is this ticker, on this date

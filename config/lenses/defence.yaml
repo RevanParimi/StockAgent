@@ -1,0 +1,19 @@
+# PR-032 industry lens (Defence and aerospace). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: defence
+display: "Defence and aerospace"
+industries:
+  - "Aerospace & Defense"
+kpis:
+  - "order book and new orders"
+  - "defence procurement and indigenisation lists"
+  - "execution and deliveries"
+  - "export orders"
+  - "EBITDA margin"
+news_terms: "results orders contract defence"
+sector_query: "India defence procurement orders indigenisation exports news {month} {year}"
+policy_query: "{company_name} defence order book order inflow execution guidance {year}"
+macro_drivers:
+  - "defence budget"
+  - "geopolitical tensions"

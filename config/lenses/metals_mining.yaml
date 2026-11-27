@@ -1,0 +1,29 @@
+# PR-032 industry lens (Non-ferrous metals and mining). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: metals_mining
+display: "Non-ferrous metals and mining"
+industries:
+  - "Aluminum"
+  - "Copper"
+  - "Other Industrial Metals & Mining"
+  - "Gold"
+  - "Silver"
+  - "Other Precious Metals & Mining"
+  - "Thermal Coal"
+  - "Coking Coal"
+  - "Uranium"
+kpis:
+  - "LME metal prices"
+  - "production and sales volumes"
+  - "cost of production per tonne"
+  - "power and coal costs"
+  - "mine output and ore grades"
+  - "coal dispatches and e-auction premiums"
+news_terms: "results production prices volumes"
+sector_query: "India metals mining prices production demand news {month} {year}"
+policy_query: "{company_name} production volumes cost per tonne metal prices results {year}"
+macro_drivers:
+  - "LME metal prices"
+  - "China demand"
+  - "rupee dollar rate"

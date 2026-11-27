@@ -1,0 +1,22 @@
+# PR-032 industry lens (Consumer durables and appliances). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: consumer_durables
+display: "Consumer durables and appliances"
+industries:
+  - "Furnishings, Fixtures & Appliances"
+  - "Consumer Electronics"
+kpis:
+  - "volume growth by category"
+  - "seasonal demand, such as summer for cooling products"
+  - "input costs: copper, aluminium, steel"
+  - "market share"
+  - "channel inventory"
+  - "contract manufacturing orders and PLI"
+news_terms: "results demand volumes margins"
+sector_query: "India consumer durables appliances electronics demand prices PLI news {month} {year}"
+policy_query: "{company_name} demand volumes margins capacity results commentary {year}"
+macro_drivers:
+  - "consumer demand"
+  - "copper aluminium prices"
+  - "rupee dollar rate"

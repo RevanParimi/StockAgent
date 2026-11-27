@@ -1,0 +1,19 @@
+# PR-032 industry lens (Internet platforms). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: internet_platforms
+display: "Internet platforms"
+industries:
+  - "Internet Content & Information"
+kpis:
+  - "order or transaction value growth"
+  - "take rate"
+  - "contribution margin"
+  - "users and engagement"
+  - "cash burn and profitability"
+news_terms: "results growth users profitability"
+sector_query: "India internet platforms ecommerce quick commerce food delivery growth news {month} {year}"
+policy_query: "{company_name} GOV growth contribution margin users results commentary {year}"
+macro_drivers:
+  - "consumer spending"
+  - "startup funding"

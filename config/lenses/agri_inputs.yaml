@@ -1,0 +1,20 @@
+# PR-032 industry lens (Fertilisers and agrochemicals). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: agri_inputs
+display: "Fertilisers and agrochemicals"
+industries:
+  - "Agricultural Inputs"
+kpis:
+  - "sales volumes by product"
+  - "subsidy rates and receivables from the government"
+  - "monsoon and sowing area"
+  - "raw material prices: phosphoric acid, ammonia, technicals"
+  - "channel inventory"
+news_terms: "results volumes subsidy monsoon"
+sector_query: "India fertiliser agrochemical demand subsidy monsoon sowing news {month} {year}"
+policy_query: "{company_name} fertiliser agrochemical volumes subsidy results commentary {year}"
+macro_drivers:
+  - "monsoon rainfall"
+  - "fertiliser subsidy"
+  - "global urea DAP prices"

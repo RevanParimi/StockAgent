@@ -1,0 +1,28 @@
+# PR-032 industry lens (Consumer staples and beverages). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: fmcg
+display: "Consumer staples and beverages"
+industries:
+  - "Household & Personal Products"
+  - "Packaged Foods"
+  - "Confectioners"
+  - "Beverages - Non-Alcoholic"
+  - "Beverages - Brewers"
+  - "Beverages - Wineries & Distilleries"
+  - "Tobacco"
+  - "Food Distribution"
+kpis:
+  - "volume growth"
+  - "price increases"
+  - "gross margin and input costs"
+  - "rural and urban demand"
+  - "advertising spend"
+  - "distribution reach"
+news_terms: "results volume growth demand margins"
+sector_query: "India FMCG demand volume growth rural urban consumption prices news {month} {year}"
+policy_query: "{company_name} volume growth pricing margins demand commentary {year}"
+macro_drivers:
+  - "food inflation"
+  - "rural demand"
+  - "palm oil prices"

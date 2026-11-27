@@ -1,0 +1,27 @@
+# PR-032 industry lens (Electronics, semiconductors and telecom equipment). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: electronics
+display: "Electronics, semiconductors and telecom equipment"
+industries:
+  - "Electronic Components"
+  - "Semiconductors"
+  - "Semiconductor Equipment & Materials"
+  - "Scientific & Technical Instruments"
+  - "Communication Equipment"
+  - "Computer Hardware"
+  - "Electronics & Computer Distribution"
+kpis:
+  - "order book and new orders"
+  - "revenue growth by segment"
+  - "EBITDA margin"
+  - "component costs and imports"
+  - "PLI incentives"
+  - "capacity expansion"
+news_terms: "results orders capacity PLI"
+sector_query: "India electronics manufacturing semiconductors PLI orders news {month} {year}"
+policy_query: "{company_name} order book revenue guidance capacity PLI results {year}"
+macro_drivers:
+  - "electronics imports"
+  - "rupee dollar rate"
+  - "global chip cycle"

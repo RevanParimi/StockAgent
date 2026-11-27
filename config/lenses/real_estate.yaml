@@ -1,0 +1,23 @@
+# PR-032 industry lens (Real estate). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: real_estate
+display: "Real estate"
+industries:
+  - "Real Estate - Development"
+  - "Real Estate - Diversified"
+  - "Real Estate Services"
+  - "Residential Construction"
+kpis:
+  - "pre-sales bookings by value and area"
+  - "collections"
+  - "new launches"
+  - "average realisation per square foot"
+  - "net debt"
+  - "rental income and occupancy for commercial assets"
+news_terms: "pre-sales bookings launches collections"
+sector_query: "India real estate housing sales launches prices demand news {month} {year}"
+policy_query: "{company_name} pre-sales bookings collections launches guidance {year}"
+macro_drivers:
+  - "home loan rates"
+  - "housing demand"

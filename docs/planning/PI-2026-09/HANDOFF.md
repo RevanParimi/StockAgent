@@ -2,11 +2,11 @@
 
 ## Now
 
-- **Deployed:** `809a5ea`, pushed 03:59 IST Fri 27 Nov by the autopilot after its guarded suite
-  (`dd834a35` SUCCESS, `/health` 200 at 04:31): OPS, B-12's wording (Sun 29 Nov), PR-047, MAP-001
-  and your walkthrough copy, which is on `origin/main` (OPS-003's last line). `PR-047-W1` reads
-  today's 16:30 review. Since 23 Nov (`4c7f611`) the evidence exit rule decides; PR-015, PR-017,
-  FIX-033 and PR-046 stay `pending_observation`.
+- **Deployed:** `69e7c28` (MAP-002), pushed 06:05 IST Fri 27 Nov (`8624f234` SUCCESS, `/health`
+  200 at 08:52, CI green). `809a5ea` (03:59) brought OPS, B-12's wording (Sun 29 Nov), PR-047,
+  MAP-001 and your walkthrough copy. `PR-047-W1` reads today's 16:30 review. Since 23 Nov
+  (`4c7f611`) the evidence exit rule decides; PR-015, PR-017, FIX-033 and PR-046 stay
+  `pending_observation`.
 - **21 Nov:** the [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against
   their own analysis; DEEPA sold. FIX-033, PR-047. No hand trades.
 - **26 Nov, PR-047 accepted** by its fresh review ([receipt](evidence/PR-047-review.md)), merged
@@ -23,9 +23,9 @@
   your word.
 - **Autopilot** (started 14:49 IST, 26 Nov): its retry box checks and health line need your next
   `start`.
-- **Git:** `origin/main` = `809a5ea`; `main` holds the deploy record and MAP-002. The runner
-  pushes between phases in the window (00:10–06:20 IST) after the guarded suite; then check the
-  deploy, `/health` and CI's browser job (B-46).
+- **Git:** `origin/main` = `69e7c28`. The runner pushes between phases in the window
+  (00:10–06:20 IST) after the guarded suite; then check the deploy, `/health` and CI's browser job
+  (B-46).
 
 ## Waits for you
 

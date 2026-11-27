@@ -64,6 +64,7 @@ Each entry: what, where it was found, and the trigger that promotes it.
 | B-60 | **Two Yahoo reads of one industry label.** PR-032's weekly "Discovery lenses" line reads each dive's own label (`market_classification`, a live Yahoo call), while the bundle picks its lens from the peers step's cached profile (`data/peer_profiles.json`, up to 30 days old). A label Yahoo changed in between is counted under one lens and searched under another. The line only names the next lens to write | PR-032, 27 Nov 2026 (code reading) | A production read finds a dive whose coverage lens differs from its bundle's provenance `lens` |
 | B-61 | **The search shadow would change its query mid-trial.** PR-043 sends the bundle's company search to the other engines. With `lenses.enabled` on, a general-path stock's company search becomes the lens's (its news terms instead of "results guidance outlook"), so the engine comparison would span two query wordings | PR-032, 27 Nov 2026 (code reading) | `lenses.enabled` is switched on before `PR-043-W2` is read: that read then splits its rows at the switch date |
 | B-62 | **The lens bench reads thinner bundles than production.** `scripts/lenses/bench.py` `bench_stock` resolves the ticker but never runs the orchestrator's `_prefetch_nse_data`, which `analyse` runs before every bundle. So the bench's fundamentals and peers sections lack the NSE context that production's carry (`bundle_builder.py` lines 410 and 532). Every arm lacks it equally, so the search comparison holds. The block's effect (C − B) is read on thinner evidence, where the model may lean on the block more, so the error runs toward holding the block back. The fix: call it after `_resolve_ticker`, with a test that the bench's query carries the prefetch | PR-032's fresh review, 28 Nov 2026 ([receipt](evidence/PR-032-review.md), L1) | The owner says "run the PR-032 bench" (`PR-032-B1`): fix it first, or record C − B with this caveat |
+| B-63 | **The map loses the keyboard's place after a search.** A result picked from the search records the hidden search field as the place to give the focus back to, so closing that panel with Esc leaves the focus on the page, not on the module in the legend (UI checklist K3). The old and the new page do the same. Developer documentation only; no buy, sell, size or grade | MAP-006, 28 Nov 2026 (reproduced in a browser) | A map story touches focus or search, or the owner uses the map from the keyboard and reports it |
 
 ## Parked with their cards
 
@@ -78,11 +79,15 @@ paused or removed, they wait with it:
 
 ## Closed
 
-- **B-53 and B-59** (28 Nov 2026): promoted to [MAP-006](stories/MAP-006.md). B-53, the map's
-  galaxy test whose "/" sometimes opens no search (`architecture_map_galaxy.test.mjs`, line 435),
-  failed a third time, in the autopilot's pre-push suite at 00:31 IST, and held that push of 8
-  commits. B-59, the flat map's test reading the zoom before the map re-measures, is the same
-  kind of race and is fixed with it.
+- **B-53 and B-59** (28 Nov 2026): promoted to [MAP-006](stories/MAP-006.md) and closed by it the
+  same night ([receipt](evidence/MAP-006.md)). B-53, the galaxy test whose "/" sometimes opened no
+  search, failed a third time in the autopilot's pre-push suite at 00:31 IST and held a push of 8
+  commits. Cause: the viewer dropped a "/" pressed right after `Esc`, because the browser reports a
+  shut dialog only on its next frame (and the focus can stay in its field until then). The viewer
+  was fixed. B-59, the flat map's test reading the zoom before the map re-measured, and a like
+  pause in the galaxy keyboard test (found by the Opus check) now wait for the re-measured view.
+  Runs under the memory guard on the final code: the galaxy file 10 of 10 and the flat file 10 of
+  10, then the full suite.
 
 - **B-47** (27 Nov 2026, [MAP-005](evidence/MAP-005.md)): the map shows a job's name without an old plan's
   code in brackets; the developer view of the clock gives the scheduler's own name.

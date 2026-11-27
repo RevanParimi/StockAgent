@@ -29,6 +29,16 @@ const fileOf = (inside, path) => inside.files.find((f) => f.path === path);
 /** Waits until the galaxy shows this many dots lit. */
 const lit = (page, n) => page.waitForSelector(`[data-app][data-lit="${n}"]`, { timeout: 60_000 });
 const drawnDots = (page) => page.waitForSelector('[data-app][data-dots]', { timeout: 90_000 });
+/** Waits until the 3D view has taken the width its place has now and the camera, framed
+ *  again for it, stands still. Both can take longer than any fixed pause on a busy box. */
+const fitted = async (page) => {
+  await page.waitForFunction(() => Math.abs(document.querySelector('canvas').clientWidth
+    - document.querySelector('main.world').clientWidth) <= 1);
+  await page.evaluate(() => new Promise((done) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, 0)));
+  }));
+  await still(page);
+};
 const panelFiles = (page) => page.locator('.panel .files li');
 const section = (page, title) => page.locator('.panel section', {
   has: page.getByRole('heading', { name: title }) });
@@ -472,8 +482,7 @@ test('the galaxy works from the keyboard: legend, views, Esc, the clock and addr
     assert.equal(await data(page, 'tab'), 'code');
     await lit(page, 0);
     // the view has its full width again
-    await page.waitForTimeout(600);
-    await still(page);
+    await fitted(page);
     const front = await data(page, 'camera');
     for (const [key, preset] of [['2', 'top'], ['3', 'side'], ['4', 'below']]) {
       const before = await data(page, 'camera');
@@ -488,8 +497,7 @@ test('the galaxy works from the keyboard: legend, views, Esc, the clock and addr
     await page.locator('.legend [data-module="M3"]').focus();
     await page.keyboard.press('Enter');
     await page.waitForSelector('[data-panel="code"][data-code="M3"]');
-    await page.waitForTimeout(600);
-    await still(page);
+    await fitted(page);
     const there = await data(page, 'camera');
     await page.locator('.legend [data-module="M9"]').click();
     await page.waitForSelector('[data-panel="code"][data-code="M9"]');

@@ -2688,6 +2688,13 @@
       "fields": {
         "sequencing_note": "Edge roadmap, stage 2, directly after PR-017. Its rule unlocks PR-029."
       }
+    },
+    {
+      "id": "MAP-006",
+      "moved": "2026-11-27",
+      "fields": {
+        "sequencing_note": "First in the queue (28 Nov): a failed pre-push suite holds every push, and with it the deploy of accepted work."
+      }
     }
   ]
 }

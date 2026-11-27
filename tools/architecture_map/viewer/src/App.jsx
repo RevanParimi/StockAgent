@@ -1,6 +1,7 @@
 import {
   Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
 } from 'react';
+import { flushSync } from 'react-dom';
 import { findPart, formatHash, parseHash, related, searchIndex } from './lib/select.js';
 import {
   FRONT, MARGIN, codeGraph, fileLabel, galaxyLabels, galaxyLights, layoutGalaxy, ownerName, pickOf,
@@ -429,13 +430,24 @@ export default function App({ model }) {
       : 'StockAgent architecture';
   }, [file, inCode, model, part, play, selected, steps]);
 
+  // The browser shuts a dialog on Esc at once but reports it only on its next frame, so
+  // the page may still count it as open when it is asked for again, and asking would then
+  // change nothing. So it is first counted as shut, which also empties the search.
+  const openDialog = useCallback((name) => {
+    flushSync(() => setDialog(null));
+    setDialog(name);
+  }, []);
+
   useEffect(() => {
     const keys = (event) => {
       if (event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
       // an open dialog closes itself on Esc; asked of the page, because the dialog is shut
       // a moment before this component hears of it
       if (document.querySelector('dialog[open]')) return;
-      if (event.target instanceof Element && event.target.closest(TYPING)) return;
+      // A dialog just shut can keep the focus until the next frame: a key that lands in
+      // its field then is the page's, not typing. No dialog is open here (above).
+      if (event.target instanceof Element && event.target.closest(TYPING)
+          && !event.target.closest('dialog')) return;
       const inView = event.target === document.body
         || (event.target instanceof Element && Boolean(event.target.closest('.world')));
       // on the flat map + and − change its size, and the arrows scroll it as usual
@@ -461,8 +473,8 @@ export default function App({ model }) {
       const preset = { 1: 'front', 2: 'top', 3: 'side', 4: 'below', 5: 'clock' }[event.key];
       if (preset) choosePreset(preset);
       else if (event.key === 'r' || event.key === 'R') choosePreset('front');
-      else if (event.key === '/') { event.preventDefault(); setDialog('search'); }
-      else if (event.key === '?') { event.preventDefault(); setDialog('help'); }
+      else if (event.key === '/') { event.preventDefault(); openDialog('search'); }
+      else if (event.key === '?') { event.preventDefault(); openDialog('help'); }
       else if ((event.key === 'p' || event.key === 'P') && !reduced && !flat) toggleMotion();
       else if ((event.key === 'g' || event.key === 'G') && audience === 'developer') toggleCode();
       else if (event.key === 'Escape' && play) leave();
@@ -471,8 +483,8 @@ export default function App({ model }) {
     };
     document.addEventListener('keydown', keys);
     return () => document.removeEventListener('keydown', keys);
-  }, [audience, choosePreset, close, file, flat, inCode, leave, play, reduced, selected,
-    showWorld, toggleCode, toggleMotion]);
+  }, [audience, choosePreset, close, file, flat, inCode, leave, openDialog, play, reduced,
+    selected, showWorld, toggleCode, toggleMotion]);
 
   // Nothing draws a first frame on the flat map: it is ready as soon as it is shown. A 3D
   // view that comes back is ready only once it has drawn again (Projector), so the mark
@@ -667,8 +679,8 @@ export default function App({ model }) {
         reduced={reduced} flat={flat} onPreset={choosePreset}
         onReset={() => choosePreset('front')}
         onStory={(mode) => (play?.mode === mode ? leave() : enter(mode))} onCode={toggleCode}
-        onSearch={() => setDialog('search')} onAudience={changeAudience}
-        onMotion={toggleMotion} onHelp={() => setDialog('help')} />
+        onSearch={() => openDialog('search')} onAudience={changeAudience}
+        onMotion={toggleMotion} onHelp={() => openDialog('help')} />
       <Legend model={model} selected={inCode ? selected : shown} audience={audience} code={inCode}
         flat={flat} onSelect={(id) => open(id)} />
       {inOrder(narrow, player, (

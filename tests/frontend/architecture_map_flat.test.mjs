@@ -26,6 +26,22 @@ const states = (page) => page.locator('.flat [data-card]').evaluateAll((all) => 
 const levels = (page) => page.locator('.flat [data-flow]').evaluateAll((all) => Object.fromEntries(
   all.map((el) => [el.dataset.flow, el.dataset.level])));
 const scale = (page) => page.locator('.flat-scroll svg').getAttribute('data-scale').then(Number);
+/** Waits until the map's size follows the box it stands in now. The map hears of a new
+ *  width on the next frame and draws it after that, and shows the old size until then:
+ *  two frames pass first, so that nothing is still on its way. The limits of the fit are
+ *  FlatMap.jsx's (a change there shows as this wait timing out); the size is written to
+ *  two decimals, hence the margin. */
+const measured = async (page) => {
+  await page.evaluate(() => new Promise((done) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(done, 0)));
+  }));
+  await page.waitForFunction(() => {
+    const box = document.querySelector('.flat-scroll');
+    const svg = box.querySelector('svg');
+    const fit = Math.min(1.4, Math.max(0.75, box.clientWidth / svg.viewBox.baseVal.width));
+    return Math.abs(Number(svg.dataset.scale) - fit) <= 0.01;
+  });
+};
 const sideways = (page) => page.evaluate(
   () => document.documentElement.scrollWidth - window.innerWidth);
 /** No card's words reach past its box. */
@@ -162,6 +178,7 @@ test('the flat map works from the keyboard alone, focus always seen', SLOW, asyn
   await page.waitForSelector('.panel', { state: 'detached' });
   assert.equal(await at(), 'M5', 'Esc gives the focus back to the card');
   // + and − change the size, from the map
+  await measured(page);
   const before = await scale(page);
   await page.keyboard.press('+');
   await page.waitForFunction((was) => Number(document.querySelector('.flat-scroll svg')
@@ -202,6 +219,86 @@ test('the flat map works from the keyboard alone, focus always seen', SLOW, asyn
   await page.waitForSelector('dialog.help', { state: 'hidden' });
   clean();
 });
+
+test('a dialog asked for again before the browser has caught up still opens', SLOW,
+  async (t) => {
+    const { page, clean } = await flat(t, { hash: '#v=dev' });
+    // Esc shuts a dialog at once, but the page hears of it only on the next frame. Here it
+    // is shut and asked for again in one go, so that no frame can come between.
+    const shutAndAsk = (kind, ask) => page.evaluate(([name, how]) => {
+      document.querySelector(`dialog.${name}`).close();
+      if (how === 'button') {
+        [...document.querySelectorAll('.topbar button[aria-haspopup="dialog"]')]
+          .find((b) => b.textContent.trim().toLowerCase().startsWith(name)).click();
+      } else {
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: how, bubbles: true }));
+      }
+    }, [kind, ask]);
+    const staysOpen = async (kind) => {
+      await page.waitForSelector(`dialog.${kind}[open]`);
+      // the late report of the old closing must not shut the new one
+      await page.waitForTimeout(300);
+      assert.equal(await page.locator(`dialog.${kind}[open]`).count(), 1, kind);
+    };
+    await page.keyboard.press('/');
+    await page.waitForSelector('dialog.search[open]');
+    await page.keyboard.type('advisor');
+    await shutAndAsk('search', '/');
+    await staysOpen('search');
+    assert.equal(await page.locator('#search-input').inputValue(), '', 'it opens empty');
+    await shutAndAsk('search', 'button');
+    await staysOpen('search');
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('dialog.search', { state: 'hidden' });
+    await page.keyboard.press('Shift+Slash');
+    await page.waitForSelector('dialog.help[open]');
+    await shutAndAsk('help', '?');
+    await staysOpen('help');
+    await shutAndAsk('help', 'button');
+    await staysOpen('help');
+    clean();
+  });
+
+test('keys pressed right after Esc are the page’s, not typing in the shut dialog', SLOW,
+  async (t) => {
+    const { page, clean } = await flat(t, { hash: '#v=dev' });
+    // A search opened with nothing focused has nowhere to give the focus back to: the
+    // shut dialog's field keeps it until the next frame. Real keys, one after another.
+    const openThenEsc = async () => {
+      await page.evaluate(() => document.activeElement?.blur());
+      await page.keyboard.press('/');
+      await page.waitForSelector('dialog.search[open]');
+      await page.waitForTimeout(300);
+      await page.keyboard.press('Escape');
+    };
+    await openThenEsc();
+    await page.keyboard.press('/');
+    await page.waitForSelector('dialog.search[open]');
+    assert.equal(await page.locator('#search-input').inputValue(), '',
+      'the "/" that opens it is not typed into it');
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('dialog.search', { state: 'hidden' });
+    // a view key does its work, and the search stays empty
+    await openThenEsc();
+    await page.keyboard.press('2');
+    await page.waitForSelector('[data-app][data-preset="top"]');
+    assert.equal(await page.locator('#search-input').inputValue(), '');
+    // the same with no frame at all between the closing and the key: the focus is still
+    // in the shut field
+    await openThenEsc();
+    await page.waitForSelector('dialog.search', { state: 'hidden' });
+    await page.keyboard.press('/');
+    await page.waitForSelector('dialog.search[open]');
+    await page.evaluate(() => {
+      const field = document.getElementById('search-input');
+      field.focus();
+      document.querySelector('dialog.search').close();
+      if (document.activeElement !== field) throw new Error('the field gave the focus up');
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true }));
+    });
+    await page.waitForSelector('dialog.search[open]');
+    clean();
+  });
 
 test('the clock, the trace and the tour light the flat map step by step', SLOW, async (t) => {
   const { page, clean } = await flat(t, { hash: '#p=clock&s=1' });

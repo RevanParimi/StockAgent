@@ -1,25 +1,23 @@
-# Current handoff - 2026-11-28 (NEXT MAP-006; PR-032 accepted, blocked on its bench; push held by B-53)
+# Current handoff - 2026-11-28 (NEXT PR-008, Opus; MAP-006 accepted; push waits for its suite)
 
 ## Now
 
 - **Deployed:** `69e7c28` (MAP-002), pushed 06:05 IST Fri 27 Nov (`8624f234` SUCCESS, `/health`
   200 at 08:52, CI green); B-12's wording shows Sun 29 Nov. The evidence exit rule decides
   since 23 Nov; PR-015, PR-017, FIX-033 and PR-046 stay `pending_observation`.
-- **Accepted:** **PR-032 (code)** by its fresh review ([receipt](evidence/PR-032-review.md)),
-  merged as `2db3347`. It stays **blocked** on its bench (`PR-032-B1`); `lenses.enabled` ships
-  off. Earlier: PR-047 (B-42), PR-007, PR-018.
-- **PR-041** ([receipt](evidence/PR-041.md)): built and checked; **blocked** on its one
-  production run.
+- **Accepted:** **MAP-006** ([receipt](evidence/MAP-006.md)): the map's two flaky browser tests
+  are fixed (its viewer dropped a quick `/` after `Esc`). Before it: PR-032 (code), PR-047.
+- **Blocked:** **PR-032** on its bench (`PR-032-B1`; `lenses.enabled` ships off); **PR-041**
+  ([receipt](evidence/PR-041.md)) on its one production run.
 - **Box:** full suite only via `scripts/ci/guarded_suite.py`; limit 8 GB. After a redeploy
   check `~/devbox/boot.log` (the Chromium reinstall is unproven).
-- **Push held:** at 00:31 IST on Sat 28 Nov, the autopilot's pre-push suite failed on B-53 (the
-  map's galaxy test, a third time), so nothing was pushed. B-53 and B-59 are now **MAP-006**.
-- **Next `continue`:** **MAP-006** (light), then PR-044 (decision path: Opus).
+- **Next `continue`:** **PR-008** (decision path: Opus). PR-044 waits for `PR-043-W2` (4 Dec),
+  PR-034 for PR-033.
 - **Production reads, your word:** `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`.
-- **Git:** `origin/main` = `69e7c28`. Unpushed on `main`: its deploy record, MAP-003 to MAP-005,
-  PR-007, PR-018, PR-041, and PR-032 (`2db3347`) with its records. Push in a window once the
-  guarded suite passes on the exact commit; then check the deploy, `/health` and CI's browser
-  job (B-46).
+- **Git:** `origin/main` = `69e7c28`. Unpushed on `main`: its deploy record, MAP-003 to MAP-006,
+  PR-007, PR-018, PR-041 and PR-032 (B-53 failed the 00:31 and 01:21 IST pre-push suites on
+  28 Nov). The autopilot pushes in a window once its guarded suite passes on the exact commit;
+  then check the deploy, `/health` and CI's browser job (B-46).
 
 ## Waits for you
 

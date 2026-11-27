@@ -14,6 +14,15 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 28 Nov, early (autopilot `1128-0121-p6`): MAP-006 → ACCEPTED (light)
+
+- **Map tests** ([receipt](evidence/MAP-006.md)): the viewer dropped a `/` pressed right after
+  `Esc` (B-53, which held two pushes on 28 Nov): the browser reports a shut dialog only on its
+  next frame. Fixed in the viewer. B-59, and a like pause the Opus check found in the galaxy
+  test, now wait for the re-measured view. Each of the two files passed 10 guarded runs in a row.
+- **Opus check:** accept with notes; its test fixes taken. Left: B-63 (focus lost after a panel
+  opened from search is closed).
+
 ## 27 Nov, night (autopilot `1127-2012-p2`): PR-018 → ACCEPTED (light)
 
 - **Conviction check** ([receipt](evidence/PR-018-implementation.md)): on each month's first Sunday

@@ -21,6 +21,10 @@ import { buildFlow } from '../../tools/architecture_map/viewer/src/lib/flow.js';
 import {
   findPart, formatHash, parseHash, related, search, searchIndex, settingsFor,
 } from '../../tools/architecture_map/viewer/src/lib/select.js';
+import {
+  BEAD, TOUR_PRESETS, TRACKS, beads, captionOf, clockBounds, clockRing, highlighted, jobLights,
+  moments, openingPlay, ringPoint, stepsOf, stopView, traceLights, viewOf,
+} from '../../tools/architecture_map/viewer/src/lib/play.js';
 import { MODULE, PLANE, SURFACE } from '../../tools/architecture_map/viewer/src/theme.js';
 import { sourceHash } from '../../tools/architecture_map/viewer/scripts/source-hash.mjs';
 
@@ -187,10 +191,11 @@ test('every view frames the whole world in any window, without wasting it', () =
   }
 });
 
-test('the four views look from four different sides', () => {
+test('the four views look from four different sides, and the clock from above', () => {
   const world = layoutWorld(MODEL);
   const at = Object.values(PRESETS).map((p) => fitCamera(world.bounds, p.dir, p.fov, 1.6).position);
-  assert.deepEqual(Object.values(PRESETS).map((p) => p.key), ['1', '2', '3', '4']);
+  assert.deepEqual(Object.values(PRESETS).map((p) => p.key), ['1', '2', '3', '4', '5']);
+  assert.ok(at[4][1] > at[0][1] && at[4][2] > world.bounds.centre[2], 'Clock: high, in front');
   const dy = (i) => at[i][1] - world.bounds.centre[1];
   assert.ok(dy(1) > 0 && dy(1) > dy(0), 'Top is above');
   assert.ok(dy(3) < 0, 'Below is underneath');
@@ -493,10 +498,11 @@ test('the weekly funnel dives its re-dives first, as the code calls them', () =>
 // -- selection, settings and search -----------------------------------------------------
 
 test('the address holds the part and the audience, and refuses what is not on the map', () => {
+  const none = { id: null, audience: null, play: null, unknown: null };
   assert.deepEqual(parseHash('#m=M5.2&v=dev', MODEL),
-    { id: 'M5.2', audience: 'developer', unknown: null });
-  assert.deepEqual(parseHash('#m=M5', MODEL), { id: 'M5', audience: null, unknown: null });
-  assert.deepEqual(parseHash('', MODEL), { id: null, audience: null, unknown: null });
+    { ...none, id: 'M5.2', audience: 'developer' });
+  assert.deepEqual(parseHash('#m=M5', MODEL), { ...none, id: 'M5' });
+  assert.deepEqual(parseHash('', MODEL), none);
   for (const bad of ['M99', 'M5.99', '<img src=x>', 'M5.2.1']) {
     const got = parseHash(`#m=${encodeURIComponent(bad)}`, MODEL);
     assert.equal(got.id, null, bad);
@@ -548,6 +554,236 @@ test('search finds parts, files and settings, needs every word, and says nothing
   assert.deepEqual(search(index, 'advisor zzzz'), []);
   assert.ok(search(index, 'a', 5).length <= 5);
   for (const item of search(index, 'shelf')) assert.ok(findPart(MODEL, item.id), item.title);
+});
+
+// -- the clock, the trace and the tour (MAP-003) ---------------------------------------
+
+const jobById = (id) => MODEL.jobs.find((j) => j.id === id);
+const drawnFlows = () => new Set(layoutWorld(MODEL).flows.map((f) => f.key));
+const base = (who) => (who.startsWith('ext.') || who.startsWith('S.') ? who : who.split('.')[0]);
+
+test('the day holds every job at each of its times, in clock order', () => {
+  const day = moments(MODEL);
+  const wanted = MODEL.jobs.flatMap((j) => j.schedule.time.split(', ').map((t) => `${j.id}@${t}`));
+  assert.deepEqual(day.map((m) => m.key).sort(), wanted.sort());
+  assert.ok(day.every((m) => /^\d\d:\d\d$/.test(m.time)), 'every job has a time of day');
+  for (let i = 1; i < day.length; i += 1) assert.ok(day[i - 1].time <= day[i].time, day[i].key);
+  assert.deepEqual(day.filter((m) => m.job.id === 'macro_market_news').map((m) => m.time),
+    ['09:00', '12:00', '15:00']);
+  // at the same time the daily job comes before the monthly one
+  const nine = day.filter((m) => m.time === '09:00').map((m) => m.job.schedule.group);
+  assert.deepEqual(nine, ['daily', 'calendar']);
+  // by the kind of job, not by its name
+  const renamed = structuredClone(MODEL);
+  renamed.jobs.find((j) => j.id === 'rl_monthly_forecast').id = 'aaa_forecast';
+  assert.deepEqual(moments(renamed).filter((m) => m.time === '09:00').map((m) => m.job.id),
+    ['macro_market_news', 'aaa_forecast']);
+});
+
+test('every job lights its own part, and only flows the world draws between lit things', () => {
+  const drawnKeys = drawnFlows();
+  const ids = new Set([...MODEL.modules.flatMap((m) => [m.id, ...m.submodules.map((s) => s.id)]),
+    ...MODEL.stores.map((s) => s.id), ...MODEL.externals.map((e) => e.id)]);
+  for (const job of MODEL.jobs) {
+    const lit = jobLights(job);
+    assert.ok(job.lights.every((name) => ids.has(name)), job.id);
+    assert.ok(lit.modules.has(job.module.split('.')[0]), `${job.id} lights its module`);
+    for (const key of lit.flows) {
+      assert.ok(drawnKeys.has(key), `${job.id}: ${key} is not drawn`);
+      for (const end of key.split('>')) {
+        assert.ok(lit.modules.has(base(end)) || lit.externals.has(end), `${job.id}: ${end} dark`);
+      }
+    }
+  }
+});
+
+test('the daily review lights the money path: data to portfolio to the account holder', () => {
+  const lit = jobLights(jobById('rl_daily_review'));
+  for (const id of ['M4.2', 'M5.1', 'M5.2', 'M5.3', 'M6.4']) assert.ok(lit.parts.has(id), id);
+  for (const key of ['M4>M5', 'M5>M9', 'M9>ext.user']) assert.ok(lit.flows.has(key), key);
+  assert.ok(lit.stores.has('S.portfolio') && lit.externals.has('ext.user'));
+});
+
+test('every trace step lights what it names; a job stands for its part', () => {
+  const drawnKeys = drawnFlows();
+  const steps = stepsOf(MODEL, 'trace');
+  assert.equal(steps.length, MODEL.traces[0].steps.length);
+  for (const step of steps) {
+    const lit = traceLights(MODEL, step);
+    assert.ok(lit.modules.size > 0, step.text);
+    for (const name of step.refs) {
+      const job = jobById(name);
+      if (job) assert.ok(lit.parts.has(job.module), `${name} lights ${job.module}`);
+    }
+    for (const key of lit.flows) assert.ok(drawnKeys.has(key), key);
+    assert.equal(lit.flows.size, (step.flows ?? []).length, step.text);
+  }
+});
+
+test('each tour stop shows its view: a part opened up, a job on the clock, or what it names', () => {
+  const stops = stepsOf(MODEL, 'tour');
+  assert.deepEqual(TOUR_PRESETS, ['front', 'top', 'side', 'below', 'clock', 'focus']);
+  for (const stop of stops) {
+    assert.ok(TOUR_PRESETS.includes(stop.preset), stop.preset);
+    const shown = viewOf(MODEL, 'tour', stop);
+    assert.ok(Object.keys(PRESETS).includes(shown.preset), `${stop.preset} -> ${shown.preset}`);
+    if (stop.preset === 'focus') assert.equal(shown.selected, stop.ref);
+    else assert.equal(shown.selected, null);
+    if (stop.preset === 'clock') assert.equal(shown.job.id, stop.ref);
+    if (!stop.ref) assert.equal(shown.lit, null, 'nothing named, nothing dimmed');
+  }
+  const top = stopView(MODEL, { preset: 'top', ref: 'M11', caption: 'x' });
+  assert.ok(top.lit.modules.has('M11') && top.lit.modules.has('M3'));
+  assert.ok(!top.lit.modules.has('M8'), 'a module it does not touch stays dim');
+  assert.deepEqual([...top.lit.flows].sort(), MODEL.flows
+    .filter((f) => [f.from, f.to].some((w) => base(w) === 'M11'))
+    .map((f) => `${f.from}>${f.to}`).sort());
+  const ledger = stopView(MODEL, { preset: 'below', ref: 'S.portfolio', caption: 'x' });
+  assert.deepEqual([...ledger.lit.stores], ['S.portfolio']);
+  const writers = new Set(MODEL.stores.find((s) => s.id === 'S.portfolio').writers.map(base));
+  assert.deepEqual(ledger.lit.modules, writers);
+});
+
+test('the clock and the trace view their steps from the clock and the front', () => {
+  const day = stepsOf(MODEL, 'clock');
+  const shown = viewOf(MODEL, 'clock', day[0]);
+  assert.equal(shown.preset, 'clock');
+  assert.equal(shown.job.id, day[0].job.id);
+  assert.equal(viewOf(MODEL, 'trace', MODEL.traces[0].steps[0]).preset, 'front');
+});
+
+test('what a step highlights is also said in words', () => {
+  const said = (mode, step) => highlighted(MODEL, viewOf(MODEL, mode, step));
+  const buy = MODEL.traces[0].steps.find((s) => s.text.includes('XYZ joins the managed list'));
+  const words = said('trace', buy);
+  for (const name of buy.refs) {
+    const module = MODEL.modules.find((m) => m.id === name);
+    const part = MODEL.modules.flatMap((m) => m.submodules).find((s) => s.id === name);
+    const store = MODEL.stores.find((s) => s.id === name);
+    const wanted = module ? `${name} ${module.short}` : part ? `${name} ${part.name}` : store.name;
+    assert.ok(words.includes(wanted), `${wanted} in ${words}`);
+  }
+  assert.equal(words.length, buy.refs.length);
+  // a stop that flies to a module names it; one without a target says nothing
+  assert.deepEqual(said('tour', { preset: 'focus', ref: 'M5', caption: 'x' }), ['M5 Portfolio']);
+  assert.deepEqual(said('tour', { preset: 'front', caption: 'x' }), []);
+});
+
+test('captions are the model’s words, arrows drawn as arrows', () => {
+  const day = moments(MODEL);
+  const review = day.find((m) => m.job.id === 'rl_daily_review');
+  const said = captionOf('clock', review);
+  assert.equal(said.lead, '16:30 · Monday to Friday');
+  assert.equal(said.name, review.job.name);
+  assert.ok(said.text.startsWith('grades the previous session'));
+  const step = MODEL.traces[0].steps[0];
+  assert.equal(captionOf('trace', step).lead, 'Saturday');
+  assert.ok(!captionOf('trace', step).text.includes('─►'));
+  assert.ok(captionOf('trace', step).text.includes('→'));
+  assert.equal(captionOf('tour', MODEL.tours[0].steps[0]).text, MODEL.tours[0].steps[0].caption);
+});
+
+test('a manager who asked for nothing starts on the tour; anyone else gets what they asked', () => {
+  const open = (hash, audience = 'manager') => openingPlay(MODEL, parseHash(hash, MODEL), audience);
+  assert.deepEqual(open(''), { mode: 'tour', step: 0 });
+  assert.deepEqual(open('#v=mgr'), { mode: 'tour', step: 0 });
+  assert.equal(open('', 'developer'), null);
+  assert.equal(open('#m=M5.2'), null);
+  assert.equal(open('#m=M99'), null);
+  assert.equal(open('#p=disco'), null);
+  assert.deepEqual(open('#p=clock&s=4', 'developer'), { mode: 'clock', step: 3 });
+  assert.equal(openingPlay({ ...MODEL, tours: [] }, parseHash('', MODEL), 'manager'), null);
+});
+
+test('the address holds the mode and the step, kept inside the steps', () => {
+  const count = stepsOf(MODEL, 'tour').length;
+  const at = (hash) => parseHash(hash, MODEL);
+  assert.deepEqual(at('#p=tour&s=3').play, { mode: 'tour', step: 2 });
+  for (const [s, step] of [['99', count - 1], ['0', 0], ['-4', 0], ['abc', 0], ['2.7', 1]]) {
+    assert.equal(at(`#p=tour&s=${s}`).play.step, step, s);
+  }
+  assert.equal(at('#p=trace').play.step, 0);
+  assert.equal(at('#p=clock&s=999').play.step, moments(MODEL).length - 1);
+  // a mode wins over a part, and a mode the map does not have is named
+  assert.equal(at('#p=tour&m=M5').id, null);
+  assert.deepEqual([at('#p=disco').play, at('#p=disco').unknown], [null, 'p=disco']);
+  // names every JavaScript object carries are no modes either
+  for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf', '']) {
+    assert.equal(at(`#p=${name}`).play, null, `#p=${name}`);
+  }
+  for (const play of [{ mode: 'clock', step: 5 }, { mode: 'trace', step: 0 }]) {
+    const back = parseHash(formatHash({ id: null, audience: 'developer', play }), MODEL);
+    assert.deepEqual([back.play, back.audience], [play, 'developer']);
+  }
+});
+
+const flat = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2]);
+
+test('the clock ring holds the whole product and runs like a clock', () => {
+  const world = layoutWorld(MODEL);
+  const ring = clockRing(world);
+  for (const item of [...world.modules, ...world.stores]) {
+    for (const [dx, dz] of [[-1, -1], [-1, 1], [1, -1], [1, 1]]) {
+      const corner = [item.pos[0] + (dx * item.size[0]) / 2, 0,
+        item.pos[2] + (dz * item.size[2]) / 2];
+      assert.ok(flat(corner, ring.centre) < ring.radius - 1, `${item.id} inside the ring`);
+    }
+  }
+  const [cx, , cz] = ring.centre;
+  const at = (hour) => ringPoint(ring, hour * 60, 'daily');
+  const near = (p, x, z) => Math.abs(p[0] - x) < 1e-6 && Math.abs(p[2] - z) < 1e-6;
+  const r = ring.radius;
+  assert.ok(near(at(0), cx, cz - r), '00:00 at the back');
+  assert.ok(near(at(6), cx + r, cz), '06:00 to the right');
+  assert.ok(near(at(12), cx, cz + r), '12:00 in front');
+  assert.ok(near(at(18), cx - r, cz), '18:00 to the left');
+  const radii = ['daily', 'weekly', 'calendar'].map((g) => flat(ringPoint(ring, 0, g), ring.centre));
+  assert.ok(radii[0] < radii[1] && radii[1] < radii[2], 'daily inside weekly inside monthly');
+  assert.deepEqual(Object.keys(TRACKS), ['daily', 'weekly', 'calendar']);
+});
+
+test('one bead per time, on its job’s ring, none touching another', () => {
+  const ring = clockRing(layoutWorld(MODEL));
+  const day = moments(MODEL);
+  const placed = beads(ring, day);
+  assert.equal(placed.length, day.length);
+  const radius = (group) => flat(ringPoint(ring, 0, group), ring.centre);
+  placed.forEach((bead, i) => {
+    // its own time, as an angle: it stays on the ray of that time
+    const [hours, minutes] = bead.time.split(':').map(Number);
+    const angle = ((hours * 60 + minutes) / 1440) * Math.PI * 2;
+    const bearing = Math.atan2(bead.pos[0] - ring.centre[0], ring.centre[2] - bead.pos[2]);
+    assert.ok(Math.abs(Math.atan2(Math.sin(bearing - angle), Math.cos(bearing - angle))) < 1e-6,
+      `${bead.key} at its time`);
+    // on its track, or stepped outwards only to clear a bead placed before it
+    const out = flat(bead.pos, ring.centre) - radius(bead.job.schedule.group);
+    assert.ok(out > -1e-6 && out < 2.5, `${bead.key} on its ring (${out})`);
+    if (out > 1e-6) {
+      const onLine = ringPoint(ring, hours * 60 + minutes, bead.job.schedule.group);
+      assert.ok(placed.slice(0, i).some((other) => flat(onLine, other.pos) < BEAD * 2.2),
+        `${bead.key} left its line for nothing`);
+    }
+  });
+  for (let i = 0; i < placed.length; i += 1) {
+    for (let j = i + 1; j < placed.length; j += 1) {
+      const gap = Math.hypot(...placed[i].pos.map((v, k) => v - placed[j].pos[k]));
+      assert.ok(gap >= BEAD * 2, `${placed[i].key} and ${placed[j].key} touch (${gap})`);
+    }
+  }
+});
+
+test('the clock view frames the whole ring in any window', () => {
+  const world = layoutWorld(MODEL);
+  const ring = clockRing(world);
+  const bounds = clockBounds(world, ring);
+  const { dir, fov } = PRESETS.clock;
+  const rim = Array.from({ length: 96 }, (_, i) => ringPoint(ring, i * 15, 'calendar'));
+  for (const aspect of [0.7, 1, 1.6, 2.4]) {
+    const camera = fitCamera(bounds, dir, fov, aspect);
+    const reach = Math.max(...inside(camera, fov, aspect, rim));
+    assert.ok(reach <= 1.0001, `ring cut off at ${aspect}`);
+    assert.ok(reach > 0.55, `ring tiny at ${aspect}: ${reach}`);
+  }
 });
 
 // -- the look ---------------------------------------------------------------------------
@@ -611,7 +847,7 @@ const embedded = () => JSON.parse(
 // lists, line counts, routes and the commit stamp are left to the next rebuild.
 const meaning = (m) => ({
   product: m.product, externals: m.externals, flows: m.flows, stores: m.stores, jobs: m.jobs,
-  switches: m.switches, production: m.production,
+  switches: m.switches, production: m.production, traces: m.traces, tours: m.tours,
   modules: m.modules.map(({ python_files: _f, submodules, ...module }) => ({
     ...module, submodules: submodules.map(({ python_files: _p, ...part }) => part) })),
 });

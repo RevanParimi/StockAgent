@@ -3565,9 +3565,15 @@
     "minute": "15"
    },
    "does": "model cost per user (Atlas)",
+   "flows": [],
    "gates": [],
    "handler": "_cost_rollup_job",
    "id": "atlas_cost_rollup",
+   "lights": [
+    "M1.5",
+    "M12.5",
+    "S.telemetry"
+   ],
    "module": "M1.5",
    "name": "Atlas cost-by-user rollup (BP4)",
    "schedule": {
@@ -3587,9 +3593,16 @@
     "minute": "20"
    },
    "does": "prune bounded stores (Atlas)",
+   "flows": [],
    "gates": [],
    "handler": "_retention_job",
    "id": "atlas_retention",
+   "lights": [
+    "M1.4",
+    "S.atlas",
+    "S.history",
+    "S.users"
+   ],
    "module": "M1.4",
    "name": "Atlas retention prune (bounded stores)",
    "schedule": {
@@ -3609,9 +3622,14 @@
     "minute": "0"
    },
    "does": "demand per instrument (Atlas)",
+   "flows": [],
    "gates": [],
    "handler": "_universe_recompute_job",
    "id": "atlas_universe_recompute",
+   "lights": [
+    "M1.4",
+    "S.atlas"
+   ],
    "module": "M1.4",
    "name": "Atlas Universe recompute (demand tiers)",
    "schedule": {
@@ -3631,11 +3649,27 @@
     "minute": "45"
    },
    "does": "grades matured calls against the Nifty",
+   "flows": [
+    "M3>M11",
+    "M5>M11",
+    "M6>M11",
+    "M11>M9",
+    "M9>ext.owner"
+   ],
    "gates": [
     "audit.enabled"
    ],
    "handler": "_audit_nightly_job",
    "id": "audit_nightly",
+   "lights": [
+    "M11.1",
+    "M3",
+    "M5",
+    "M6",
+    "M9.3",
+    "ext.owner",
+    "S.audit"
+   ],
    "module": "M11.1",
    "name": "Nightly advice-outcome grading + breach check",
    "schedule": {
@@ -3656,11 +3690,16 @@
     "minute": "0"
    },
    "does": "NSE end-of-day file for all stocks",
+   "flows": [],
    "gates": [
     "discovery.enabled"
    ],
    "handler": "_bhavcopy_sync_job",
    "id": "bhavcopy_daily_sync",
+   "lights": [
+    "M2.1",
+    "S.eod"
+   ],
    "module": "M2.1",
    "name": "Daily bhavcopy EOD cache sync",
    "schedule": {
@@ -3681,11 +3720,19 @@
     "minute": "15"
    },
    "does": "overnight filings, disclosures and news",
+   "flows": [],
    "gates": [
     "events.enabled"
    ],
    "handler": "_company_events_job",
    "id": "company_events_am",
+   "lights": [
+    "M7.1",
+    "M4.4",
+    "M2.4",
+    "S.events",
+    "S.predictions"
+   ],
    "module": "M7.1",
    "name": "Company-event feed (am)",
    "schedule": {
@@ -3705,12 +3752,20 @@
     "hour": "18",
     "minute": "30"
    },
-   "does": "the day's filings, disclosures and news",
+   "does": "the day’s filings, disclosures and news",
+   "flows": [],
    "gates": [
     "events.enabled"
    ],
    "handler": "_company_events_job",
    "id": "company_events_pm",
+   "lights": [
+    "M7.1",
+    "M4.4",
+    "M2.4",
+    "S.events",
+    "S.predictions"
+   ],
    "module": "M7.1",
    "name": "Company-event feed (pm)",
    "schedule": {
@@ -3730,9 +3785,14 @@
     "minute": "30"
    },
    "does": "archive, restore drill, off-site copy if set",
+   "flows": [],
    "gates": [],
    "handler": "_backup_job",
    "id": "data_backup_nightly",
+   "lights": [
+    "M12.4",
+    "S.backups"
+   ],
    "module": "M12.4",
    "name": "Nightly data backup (zip + drill + off-site)",
    "schedule": {
@@ -3753,11 +3813,37 @@
     "minute": "30"
    },
    "does": "the weekly funnel",
+   "flows": [
+    "M2>M6",
+    "M8>M6",
+    "M2>M3",
+    "M6>M3",
+    "M3>M4",
+    "M9>ext.user"
+   ],
    "gates": [
     "discovery.enabled"
    ],
    "handler": "_discovery_weekly_job",
    "id": "discovery_weekly",
+   "lights": [
+    "M6.1",
+    "M6.2",
+    "M6.3",
+    "M6.5",
+    "M8.1",
+    "M2.1",
+    "M3",
+    "M4.1",
+    "M4.2",
+    "M9.3",
+    "ext.user",
+    "S.eod",
+    "S.screens",
+    "S.dives",
+    "S.shelf",
+    "S.paper"
+   ],
    "module": "M6.1",
    "name": "Weekly discovery funnel (screen + deep-dives + shelf + paper)",
    "schedule": {
@@ -3779,11 +3865,16 @@
     "minute": "0"
    },
    "does": "results and concalls into the dossier",
+   "flows": [],
    "gates": [
     "rl.event_ingest_enabled"
    ],
    "handler": "_event_ingest_job",
    "id": "event_ingest_weekly",
+   "lights": [
+    "M4.4",
+    "S.predictions"
+   ],
    "module": "M4.4",
    "name": "Weekly dossier event ingestion",
    "schedule": {
@@ -3804,11 +3895,16 @@
     "minute": "0"
    },
    "does": "T−1 research and post-close re-read (dark)",
+   "flows": [],
    "gates": [
     "ipo.enabled"
    ],
    "handler": "_ipo_deep_dive_job",
    "id": "ipo_deep_dive",
+   "lights": [
+    "M8.1",
+    "S.ipo"
+   ],
    "module": "M8.1",
    "name": "IPO T-1 deep dive + post-close re-read (P3, dark)",
    "schedule": {
@@ -3828,11 +3924,16 @@
     "minute": "0"
    },
    "does": "IPO calendar and bid ladder",
+   "flows": [],
    "gates": [
     "ipo.enabled"
    ],
    "handler": "_ipo_refresh_job",
    "id": "ipo_refresh_am",
+   "lights": [
+    "M8.1",
+    "S.ipo"
+   ],
    "module": "M8.1",
    "name": "IPO calendar + bid ladder refresh (am)",
    "schedule": {
@@ -3851,12 +3952,17 @@
     "hour": "17",
     "minute": "45"
    },
-   "does": "evening IPO refresh, before Sunday's review",
+   "does": "evening IPO refresh, before Sunday’s review",
+   "flows": [],
    "gates": [
     "ipo.enabled"
    ],
    "handler": "_ipo_refresh_job",
    "id": "ipo_refresh_pm",
+   "lights": [
+    "M8.1",
+    "S.ipo"
+   ],
    "module": "M8.1",
    "name": "IPO calendar + bid ladder refresh (pm)",
    "schedule": {
@@ -3877,9 +3983,15 @@
     "minute": "30"
    },
    "does": "old lessons cleaned",
+   "flows": [],
    "gates": [],
    "handler": "_ledger_cleanup_job",
    "id": "ledger_cleanup_weekly",
+   "lights": [
+    "M4.4",
+    "S.ledgers",
+    "S.predictions"
+   ],
    "module": "M4.4",
    "name": "Ledger stale-lesson cleanup (weekly)",
    "schedule": {
@@ -3901,11 +4013,15 @@
     "minute": "30"
    },
    "does": "policy and RBI headlines cached",
+   "flows": [],
    "gates": [
     "macro_news.enabled"
    ],
    "handler": "_macro_daily_news_job",
    "id": "macro_daily_news",
+   "lights": [
+    "M2.4"
+   ],
    "module": "M2.4",
    "name": "Macro news — daily policy/RBI (7:30 IST)",
    "schedule": {
@@ -3926,11 +4042,15 @@
     "minute": "0"
    },
    "does": "market headlines cached",
+   "flows": [],
    "gates": [
     "macro_news.enabled"
    ],
    "handler": "_macro_market_news_job",
    "id": "macro_market_news",
+   "lights": [
+    "M2.4"
+   ],
    "module": "M2.4",
    "name": "Macro news — market hours (9/12/15 IST)",
    "schedule": {
@@ -3951,11 +4071,29 @@
     "minute": "50"
    },
    "does": "build and send the brief",
+   "flows": [
+    "M5>M9",
+    "M9>ext.user"
+   ],
    "gates": [
     "delivery.enabled"
    ],
    "handler": "_morning_brief_job",
    "id": "morning_brief",
+   "lights": [
+    "M9.1",
+    "M9.3",
+    "M9.4",
+    "M5",
+    "M2.4",
+    "ext.user",
+    "S.history",
+    "S.predictions",
+    "S.regime",
+    "S.shelf",
+    "S.ipo",
+    "S.delivery"
+   ],
    "module": "M9.1",
    "name": "Morning brief (M4 proactive delivery)",
    "schedule": {
@@ -3975,11 +4113,20 @@
     "minute": "30"
    },
    "does": "milestones and checks ─► owner",
+   "flows": [
+    "M12>M1",
+    "M12>ext.owner"
+   ],
    "gates": [
     "watchdog.enabled"
    ],
    "handler": "_watchdog_job",
    "id": "ops_watchdog",
+   "lights": [
+    "M12.1",
+    "M1.2",
+    "ext.owner"
+   ],
    "module": "M12.1",
    "name": "Operational watchdog (milestones + invariants)",
    "schedule": {
@@ -4000,9 +4147,23 @@
     "minute": "45"
    },
    "does": "1 search + 1 model call: overnight shock?",
+   "flows": [
+    "M2>M3",
+    "M3>M4",
+    "M9>ext.user"
+   ],
    "gates": [],
    "handler": "_preopen_shock_check_job",
    "id": "preopen_shock_check",
+   "lights": [
+    "M4.5",
+    "M4.1",
+    "M3",
+    "M2",
+    "M9.3",
+    "ext.user",
+    "S.predictions"
+   ],
    "module": "M4.5",
    "name": "Pre-open shock check (Living Envelope)",
    "schedule": {
@@ -4022,12 +4183,17 @@
     "hour": "11",
     "minute": "0"
    },
-   "does": "answer the dossier's open questions",
+   "does": "answer the dossier’s open questions",
+   "flows": [],
    "gates": [
     "rl.research_loop_enabled"
    ],
    "handler": "_research_loop_job",
    "id": "research_loop_weekly",
+   "lights": [
+    "M4.4",
+    "S.predictions"
+   ],
    "module": "M4.4",
    "name": "Weekly dossier open-question research",
    "schedule": {
@@ -4049,10 +4215,14 @@
     "minute": "0",
     "month": "12"
    },
-   "does": "next year's NSE holidays",
+   "does": "next year’s NSE holidays",
+   "flows": [],
    "gates": [],
    "handler": "_calendar_update_job",
    "id": "rl_calendar_update",
+   "lights": [
+    "M1.2"
+   ],
    "module": "M1.2",
    "name": "NSE holiday calendar update",
    "schedule": {
@@ -4078,9 +4248,47 @@
     "month": "*"
    },
    "does": "grades the previous session (T−1), then the portfolio (M5.1)",
+   "flows": [
+    "M2>M3",
+    "M3>M4",
+    "M4>M5",
+    "M3>M5",
+    "M6>M5",
+    "M7>M5",
+    "M2>M5",
+    "M5>M9",
+    "M9>ext.user"
+   ],
    "gates": [],
    "handler": "_daily_review_job",
    "id": "rl_daily_review",
+   "lights": [
+    "M4.2",
+    "M4.5",
+    "M2.1",
+    "M2.2",
+    "M3",
+    "M5.1",
+    "M5.2",
+    "M5.3",
+    "M5.4",
+    "M5.5",
+    "M5.6",
+    "M5.7",
+    "M6.4",
+    "M7.1",
+    "M9.3",
+    "ext.user",
+    "S.predictions",
+    "S.regime",
+    "S.shelf",
+    "S.portfolio",
+    "S.managed",
+    "S.cases",
+    "S.advice",
+    "S.exit_shadow",
+    "S.history"
+   ],
    "module": "M4.2",
    "name": "RL daily feedback review",
    "schedule": {
@@ -4101,9 +4309,19 @@
     "minute": "0"
    },
    "does": "a new 30-day envelope per stock",
+   "flows": [
+    "M2>M3",
+    "M3>M4"
+   ],
    "gates": [],
    "handler": "_monthly_forecast_job",
    "id": "rl_monthly_forecast",
+   "lights": [
+    "M4.1",
+    "M2.2",
+    "M3",
+    "S.predictions"
+   ],
    "module": "M4.1",
    "name": "RL monthly forecast generation",
    "schedule": {
@@ -4126,12 +4344,23 @@
     "hour": "2",
     "minute": "0"
    },
-   "does": "previous month's forecast scorecard",
+   "does": "previous month’s forecast scorecard",
+   "flows": [
+    "M9>ext.owner"
+   ],
    "gates": [
     "rl.scorecard_enabled"
    ],
    "handler": "_scorecard_monthly_job",
    "id": "scorecard_monthly",
+   "lights": [
+    "M11.2",
+    "M11.1",
+    "M9.4",
+    "ext.owner",
+    "S.predictions",
+    "S.audit"
+   ],
    "module": "M11.2",
    "name": "Monthly RL scorecard (baseline duel)",
    "schedule": {
@@ -4155,11 +4384,26 @@
     "minute": "0"
    },
    "does": "index watch, results scorecard, review",
+   "flows": [
+    "M5>M9",
+    "M9>ext.user"
+   ],
    "gates": [
     "delivery.enabled"
    ],
    "handler": "_weekly_review_job",
    "id": "weekly_review",
+   "lights": [
+    "M9.2",
+    "M9.3",
+    "M9.4",
+    "M5.7",
+    "M11.3",
+    "M6.3",
+    "ext.user",
+    "S.history",
+    "S.delivery"
+   ],
    "module": "M9.2",
    "name": "Weekly portfolio review + index watch (M4)",
    "schedule": {
@@ -9554,8 +9798,8 @@
   ]
  },
  "stamp": {
-  "commit": "809a5eadd2c3efa42b7f99c534d8811966a03ff5",
-  "uncommitted_code": true
+  "commit": "69e7c28f4cb07177c5c50e93660384fd2636e21c",
+  "uncommitted_code": false
  },
  "stores": [
   {
@@ -10640,31 +10884,89 @@
   }
  ],
  "title": "StockAgent architecture, as trees",
- "tours": [],
+ "tours": [
+  {
+   "id": "guided-tour",
+   "steps": [
+    {
+     "caption": "StockAgent researches NSE stocks and trades them with paper money: data flows left to right, to a verdict, a trade and a message to you.",
+     "preset": "front"
+    },
+    {
+     "caption": "Every Saturday, discovery screens the market and analyses the best few; the ideas that pass wait on a shelf with an entry price band.",
+     "preset": "focus",
+     "ref": "M6"
+    },
+    {
+     "caption": "Research turns one stock into one verdict from a checked bundle of data; a gate can refuse to give one when too much is missing.",
+     "preset": "focus",
+     "ref": "M3"
+    },
+    {
+     "caption": "Portfolio applies written rules to hold, add, trim, sell or switch, and buys shelf ideas, in paper money at the reviewed day’s close.",
+     "preset": "focus",
+     "ref": "M5"
+    },
+    {
+     "caption": "Learning forecasts each managed stock for a month, grades it every weekday and reads the market’s mood; in production it changes no weights.",
+     "preset": "focus",
+     "ref": "M4"
+    },
+    {
+     "caption": "Measurement grades matured calls against the Nifty every night; the grades change no decision, and broken rules are reported to the owner.",
+     "preset": "top",
+     "ref": "M11"
+    },
+    {
+     "caption": "From below: which module writes which file. The portfolio’s transaction ledger is the authority for every holding and trade.",
+     "preset": "below",
+     "ref": "S.portfolio"
+    },
+    {
+     "caption": "The clock drives it all: at 16:30 on weekdays the review grades the previous session, then the portfolio trades at that session’s close.",
+     "preset": "clock",
+     "ref": "rl_daily_review"
+    }
+   ],
+   "title": "The guided tour"
+  }
+ ],
  "traces": [
   {
    "id": "one-stocks-life",
    "steps": [
     {
+     "flows": [
+      "M2>M6",
+      "M6>M3",
+      "M2>M3"
+     ],
      "refs": [
       "M6.1",
       "M6.3",
-      "M3"
+      "M3",
+      "M2"
      ],
      "text": "discovery: XYZ ranks high ─► deep dive: BUY by band and model, conviction 0.68, actionable",
      "when": "Saturday"
     },
     {
+     "flows": [
+      "M9>ext.user"
+     ],
      "refs": [
       "M6.3",
-      "M9.3"
+      "M9.3",
+      "S.shelf",
+      "ext.user"
      ],
-     "text": "shelf (entry band, invalidation level) ─► 'tracking only' alert to all",
+     "text": "shelf (entry band, invalidation level) ─► ‘tracking only’ alert to all",
      "when": "Saturday"
     },
     {
      "refs": [
-      "M6.5"
+      "M6.5",
+      "S.paper"
      ],
      "text": "paper envelope and weekly paper review start",
      "when": "Saturday"
@@ -10674,10 +10976,13 @@
       "rl_daily_review",
       "M6.4"
      ],
-     "text": "reviews Friday ─► XYZ not offered (its dive came after Friday's close)",
+     "text": "reviews Friday ─► XYZ not offered (its dive came after Friday’s close)",
      "when": "Mon 16:30"
     },
     {
+     "flows": [
+      "M6>M5"
+     ],
      "refs": [
       "M6.4",
       "M5.4"
@@ -10686,13 +10991,19 @@
      "when": "Tue 16:30"
     },
     {
+     "flows": [
+      "M2>M5",
+      "M3>M5"
+     ],
      "refs": [
       "M5.3",
       "M5.5",
+      "M2",
+      "M3",
       "S.portfolio",
       "S.managed"
      ],
-     "text": "band, surveillance, identity, caps, cash floor all pass ─► BUY at Monday's close; costs charged; case written; XYZ joins the managed list",
+     "text": "band, surveillance, identity, caps, cash floor all pass ─► BUY at Monday’s close; costs charged; case written; XYZ joins the managed list",
      "when": "Tue 16:30"
     },
     {
@@ -10701,45 +11012,72 @@
       "M4.1",
       "M5.2"
      ],
-     "text": "its envelope is made by the next deploy's self-heal, the 1st-of-month job or a manual trigger; until then 'skipped: no_envelope' and the advice reads a FLAT path: no ADD, price stops still protect it",
+     "text": "its envelope is made by the next deploy’s self-heal, the 1st-of-month job or a manual trigger; until then ‘skipped: no_envelope’ and the advice reads a FLAT path: no ADD, price stops still protect it",
      "when": "Afterwards"
     },
     {
+     "flows": [
+      "M4>M5"
+     ],
      "refs": [
       "M4.2",
-      "M5.2"
+      "M5.2",
+      "S.predictions",
+      "S.advice"
      ],
      "text": "16:30 grades its forecast row ─► advisor: HOLD / ADD / TRIM / EXIT / SWITCH",
      "when": "Every day"
     },
     {
+     "flows": [
+      "M7>M5"
+     ],
      "refs": [
-      "M7.1"
+      "M7.1",
+      "M5.5",
+      "S.events"
      ],
      "text": "08:15 and 18:30 the events feed watches its filings and news",
      "when": "Every day"
     },
     {
+     "flows": [
+      "M5>M11"
+     ],
      "refs": [
-      "M11.1"
+      "M11.1",
+      "M5",
+      "S.audit"
      ],
      "text": "23:45 the auditor grades matured advice against the Nifty",
      "when": "Every night"
     },
     {
+     "flows": [
+      "M5>M9",
+      "M9>ext.user"
+     ],
      "refs": [
       "M5.2",
       "M5.3",
       "M9.3",
-      "M6.4"
+      "M6.4",
+      "ext.user",
+      "S.portfolio"
      ],
-     "text": "for example a stop breach ─► EXIT ─► SELL at that session's close ─► realised profit or loss ─► alert and digest ─► resale wait before it can be bought back",
+     "text": "for example a stop breach ─► EXIT ─► SELL at that session’s close ─► realised profit or loss ─► alert and digest ─► resale wait before it can be bought back",
      "when": "Exit day"
     },
     {
+     "flows": [
+      "M5>M9",
+      "M9>ext.user"
+     ],
      "refs": [
       "M5.7",
-      "M9.2"
+      "M9.2",
+      "ext.user",
+      "S.history"
      ],
      "text": "weekly results: the closed trade, its exit reason, the book against the Nifty",
      "when": "Sunday"

@@ -1,26 +1,130 @@
-# Every job the scheduler registers: the part it belongs to, and what it does.
-ops_watchdog: {module: M12.1, does: "milestones and checks ─► owner"}
-macro_daily_news: {module: M2.4, does: policy and RBI headlines cached}
-macro_market_news: {module: M2.4, does: market headlines cached}
-ipo_refresh_am: {module: M8.1, does: "IPO calendar and bid ladder"}
-ipo_refresh_pm: {module: M8.1, does: "evening IPO refresh, before Sunday's review"}
-ipo_deep_dive: {module: M8.1, does: "T−1 research and post-close re-read (dark)"}
-company_events_am: {module: M7.1, does: "overnight filings, disclosures and news"}
-company_events_pm: {module: M7.1, does: "the day's filings, disclosures and news"}
-preopen_shock_check: {module: M4.5, does: "1 search + 1 model call: overnight shock?"}
-morning_brief: {module: M9.1, does: build and send the brief}
-rl_daily_review: {module: M4.2, does: "grades the previous session (T−1), then the portfolio (M5.1)"}
-bhavcopy_daily_sync: {module: M2.1, does: NSE end-of-day file for all stocks}
-atlas_universe_recompute: {module: M1.4, does: "demand per instrument (Atlas)"}
-atlas_cost_rollup: {module: M1.5, does: "model cost per user (Atlas)"}
-atlas_retention: {module: M1.4, does: "prune bounded stores (Atlas)"}
-data_backup_nightly: {module: M12.4, does: "archive, restore drill, off-site copy if set"}
-audit_nightly: {module: M11.1, does: grades matured calls against the Nifty}
-ledger_cleanup_weekly: {module: M4.4, does: old lessons cleaned}
-event_ingest_weekly: {module: M4.4, does: results and concalls into the dossier}
-research_loop_weekly: {module: M4.4, does: "answer the dossier's open questions"}
-discovery_weekly: {module: M6.1, does: the weekly funnel}
-weekly_review: {module: M9.2, does: "index watch, results scorecard, review"}
-scorecard_monthly: {module: M11.2, does: "previous month's forecast scorecard"}
-rl_monthly_forecast: {module: M4.1, does: a new 30-day envelope per stock}
-rl_calendar_update: {module: M1.2, does: "next year's NSE holidays"}
+# Every job the scheduler registers: the part it belongs to, what it does, and what lights up
+# when the day player runs it. `lights` names the parts, stores and outside parties it works
+# with, its own part among them; `flows` names, as from>to, the flows of flows.yaml that carry
+# something during the run (both ends lit). A run can stop earlier: a gate, a quiet day.
+# Shared plumbing (the model client, M1.5, or config) is not lit by every job that uses it.
+ops_watchdog:
+  module: M12.1
+  does: "milestones and checks ─► owner"
+  lights: [M12.1, M1.2, ext.owner]
+  flows: ["M12>M1", "M12>ext.owner"]
+macro_daily_news:
+  module: M2.4
+  does: "policy and RBI headlines cached"
+  lights: [M2.4]
+  flows: []
+macro_market_news:
+  module: M2.4
+  does: "market headlines cached"
+  lights: [M2.4]
+  flows: []
+ipo_refresh_am:
+  module: M8.1
+  does: "IPO calendar and bid ladder"
+  lights: [M8.1, S.ipo]
+  flows: []
+ipo_refresh_pm:
+  module: M8.1
+  does: "evening IPO refresh, before Sunday’s review"
+  lights: [M8.1, S.ipo]
+  flows: []
+ipo_deep_dive:
+  module: M8.1
+  does: "T−1 research and post-close re-read (dark)"
+  lights: [M8.1, S.ipo]
+  flows: []
+company_events_am:
+  module: M7.1
+  does: "overnight filings, disclosures and news"
+  lights: [M7.1, M4.4, M2.4, S.events, S.predictions]
+  flows: []
+company_events_pm:
+  module: M7.1
+  does: "the day’s filings, disclosures and news"
+  lights: [M7.1, M4.4, M2.4, S.events, S.predictions]
+  flows: []
+preopen_shock_check:
+  module: M4.5
+  does: "1 search + 1 model call: overnight shock?"
+  lights: [M4.5, M4.1, M3, M2, M9.3, ext.user, S.predictions]
+  flows: ["M2>M3", "M3>M4", "M9>ext.user"]
+morning_brief:
+  module: M9.1
+  does: "build and send the brief"
+  lights: [M9.1, M9.3, M9.4, M5, M2.4, ext.user, S.history, S.predictions, S.regime, S.shelf, S.ipo, S.delivery]
+  flows: ["M5>M9", "M9>ext.user"]
+rl_daily_review:
+  module: M4.2
+  does: "grades the previous session (T−1), then the portfolio (M5.1)"
+  lights: [M4.2, M4.5, M2.1, M2.2, M3, M5.1, M5.2, M5.3, M5.4, M5.5, M5.6, M5.7, M6.4, M7.1, M9.3, ext.user, S.predictions, S.regime, S.shelf, S.portfolio, S.managed, S.cases, S.advice, S.exit_shadow, S.history]
+  flows: ["M2>M3", "M3>M4", "M4>M5", "M3>M5", "M6>M5", "M7>M5", "M2>M5", "M5>M9", "M9>ext.user"]
+bhavcopy_daily_sync:
+  module: M2.1
+  does: "NSE end-of-day file for all stocks"
+  lights: [M2.1, S.eod]
+  flows: []
+atlas_universe_recompute:
+  module: M1.4
+  does: "demand per instrument (Atlas)"
+  lights: [M1.4, S.atlas]
+  flows: []
+atlas_cost_rollup:
+  module: M1.5
+  does: "model cost per user (Atlas)"
+  lights: [M1.5, M12.5, S.telemetry]
+  flows: []
+atlas_retention:
+  module: M1.4
+  does: "prune bounded stores (Atlas)"
+  lights: [M1.4, S.atlas, S.history, S.users]
+  flows: []
+data_backup_nightly:
+  module: M12.4
+  does: "archive, restore drill, off-site copy if set"
+  lights: [M12.4, S.backups]
+  flows: []
+audit_nightly:
+  module: M11.1
+  does: "grades matured calls against the Nifty"
+  lights: [M11.1, M3, M5, M6, M9.3, ext.owner, S.audit]
+  flows: ["M3>M11", "M5>M11", "M6>M11", "M11>M9", "M9>ext.owner"]
+ledger_cleanup_weekly:
+  module: M4.4
+  does: "old lessons cleaned"
+  lights: [M4.4, S.ledgers, S.predictions]
+  flows: []
+event_ingest_weekly:
+  module: M4.4
+  does: "results and concalls into the dossier"
+  lights: [M4.4, S.predictions]
+  flows: []
+research_loop_weekly:
+  module: M4.4
+  does: "answer the dossier’s open questions"
+  lights: [M4.4, S.predictions]
+  flows: []
+discovery_weekly:
+  module: M6.1
+  does: "the weekly funnel"
+  lights: [M6.1, M6.2, M6.3, M6.5, M8.1, M2.1, M3, M4.1, M4.2, M9.3, ext.user, S.eod, S.screens, S.dives, S.shelf, S.paper]
+  flows: ["M2>M6", "M8>M6", "M2>M3", "M6>M3", "M3>M4", "M9>ext.user"]
+weekly_review:
+  module: M9.2
+  does: "index watch, results scorecard, review"
+  lights: [M9.2, M9.3, M9.4, M5.7, M11.3, M6.3, ext.user, S.history, S.delivery]
+  flows: ["M5>M9", "M9>ext.user"]
+scorecard_monthly:
+  module: M11.2
+  does: "previous month’s forecast scorecard"
+  lights: [M11.2, M11.1, M9.4, ext.owner, S.predictions, S.audit]
+  flows: ["M9>ext.owner"]
+rl_monthly_forecast:
+  module: M4.1
+  does: "a new 30-day envelope per stock"
+  lights: [M4.1, M2.2, M3, S.predictions]
+  flows: ["M2>M3", "M3>M4"]
+rl_calendar_update:
+  module: M1.2
+  does: "next year’s NSE holidays"
+  lights: [M1.2]
+  flows: []

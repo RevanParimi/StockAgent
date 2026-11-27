@@ -14,6 +14,16 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 27 Nov, morning (autopilot `1127-0605-p12`): MAP-003 → ACCEPTED (light)
+
+- **27 Nov, MAP-003 done** (light, [receipt](evidence/MAP-003.md), base `69e7c28`): the map
+  plays. A clock ring with a slider over every time a job runs, each job lighting its parts and
+  flows, with its trigger and gate switches; "Trace a stock", one stock's life in 12 steps; an
+  8-stop guided tour that a manager starts on. What lights is curated per job and guarded. Opus
+  check (paused by a usage limit until 08:10): accept after fixes (the clock's list did not follow,
+  job lights misstated the code, one kind of address blanked the page, smaller ones), fixed.
+  79 map browser and logic tests; B-47 added, B-46 updated.
+
 ## 27 Nov, early morning (autopilot `1127-0359-p11`): MAP-002 → ACCEPTED (light)
 
 - **27 Nov, MAP-002 done** (light, [receipt](evidence/MAP-002.md), base `809a5ea`): the 3D world

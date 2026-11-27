@@ -105,14 +105,15 @@ function Dots({ flows, levels, moving }) {
   );
 }
 
-export function Flows({ flows, selected, touched, hovered, moving, preset, onHover }) {
+export function Flows({ flows, selected, touched, lit, hovered, moving, preset, onHover }) {
   const curves = useMemo(() => new Map(flows.map((f) => [f.key, curveOf(f)])), [flows]);
   const levels = useMemo(() => new Map(flows.map((f) => {
     const level = hovered === f.key ? 'bright'
-      : !selected ? (preset === 'below' ? 'faded' : 'rest')
-        : touched.flows.has(f.key) ? 'bright' : 'faded';
+      : lit ? (lit.flows.has(f.key) ? 'bright' : 'faded')
+        : !selected ? (preset === 'below' ? 'faded' : 'rest')
+          : touched.flows.has(f.key) ? 'bright' : 'faded';
     return [f.key, level];
-  })), [flows, selected, touched, hovered, preset]);
+  })), [flows, selected, touched, lit, hovered, preset]);
   return (
     <group>
       {flows.map((f) => (
@@ -127,11 +128,12 @@ export function Flows({ flows, selected, touched, hovered, moving, preset, onHov
 /** The storage pipes: from each module to the stores it writes. */
 const RESTING_PIPE = { top: 0.06, below: 0.85 };
 
-export function Pipes({ pipes, selected, touched, preset }) {
+export function Pipes({ pipes, selected, touched, lit, preset }) {
   return pipes.map((p) => {
-    const related = selected && touched.stores.has(p.store) && touched.modules.has(p.module)
-      && p.module === selected.split('.')[0];
-    const opacity = selected ? (related ? 0.85 : 0.05) : RESTING_PIPE[preset] ?? 0.32;
+    const related = lit ? lit.stores.has(p.store) && lit.modules.has(p.module)
+      : selected && touched.stores.has(p.store) && touched.modules.has(p.module)
+        && p.module === selected.split('.')[0];
+    const opacity = lit || selected ? (related ? 0.85 : 0.05) : RESTING_PIPE[preset] ?? 0.32;
     const points = Array.from({ length: 17 }, (_, i) => curvePoint(p.points, i / 16));
     return (
       <Line key={`${p.module}>${p.store}`} points={points} color={moduleColour(p.module)}

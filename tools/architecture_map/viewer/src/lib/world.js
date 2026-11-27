@@ -274,6 +274,9 @@ export const PRESETS = {
   // From below and in front, so a module sits above the stores its pipes reach.
   below: { key: '4', label: 'Below', dir: [0, -1, 0.8], fov: 40,
     asks: 'Which module writes which file?' },
+  // High and in front: the ring of the day around the product (lib/play.js).
+  clock: { key: '5', label: 'Clock', dir: [0, 1, 0.55], fov: 40,
+    asks: 'What runs when?' },
 };
 
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2],

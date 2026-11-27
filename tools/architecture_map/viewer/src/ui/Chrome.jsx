@@ -1,11 +1,12 @@
 // The frame around the world: top bar, legend, labels and tooltip.
 import { formatHash } from '../lib/select.js';
 import { PRESETS } from '../lib/world.js';
+import { MODES, stepsOf } from '../lib/play.js';
 import { moduleColour, nodeOf } from '../theme.js';
 
 export function TopBar({
-  model, preset, audience, motion, reduced, onPreset, onReset, onSearch, onAudience, onMotion,
-  onHelp,
+  model, preset, mode, audience, motion, reduced, onPreset, onReset, onStory, onSearch,
+  onAudience, onMotion, onHelp,
 }) {
   const commit = model.stamp.commit.slice(0, 7);
   return (
@@ -19,10 +20,18 @@ export function TopBar({
       </div>
       <div className="controls" role="group" aria-label="Views">
         {Object.entries(PRESETS).map(([id, p]) => (
-          <button key={id} type="button" onClick={() => onPreset(id)} aria-pressed={preset === id}
-            title={p.asks}>{p.label} <kbd aria-hidden="true">{p.key}</kbd></button>
+          <button key={id} type="button" data-view={id} onClick={() => onPreset(id)}
+            aria-pressed={preset === id} title={p.asks}>{p.label} <kbd aria-hidden="true">{p.key}</kbd></button>
         ))}
         <button type="button" onClick={onReset}>Reset <kbd aria-hidden="true">R</kbd></button>
+      </div>
+      <div className="controls" role="group" aria-label="Stories">
+        {[['trace', 'Trace a stock'], ['tour', 'Tour']].map(([id, label]) => (
+          stepsOf(model, id).length ? (
+            <button key={id} type="button" data-story={id} aria-pressed={mode === id}
+              title={MODES[id].title} onClick={() => onStory(id)}>{label}</button>
+          ) : null
+        ))}
       </div>
       <div className="controls">
         <button type="button" onClick={onSearch} aria-haspopup="dialog">

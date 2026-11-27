@@ -13,22 +13,41 @@ export function findPart(model, id) {
   return sub ? { module, sub } : null;
 }
 
-/** `#m=M5.2&v=dev` to `{id, audience, unknown}`; `audience` is null when not given. */
+/** The times of day a job runs at: most jobs have one. */
+export const timesOf = (job) => String(job.schedule.time).split(', ');
+
+// How many steps each playable mode has in this model (lib/play.js plays them).
+const STEPS = {
+  clock: (model) => model.jobs.reduce((n, j) => n + timesOf(j).length, 0),
+  trace: (model) => model.traces?.[0]?.steps.length ?? 0,
+  tour: (model) => model.tours?.[0]?.steps.length ?? 0,
+};
+// `hasOwn`: an address naming `constructor` or `toString` names no mode.
+const stepCount = (model, mode) => (Object.hasOwn(STEPS, mode) ? STEPS[mode](model) : 0);
+
+/** `#m=M5.2&v=dev` or `#p=tour&s=3` to `{id, audience, play, unknown}`; `audience` is
+ *  null when not given. `play` is `{mode, step}` with the step counted from 0, kept inside
+ *  the mode's steps; a mode and a part together show the mode. */
 export function parseHash(hash, model) {
   const params = new URLSearchParams(String(hash).replace(/^#/, ''));
+  const view = params.get('v');
+  const audience = view === 'dev' ? 'developer' : view === 'mgr' ? 'manager' : null;
+  const mode = params.get('p');
+  if (mode !== null) {
+    const count = stepCount(model, mode);
+    const asked = Math.trunc(Number(params.get('s') ?? 1)) || 1;
+    return { id: null, audience, unknown: count ? null : `p=${mode}`,
+      play: count ? { mode, step: Math.min(count, Math.max(1, asked)) - 1 } : null };
+  }
   const asked = params.get('m');
   const id = asked && findPart(model, asked) ? asked : null;
-  const view = params.get('v');
-  return {
-    id,
-    audience: view === 'dev' ? 'developer' : view === 'mgr' ? 'manager' : null,
-    unknown: asked && !id ? asked : null,
-  };
+  return { id, audience, play: null, unknown: asked && !id ? asked : null };
 }
 
-export function formatHash({ id, audience }) {
+export function formatHash({ id, audience, play }) {
   const parts = [];
-  if (id) parts.push(`m=${encodeURIComponent(id)}`);
+  if (play) parts.push(`p=${play.mode}`, `s=${play.step + 1}`);
+  else if (id) parts.push(`m=${encodeURIComponent(id)}`);
   if (audience === 'developer') parts.push('v=dev');
   return parts.length ? `#${parts.join('&')}` : '';
 }
@@ -90,24 +109,22 @@ export function formatValue(value) {
   return String(value);
 }
 
-/** Each setting of a part: the repository's default and, where KT section 1 states one,
- *  the production value with its source and date. */
-export function settingsFor(model, sub) {
-  const switches = new Map(model.switches.map((s) => [s.key, s]));
-  const production = new Map(model.production.filter((p) => p.key).map((p) => [p.key, p]));
-  return (sub.config ?? []).map((key) => {
-    const record = switches.get(key);
-    return {
-      key,
-      value: record ? formatValue(record.default) : 'unknown',
-      source: record?.default_source ?? '',
-      env: record?.env ?? null,
-      production: production.has(key)
-        ? { ...production.get(key), value: formatValue(production.get(key).value) }
-        : null,
-    };
-  });
+/** One setting: the repository's default and, where KT section 1 states one, the
+ *  production value with its source and date. */
+export function settingOf(model, key) {
+  const record = model.switches.find((s) => s.key === key);
+  const cited = model.production.find((p) => p.key === key);
+  return {
+    key,
+    value: record ? formatValue(record.default) : 'unknown',
+    source: record?.default_source ?? '',
+    env: record?.env ?? null,
+    production: cited ? { ...cited, value: formatValue(cited.value) } : null,
+  };
 }
+
+/** Each setting of a part. */
+export const settingsFor = (model, sub) => (sub.config ?? []).map((key) => settingOf(model, key));
 
 export function searchIndex(model) {
   const items = [];

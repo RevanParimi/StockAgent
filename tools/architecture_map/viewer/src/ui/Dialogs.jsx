@@ -85,13 +85,14 @@ const KEYS = [
   ['2', 'Top view: the modules and their neighbours'],
   ['3', 'Side view: what people see, what decides, what is stored'],
   ['4', 'Below view: which module writes which file'],
+  ['5', 'The clock: what runs when, played as a day'],
   ['R', 'Reset the view'],
   ['/', 'Search'],
   ['P', 'Pause or resume motion'],
   ['← → ↑ ↓', 'Turn the 3D view (when it has the focus)'],
   ['+ −', 'Zoom the 3D view (when it has the focus)'],
   ['Shift + arrows', 'Move the 3D view sideways (when it has the focus)'],
-  ['Esc', 'Close the dialog, then the panel'],
+  ['Esc', 'Close the dialog, then the clock, trace or tour, then the panel'],
   ['?', 'This list'],
 ];
 
@@ -108,7 +109,9 @@ export function HelpDialog({ open, onClose }) {
       </table>
       <p>Click a block or choose a module in the legend to open it. Drag to turn the view, scroll to
         zoom, drag with the right button to move it. Point at a flow to read what travels on it; the
-        panel lists the same flows.</p>
+        panel lists the same flows. Trace a stock and the Tour, in the top bar, play step by step
+        with Back, Next and Play; on the clock the slider and the list in the panel jump to a
+        time.</p>
       <button type="button" onClick={onClose}>Close</button>
     </Modal>
   );

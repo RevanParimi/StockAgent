@@ -4502,14 +4502,16 @@ three jobs on Linux with Python 3.11 and no secrets:
 
 The architecture map's guard fails when `docs/architecture-map/model.json` or
 `TREES.md` differs from a fresh run of its generator, when the map names a
-path, function or setting that does not exist, or when a job, route or Python
-file belongs to no module. After a code change,
+path, function or setting that does not exist, when a job, route or Python
+file belongs to no module, when a job does not say what it lights up in the
+day player, or when a step of its stock trace or guided tour names something
+the map lacks. After a code change,
 `python tools/architecture_map/model/generate.py` rewrites both files. The map's
 3D page, `docs/architecture-map/index.html`, is one self-contained file built
 from the model by `tools/architecture_map/viewer/` (its own npm project,
 `npm run build`); a test fails when the page was not built from the committed
-viewer, or shows other modules, logic, flows, stores, jobs, settings or
-production values than `model.json`. The map is developer documentation:
+viewer, or shows other modules, logic, flows, stores, jobs, settings,
+production values, trace or tour than `model.json`. The map is developer documentation:
 nothing of it ships in the image.
 
 The broad-exception guard fails when new code catches every exception without logging,

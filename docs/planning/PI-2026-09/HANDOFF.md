@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-27 (NEXT MAP-003; MAP-002 accepted; its push waits for a window)
+# Current handoff - 2026-11-27 (NEXT MAP-004; MAP-003 accepted; its push waits for a window)
 
 ## Now
 
@@ -14,18 +14,18 @@
   B-42: a top-up reads neither verdict (`PR-014-R1`). `PR-047-S1` waits for your word.
 - **Box rules** (OPS-002 to 006): full suite only via `scripts/ci/guarded_suite.py`; a box event
   holds the autopilot until `autopilot.sh seen`; `autopilot.sh health` writes a daily box line.
-- **27 Nov, MAP-001 and MAP-002 done** ([receipt](evidence/MAP-002.md)): open
-  [the 3D map](../../architecture-map/index.html) (offline). Code changes need the map
-  regenerated; curated, setting or job changes also its page rebuilt (START HERE).
-- **Next `continue`:** **MAP-003** (light, 3 points), then MAP-004, MAP-005, PR-007 (your order,
-  26 Nov). **Autopilot, your word:** run to MAP-005; the phase that accepts it runs `/home/coder/project/autopilot/autopilot.sh stop` before
-  writing its status. `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`: production reads,
+- **27 Nov, MAP-001 to MAP-003 done** ([receipt](evidence/MAP-003.md)): open
+  [the 3D map](../../architecture-map/index.html) (offline; clock `5`, "Trace a stock", Tour).
+  Code changes need the map regenerated; model or viewer changes also its page rebuilt.
+- **Next `continue`:** **MAP-004** (light, 3 points), then MAP-005, PR-007 (your order, 26 Nov).
+  **Autopilot, your word:** run to MAP-005; the phase that accepts it runs
+  `/home/coder/project/autopilot/autopilot.sh stop` before writing its status. `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`: production reads,
   your word.
 - **Autopilot** (started 14:49 IST, 26 Nov): its retry box checks and health line need your next
   `start`.
-- **Git:** `origin/main` = `69e7c28`. The runner pushes between phases in the window
-  (00:10–06:20 IST) after the guarded suite; then check the deploy, `/health` and CI's browser job
-  (B-46).
+- **Git:** `origin/main` = `69e7c28`; `main` holds its deploy record and MAP-003. The runner
+  pushes between phases in the window (00:10–06:20 IST) after the guarded suite; then check the
+  deploy, `/health` and CI's browser job (B-46).
 
 ## Waits for you
 

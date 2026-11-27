@@ -28,7 +28,8 @@ export function Block({ block, colour, state, onSelect, onHover }) {
   const [over, setOver] = useState(false);
   const faded = state === 'faded';
   const selected = state === 'selected';
-  const glow = selected ? 1 : over ? 0.75 : 0.45;
+  const lighted = state === 'lit';
+  const glow = selected || lighted ? 1 : over ? 0.75 : 0.45;
   const outline = useMemo(() => grow(block.size, 0.04), [block.size]);
   const halo = useMemo(() => grow(block.size, 0.5), [block.size]);
   const bright = useMemo(() => lit(colour), [colour]);
@@ -46,7 +47,7 @@ export function Block({ block, colour, state, onSelect, onHover }) {
           emissive={colour}
           emissiveIntensity={faded ? 0.05 : glow}
           transparent
-          opacity={faded ? OPACITY.faded : 0.78}
+          opacity={faded ? OPACITY.faded : lighted ? 0.95 : 0.78}
           depthWrite={!faded}
         />
       </RoundedBox>
@@ -56,9 +57,10 @@ export function Block({ block, colour, state, onSelect, onHover }) {
   );
 }
 
-export function Modules({ modules, selected, touched, preset, onSelect, onHover }) {
+export function Modules({ modules, selected, touched, lit, preset, onSelect, onHover }) {
   return modules.map((m) => {
-    const state = !selected ? (preset === 'below' && m.plane === 'top' ? 'faded' : 'rest')
+    const state = lit ? (lit.modules.has(m.id) ? 'lit' : 'faded')
+      : !selected ? (preset === 'below' && m.plane === 'top' ? 'faded' : 'rest')
       : selected.split('.')[0] === m.id ? 'selected'
         : touched.modules.has(m.id) ? 'rest' : 'faded';
     return (
@@ -87,10 +89,11 @@ export function Parts({ parts, moduleId, selected, onSelect, onHover, moduleBloc
 
 const RESTING_STORE = { top: 0.14, below: 0.7 };
 
-export function Stores({ stores, selected, touched, preset }) {
+export function Stores({ stores, selected, touched, lit, preset }) {
   return stores.map((s) => {
-    const opacity = !selected ? RESTING_STORE[preset] ?? 0.5
-      : touched.stores.has(s.id) ? 0.95 : OPACITY.faded;
+    const opacity = lit ? (lit.stores.has(s.id) ? 0.95 : OPACITY.faded)
+      : !selected ? RESTING_STORE[preset] ?? 0.5
+        : touched.stores.has(s.id) ? 0.95 : OPACITY.faded;
     return (
       <group key={s.id} position={s.pos}>
         <mesh>
@@ -105,9 +108,10 @@ export function Stores({ stores, selected, touched, preset }) {
   });
 }
 
-export function Externals({ externals, selected, touched, preset }) {
+export function Externals({ externals, selected, touched, lit, preset }) {
   return externals.map((e) => {
-    const faded = selected ? !touched.modules.has(e.id) : preset === 'below';
+    const faded = lit ? !lit.externals.has(e.id)
+      : selected ? !touched.modules.has(e.id) : preset === 'below';
     return (
       <mesh key={e.id} position={e.pos}>
         <octahedronGeometry args={[1.05]} />

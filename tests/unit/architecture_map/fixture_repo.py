@@ -234,13 +234,13 @@ submodules:
 """,
     "shared.yaml": "files: [core/__init__.py]\n",
     "jobs.yaml": """
-daily_review: {module: M1.1, does: reviews}
-macro: {module: M1.1, does: macro news}
-events_am: {module: M1.1, does: events}
-events_pm: {module: M1.1, does: events}
-ipo_am: {module: M1.1, does: ipo}
-ipo_pm: {module: M1.1, does: ipo}
-audit_nightly: {module: M1.1, does: grades}
+daily_review: {module: M1.1, does: reviews, lights: [M1.1, M2, S.items], flows: ["M1>M2"]}
+macro: {module: M1.1, does: macro news, lights: [M1.1], flows: []}
+events_am: {module: M1.1, does: events, lights: [M1], flows: []}
+events_pm: {module: M1.1, does: events, lights: [M1.1], flows: []}
+ipo_am: {module: M1.1, does: ipo, lights: [M1.1], flows: []}
+ipo_pm: {module: M1.1, does: ipo, lights: [M1.1], flows: []}
+audit_nightly: {module: M1.1, does: grades, lights: [M1.1], flows: []}
 """,
     "routes.yaml": """
 - {prefix: /health, module: M1.1}
@@ -273,11 +273,15 @@ traces:
     title: One thing's life
     steps:
       - {when: Monday, text: it starts, refs: [M1.1, daily_review, S.items]}
+      - {when: Tuesday, text: it travels, refs: [M2.1, ext.user], flows: ["M2.1>ext.user"]}
+      - {when: Friday, text: a job brings its part, refs: [daily_review, M2.2], flows: ["M1>M2"]}
 tours:
   - id: tour1
     title: A tour
     steps:
-      - {ref: M2.2, caption: look}
+      - {preset: focus, ref: M2.2, caption: look}
+      - {preset: clock, ref: daily_review, caption: runs}
+      - {preset: top, caption: whole}
 """,
 }
 

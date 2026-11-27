@@ -105,6 +105,13 @@ the validator) in the same change.
 | Flowchart list | rounded rectangle with a dashed `edge` border, one bulleted line each: two or more details of one box | |
 | Flowchart edges | "then": solid 1.5 px arrow; "part of": 1 px, no emphasis; edge labels ("yes", "no" or the branch's words) in 12 px on the line | |
 | Dialog (search, help) | `raised`, centred, dimmed backdrop; native dialog, focus stays inside, `Esc` closes | |
+| Player (the clock, trace a stock, guided tour) | a `panel` bar under the world, never over it: mode name and “n of N” (tabular), the caption, then Back, Play or Pause, Next (on the last step of a trace or tour: Finish), speed (1×, 2×, 4×) and Close ✕ | the playing button reads Pause and is pressed; Back on the first step and Next on the clock's last time are marked disabled (`aria-disabled`, so the focus stays on them) |
+| Time slider (clock) | native range input, one notch for each time a job runs, labelled with the time, the day it runs on and the job's name; the first and last time at its ends | focus ring on the input; arrows, Home, End and Page keys move it |
+| Lit (3D) | what the step names: module blocks at body glow 1 with their lit edges, stores and outside parties full, flows bright with dots, pipes between a lit module and a lit store | everything else: opacity 0.12 (flows 0.08); a step that names nothing dims nothing |
+| Lit label | `raised`, `focus` outline; a module whose lit parts are named reads “M4 Learning · M4.2”, more than two “M5 Portfolio · 4 parts” | others 0.25 opacity; on the clock view only lit things are named |
+| Clock ring (3D) | three flat circles around the product, in the base frame's plane: daily (inner), weekly (middle), monthly and yearly (outer); 00:00 at the back, running clockwise seen from above; a tick each hour, figures at 00, 06, 12 and 18; a one-line key in the view's lower left names the rings | `planeBase` lines; drawn only on the clock view |
+| Job marker (3D) | a bead on its ring at its time, in its module's colour; a job that runs three times has three beads; beads at one time on one ring stand one outside the other | the current time: larger, with a `focus` ring and a radial `focus` hand across the three rings; one label, the job's time and name |
+| Job panel (clock) | the panel names the job, its trigger, its gate switches (with the repository default and, where KT section 1 states it, the production value), what it does, what it lights and what flows; below, every time of the day as a list of buttons, the current one marked `aria-current` | |
 
 Shape carries meaning beside colour: pill = start or end, diamond = decision, rectangle = step,
 dashed rectangle = a list of details.
@@ -112,7 +119,8 @@ dashed rectangle = a list of details.
 ## 5. Layout
 
 - Screen: top bar across; legend on the left; the world fills the middle; the panel opens on the
-  right (about 40% of the width, wider with "Wider panel").
+  right (about 40% of the width, wider with "Wider panel"). In a mode the player takes a row under
+  the world; the clock also opens its job panel on the right, the trace and the tour do not.
 - World: every position is computed from the model. Height = plane (top: what people see; middle:
   the product; just under it: the base frame; far below: storage). Left to right = the module's
   column in the flow. Modules sharing a plane and column step apart front to back. The top plane
@@ -127,6 +135,10 @@ dashed rectangle = a list of details.
     with who stands on them; module labels are hidden.
   - 4 Below (40°, from below and in front, so a module sits above the stores its pipes reach):
     stores are named, flows and the top plane fade.
+  - 5 Clock (40°, high and in front): the product inside the clock ring; plane, store and unlit
+    names are hidden.
+- A tour stop chooses a view (front, top, side, below, clock) or flies to one module (“focus”),
+  which then unfolds into its parts; a trace step is shown from the front.
 
 ## 6. Glow and depth
 
@@ -138,6 +150,9 @@ dashed rectangle = a list of details.
 ## 7. Motion
 
 - Camera flights: 700 ms, ease in and out, stop as soon as the user drags or presses a preset.
+- Autoplay: one step every 6 s (trace, tour) or 2.4 s (clock) at 1×, divided by the speed. It
+  never starts by itself (the guided tour opens at its first stop and waits), stops at the last
+  step, and is stopped by Back, Next, the slider, Pause or **Pause motion**.
 - Dots along flows: steady speed, never faster than one flow length in four seconds.
 - Anything that moves can be stopped: the **Pause motion** button (key `P`), and with the system's
   "reduce motion" setting the dots stop and the camera jumps instead of flying.
@@ -150,6 +165,8 @@ dashed rectangle = a list of details.
   `panel`, `raised` and `node`). Text is never set in a module colour or on a module-colour fill.
 - Meaningful lines and borders are at least 3:1 (`edge`, `focus`, module colours).
 - Keyboard focus is a 2 px `focus` outline with 2 px offset (`:focus-visible`).
+- Each step's words are announced politely. The clock ring has its text equivalent in the job
+  panel's list; the slider's value is read as time, day and job.
 - Every action in the 3D world also exists as a button or key: modules from the legend, views from
   the top bar, turning and zooming with the arrow keys and `+`/`−`, moving with Shift and the
   arrows, once the view has the focus (it shows the focus ring inside its edge), flows listed in

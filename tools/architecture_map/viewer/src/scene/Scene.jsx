@@ -3,14 +3,15 @@ import { Bloom, EffectComposer } from '@react-three/postprocessing';
 import { BLOOM, SURFACE } from '../theme.js';
 import { Externals, Modules, Parts, Planes, Stores } from './Blocks.jsx';
 import { Flows, Pipes } from './Flows.jsx';
+import ClockRing from './ClockRing.jsx';
 import CameraRig from './CameraRig.jsx';
 import Projector from './Projector.jsx';
 
 const NOTHING = { modules: new Set(), stores: new Set(), flows: new Set() };
 
 export default function Scene({
-  world, goal, command, nudge, selected, touched, parts, anchors, labels, rootRef, reduced, moving,
-  preset, hovered, onSelect, onHoverFlow, onHoverBlock,
+  world, goal, command, nudge, selected, touched, lit, clock, parts, anchors, labels, rootRef,
+  reduced, moving, preset, hovered, onSelect, onMoment, onHoverFlow, onHoverBlock,
 }) {
   const related = touched ?? NOTHING;
   const module = parts ? world.modules.find((m) => m.id === parts.moduleId) : null;
@@ -26,18 +27,24 @@ export default function Scene({
       <ambientLight intensity={0.85} />
       <directionalLight position={[18, 30, 24]} intensity={1.3} />
       <Planes planes={world.planes} ring={world.ring} />
-      <Modules modules={world.modules} selected={selected} touched={related} preset={preset}
-        onSelect={onSelect} onHover={onHoverBlock} />
+      <Modules modules={world.modules} selected={selected} touched={related} lit={lit}
+        preset={preset} onSelect={onSelect} onHover={onHoverBlock} />
       {module ? (
         <Parts parts={parts.blocks} moduleId={parts.moduleId} moduleBlock={module}
           selected={selected} onSelect={onSelect} onHover={onHoverBlock} />
       ) : null}
-      <Stores stores={world.stores} selected={selected} touched={related} preset={preset} />
-      <Externals externals={world.externals} selected={selected} touched={related}
+      <Stores stores={world.stores} selected={selected} touched={related} lit={lit}
         preset={preset} />
-      <Flows flows={world.flows} selected={selected} touched={related} hovered={hovered}
+      <Externals externals={world.externals} selected={selected} touched={related} lit={lit}
+        preset={preset} />
+      <Flows flows={world.flows} selected={selected} touched={related} lit={lit} hovered={hovered}
         moving={moving} preset={preset} onHover={onHoverFlow} />
-      <Pipes pipes={world.pipes} selected={selected} touched={related} preset={preset} />
+      <Pipes pipes={world.pipes} selected={selected} touched={related} lit={lit}
+        preset={preset} />
+      {clock ? (
+        <ClockRing ring={clock.ring} beads={clock.beads} current={clock.current}
+          onPick={onMoment} onHover={onHoverBlock} />
+      ) : null}
       <CameraRig command={command} goal={goal} nudge={nudge} reduced={reduced} rootRef={rootRef} />
       <Projector anchors={anchors} labels={labels} rootRef={rootRef} />
       <EffectComposer multisampling={4}>

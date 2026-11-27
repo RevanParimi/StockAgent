@@ -13,6 +13,9 @@ from pathlib import Path
 from tools.architecture_map.model import sources
 
 PRODUCTION_SOURCE = "KT section 1"
+# What a tour stop may show: a view of the whole world, or `focus` to fly to one module
+# or part. The viewer knows the same names (viewer/src/lib/play.js).
+TOUR_PRESETS = ("front", "top", "side", "below", "clock", "focus")
 _WILDCARD = re.compile(r"[*?]")
 
 
@@ -178,8 +181,27 @@ def check_code(root: Path, python: set[str], refs: list[tuple[str, str]],
 
 # -- jobs, routes, references -------------------------------------------------
 
-def check_jobs(jobs: list[dict], curated: dict, module_ids: set[str],
-               problems: list[str]) -> None:
+def node_of(name: str) -> str:
+    """What the world draws for a name: a part's module; a store or outside party itself."""
+    return name if name.startswith(("ext.", "S.")) else name.split(".")[0]
+
+
+def check_lit_flows(where: str, flows: list[str], lit: set[str], known: set[str],
+                    problems: list[str]) -> None:
+    """Every flow named is one of flows.yaml's and runs between two things that are lit."""
+    for key in flows:
+        if key not in known:
+            problems.append(f"{where} names the flow {key}, which flows.yaml lacks; "
+                            "fix: name an existing from>to")
+            continue
+        dark = [end for end in key.split(">") if node_of(end) not in lit]
+        if dark:
+            problems.append(f"{where}: the flow {key} touches {', '.join(dark)}, which it does "
+                            "not name or light; fix: name it or drop the flow")
+
+
+def check_jobs(jobs: list[dict], curated: dict, module_ids: set[str], all_ids: set[str],
+               flow_keys: set[str], problems: list[str]) -> None:
     known = {job["id"] for job in jobs}
     for job_id in sorted(known - set(curated)):
         problems.append(f"job {job_id} belongs to no module; fix: add it to curated/jobs.yaml")
@@ -187,13 +209,25 @@ def check_jobs(jobs: list[dict], curated: dict, module_ids: set[str],
         if job_id not in known:
             problems.append(f"curated/jobs.yaml names the job {job_id} that scheduler.py does "
                             "not register; fix: remove or rename it")
-        if (not isinstance(entry, dict) or set(entry) != {"module", "does"}
-                or not all(is_text(v) for v in entry.values())):
-            problems.append(f"curated/jobs.yaml {job_id} must have module and does, both text; "
+        where = f"curated/jobs.yaml {job_id}"
+        keys = {"module", "does", "lights", "flows"}
+        if (not isinstance(entry, dict) or set(entry) != keys
+                or not all(is_text(entry[k]) for k in ("module", "does"))
+                or not all(KINDS["texts"][0](entry[k]) for k in ("lights", "flows"))):
+            problems.append(f"{where} must have module and does (text), lights and flows (lists "
+                            "of text: what the day player lights up when it runs); "
                             "fix: correct the entry")
-        elif entry["module"] not in module_ids:
-            problems.append(f"curated/jobs.yaml {job_id}: module {entry['module']} is not in "
+            continue
+        if entry["module"] not in module_ids:
+            problems.append(f"{where}: module {entry['module']} is not in "
                             "the model; fix: name an existing module")
+            continue
+        check_refs([(f"{where} lights", name) for name in entry["lights"]], all_ids, problems)
+        lit = {node_of(name) for name in entry["lights"]}
+        if node_of(entry["module"]) not in lit:
+            problems.append(f"{where} does not light its own module {entry['module']}; "
+                            "fix: add it to lights")
+        check_lit_flows(where, entry["flows"], lit, flow_keys, problems)
 
 
 def route_rule(path: str, rules: list[dict]) -> dict | None:
@@ -228,6 +262,46 @@ def check_routes(routes: list[dict], rules: list[dict], module_ids: set[str],
         if str(rule["prefix"]) not in used:
             problems.append(f"curated/routes.yaml prefix {rule['prefix']} matches no route; "
                             "fix: remove or correct it")
+
+
+def check_traces(traces: list[dict], jobs: dict, all_ids: set[str], flow_keys: set[str],
+                 problems: list[str]) -> None:
+    """A step names what exists; its flows run between things it names (a job: its module)."""
+    for trace in traces:
+        for number, step in enumerate(trace["steps"], start=1):
+            where = f"curated/trace.yaml trace {trace['id']} step {number}"
+            if not step["refs"]:
+                problems.append(f"{where} names nothing to light; fix: add what it is about "
+                                "to refs")
+            check_refs([(where, name) for name in step["refs"]], all_ids | set(jobs), problems)
+            lit = set()
+            for name in step["refs"]:
+                module = jobs[name].get("module") if isinstance(jobs.get(name), dict) else None
+                lit.add(node_of(module if is_text(module) else name))
+            check_lit_flows(where, step.get("flows") or [], lit, flow_keys, problems)
+
+
+def check_tours(tours: list[dict], job_ids: set[str], module_ids: set[str], all_ids: set[str],
+                problems: list[str]) -> None:
+    """A stop has a view the viewer knows and, if any, a target that view can show."""
+    for tour in tours:
+        for number, stop in enumerate(tour["steps"], start=1):
+            where = f"curated/trace.yaml tour {tour['id']} stop {number}"
+            preset, ref = stop["preset"], stop.get("ref")
+            if ref is not None:
+                check_refs([(where, ref)], all_ids | job_ids, problems)
+            if preset not in TOUR_PRESETS:
+                problems.append(f"{where}: preset {preset} is not one of "
+                                f"{', '.join(TOUR_PRESETS)}; fix: correct it")
+            elif preset == "focus" and ref not in module_ids:
+                problems.append(f"{where}: a focus stop flies to a module or part; "
+                                "fix: set ref to one")
+            elif preset == "clock" and ref is not None and ref in all_ids:
+                problems.append(f"{where}: a clock stop shows a job, not {ref}; "
+                                "fix: set ref to a job id or leave it out")
+            elif preset != "clock" and ref in job_ids:
+                problems.append(f"{where}: the job {ref} is shown on the clock; "
+                                "fix: set preset to clock")
 
 
 def check_refs(refs: list[tuple[str, str]], known: set[str], problems: list[str]) -> None:

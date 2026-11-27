@@ -71,6 +71,10 @@ def test_trees_md_draws_the_clock_trees_and_production_values(repo):
     assert "(also 12:00)" in text
     assert "production: `observe` (KT section 1, as of 2026-10-01)" in text
     assert "One thing's life" in text
+    assert "## A tour" in text
+    assert "1  look  (close up: M2.2)" in text
+    assert "2  runs  (clock view: daily_review)" in text
+    assert "3  whole  (top view)" in text
 
 
 # -- the generated part drifts -------------------------------------------------
@@ -203,8 +207,9 @@ def test_a_new_job_belongs_to_no_module(repo):
 
 
 def test_a_curated_job_the_scheduler_does_not_register(repo):
-    fx.curated(repo, "jobs.yaml", "macro: {module: M1.1, does: macro news}",
-               "macro: {module: M1.1, does: macro news}\ngone: {module: M1.1, does: x}")
+    line = "macro: {module: M1.1, does: macro news, lights: [M1.1], flows: []}"
+    fx.curated(repo, "jobs.yaml", line,
+               f"{line}\ngone: {{module: M1.1, does: x, lights: [M1.1], flows: []}}")
     assert "does not register" in _only(check.run(repo))
 
 
@@ -286,6 +291,72 @@ def test_a_flow_store_trace_or_tour_naming_what_the_model_lacks(repo, name, old,
     fx.curated(repo, name, old, new)
     problems = check.run(repo)
     assert any(expected in p and "fix: " in p for p in problems), problems
+
+
+# -- what the day player, the trace and the tour show (MAP-003) -----------------------
+
+@pytest.mark.parametrize("old,new,expected", [
+    (', lights: [M1.1, M2, S.items], flows: ["M1>M2"]', "", "lights and flows"),
+    ("lights: [M1.1, M2, S.items]", "lights: M1.1", "lights and flows"),
+    ("lights: [M1.1, M2, S.items]", "lights: [M1.1, M2, S.gone]",
+     "S.gone, which the model lacks"),
+    ("lights: [M1.1, M2, S.items]", "lights: [M2, S.items]",
+     "does not light its own module M1.1"),
+    ("lights: [M1.1, M2, S.items]", "lights: []", "does not light its own module M1.1"),
+    ('flows: ["M1>M2"]', 'flows: ["M2>M1"]', "M2>M1, which flows.yaml lacks"),
+    ("lights: [M1.1, M2, S.items]", "lights: [M1.1, S.items]", "M1>M2 touches M2"),
+])
+def test_a_job_the_day_player_cannot_show_is_named(repo, old, new, expected):
+    fx.curated(repo, "jobs.yaml", old, new)
+    problems = check.run(repo)
+    assert any(expected in p and "fix: " in p and "daily_review" in p
+               for p in problems), problems
+
+
+@pytest.mark.parametrize("old,new,expected", [
+    ('flows: ["M2.1>ext.user"]', 'flows: ["M2>ext.user"]',
+     "step 2 names the flow M2>ext.user, which flows.yaml lacks"),
+    ("refs: [M2.1, ext.user]", "refs: [M2.1]", "step 2: the flow M2.1>ext.user touches ext.user"),
+    ("refs: [daily_review, M2.2]", "refs: [M2.2]", "step 3: the flow M1>M2 touches M1"),
+    ("refs: [M2.1, ext.user]", "refs: []", "step 2 names nothing to light"),
+    ('flows: ["M2.1>ext.user"]', "flows: M2", "step"),
+    ("preset: focus, ref: M2.2", "preset: close, ref: M2.2", "preset close is not one of"),
+    ("preset: focus, ref: M2.2", "preset: focus, ref: S.items", "flies to a module or part"),
+    ("preset: focus, ref: M2.2, ", "preset: focus, ", "flies to a module or part"),
+    ("preset: focus, ref: M2.2, ", "ref: M2.2, ", "must have the keys"),
+    ("preset: clock, ref: daily_review", "preset: clock, ref: M2.2",
+     "a clock stop shows a job, not M2.2"),
+    ("preset: clock, ref: daily_review", "preset: clock, ref: no_such_job",
+     "no_such_job, which the model lacks"),
+    ("preset: top, ", "preset: top, ref: daily_review, ",
+     "daily_review is shown on the clock"),
+])
+def test_a_trace_or_tour_step_the_viewer_cannot_show_is_named(repo, old, new, expected):
+    fx.curated(repo, "trace.yaml", old, new)
+    problems = check.run(repo)
+    assert any(expected in p and "fix: " in p for p in problems), problems
+
+
+@pytest.mark.parametrize("kind,extra", [
+    ("traces", "  - {id: t2, title: Two, steps: [{when: x, text: y, refs: [M1.1]}]}\ntours:\n"),
+    ("tours", "tours:\n  - {id: tour2, title: Two, steps: [{preset: top, caption: x}]}\n"),
+])
+def test_a_second_trace_or_tour_the_map_would_never_play_is_named(repo, kind, extra):
+    fx.curated(repo, "trace.yaml", "tours:\n", extra)
+    problems = check.run(repo)
+    assert any(f"{kind} has 2 entries" in p and "fix: " in p for p in problems), problems
+
+
+@pytest.mark.parametrize("kind", ["traces", "tours"])
+def test_a_trace_or_tour_without_steps_is_named(repo, kind):
+    path = f"{fx.CURATED_DIR}/trace.yaml"
+    text = (repo / path).read_text(encoding="utf-8")
+    other = "tours" if kind == "traces" else "traces"
+    empty = f"{kind}:\n  - {{id: e, title: Empty, steps: []}}\n"
+    kept = text[text.index(f"{other}:"):] if kind == "traces" else text[:text.index("tours:")]
+    fx.write(repo, path, empty + kept if kind == "traces" else kept + empty)
+    problems = check.run(repo)
+    assert any("has no steps" in p and "fix: " in p for p in problems), problems
 
 
 @pytest.mark.parametrize("old,new,expected", [
@@ -386,6 +457,22 @@ def test_every_part_of_the_real_model_is_filled(real):
                for m in real["modules"])
     assert all(p["source"] == "KT section 1" for p in real["production"])
     assert real["traces"] and real["flows"] and real["stores"]
+
+
+def test_the_real_day_trace_and_tour_are_filled(real):
+    flows = {f"{f['from']}>{f['to']}" for f in real["flows"]}
+    for job in real["jobs"]:
+        assert job["lights"], job["id"]
+        assert set(job["flows"]) <= flows, job["id"]
+    tour = real["tours"][0]
+    assert 7 <= len(tour["steps"]) <= 9, "about 8 stops"
+    assert all("\n" not in s["caption"] and len(s["caption"]) <= 180 for s in tour["steps"])
+    assert {s["preset"] for s in tour["steps"]} <= set(validate.TOUR_PRESETS)
+    # the seed's finale: dive, shelf, buy, daily reviews, exit, Sunday scorecard
+    trace = real["traces"][0]
+    whens = [s["when"] for s in trace["steps"]]
+    assert whens[0] == "Saturday" and whens[-1] == "Sunday" and "Exit day" in whens
+    assert any(s.get("flows") for s in trace["steps"])
 
 
 def test_the_seed_walkthrough_was_replaced_by_trees_md():

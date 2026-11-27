@@ -41,7 +41,8 @@ button {
 button:hover { background: var(--raised); border-color: var(--edge); }
 button:active { background: var(--node); border-color: var(--ink); }
 button[aria-pressed="true"] { background: var(--raised); box-shadow: inset 0 -2px 0 var(--focus); }
-button:disabled { cursor: not-allowed; color: var(--muted); }
+button:disabled, button[aria-disabled="true"] { cursor: not-allowed; color: var(--muted); }
+button[aria-disabled="true"]:hover { background: var(--panel); border-color: var(--line); }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 .sr-only {
@@ -65,6 +66,42 @@ button:disabled { cursor: not-allowed; color: var(--muted); }
   grid-template-areas: "top top top" "legend world panel";
 }
 .app.with-panel.wide { grid-template-columns: 200px minmax(0, 1fr) min(66vw, 1200px); }
+/* a mode's player takes a row under the world, so it covers nothing */
+.app.playing {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: "top top" "legend world" "legend player";
+}
+.app.playing.with-panel {
+  grid-template-areas: "top top top" "legend world panel" "legend player panel";
+}
+
+.player {
+  grid-area: player; display: grid; gap: 8px; background: var(--panel); min-width: 0;
+  border-top: 1px solid var(--line);
+  padding: 10px 16px max(12px, env(safe-area-inset-bottom));
+}
+.player-head { display: flex; align-items: baseline; gap: 12px; }
+.player-head h2 { font-size: 14px; }
+.count { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+/* two lines kept free, so the world above does not jump from step to step */
+.player-caption {
+  display: flex; flex-wrap: wrap; align-content: start; column-gap: 10px; min-height: 2.9em;
+  font-size: 14px; overflow-wrap: anywhere;
+}
+.player-caption .lead { color: var(--ink2); font-variant-numeric: tabular-nums; }
+.player-lights { font-size: 12px; color: var(--ink2); overflow-wrap: anywhere; }
+.timeline {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px;
+  font-size: 12px; color: var(--muted);
+}
+input[type="range"] {
+  width: 100%; min-height: 28px; margin: 0; background: transparent; color: var(--ink);
+  accent-color: var(--focus); cursor: pointer; touch-action: manipulation;
+}
+.player-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.player-controls > button { min-width: 84px; }
+.player-controls .player-close { margin-left: auto; }
+.segmented button { font-variant-numeric: tabular-nums; }
 
 .topbar {
   grid-area: top; display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
@@ -122,6 +159,19 @@ button:disabled { cursor: not-allowed; color: var(--muted); }
   color: var(--ink); border-right: 3px solid var(--tone, var(--edge)); border-radius: 0;
 }
 .label.selected { border-color: var(--focus); border-left-color: var(--tone, var(--focus)); }
+.label.lit {
+  background: var(--raised); border-color: var(--focus);
+  border-left-color: var(--tone, var(--focus));
+}
+.label-hour {
+  font-size: 12px; color: var(--ink2); font-variant-numeric: tabular-nums; pointer-events: none;
+  background: transparent; border-color: transparent; border-left-width: 1px;
+}
+.label-job { font-weight: 600; font-variant-numeric: tabular-nums; }
+.ring-key {
+  position: absolute; left: 12px; bottom: 8px; font-size: 12px; color: var(--ink2);
+  background: rgba(18, 26, 46, 0.92); border-radius: 6px; padding: 4px 8px; pointer-events: none;
+}
 .label.faded { opacity: 0.25; }
 button.label:hover { background: var(--raised); }
 
@@ -161,6 +211,15 @@ button.label:hover { background: var(--raised); }
 .how { color: var(--muted); font-size: 12px; }
 .tabular { font-variant-numeric: tabular-nums; }
 .table-wrap { overflow-x: auto; }
+.day {
+  list-style: none; margin: 0; padding: 4px; display: grid; gap: 4px; max-height: 360px;
+  overflow: auto; overscroll-behavior: contain; position: relative;
+}
+.day button {
+  width: 100%; display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 8px;
+  text-align: left; align-items: baseline;
+}
+.day button[aria-current="true"] { background: var(--raised); border-color: var(--focus); }
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
 th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--line); }
 th { font-weight: 600; }
@@ -215,6 +274,10 @@ dialog::backdrop { background: rgba(4, 7, 16, 0.65); }
     grid-template-columns: minmax(0, 1fr); height: auto; min-height: 100vh;
     grid-template-rows: auto auto 60vh auto;
     grid-template-areas: "top" "legend" "world" "panel";
+  }
+  .app.playing, .app.playing.with-panel {
+    grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto 60vh auto auto;
+    grid-template-areas: "top" "legend" "world" "player" "panel";
   }
   .legend ul { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 }

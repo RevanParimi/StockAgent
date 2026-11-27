@@ -188,6 +188,21 @@ def _trace_section(model: dict) -> list[str]:
     return out
 
 
+def _stop(step: dict) -> str:
+    """Where a tour stop looks: its view and, if it has one, its target."""
+    view = "close up" if step["preset"] == "focus" else f"{step['preset']} view"
+    return f"{view}: {step['ref']}" if step.get("ref") else view
+
+
+def _tour_section(model: dict) -> list[str]:
+    out = []
+    for tour in model["tours"]:
+        stops = [_leaf(f"{n}  {s['caption']}  ({_stop(s)})")
+                 for n, s in enumerate(tour["steps"], start=1)]
+        out += [f"## {tour['title']}", "", *_block([_leaf(tour["title"], stops)])]
+    return out
+
+
 def render(model: dict) -> str:
     stamp = model["stamp"]
     inspected = f"`{stamp['commit']}`"
@@ -209,4 +224,5 @@ def render(model: dict) -> str:
     out += _stores_section(model)
     out += _production_section(model)
     out += _trace_section(model)
+    out += _tour_section(model)
     return "\n".join(out).rstrip("\n") + "\n"

@@ -30,6 +30,11 @@ red line? Every figure comes from a ledger the system already keeps:
 - **At prices that could be had** (PR-016) from executable_prices.jsonl: the
   book again with each autopilot trade at the next session's open and at the
   open after the run that booked it (core/portfolio/executable.py).
+- **Conviction check** (PR-018), on the scorecard of each month's first Sunday,
+  the default user's only (the dive grades are kept there): whether dives issued
+  at a higher conviction did better, and where the predeclared rule for trusting
+  conviction stands. Each look is stored in that week's row, so a later month
+  never reads its dives again (core/audit/ideas.py).
 
 The red-flag rules below were predeclared on 11-12 Oct 2026, before any
 scorecard existed; `paper_prices` (executable.rule_flag) on PR-016's card on
@@ -57,7 +62,8 @@ from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from typing import Callable, Iterable, NamedTuple
 
-from core.audit.ideas import idea_block, idea_line
+from core.audit.ideas import (
+    conviction_check, conviction_line, idea_block, idea_line, stored_looks)
 from core.intelligence.rl.nse_calendar import trading_dates, trading_days_after
 
 logger = logging.getLogger(__name__)
@@ -973,7 +979,8 @@ def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
               stock_quote_on: Callable[[str, date], object] | None = None,
               corp_actions: Callable[[str], object] | None = None,
               stock_series_on: Callable[[str, date], object] | None = None,
-              executable_rows: Iterable[dict] | None = None) -> dict:
+              executable_rows: Iterable[dict] | None = None,
+              conviction_scorecards: Iterable[dict] | None = None) -> dict:
     """The scorecard row for `week` from the user's own ledgers. Facts dated
     after the week are ignored, so a late rebuild describes the week as it was.
     `stock_close_on(symbol, day)` values the holdings that arrived without
@@ -995,7 +1002,13 @@ def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
     PR-016: with `executable_rows` (the side file's rows,
     core/portfolio/executable.py), the row gains `executable`, the book at
     prices that could be had, and the red flag `paper_prices`, its
-    predeclared rule. A report: it changes no trade or price."""
+    predeclared rule. A report: it changes no trade or price.
+
+    PR-018: with `conviction_scorecards` (the user's stored rows) and a week
+    ending on the month's first Sunday, the row gains `conviction_check`: the
+    dives graded by the week's end, grouped by the conviction each was issued
+    with, and this month's look, if any, on the dives no stored look has read.
+    A report: it sizes and changes nothing."""
     end = week.sunday
     txns = [t for t in txns if (_day(t.date) or date.max) <= end]
     points = [p for p in points if (_day(p.get("date")) or date.max) <= end]
@@ -1070,6 +1083,11 @@ def build_row(*, week: Week, txns: Iterable, points: Iterable[dict],
     }
     if executable is not None:
         row["executable"] = executable
+    if conviction_scorecards is not None and end.day <= 7:      # the month's first Sunday
+        earlier, used, passed = stored_looks(conviction_scorecards,
+                                             week_start=week.monday.isoformat())
+        row["conviction_check"] = conviction_check(audit_rows, as_of=end, earlier=earlier,
+                                                   used=used, passed_before=passed)
     backs = buy_backs(txns)
     row["bought_back"] = {"last_4_weeks": buy_back_summary(
                               backs, week.window_start(BUYBACK_WEEKS), end),
@@ -1299,6 +1317,9 @@ def scorecard_lines(row: dict) -> list[dict]:
     if row.get("idea_record"):
         lines.append({"kind": "line", "label": "Every deep dive",
                       "text": idea_line(row["idea_record"], IDEA_LINE_TD)})
+    if row.get("conviction_check"):
+        lines.append({"kind": "line", "label": "Conviction check",
+                      "text": conviction_line(row["conviction_check"])})
     reasons = row["exit_reasons"]["last_4_weeks"]
     if reasons["sales"]:
         text = (f"{_plural(reasons['sales'], 'sale')} in the last {THESIS_WINDOW_WEEKS} "
@@ -1523,6 +1544,7 @@ def weekly_scorecard(user_id: str, on: date, *, store=None, audit_store=None,
     day)`, the EOD panel; executable.refresh), and the settled ones are
     written once. A failure there leaves the stored rows to the line."""
     from core.audit.store import AuditOutcomeStore
+    from core.config import settings
     from core.portfolio.store import PortfolioStore
 
     store = store or PortfolioStore(user_id=user_id)
@@ -1549,6 +1571,7 @@ def weekly_scorecard(user_id: str, on: date, *, store=None, audit_store=None,
         logger.warning("[results] executable prices not refreshed for %s: %s",
                        store.user_id, exc)
         executable_rows = store.load_executable_prices()
+    scorecards = store.load_scorecards()
     row = build_row(
         week=week,
         txns=txns,
@@ -1559,11 +1582,16 @@ def weekly_scorecard(user_id: str, on: date, *, store=None, audit_store=None,
         floor=_floor(),
         stock_close_on=stock_close_on or stock_close_fn(),
         exit_shadow_rows=store.load_exit_shadow(),
-        previous_exit_look=previous_week_look(store.load_scorecards(), week.monday),
+        previous_exit_look=previous_week_look(scorecards, week.monday),
         stock_quote_on=stock_quote_on or stock_quote_fn(),
         corp_actions=corp_actions,
         stock_series_on=stock_series_on or stock_series_fn(),
         executable_rows=executable_rows,
+        # PR-018: the dive grades are kept for the default user alone
+        # (idea_lanes), so only that user's rows carry the conviction check.
+        conviction_scorecards=(scorecards
+                               if store.user_id == settings.PORTFOLIO_DEFAULT_USER_ID
+                               else None),
     )
     if today < week.saturday:
         row["provisional"] = True

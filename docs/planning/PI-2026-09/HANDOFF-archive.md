@@ -14,6 +14,15 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 27 Nov, night (autopilot `1127-2012-p2`): PR-018 → ACCEPTED (light)
+
+- **Conviction check** ([receipt](evidence/PR-018-implementation.md)): on each month's first Sunday
+  the owner's scorecard shows dives grouped by issued conviction (rejected under 0.55; BUY at 0.55,
+  0.65 and 0.75 and above) with n, stocks and mean excess at 30 sessions. The rule: 0.75 and above
+  beats 0.55 to under 0.65 by 2 points, 30 dives each, two looks in a row, no dive read twice.
+- **Opus check, then fixed** (judged on printed means, wording, five test gaps). Left for the
+  owner: B-54 (dives are not stocks; looks never stop). Suite: browser step needed one rerun (B-53).
+
 ## 27 Nov, evening (autopilot `1127-1707-p1`): PR-007 → ACCEPTED (light)
 
 - **Plain reasons** ([receipt](evidence/PR-007-implementation.md)): every autopilot trade, holding

@@ -1,33 +1,34 @@
-# Current handoff - 2026-11-27 (NEXT PR-018; PR-007 accepted; push pending)
+# Current handoff - 2026-11-27 (NEXT PR-041; PR-018 accepted; push pending)
 
 ## Now
 
 - **Deployed:** `69e7c28` (MAP-002), pushed 06:05 IST Fri 27 Nov (`8624f234` SUCCESS, `/health`
-  200 at 08:52, CI green). `809a5ea` (03:59) brought OPS, B-12's wording (Sun 29 Nov), PR-047,
-  MAP-001 and your walkthrough copy. `PR-047-W1` reads today's 16:30 review. Since 23 Nov
+  200 at 08:52, CI green). `809a5ea` (03:59) brought OPS, PR-047 and MAP-001; B-12's
+  wording shows Sun 29 Nov. `PR-047-W1` reads the 27 Nov 16:30 review. Since 23 Nov
   (`4c7f611`) the evidence exit rule decides; PR-015, PR-017, FIX-033 and PR-046 stay
   `pending_observation`.
 - **PR-047** (accepted 26 Nov, [receipt](evidence/PR-047-review.md)): a buy needs the band's BUY
   and the model's own. B-42: a top-up reads neither verdict (`PR-014-R1`).
 - **Box rules** (OPS-002 to 006): full suite only via `scripts/ci/guarded_suite.py`.
-- **Box, 27 Nov:** limit 8 GB (`memory.max` 7,629 MB), warning 4,000 MB. Events 14:01 `ANOMALY`
-  2,734 MB (the map's page build, B-50) and 16:00 `BOOT` (the redeploy; no OOM kill; `anon` 991 MB
-  just before), both seen at your word. A redeploy removes system packages: your startup script now
-  reinstalls Chromium's libraries (your word; not yet proven at a boot, see `~/devbox/boot.log`).
-- **MAP-001 to MAP-005 done** ([receipt](evidence/MAP-005.md)):
-  [the map](../../architecture-map/index.html). Code changes need it regenerated; model or viewer
-  changes also its page rebuilt.
-- **PR-007** (accepted 27 Nov, [receipt](evidence/PR-007-implementation.md)): trades, holdings and
-  the last review in plain four parts, display only. A sale and the review call no model.
-- **Next `continue`:** **PR-018** (light).
+- **Box, 27 Nov:** limit 8 GB, warning 4,000 MB; the day's `ANOMALY` (B-50) and `BOOT` are seen.
+  A redeploy removes system packages: your startup script reinstalls Chromium's libraries (not
+  yet proven at a boot, `~/devbox/boot.log`).
+- **PR-007** ([receipt](evidence/PR-007-implementation.md)): plain reasons, display only.
+- **PR-018** (accepted 27 Nov, [receipt](evidence/PR-018-implementation.md)): a first-Sunday
+  "Conviction check" scorecard line; it sizes nothing.
+- **Next `continue`:** **PR-041** (light).
 - **Production reads, your word:** `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`.
-- **Git:** `origin/main` = `69e7c28`; `main` holds its deploy record, MAP-003 to MAP-005 and
-  PR-007, unpushed: push from 00:10 IST Sat 28 Nov after the guarded suite. Then check the deploy,
-  `/health` and CI's browser job (B-46).
+- **Git:** `origin/main` = `69e7c28`; unpushed on `main`: its deploy record, MAP-003 to MAP-005,
+  PR-007 and PR-018. Push from 00:10 IST Sat 28 Nov after the guarded suite (its browser step has
+  the flaky B-53); then check the deploy, `/health` and CI's browser job (B-46).
 
 ## Waits for you
 
-- **The map's walk-through** (guide 11-P), on a laptop and a phone.
+- **PR-018, before its first look** (6 Dec at the earliest): its rule counts dives, not stocks,
+  and looks never stop. Keep it, count one dive per stock a look, or also cap the looks
+  (B-54, B-55); silence keeps it.
+- **[The map](../../architecture-map/index.html)'s walk-through** (guide 11-P; MAP-001 to 005
+  [done](evidence/MAP-005.md)), on a laptop and a phone.
 - **PR-007:** after its first review, read the reasons (guide 11-Q) and keep three examples; for
   earlier trades say "run the PR-007 backfill" (a dry run, then `--apply`).
 - **PR-047's read** (read-only; from Tue 1 Dec, best Sat 12 or Sun 13 Dec, before `PR-014-R1`):
@@ -43,7 +44,7 @@
 - **PR-005's backfill:** say "run the PR-005 backfill" (a dry run, then `--apply`).
 - **PR-038's re-read** (Sat 21 Nov, `PR-038-R1`) and **PR-040's walk-through** (`PR-040-W1`,
   guide 11-M).
-- **Optional:** removing the weekly watchdog line on the off-site copy (a registry edit).
+- **Optional:** remove the weekly off-site-copy watchdog line.
 
 ## Watched, and from when
 
@@ -76,11 +77,12 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Tue 1 Dec | `PR-037-W2` | the shelf, ideas offered a day and holdings after two Saturdays; BACKLOG B-14 |
 | Thu 3 Dec | `PR-036-W10` | share invested and holdings, 10 sessions after the deposit |
 | Fri 4 Dec | `PR-043-W2` | two engines beside Serper: which one PR-044 reads |
+| Sun 6 Dec† | `PR-018-W1` | the conviction check line, then each month's first Sunday |
 | by Thu 10 Dec | `PR-001-E1` | needs your eyes: member screens (guide 11-H, 11-I, 11-J) |
 | Mon 14 Dec | `PR-014-R1` | results at 4 weeks; which paused cards to promote |
 | Mon 11 Jan 2027 | `PR-014-R2` | results at 8 weeks; whether to promote CLEAN-006 |
 
-‡ If that day's review opens a position; a later first buy moves it. `PR-014-D1`, `R1` and
+† If deployed by then; else 3 Jan. ‡ If that day's review opens a position; a later first buy moves it. `PR-014-D1`, `R1` and
 `R2` keep their dates; their baseline note says capital changes on the deposit day.
 
 ## 18 Nov, morning (autopilot): PR-038's rule predeclared; its read waits for your word

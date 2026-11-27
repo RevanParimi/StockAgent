@@ -183,7 +183,7 @@
     "core/config/settings/__init__.py",
     "core/intelligence/rl/nse_calendar.py"
    ],
-   "lines": 171,
+   "lines": 469,
    "owner": "M11.1",
    "path": "core/audit/ideas.py"
   },
@@ -228,7 +228,7 @@
     "src/backend/shared/config/settings/loader.py",
     "src/backend/shared/schemas/audit.py"
    ],
-   "lines": 233,
+   "lines": 239,
    "owner": "M11.1",
    "path": "core/audit/report.py"
   },
@@ -1818,6 +1818,7 @@
     "core/audit/benchmark.py",
     "core/audit/ideas.py",
     "core/audit/store.py",
+    "core/config/settings/__init__.py",
     "core/intelligence/algorithms/indicators/fetcher.py",
     "core/intelligence/rl/nse_calendar.py",
     "core/portfolio/advisor.py",
@@ -1831,7 +1832,7 @@
     "src/backend/shared/config/settings/loader.py",
     "src/backend/shared/data/fetchers/symbol_resolver.py"
    ],
-   "lines": 1572,
+   "lines": 1600,
    "owner": "M5.7",
    "path": "core/portfolio/results.py"
   },
@@ -10272,7 +10273,7 @@
   ]
  },
  "stamp": {
-  "commit": "a3246ae55819b3e533f524b6921001ee45b6a0d6",
+  "commit": "5d83226c361a7a30e09a50fd23bed1e6e2edaa4e",
   "uncommitted_code": true
  },
  "stores": [

@@ -2834,6 +2834,50 @@ or none to be had).
 at 0.80 from Monday 9 Nov's. The shelf lane grades ABC once, at 0.80 (the
 shelf's current value) from the close the first dive read.
 
+**Does conviction predict?** A conviction check over the `dive` rows at 30
+sessions, at the conviction each dive was issued with (`core/audit/ideas.py`).
+Four groups, a boundary going to the higher one: dives **rejected under 0.55**
+(any recorded verdict), and **BUY dives at 0.55 to under 0.65, 0.65 to under
+0.75, and 0.75 and above**. A dive at 0.55 or more that was not rated a BUY is
+in no group (sizing by conviction applies to buys), nor is one with no recorded
+verdict or with insufficient data; each is counted. "BUY" is the verdict the
+grade holds, the composite's band, as in the table above. The shelf and every
+buy door also ask for the model's own BUY ("A buy needs the model's BUY too"),
+which the grade does not carry, so a BUY group can hold a dive the shelf
+refused. Each group says how many stocks its dives are of: a stock dived again
+each month counts once a dive, so 30 dives can be far fewer than 30 stocks. The
+group edges are fixed in code; the shelf's floor setting does not move them.
+The audit report carries the table over every graded dive, and so does the
+monthly scorecard line (below). Its older "Conviction calibration" line reads
+the shelf lane, whose conviction is the shelf's value when a grade is taken.
+
+The rule, predeclared in code on 27 Nov 2026: conviction predicts when the
+mean excess of BUY dives at 0.75 and above is at least 2 points over that of
+BUY dives at 0.55 to under 0.65, with 30 or more dives in each, at two monthly
+looks in a row. The gap is taken from the two means as the line shows them, to
+two places.
+
+- A **look** is a monthly check at which each of the two groups holds 30 or
+  more graded dives that no other look has read. It judges those alone and
+  uses up every unread dive graded by then, so no dive counts in two looks.
+- A month without that many is no look: it neither counts nor breaks the run.
+  A look that does not pass starts the run again. A pass, once stored, stays,
+  and a later look that fails is said beside it.
+- After 300 graded dives, while the rule has not passed, a gap over all of them
+  short of 2 points is said plainly (and, when it is below zero, that higher
+  conviction did worse), with the three choices: an independent challenge to
+  every BUY, two runs that must agree, or a better model. While the latest look
+  passed, the gap is shown with no conclusion. With under 30 in either group it
+  reads "too few to judge".
+- The check sizes and changes nothing. A pass makes size by conviction ready
+  for the owner to decide.
+
+**Example:** at January's first Sunday, 34 BUY dives at 0.75 and above mean
++4.1 points and 41 at 0.55 to 0.65 mean +0.3: a gap of 3.8, a pass, the first
+of two. February's look reads only the dives graded since: if 30 and 30 new
+ones show +3.5 and +1.0, the gap is 2.5 and the rule has passed. Had February
+held 29 new dives in either group, there would be no look that month.
+
 **What the record holds, and from when.** `dives.jsonl` records each dive at
 the dive from the first discovery run after it was deployed. That first run
 also seeds it from the dive memo (each stock's latest dive of the last month,
@@ -2865,6 +2909,7 @@ week whose sessions are not over is never stored.
 | Holding period | Median exchange sessions held by the positions closed this week. |
 | Idea quality | From the auditor's shelf lane: how many shelf ideas beat the Nifty 10 and 30 sessions after they were shelved, whether bought or not, with the median gap in points. Only grades matured by the week's end count. It measures the idea supply, not the portfolio, and it is a line, not a flag. |
 | Every deep dive | From the auditor's idea lanes (above): at 30 sessions from the next session's open, BUY dives, rejected dives, screen-only candidates and the bare model's BUYs against the Nifty, each with its mean and median gap in points, the share that beat it and its n ("too few to judge" under 30), and BUY dives by graph. Only grades matured by the week's end count. Paper research: it is a line, not a flag. |
+| Conviction check | Only on the scorecard of a month's first Sunday (a week whose Sunday is the 1st to the 7th), and only the default user's, whose store holds the dive grades: the four conviction groups over every dive graded at 30 sessions by the week's end, each with its n ("too few to judge" under 30), the rule, this month's look or why there is none, whether the rule has passed and, after 300 graded dives, a flat or negative gap ("Every deep dive graded", above). The row stores this month's look with the dives it read, so a later month never reads them again; a week not yet over is not stored and spends none. Paper research: it is a line, not a flag, and it changes no size or trade. |
 | By exit reason | The same round trips over the last 13 weeks and since the start, each under exactly one reason: the one its closing sale was made for. A SWITCH is "SWITCH sale" and a TRIM that sold the last share "TRIM", whatever their triggers. An EXIT is its first trigger in the order the advisor checks them: another company's analysis, stop, case broken, price-path exit, shock, crisis, trailing stop (a trade sold on two is counted once, under the first, and the line says how many were); an EXIT on a code with no name here shows that code; one with no code is "other (no reason recorded)", never dropped. Your own sales are "sold by you". For each reason and in total: count, wins and average win, losses and average loss, and the mean result a trade, before costs. |
 | Bought back | From the ledger alone: each stock bought again after a sale emptied its position (by any rule or by you), over the last 4 weeks and since the start, with the charges recorded on that sale and that buy; a round trip whose rows carry no charges (written before charges were recorded) is counted and said. A top-up of a position still held is not one. |
 | Exit rule test | From `exit_shadow.jsonl` (section 6): which rule was acting at the latest recorded review, and the gate worded for that rule; on how many decisions the price-path rule and the evidence rule disagreed (one per holding, on its first disagreeing day), in how many holding-days reviewed, and how many later days of the same disagreements were not counted; how often the evidence rule was right at 10 and 30 sessions and its mean result a decision against where the money went (how many against cash, how many against the Nifty), with the mean against the Nifty alone beside it; what is still pending, has no price, or has no result because a corporate action could not be ruled out or allowed for (naming those stocks); this week's look at the switch gate ("not worse" on a pass, plus "better" when it applies, or "cannot judge" when more decisions are set aside than the cap allows); and each decision set aside from the gate, with its decision day and why its result can never be known. The row stores the look, so the next week can tell whether the gate passed twice in a row. Shown once a row exists. |

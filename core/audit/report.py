@@ -15,7 +15,8 @@ from core.audit.metrics import (
 )
 from backend.shared.schemas.audit import IDEA_LANES
 from core.audit.idea_lanes import idea_horizons
-from core.audit.ideas import dive_coverage, horizon_text, idea_block
+from core.audit.ideas import (
+    conviction_table, dive_coverage, horizon_text, idea_block, table_text)
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,7 @@ def _ideas(everything: list) -> dict:
     leaves the coverage out, never the block."""
     rows = [r for r in everything if r.lane in IDEA_LANES]
     block = idea_block(rows, idea_horizons())
+    block["conviction"] = conviction_table(rows)      # PR-018: the scorecard's groups
     try:
         from datetime import date
         from core.discovery.dive_record import DiveRecord
@@ -205,10 +207,12 @@ def render_section(report: dict) -> str:
         lines.append("")
     spread = report.get("conviction_spread")
     if spread is None:
-        lines.append("Conviction calibration: not enough populated buckets yet.")
+        lines.append("Conviction calibration (shelf ideas, conviction as read when graded): "
+                     "not enough populated buckets yet.")
     else:
         lines.append(
-            f"Conviction calibration: top-minus-bottom decile spread "
+            f"Conviction calibration (shelf ideas, conviction as read when graded): "
+            f"top-minus-bottom decile spread "
             f"{spread:+.2f}pp (flat ⇒ conviction carries no information)."
         )
     lines.append("")
@@ -229,5 +233,7 @@ def render_section(report: dict) -> str:
                      "(paper research, excess over the Nifty in points):")
         for horizon in ideas["horizons"]:
             lines.append("  " + horizon_text(ideas, int(horizon)))
+        if ideas.get("conviction"):
+            lines.append("  Conviction check. " + table_text(ideas["conviction"]))
         lines.append("")
     return "\n".join(lines)

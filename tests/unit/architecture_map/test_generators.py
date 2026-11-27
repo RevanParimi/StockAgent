@@ -231,6 +231,61 @@ def test_a_badly_written_tree_names_the_line(text, message):
         tree.parse_tree(text)
 
 
+# -- flow marks (MAP-002) ------------------------------------------------------
+
+MARKED = ("root\n  ? is it\n    ! yes ─► stop\n  > ?! other ─► out\n  > then this\n"
+          "  >x and >= 5\nsecond\n")
+
+
+def test_flow_marks_are_read_into_the_node_and_left_out_of_the_text():
+    root = tree.parse_tree(MARKED)[0]
+    one, two, three, plain = root["children"]
+    assert one == {"text": "is it", "kind": "decision", "children": [
+        {"text": "yes ─► stop", "kind": "end", "children": []}]}
+    assert two == {"text": "other ─► out", "kind": "decision", "ends": True, "then": True,
+                   "children": []}
+    assert three == {"text": "then this", "then": True, "children": []}
+    # a mark needs a space after it: these are plain text, and an unmarked node says nothing
+    assert plain == {"text": ">x and >= 5", "children": []}
+    assert root == {"text": "root", "children": root["children"]}
+
+
+def test_the_drawn_tree_never_shows_the_marks():
+    drawn = tree.render_tree(tree.parse_tree(MARKED))
+    assert drawn == ["root", "├── is it", "│   └── yes ─► stop", "├── other ─► out",
+                     "├── then this", "└── >x and >= 5", "second"]
+
+
+def test_a_continuation_line_belongs_to_the_marked_node():
+    node = tree.parse_tree("root\n  ! end\n  | still the end\n")[0]["children"][0]
+    assert node["text"] == "end\nstill the end"
+    assert node["kind"] == "end"
+
+
+@pytest.mark.parametrize("text,message", [
+    ("> root", "first-level line"),
+    ("root\n  > first child", "nothing above it"),
+    ("root\n  a\n    > b", "nothing above it"),
+    ("root\n  ! done\n  > more", "nothing follows an end"),
+    ("root\n  ! done\n    child", "an end has no children"),
+    ("root\n  ?! no arrow", "needs a"),
+    ("root\n  a\n  ? > b", "> comes before"),
+    ("root\n  a\n  > > b", "written once"),
+    ("root\n  ? ! b", "not both"),
+    ("root\n  ?! ?! b ─► c", "not both"),
+    ("root\n  ? ", "no text"),
+    ("root\n  >  ", "no text"),
+])
+def test_a_badly_marked_tree_names_the_line(text, message):
+    with pytest.raises(tree.TreeError, match=message):
+        tree.parse_tree(text)
+
+
+def test_a_marked_line_error_gives_the_line_it_is_on():
+    with pytest.raises(tree.TreeError, match="line 4"):
+        tree.parse_tree("root\n  a\n  b\n  ?! no arrow\n")
+
+
 # -- the Opus check's cases: a shape the readers do not know stops them ----------
 
 @pytest.mark.parametrize("old,new", [

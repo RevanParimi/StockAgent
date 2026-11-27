@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-27 (NEXT MAP-002; MAP-001 accepted; the push waits for a window)
+# Current handoff - 2026-11-27 (NEXT MAP-003; MAP-002 accepted; its push waits for a window)
 
 ## Now
 
@@ -14,16 +14,18 @@
   B-42: a top-up reads neither verdict (`PR-014-R1`). `PR-047-S1` waits for your word.
 - **Box rules** (OPS-002 to 006): full suite only via `scripts/ci/guarded_suite.py`; a box event
   holds the autopilot until `autopilot.sh seen`; `autopilot.sh health` writes a daily box line.
-- **27 Nov, MAP-001 done** ([receipt](evidence/MAP-001.md),
-  [TREES.md](../../architecture-map/TREES.md)): code changes now need the map regenerated.
-- **Next `continue`:** **MAP-002** (light, 5 points), then MAP-003 to MAP-005, PR-007 (your order,
+- **27 Nov, MAP-001 and MAP-002 done** ([receipt](evidence/MAP-002.md)): open
+  [the 3D map](../../architecture-map/index.html) (offline). Code changes need the map
+  regenerated; curated, setting or job changes also its page rebuilt (START HERE).
+- **Next `continue`:** **MAP-003** (light, 3 points), then MAP-004, MAP-005, PR-007 (your order,
   26 Nov). **Autopilot, your word:** run to MAP-005; the phase that accepts it runs `/home/coder/project/autopilot/autopilot.sh stop` before
   writing its status. `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`: production reads,
   your word.
 - **Autopilot** (started 14:49 IST, 26 Nov): its retry box checks and health line need your next
   `start`.
-- **Git:** `origin/main` = `809a5ea`. The next push window is 00:10–06:20 IST; the runner pushes
-  between phases after the guarded suite, then check the deploy and `/health`.
+- **Git:** `origin/main` = `809a5ea`; `main` holds the deploy record and MAP-002. The runner
+  pushes between phases in the window (00:10–06:20 IST) after the guarded suite; then check the
+  deploy, `/health` and CI's browser job (B-46).
 
 ## Waits for you
 
@@ -136,7 +138,9 @@ session). Pull `main` first. Git carries the code, the docs, STATE, this file, e
   `src/backend/` or `scripts/`, `config.yaml`, or the map's curated files): run
   `python tools/architecture_map/model/generate.py` and commit what it writes, or CI's guard and
   the suite fail with the reason and the fix. A conflict on `model.json` is resolved the same way
-  (MAP-001; MAP-005 adds the AGENTS.md rule).
+  (MAP-001; MAP-005 adds the AGENTS.md rule). **And rebuild its page** after a change to the
+  curated model, a setting's default or a scheduled job: `cd tools/architecture_map/viewer &&
+  npm ci && npm run build`; a test fails otherwise (MAP-002).
 - **Setup is automatic.** AGENTS.md's first step runs `bash scripts/setup_dev.sh --check`, and `bash scripts/setup_dev.sh`
   when something is missing. It creates `.venv` with the oldest Python from 3.11 up (the laptop keeps `.stockai`), installs
   the three requirement files, runs `npm ci` and installs Playwright's Chromium. On a new copy that took 5 min 26 s on

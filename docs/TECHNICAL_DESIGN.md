@@ -4497,14 +4497,20 @@ three jobs on Linux with Python 3.11 and no secrets:
   ([scripts/ci/check_broad_except.py](../scripts/ci/check_broad_except.py)),
   `check_kt_docs.py` and the architecture map's guard
   (`tools/architecture_map/model/check.py`);
-- the chat-rendering browser suite in Chromium.
+- the browser suites in Chromium (`npm run test:frontend`): chat rendering, the
+  member screens, no invented figures and the architecture map's page.
 
 The architecture map's guard fails when `docs/architecture-map/model.json` or
 `TREES.md` differs from a fresh run of its generator, when the map names a
 path, function or setting that does not exist, or when a job, route or Python
 file belongs to no module. After a code change,
-`python tools/architecture_map/model/generate.py` rewrites both files. The map
-is developer documentation: nothing of it ships in the image.
+`python tools/architecture_map/model/generate.py` rewrites both files. The map's
+3D page, `docs/architecture-map/index.html`, is one self-contained file built
+from the model by `tools/architecture_map/viewer/` (its own npm project,
+`npm run build`); a test fails when the page was not built from the committed
+viewer, or shows other modules, logic, flows, stores, jobs, settings or
+production values than `model.json`. The map is developer documentation:
+nothing of it ships in the image.
 
 The broad-exception guard fails when new code catches every exception without logging,
 re-raising or using it. The 154 handlers that already did so are grandfathered

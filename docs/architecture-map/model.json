@@ -1931,7 +1931,7 @@
   },
   {
    "imports": [],
-   "lines": 420,
+   "lines": 421,
    "owner": "shared",
    "path": "scripts/ci/guarded_suite.py"
   },
@@ -5167,11 +5167,13 @@
            "text": "adapt ─► this stock's learned weights (defaults if none)"
           }
          ],
-         "text": "2 choose weights"
+         "text": "2 choose weights",
+         "then": true
         },
         {
          "children": [],
-         "text": "3 prefetch NSE data once"
+         "text": "3 prefetch NSE data once",
+         "then": true
         },
         {
          "children": [
@@ -5184,24 +5186,30 @@
            "text": "queue the search shadow on a daemon thread (changes nothing)"
           }
          ],
-         "text": "4 bundle (M2.2) + unified analyst (M3.2)"
+         "text": "4 bundle (M2.2) + unified analyst (M3.2)",
+         "then": true
         },
         {
          "children": [
           {
            "children": [],
-           "text": "yes ─► record the failure, raise AnalysisUnavailable\nno verdict, no score row; the caller skips this stock today"
+           "kind": "end",
+           "text": "yes ─► record the failure, raise AnalysisUnavailable;\nno verdict, no score row; the caller skips this stock today"
           }
          ],
-         "text": "5 no dimension scored?"
+         "kind": "decision",
+         "text": "5 no dimension scored?",
+         "then": true
         },
         {
          "children": [],
-         "text": "6 aggregator (M3.3) ─► FinalReport"
+         "text": "6 aggregator (M3.3) ─► FinalReport",
+         "then": true
         },
         {
          "children": [],
-         "text": "7 decision gate (M3.4) ─► may turn the verdict into INSUFFICIENT DATA"
+         "text": "7 decision gate (M3.4) ─► may turn the verdict into INSUFFICIENT DATA",
+         "then": true
         },
         {
          "children": [
@@ -5210,7 +5218,8 @@
            "text": "score history feeds Home, the watchlist, chat and the buy candidates (M6.4)"
           }
          ],
-         "text": "8 record: run summary, score history (scores.db), analysis log, API usage"
+         "text": "8 record: run summary, score history (scores.db), analysis log, API usage",
+         "then": true
         }
        ],
        "text": "analyse(\"MARUTI\")      one run id; every warning in the run carries it"
@@ -5321,18 +5330,22 @@
          "children": [
           {
            "children": [],
+           "kind": "end",
            "text": "valid JSON ─► one output per dimension (score 0..1, texts capped)"
           },
           {
            "children": [],
+           "kind": "end",
            "text": "cut-off JSON ─► salvage the dimensions present; the rest are marked errored"
           },
           {
            "children": [],
+           "kind": "end",
            "text": "garbage or a failed call ─► {} + reason (the orchestrator raises\nAnalysisUnavailable)"
           }
          ],
-         "text": "one reasoning-tier call (with retries), JSON out"
+         "text": "one reasoning-tier call (with retries), JSON out",
+         "then": true
         },
         {
          "children": [],
@@ -5407,19 +5420,23 @@
         },
         {
          "children": [],
-         "text": "conflicts: two dimensions 0.30 or more apart ─► flagged to the model"
+         "text": "conflicts: two dimensions 0.30 or more apart ─► flagged to the model",
+         "then": true
         },
         {
          "children": [],
-         "text": "one reasoning-tier call ─► thesis, drivers, risks, final_score, verdict"
+         "text": "one reasoning-tier call ─► thesis, drivers, risks, final_score, verdict",
+         "then": true
         },
         {
          "children": [],
-         "text": "verdict shadow: log the model's verdict beside the composite's verdict"
+         "text": "verdict shadow: log the model's verdict beside the composite's verdict",
+         "then": true
         },
         {
          "children": [],
-         "text": "the model's own verdict is kept as model_verdict (read by the buy doors, M6)"
+         "text": "the model's own verdict is kept as model_verdict (read by the buy doors, M6)",
+         "then": true
         },
         {
          "children": [
@@ -5448,7 +5465,9 @@
            "text": "(final_score stays the model's; it sets how wide the forecast's confidence is)"
           }
          ],
-         "text": "hard-bind on (rl.hard_bind_verdict_enabled) ─► verdict = the composite's band"
+         "kind": "decision",
+         "text": "hard-bind on (rl.hard_bind_verdict_enabled) ─► verdict = the composite's band",
+         "then": true
         }
        ],
        "text": "SignalAggregator.run(outputs, weights)"
@@ -5502,17 +5521,33 @@
           {
            "children": [],
            "text": "the gate itself crashed (fails closed)"
+          },
+          {
+           "children": [],
+           "kind": "end",
+           "text": "yes ─► ABSTAIN"
           }
          ],
+         "kind": "decision",
          "text": "ABSTAIN if any of"
         },
         {
-         "children": [],
-         "text": "DEGRADED: essentials present, some enrichment (news, macro, flows) missing;\nstill usable"
+         "children": [
+          {
+           "children": [],
+           "kind": "end",
+           "text": "yes ─► DEGRADED"
+          }
+         ],
+         "kind": "decision",
+         "text": "else DEGRADED: essentials present, some enrichment (news, macro, flows) missing;\nstill usable",
+         "then": true
         },
         {
          "children": [],
-         "text": "ACTIONABLE: everything present"
+         "kind": "end",
+         "text": "else ACTIONABLE: everything present",
+         "then": true
         }
        ],
        "text": "assess_analysis(section statuses, dimensions scored)"
@@ -5553,6 +5588,7 @@
          "text": "an unknown mode value ─► fails closed to enforce"
         }
        ],
+       "kind": "decision",
        "text": "Then, by mode"
       }
      ],
@@ -5583,22 +5619,28 @@
        "children": [
         {
          "children": [],
-         "text": "S native and enabled (automobile, banking_bfsi, it_sector, renewable_energy)\n─► itself"
+         "text": "S native and enabled ─► itself (automobile, banking_bfsi, it_sector,\nrenewable_energy)"
         },
         {
          "children": [],
-         "text": "S known but has no native path (pharma, fmcg, metals ... 18 in all) ─► generic"
+         "text": "S known, not native ─► generic: no native path (pharma, fmcg, metals ... 18 in\nall) or switched off"
         },
         {
          "children": [],
          "text": "S unknown ─► generic (automobile only if the fallback flag is turned off)"
-        },
-        {
-         "children": [],
-         "text": "One map for every entry point. Two maps once disagreed and made duplicate\nstores."
         }
        ],
+       "kind": "decision",
        "text": "Which path runs for sector key S?      registry.get_graph_sector(S)"
+      },
+      {
+       "children": [
+        {
+         "children": [],
+         "text": "Two maps once disagreed and made duplicate stores."
+        }
+       ],
+       "text": "One map for every entry point"
       }
      ],
      "name": "Sector routing",
@@ -5771,58 +5813,84 @@
          "children": [
           {
            "children": [],
+           "ends": true,
+           "kind": "decision",
            "text": "no envelope ─► skipped (no_envelope)"
           },
           {
            "children": [],
-           "text": "no row for D ─► skipped (no_forecast_row)"
+           "ends": true,
+           "kind": "decision",
+           "text": "no row for D ─► skipped (no_forecast_row)",
+           "then": true
           },
           {
            "children": [],
-           "text": "row issued on non-actionable data ─► gate (enforce: stop = data_gated)"
+           "kind": "decision",
+           "text": "row issued on non-actionable data ─► gate (enforce: stop = data_gated)",
+           "then": true
           },
           {
            "children": [],
-           "text": "identity or price basis changed ─► gate"
+           "kind": "decision",
+           "text": "identity or price basis changed ─► gate",
+           "then": true
           }
          ],
-         "text": "Step 1   find D's forecast row (this month's envelope, else last month's)"
+         "text": "Step 1   find D's forecast row (this month's envelope, else last month's)",
+         "then": true
         },
         {
          "children": [
           {
            "children": [],
+           "ends": true,
+           "kind": "decision",
            "text": "none ─► skipped (no_actual_data)"
           },
           {
            "children": [],
-           "text": "close not dated D ─► gate (a stale price would fake a flat day)"
+           "kind": "decision",
+           "text": "close not dated D ─► gate (a stale price would fake a flat day)",
+           "then": true
           }
          ],
-         "text": "Step 2   actual close for D (M2.1)"
+         "text": "Step 2   actual close for D (M2.1)",
+         "then": true
         },
         {
          "children": [],
-         "text": "Step 3   error % = (actual − predicted) ÷ predicted; direction right?; timing"
+         "text": "Step 3   error % = (actual − predicted) ÷ predicted; direction right?; timing",
+         "then": true
         },
         {
          "children": [
           {
-           "children": [],
-           "text": "direction right and |error| < 0.5% ─► reuse the forecast's scores (no re-run)"
-          },
-          {
            "children": [
             {
              "children": [],
-             "text": "nothing scored ─► skipped (no_analysis)"
+             "text": "yes ─► reuse the forecast's scores (no re-run)"
             },
             {
-             "children": [],
-             "text": "re-run not actionable ─► gate"
+             "children": [
+              {
+               "children": [],
+               "ends": true,
+               "kind": "decision",
+               "text": "nothing scored ─► skipped (no_analysis)"
+              },
+              {
+               "children": [],
+               "kind": "decision",
+               "text": "re-run not actionable ─► gate",
+               "then": true
+              }
+             ],
+             "text": "no ─► re-run today's analysis (M3)"
             }
            ],
-           "text": "otherwise ─► re-run today's analysis (M3)"
+           "kind": "decision",
+           "text": "direction right and |error| < 0.5%"
           },
           {
            "children": [
@@ -5831,26 +5899,33 @@
              "text": "miss types include data_gap, data_stale, external_shock, timing,\ndirection_flip, model_bias"
             }
            ],
-           "text": "FeedbackAgent (model) ─► miss_type + analysis + new lessons"
+           "text": "FeedbackAgent (model) ─► miss_type + analysis + new lessons",
+           "then": true
           }
          ],
-         "text": "Step 4   why did we miss?"
+         "text": "Step 4   why did we miss?",
+         "then": true
         },
         {
          "children": [],
-         "text": "Step 5   WeightAdapter (M4.3); + regime multipliers for today only, never saved"
+         "text": "Step 5   WeightAdapter (M4.3); + regime multipliers for today only, never saved",
+         "then": true
         },
         {
          "children": [],
-         "text": "Step 6   lessons ─► the stock's ledger ─► sector and market ledgers by scope\n(M4.4)"
+         "text": "Step 6   lessons ─► the stock's ledger ─► sector and market ledgers by scope\n(M4.4)",
+         "then": true
         },
         {
          "children": [],
-         "text": "Step 6.5 conviction streak ─► \"reversion prior\" (the advisor's TRIM reads it)"
+         "text": "Step 6.5 conviction streak ─► \"reversion prior\" (the advisor's TRIM reads it)",
+         "then": true
         },
         {
          "children": [],
-         "text": "Step 7a  big miss? ─► ThesisReviewer: which assumptions broke? confidence\nmultiplier"
+         "kind": "decision",
+         "text": "Step 7a  big miss? ─► ThesisReviewer: which assumptions broke? confidence\nmultiplier",
+         "then": true
         },
         {
          "children": [
@@ -5871,27 +5946,35 @@
            "text": "new envelope made ─► skip 7b"
           }
          ],
-         "text": "Re-forecast (live month only, not paper; the first match wins)"
+         "kind": "decision",
+         "text": "Re-forecast (live month only, not paper; the first match wins)",
+         "then": true
         },
         {
          "children": [],
-         "text": "Step 7b  revise the remaining rows' confidence"
+         "text": "Step 7b  revise the remaining rows' confidence",
+         "then": true
         },
         {
          "children": [],
-         "text": "Step 8   append a feedback entry to the month's log  ◄── this is \"output\""
+         "text": "Step 8   append a feedback entry to the month's log  ◄── this is \"output\"",
+         "then": true
         },
         {
          "children": [],
-         "text": "Step 8.5 DossierCurator updates the company dossier (every day; never blocks)"
+         "text": "Step 8.5 DossierCurator updates the company dossier (every day; never blocks)",
+         "then": true
         },
         {
          "children": [],
-         "text": "off-market signals; was news available? (recorded per stock per day)"
+         "text": "off-market signals; was news available? (recorded per stock per day)",
+         "then": true
         },
         {
          "children": [],
-         "text": "Step 9   last trading day of the month ─► seasonal validation"
+         "kind": "decision",
+         "text": "Step 9   last trading day of the month ─► seasonal validation",
+         "then": true
         }
        ],
        "text": "run_daily_review(stock, session D)"
@@ -6375,6 +6458,8 @@
        "children": [
         {
          "children": [],
+         "ends": true,
+         "kind": "decision",
          "text": "identity changed or unresolved ─► HOLD (note IDENTITY); even exits wait"
         },
         {
@@ -6385,15 +6470,15 @@
           },
           {
            "children": [],
-           "text": "stop_breach ............... unrealised P/L ≤ −stop%\nstop = 3 × ATR(20), clamped: large cap 8–12%, mid 12–18%, small 15–22%\n(unknown size counts as mid; a conservative profile tightens one step)"
+           "text": "stop_breach ............... unrealised P/L ≤ −stop%;\nstop = 3 × ATR(20), clamped: large cap 8–12%, mid 12–18%, small 15–22%\n(unknown size counts as mid; a conservative profile tightens one step)"
           },
           {
            "children": [],
-           "text": "case_broken (evidence rule, after 10 sessions) ... a material negative filing,\na fresh actionable SELL analysis, or the close at the invalidation price"
+           "text": "case_broken (evidence rule, after 10 sessions) .. a material negative filing,\na fresh actionable SELL analysis, or the close at the invalidation price"
           },
           {
            "children": [],
-           "text": "or thesis_break (legacy rule) ... the thesis reviewer says \"not intact\" and\nthe forecast path is falling"
+           "text": "or thesis_break (legacy rule) .. the thesis reviewer says \"not intact\" and\nthe forecast path is falling"
           },
           {
            "children": [],
@@ -6406,9 +6491,16 @@
           {
            "children": [],
            "text": "trailing_stop_breach ...... was up ≥ 10%, then fell ≥ stop% from its peak"
+          },
+          {
+           "children": [],
+           "kind": "end",
+           "text": "yes ─► verdict EXIT"
           }
          ],
-         "text": "EXIT if any trigger fires"
+         "kind": "decision",
+         "text": "EXIT if any trigger fires",
+         "then": true
         },
         {
          "children": [
@@ -6419,9 +6511,16 @@
           {
            "children": [],
            "text": "reversion prior ≥ 0.20"
+          },
+          {
+           "children": [],
+           "kind": "end",
+           "text": "yes ─► verdict TRIM"
           }
          ],
-         "text": "else TRIM if P/L ≥ +25% and"
+         "kind": "decision",
+         "text": "else TRIM if P/L ≥ +25% and",
+         "then": true
         },
         {
          "children": [
@@ -6448,14 +6547,28 @@
           {
            "children": [],
            "text": "data gate: fresh close, actionable forecast .. (else note DATA_GATE, no ADD)"
+          },
+          {
+           "children": [],
+           "kind": "end",
+           "text": "yes ─► verdict ADD"
           }
          ],
-         "text": "else ADD if all of"
+         "kind": "decision",
+         "text": "else ADD if all of",
+         "then": true
         },
         {
          "children": [],
-         "text": "else HOLD"
-        },
+         "kind": "end",
+         "text": "else HOLD",
+         "then": true
+        }
+       ],
+       "text": "decide(signals, holding)      a pure function, no model"
+      },
+      {
+       "children": [
         {
          "children": [],
          "text": "EXIT + a stronger shelf idea in an underweight sector (conviction gap ≥ 0.15,\ngate passes) ─► SWITCH (sell this one, buy that one)"
@@ -6473,7 +6586,7 @@
          "text": "notes: EARNINGS_GAP_PROTECTION, POSITION_LARGE (>10%),\nSECTOR_CONCENTRATION_HIGH (>30%), ENVELOPE_AFTER_CLOSE"
         }
        ],
-       "text": "decide(signals, holding)      a pure function, no model"
+       "text": "After the verdict, before it is recorded"
       },
       {
        "children": [],
@@ -6518,11 +6631,13 @@
           },
           {
            "children": [],
-           "text": "2 BUYS: SWITCH buy legs, then ADDs (25% of the holding's value) by confidence\nADD cooldown: 5 sessions between two buys of one stock"
+           "text": "2 BUYS: SWITCH buy legs, then ADDs (25% of the holding's value) by confidence;\nADD cooldown: 5 sessions between two buys of one stock",
+           "then": true
           },
           {
            "children": [],
-           "text": "3 idle-cash deployment, if it is on for this portfolio (M5.4)"
+           "text": "3 idle-cash deployment, if it is on for this portfolio (M5.4)",
+           "then": true
           }
          ],
          "text": "fixed order"
@@ -6538,6 +6653,7 @@
            "text": "NSE surveillance: listed active, no ASM or GSM stage"
           }
          ],
+         "kind": "decision",
          "text": "every buy must pass"
         },
         {
@@ -6563,7 +6679,20 @@
            "text": "the idea's analysis is of this symbol, not another company"
           }
          ],
-         "text": "a new position (SWITCH buy leg, idle-cash buy) must also pass"
+         "kind": "decision",
+         "text": "a new position (SWITCH buy leg, idle-cash buy) must also pass",
+         "then": true
+        },
+        {
+         "children": [],
+         "ends": true,
+         "kind": "decision",
+         "text": "any check fails ─► skipped; the money stays in cash; the reason is recorded",
+         "then": true
+        },
+        {
+         "children": [],
+         "text": "every trade, sells too, pays its costs (STT, stamp, exchange, SEBI, GST, DP) from\ncash"
         },
         {
          "children": [],
@@ -6571,18 +6700,11 @@
         },
         {
          "children": [],
-         "text": "any check fails ─► skipped; the money stays in cash; the reason is recorded"
-        },
-        {
-         "children": [],
-         "text": "every trade pays its costs (STT, stamp, exchange, SEBI, GST, DP) from cash"
-        },
-        {
-         "children": [],
          "text": "txn_id = hash(user, date, symbol, side, ref) ─► a re-run never trades twice"
         },
         {
          "children": [],
+         "kind": "decision",
          "text": "a new position ─► an investment case is written (M5.5)"
         },
         {
@@ -6915,6 +7037,7 @@
          "children": [
           {
            "children": [],
+           "kind": "decision",
            "text": "no listing ─► no stock can be confirmed as a company ─► no deep dives this week"
           }
          ],
@@ -6922,7 +7045,8 @@
         },
         {
          "children": [],
-         "text": "2 IPO candidates (up to 2 slots)"
+         "text": "2 IPO candidates (up to 2 slots)",
+         "then": true
         },
         {
          "children": [
@@ -6944,48 +7068,58 @@
            "text": "drop non-companies, classify, pick re-dives"
           }
          ],
-         "text": "3 shelf hygiene"
+         "text": "3 shelf hygiene",
+         "then": true
         },
         {
          "children": [],
-         "text": "4 screen (M6.2) ─► ranked candidates, minus those dived in the last month"
+         "text": "4 screen (M6.2) ─► ranked candidates, minus those dived in the last month",
+         "then": true
         },
         {
          "children": [
           {
            "children": [],
-           "text": "IPO slots first"
+           "text": "re-dives first, up to 45 − IPO slots − 15 calls (15 are kept for new companies)"
           },
           {
            "children": [],
-           "text": "re-dives up to 45 − IPO slots − 15 (15 calls kept for new companies)"
+           "text": "then the IPO candidates, in their slots",
+           "then": true
           },
           {
            "children": [],
-           "text": "new companies in rank order"
+           "text": "then the screen's new companies, in rank order",
+           "then": true
           },
           {
            "children": [],
-           "text": "leftover re-dives take what remains; the rest wait a week"
+           "text": "leftover re-dives take what remains; the rest wait a week",
+           "then": true
           }
          ],
-         "text": "5 deep dives (M6.3), budget 45 analyst calls a week"
+         "text": "5 deep dives (M6.3), budget 45 analyst calls a week",
+         "then": true
         },
         {
          "children": [],
-         "text": "6 record every dive as issued (dives.jsonl); the bare judge asks a plain model\nabout the new ones (M11.4)"
+         "text": "6 record every dive as issued (dives.jsonl); the bare judge asks a plain model\nabout the new ones (M11.4)",
+         "then": true
         },
         {
          "children": [],
-         "text": "7 shelf update: refresh or drop re-dived ideas; add new ones; rotate stale\n(> 60 days)"
+         "text": "7 shelf update: refresh or drop re-dived ideas; add new ones; rotate stale\n(> 60 days)",
+         "then": true
         },
         {
          "children": [],
-         "text": "8 alert to all: \"added to the research shelf, tracking only, not a buy\""
+         "text": "8 alert to all: \"added to the research shelf, tracking only, not a buy\"",
+         "then": true
         },
         {
          "children": [],
-         "text": "9 weekly paper reviews (M6.5)"
+         "text": "9 weekly paper reviews (M6.5)",
+         "then": true
         }
        ],
        "text": "run_discovery_cycle()     each stage non-fatal; failures are listed in the result"
@@ -7056,14 +7190,17 @@
           },
           {
            "children": [],
+           "kind": "decision",
            "text": "a signal without data ─► \"dark\": left out, weights renormalised, named in the\nresult"
           }
          ],
-         "text": "6 signals (raw values, then percentile ranks)"
+         "text": "6 signals (raw values, then percentile ranks)",
+         "then": true
         },
         {
          "children": [],
-         "text": "composite rank ─► shortlist (120)"
+         "text": "composite rank ─► shortlist (120)",
+         "then": true
         },
         {
          "children": [
@@ -7073,7 +7210,9 @@
           },
           {
            "children": [],
-           "text": "surveillance: any ASM or GSM stage ─► reject; suspended ─► reject"
+           "ends": true,
+           "kind": "decision",
+           "text": "surveillance: any ASM or GSM stage, or suspended ─► reject"
           },
           {
            "children": [],
@@ -7081,18 +7220,24 @@
           },
           {
            "children": [],
+           "ends": true,
+           "kind": "decision",
            "text": "promoter pledge > 25% ─► reject"
           },
           {
            "children": [],
+           "kind": "decision",
            "text": "a guard's source is down ─► stock kept, check marked degraded\n(the watchdog warns when it lasts a week)"
           }
          ],
-         "text": "guards on the shortlist"
+         "text": "guards on the shortlist",
+         "then": true
         },
         {
          "children": [],
-         "text": "top 60 candidates ─► screens/<date>_screen.json"
+         "kind": "end",
+         "text": "top 60 candidates ─► screens/<date>_screen.json",
+         "then": true
         }
        ],
        "text": "run_screen()      pure pandas, no model"
@@ -7135,23 +7280,32 @@
        "children": [
         {
          "children": [],
-         "text": "skipped before any model call: not a company; already managed (unless sold);\nalready on the shelf (unless due a re-dive)"
+         "ends": true,
+         "kind": "decision",
+         "text": "not a company, already managed (unless sold) or already on the shelf (unless\ndue a re-dive) ─► skipped before any model call"
         },
         {
          "children": [],
-         "text": "M3 analysis of the exact NSE symbol (native or generic path), with the sector\nquestion in the same call"
+         "text": "M3 analysis of the exact NSE symbol (native or generic path), with the sector\nquestion in the same call",
+         "then": true
         },
         {
          "children": [],
-         "text": "a report of another company ─► no result, no idea (the call still counts)"
+         "ends": true,
+         "kind": "decision",
+         "text": "a report of another company ─► no result, no idea (the call still counts)",
+         "then": true
         },
         {
          "children": [],
-         "text": "code, not the model, sets the entry band (close −3% to +2%) and an ATR-scaled\ninvalidation level (\"the thesis is dead below X\")"
+         "text": "code, not the model, sets the entry band (close −3% to +2%) and an ATR-scaled\ninvalidation level (\"the thesis is dead below X\")",
+         "then": true
         },
         {
          "children": [],
-         "text": "result: verdict, model's own verdict, conviction, gate status, sector key"
+         "kind": "end",
+         "text": "result: verdict, model's own verdict, conviction, gate status, sector key",
+         "then": true
         }
        ],
        "text": "Deep dive (one candidate)"
@@ -7160,12 +7314,14 @@
        "children": [
         {
          "children": [],
+         "kind": "decision",
          "text": "shelved only if: conviction ≥ 0.55, verdict BUY or STRONG BUY by the band AND by\nthe model, of this company, and actionable when the gate is enforced"
         },
         {
          "children": [
           {
            "children": [],
+           "kind": "decision",
            "text": "sector full ─► replaces its weakest idea only if conviction is higher"
           }
          ],
@@ -7173,14 +7329,17 @@
         },
         {
          "children": [],
+         "kind": "decision",
          "text": "shelf full ─► a stronger idea displaces the weakest"
         },
         {
          "children": [],
+         "kind": "decision",
          "text": "re-dive ─► refreshed in place, or dropped (not actionable, below floor, no\nlonger BUY)"
         },
         {
          "children": [],
+         "kind": "decision",
          "text": "latest dive older than 60 days ─► rotated out"
         },
         {
@@ -7253,7 +7412,9 @@
         },
         {
          "children": [],
-         "text": "a stock with no sector key named is not offered"
+         "ends": true,
+         "kind": "decision",
+         "text": "a stock with no sector key named ─► not offered"
         },
         {
          "children": [
@@ -7262,6 +7423,8 @@
            "text": "a watchlist stock the autopilot sold: only an analysis made on or after the\nSaturday after the exit counts"
           }
          ],
+         "ends": true,
+         "kind": "decision",
          "text": "resale wait: sold since its idea was decided ─► not offered until a new deep\ndive (shelf) or analysis (watchlist)"
         }
        ],
@@ -7292,10 +7455,12 @@
         },
         {
          "children": [],
-         "text": "a weekly paper review (run_daily_review paper=True): graded, no learning writes"
+         "text": "a weekly paper review (run_daily_review paper=True): graded, no learning writes",
+         "then": true
         },
         {
          "children": [],
+         "kind": "decision",
          "text": "a new month ─► the envelope is remade if missing"
         }
        ],
@@ -9389,8 +9554,8 @@
   ]
  },
  "stamp": {
-  "commit": "56b3a711b85d6868fa030d40387fefd2526598e2",
-  "uncommitted_code": false
+  "commit": "809a5eadd2c3efa42b7f99c534d8811966a03ff5",
+  "uncommitted_code": true
  },
  "stores": [
   {

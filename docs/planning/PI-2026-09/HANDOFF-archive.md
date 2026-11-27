@@ -14,6 +14,17 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 27 Nov, early morning (autopilot `1127-0359-p11`): MAP-002 → ACCEPTED (light)
+
+- **27 Nov, MAP-002 done** (light, [receipt](evidence/MAP-002.md), base `809a5ea`): the 3D world
+  and the detail panel. `tools/architecture_map/viewer/` builds
+  `docs/architecture-map/index.html`, one offline file: the planes, modules, flows, stores and
+  ring laid out from the model, four views, click to focus, the panel with each part's logic as
+  flowcharts, search, help, manager and developer views. `DESIGN.md` and `UI-CHECKLIST.md` first.
+  The money path's trees carry flow marks, checked against the code. Opus check: accept after
+  fixes (two charts that misstated the code, a page that could go stale unnoticed, smaller ones),
+  fixed. 57 map tests; B-46 added.
+
 ## 27 Nov, night (autopilot `1126-2343-p10`): MAP-001 → ACCEPTED (light)
 
 - **27 Nov, MAP-001 done** (light, [receipt](evidence/MAP-001.md), base `56b3a71`):

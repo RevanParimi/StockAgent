@@ -577,7 +577,7 @@ def test_the_full_suite_is_the_browser_files_apart_and_nothing_dropped():
     launches = re.compile(r'"--test",\s*"tests/frontend/')
     found = sorted(path.relative_to(REPO).as_posix() for path in (REPO / "tests").rglob("test_*.py")
                    if launches.search(path.read_text(encoding="utf-8-sig")))
-    assert len(found) == 3, found
+    assert len(found) == 4, found
     ignored = sorted(Path(a.removeprefix("--ignore=")).relative_to(REPO).as_posix()
                      for a in steps["main"].pytest_args if a.startswith("--ignore="))
     assert ignored == found

@@ -71,39 +71,40 @@ submodules:
       run_daily_review(stock, session D)
         Step 0   regime: VIX, FII proxy, sector RSI, global stress ─► raw label ─►
         | sticky label (M4.5)
-        Step 1   find D's forecast row (this month's envelope, else last month's)
-          no envelope ─► skipped (no_envelope)
-          no row for D ─► skipped (no_forecast_row)
-          row issued on non-actionable data ─► gate (enforce: stop = data_gated)
-          identity or price basis changed ─► gate
-        Step 2   actual close for D (M2.1)
-          none ─► skipped (no_actual_data)
-          close not dated D ─► gate (a stale price would fake a flat day)
-        Step 3   error % = (actual − predicted) ÷ predicted; direction right?; timing
-        Step 4   why did we miss?
-          direction right and |error| < 0.5% ─► reuse the forecast's scores (no re-run)
-          otherwise ─► re-run today's analysis (M3)
-            nothing scored ─► skipped (no_analysis)
-            re-run not actionable ─► gate
-          FeedbackAgent (model) ─► miss_type + analysis + new lessons
+        > Step 1   find D's forecast row (this month's envelope, else last month's)
+          ?! no envelope ─► skipped (no_envelope)
+          > ?! no row for D ─► skipped (no_forecast_row)
+          > ? row issued on non-actionable data ─► gate (enforce: stop = data_gated)
+          > ? identity or price basis changed ─► gate
+        > Step 2   actual close for D (M2.1)
+          ?! none ─► skipped (no_actual_data)
+          > ? close not dated D ─► gate (a stale price would fake a flat day)
+        > Step 3   error % = (actual − predicted) ÷ predicted; direction right?; timing
+        > Step 4   why did we miss?
+          ? direction right and |error| < 0.5%
+            yes ─► reuse the forecast's scores (no re-run)
+            no ─► re-run today's analysis (M3)
+              ?! nothing scored ─► skipped (no_analysis)
+              > ? re-run not actionable ─► gate
+          > FeedbackAgent (model) ─► miss_type + analysis + new lessons
             miss types include data_gap, data_stale, external_shock, timing,
             | direction_flip, model_bias
-        Step 5   WeightAdapter (M4.3); + regime multipliers for today only, never saved
-        Step 6   lessons ─► the stock's ledger ─► sector and market ledgers by scope
+        > Step 5   WeightAdapter (M4.3); + regime multipliers for today only, never saved
+        > Step 6   lessons ─► the stock's ledger ─► sector and market ledgers by scope
         | (M4.4)
-        Step 6.5 conviction streak ─► "reversion prior" (the advisor's TRIM reads it)
-        Step 7a  big miss? ─► ThesisReviewer: which assumptions broke? confidence
+        > Step 6.5 conviction streak ─► "reversion prior" (the advisor's TRIM reads it)
+        > ? Step 7a  big miss? ─► ThesisReviewer: which assumptions broke? confidence
         | multiplier
-        Re-forecast (live month only, not paper; the first match wins)
+        > ? Re-forecast (live month only, not paper; the first match wins)
           external_shock + direction wrong
           thesis multiplier at or below the threshold (thesis_break)
           sticky regime has just turned MACRO_CRISIS (regime_flip)
           new envelope made ─► skip 7b
-        Step 7b  revise the remaining rows' confidence
-        Step 8   append a feedback entry to the month's log  ◄── this is "output"
-        Step 8.5 DossierCurator updates the company dossier (every day; never blocks)
-        off-market signals; was news available? (recorded per stock per day)
-        Step 9   last trading day of the month ─► seasonal validation
+        > Step 7b  revise the remaining rows' confidence
+        > Step 8   append a feedback entry to the month's log  ◄── this is "output"
+        > Step 8.5 DossierCurator updates the company dossier (every day; never blocks)
+        > off-market signals; was news available? (recorded per stock per day)
+        > ? Step 9   last trading day of the month ─► seasonal validation
       Outcome: completed | degraded (written, on data the gate flagged) | data_gated
       | | skipped | failed
       paper=True (discovery's paper lane) ─► the same steps with every learning write

@@ -2,8 +2,8 @@
 
 Status: **adopted as the plan** on 2026-11-23 (the owner, about 00:10 IST: "take it like phases
 that we do and complete all phases of this plan using our autopilot"). MAP-001 (the model, its
-generators and the guard) is implemented; the viewer and later phases are not. Author: Claude +
-Revan. Date: 2026-11-23. Stories:
+generators and the guard) and MAP-002 (the 3D world and the detail panel) are implemented; MAP-003
+to MAP-005 are not. Author: Claude + Revan. Date: 2026-11-23. Stories:
 [MAP-001](../../planning/PI-2026-09/stories/MAP-001.md) to
 [MAP-005](../../planning/PI-2026-09/stories/MAP-005.md).
 

@@ -34,19 +34,19 @@ submodules:
     logic: |
       analyse("MARUTI")      one run id; every warning in the run carries it
         1 resolve the ticker (M2.3); an exact NSE symbol is never sent to a model
-        2 choose weights
+        > 2 choose weights
           learning_mode observe ─► the sector's default weights
           adapt ─► this stock's learned weights (defaults if none)
-        3 prefetch NSE data once
-        4 bundle (M2.2) + unified analyst (M3.2)
+        > 3 prefetch NSE data once
+        > 4 bundle (M2.2) + unified analyst (M3.2)
           write one data-health row: what arrived, what was missing
           queue the search shadow on a daemon thread (changes nothing)
-        5 no dimension scored?
-          yes ─► record the failure, raise AnalysisUnavailable
+        > ? 5 no dimension scored?
+          ! yes ─► record the failure, raise AnalysisUnavailable;
           | no verdict, no score row; the caller skips this stock today
-        6 aggregator (M3.3) ─► FinalReport
-        7 decision gate (M3.4) ─► may turn the verdict into INSUFFICIENT DATA
-        8 record: run summary, score history (scores.db), analysis log, API usage
+        > 6 aggregator (M3.3) ─► FinalReport
+        > 7 decision gate (M3.4) ─► may turn the verdict into INSUFFICIENT DATA
+        > 8 record: run summary, score history (scores.db), analysis log, API usage
           score history feeds Home, the watchlist, chat and the buy candidates (M6.4)
       Who asks for an analysis
         16:30 daily review (re-run on a miss day) ................ M4.2
@@ -80,10 +80,10 @@ submodules:
           | technical, risk
           generic (8) .......... business, fundamentals, valuation, technical, macro,
           | risk, management, earnings
-        one reasoning-tier call (with retries), JSON out
-          valid JSON ─► one output per dimension (score 0..1, texts capped)
-          cut-off JSON ─► salvage the dimensions present; the rest are marked errored
-          garbage or a failed call ─► {} + reason (the orchestrator raises
+        > one reasoning-tier call (with retries), JSON out
+          ! valid JSON ─► one output per dimension (score 0..1, texts capped)
+          ! cut-off JSON ─► salvage the dimensions present; the rest are marked errored
+          ! garbage or a failed call ─► {} + reason (the orchestrator raises
           | AnalysisUnavailable)
         an optional "sector question" from discovery, answered in the same call
   - id: M3.3
@@ -101,11 +101,11 @@ submodules:
       SignalAggregator.run(outputs, weights)
         composite = Σ(score × weight) ÷ Σ(weight), over SCORED dimensions only
           errored dimension ─► excluded, weights renormalised (never counted as 0.5)
-        conflicts: two dimensions 0.30 or more apart ─► flagged to the model
-        one reasoning-tier call ─► thesis, drivers, risks, final_score, verdict
-        verdict shadow: log the model's verdict beside the composite's verdict
-        the model's own verdict is kept as model_verdict (read by the buy doors, M6)
-        hard-bind on (rl.hard_bind_verdict_enabled) ─► verdict = the composite's band
+        > conflicts: two dimensions 0.30 or more apart ─► flagged to the model
+        > one reasoning-tier call ─► thesis, drivers, risks, final_score, verdict
+        > verdict shadow: log the model's verdict beside the composite's verdict
+        > the model's own verdict is kept as model_verdict (read by the buy doors, M6)
+        > ? hard-bind on (rl.hard_bind_verdict_enabled) ─► verdict = the composite's band
           ≥ 0.75 ......... STRONG BUY
           0.55 – 0.75 .... BUY
           0.40 – 0.55 .... NEUTRAL
@@ -124,17 +124,19 @@ submodules:
     config: [decision_gate.mode, decision_gate.min_dimensions_fraction]
     logic: |
       assess_analysis(section statuses, dimensions scored)
-        ABSTAIN if any of
+        ? ABSTAIN if any of
           an essential section (fundamentals, technicals, peers_valuation) not
           | ok / cache_hit
           fewer than 50% of the sector's dimensions scored
           a hollow run, or no structured provenance (the bundle was not described)
           identity unresolved, or prices fetched for another symbol
           the gate itself crashed (fails closed)
-        DEGRADED: essentials present, some enrichment (news, macro, flows) missing;
+          ! yes ─► ABSTAIN
+        > ? else DEGRADED: essentials present, some enrichment (news, macro, flows) missing;
         | still usable
-        ACTIONABLE: everything present
-      Then, by mode
+          ! yes ─► DEGRADED
+        > ! else ACTIONABLE: everything present
+      ? Then, by mode
         record ─► compute it, log to decision_gate.jsonl, change nothing
         enforce ─► an abstained analysis means
           verdict = INSUFFICIENT DATA
@@ -155,10 +157,11 @@ submodules:
            "core/intelligence/rl/workflows/sector_router.py::get_orchestrator"]
     config: [sectors.generic_fallback_enabled]
     logic: |
-      Which path runs for sector key S?      registry.get_graph_sector(S)
-        S native and enabled (automobile, banking_bfsi, it_sector, renewable_energy)
-        | ─► itself
-        S known but has no native path (pharma, fmcg, metals ... 18 in all) ─► generic
+      ? Which path runs for sector key S?      registry.get_graph_sector(S)
+        S native and enabled ─► itself (automobile, banking_bfsi, it_sector,
+        | renewable_energy)
+        S known, not native ─► generic: no native path (pharma, fmcg, metals ... 18 in
+        | all) or switched off
         S unknown ─► generic (automobile only if the fallback flag is turned off)
-        One map for every entry point. Two maps once disagreed and made duplicate
-        | stores.
+      One map for every entry point
+        Two maps once disagreed and made duplicate stores.

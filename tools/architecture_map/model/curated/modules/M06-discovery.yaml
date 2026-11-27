@@ -19,27 +19,27 @@ submodules:
       run_discovery_cycle()     each stage non-fatal; failures are listed in the result
         1 data: end-of-day sync (7 days), bulk/block deals (4 weeks), insider trades,
         | NSE listing
-          no listing ─► no stock can be confirmed as a company ─► no deep dives this week
-        2 IPO candidates (up to 2 slots)
-        3 shelf hygiene
+          ? no listing ─► no stock can be confirmed as a company ─► no deep dives this week
+        > 2 IPO candidates (up to 2 slots)
+        > 3 shelf hygiene
           verify the shelf's analyses: one of another company is dropped
           verify the model's own verdicts: not a BUY ─► dropped; unreadable ─► re-dived
           | first
           drop non-companies, classify, pick re-dives
             order: sold by the autopilot since its dive ─► unverified or unnamed
             | ─► dive older than 30 days
-        4 screen (M6.2) ─► ranked candidates, minus those dived in the last month
-        5 deep dives (M6.3), budget 45 analyst calls a week
-          IPO slots first
-          re-dives up to 45 − IPO slots − 15 (15 calls kept for new companies)
-          new companies in rank order
-          leftover re-dives take what remains; the rest wait a week
-        6 record every dive as issued (dives.jsonl); the bare judge asks a plain model
+        > 4 screen (M6.2) ─► ranked candidates, minus those dived in the last month
+        > 5 deep dives (M6.3), budget 45 analyst calls a week
+          re-dives first, up to 45 − IPO slots − 15 calls (15 are kept for new companies)
+          > then the IPO candidates, in their slots
+          > then the screen's new companies, in rank order
+          > leftover re-dives take what remains; the rest wait a week
+        > 6 record every dive as issued (dives.jsonl); the bare judge asks a plain model
         | about the new ones (M11.4)
-        7 shelf update: refresh or drop re-dived ideas; add new ones; rotate stale
+        > 7 shelf update: refresh or drop re-dived ideas; add new ones; rotate stale
         | (> 60 days)
-        8 alert to all: "added to the research shelf, tracking only, not a buy"
-        9 weekly paper reviews (M6.5)
+        > 8 alert to all: "added to the research shelf, tracking only, not a buy"
+        > 9 weekly paper reviews (M6.5)
   - id: M6.2
     name: Screen and guards
     summary: a ranked shortlist from end-of-day data, then rejections
@@ -57,24 +57,24 @@ submodules:
     logic: |
       run_screen()      pure pandas, no model
         universe: EQ series, above the price floor, companies only (NSE listing)
-        6 signals (raw values, then percentile ranks)
+        > 6 signals (raw values, then percentile ranks)
           momentum ........... 6- and 12-month return ÷ volatility
           delivery_surge
           volume_breakout
           bulk_block ......... bulk and block deal activity
           high_52wk_rs ....... near the 52-week high, relative strength
           insider_buying ..... promoter and director open-market net buying
-          a signal without data ─► "dark": left out, weights renormalised, named in the
+          ? a signal without data ─► "dark": left out, weights renormalised, named in the
           | result
-        composite rank ─► shortlist (120)
-        guards on the shortlist
+        > composite rank ─► shortlist (120)
+        > guards on the shortlist
           liquidity, series, price, circuit streaks (from end-of-day data)
-          surveillance: any ASM or GSM stage ─► reject; suspended ─► reject
+          ?! surveillance: any ASM or GSM stage, or suspended ─► reject
           free-float market cap floor
-          promoter pledge > 25% ─► reject
-          a guard's source is down ─► stock kept, check marked degraded
+          ?! promoter pledge > 25% ─► reject
+          ? a guard's source is down ─► stock kept, check marked degraded
           | (the watchdog warns when it lasts a week)
-        top 60 candidates ─► screens/<date>_screen.json
+        > ! top 60 candidates ─► screens/<date>_screen.json
   - id: M6.3
     name: Deep dive and the shelf
     summary: one analysis per candidate; the best join the shelf
@@ -90,23 +90,23 @@ submodules:
              discovery.stale_days, discovery.redive_after_days]
     logic: |
       Deep dive (one candidate)
-        skipped before any model call: not a company; already managed (unless sold);
-        | already on the shelf (unless due a re-dive)
-        M3 analysis of the exact NSE symbol (native or generic path), with the sector
+        ?! not a company, already managed (unless sold) or already on the shelf (unless
+        | due a re-dive) ─► skipped before any model call
+        > M3 analysis of the exact NSE symbol (native or generic path), with the sector
         | question in the same call
-        a report of another company ─► no result, no idea (the call still counts)
-        code, not the model, sets the entry band (close −3% to +2%) and an ATR-scaled
+        > ?! a report of another company ─► no result, no idea (the call still counts)
+        > code, not the model, sets the entry band (close −3% to +2%) and an ATR-scaled
         | invalidation level ("the thesis is dead below X")
-        result: verdict, model's own verdict, conviction, gate status, sector key
+        > ! result: verdict, model's own verdict, conviction, gate status, sector key
       Shelf (at most 45 active ideas)
-        shelved only if: conviction ≥ 0.55, verdict BUY or STRONG BUY by the band AND by
+        ? shelved only if: conviction ≥ 0.55, verdict BUY or STRONG BUY by the band AND by
         | the model, of this company, and actionable when the gate is enforced
         at most 6 ideas per sector (an unnamed or "generic" key is not capped)
-          sector full ─► replaces its weakest idea only if conviction is higher
-        shelf full ─► a stronger idea displaces the weakest
-        re-dive ─► refreshed in place, or dropped (not actionable, below floor, no
+          ? sector full ─► replaces its weakest idea only if conviction is higher
+        ? shelf full ─► a stronger idea displaces the weakest
+        ? re-dive ─► refreshed in place, or dropped (not actionable, below floor, no
         | longer BUY)
-        latest dive older than 60 days ─► rotated out
+        ? latest dive older than 60 days ─► rotated out
         every change ─► shelf_events.jsonl (feeds the alerts)
   - id: M6.4
     name: Buy candidates
@@ -126,8 +126,8 @@ submodules:
           gets an entry band + invalidation level from the close that analysis read
           a stock the autopilot sold onto the watchlist does not qualify
         both: never an analysis of another company; a held stock keeps its idea
-        a stock with no sector key named is not offered
-        resale wait: sold since its idea was decided ─► not offered until a new deep
+        ?! a stock with no sector key named ─► not offered
+        ?! resale wait: sold since its idea was decided ─► not offered until a new deep
         | dive (shelf) or analysis (watchlist)
           a watchlist stock the autopilot sold: only an analysis made on or after the
           | Saturday after the exit counts
@@ -139,6 +139,6 @@ submodules:
     logic: |
       Every active shelf idea
         a PAPER envelope (generate_forecast paper=True) in a separate store root
-        a weekly paper review (run_daily_review paper=True): graded, no learning writes
-        a new month ─► the envelope is remade if missing
+        > a weekly paper review (run_daily_review paper=True): graded, no learning writes
+        ? a new month ─► the envelope is remade if missing
       Purpose: see how an idea's forecast performs before any money goes into it.

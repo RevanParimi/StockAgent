@@ -69,6 +69,7 @@ BROWSER_FILES = (
     "tests/unit/test_chat_markdown_boundary.py",
     "tests/unit/test_member_screens_pr040.py",
     "tests/unit/test_ui_no_invented_figures_pr001.py",
+    "tests/unit/architecture_map/test_viewer_browser_map002.py",
 )
 
 PASSED, FAILED, CANNOT_RUN, STOPPED_MEMORY, STOPPED_TIME, STOPPED_SIGNAL = range(6)

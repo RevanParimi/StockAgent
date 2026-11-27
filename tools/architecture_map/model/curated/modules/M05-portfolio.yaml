@@ -57,31 +57,35 @@ submodules:
              advisor.switch_conviction_gap]
     logic: |
       decide(signals, holding)      a pure function, no model
-        identity changed or unresolved ─► HOLD (note IDENTITY); even exits wait
-        EXIT if any trigger fires
+        ?! identity changed or unresolved ─► HOLD (note IDENTITY); even exits wait
+        > ? EXIT if any trigger fires
           bought_on_other_analysis .. bought on another company's analysis (sold under
           | either rule)
-          stop_breach ............... unrealised P/L ≤ −stop%
+          stop_breach ............... unrealised P/L ≤ −stop%;
           | stop = 3 × ATR(20), clamped: large cap 8–12%, mid 12–18%, small 15–22%
           | (unknown size counts as mid; a conservative profile tightens one step)
-          case_broken (evidence rule, after 10 sessions) ... a material negative filing,
+          case_broken (evidence rule, after 10 sessions) .. a material negative filing,
           | a fresh actionable SELL analysis, or the close at the invalidation price
-          or thesis_break (legacy rule) ... the thesis reviewer says "not intact" and
+          or thesis_break (legacy rule) .. the thesis reviewer says "not intact" and
           | the forecast path is falling
           shock_reforecast .......... a recent shock re-forecast + falling path
           crisis_regime_bearish ..... MACRO_CRISIS + falling path
           trailing_stop_breach ...... was up ≥ 10%, then fell ≥ stop% from its peak
-        else TRIM if P/L ≥ +25% and
+          ! yes ─► verdict EXIT
+        > ? else TRIM if P/L ≥ +25% and
           confidence has fallen by ≥ 0.05, or
           reversion prior ≥ 0.20
-        else ADD if all of
+          ! yes ─► verdict TRIM
+        > ? else ADD if all of
           the remaining forecast path is UP
           regime is not MACRO_CRISIS or RISK_OFF
           the position is < 10% of equity
           direction accuracy over the last 7 reviews ≥ 60%
           the day's regime is known ........ (else note REGIME_UNAVAILABLE, no ADD)
           data gate: fresh close, actionable forecast .. (else note DATA_GATE, no ADD)
-        else HOLD
+          ! yes ─► verdict ADD
+        > ! else HOLD
+      After the verdict, before it is recorded
         EXIT + a stronger shelf idea in an underweight sector (conviction gap ≥ 0.15,
         | gate passes) ─► SWITCH (sell this one, buy that one)
         TRIM in months 10–12 with the thesis intact ─► HOLD (WAIT_FOR_LTCG)
@@ -103,25 +107,26 @@ submodules:
       execute_advice(advice, closes, session D)      every trade is booked at D's close
         fixed order
           1 SELLS: EXIT (all), SWITCH sell leg (all), TRIM (25%), in symbol order
-          2 BUYS: SWITCH buy legs, then ADDs (25% of the holding's value) by confidence
+          > 2 BUYS: SWITCH buy legs, then ADDs (25% of the holding's value) by confidence;
           | ADD cooldown: 5 sessions between two buys of one stock
-          3 idle-cash deployment, if it is on for this portfolio (M5.4)
-        every buy must pass
+          > 3 idle-cash deployment, if it is on for this portfolio (M5.4)
+        ? every buy must pass
           size: position ≤ 10% and sector ≤ 30% of equity AFTER the trade; ₹10,000
           | cash floor
           NSE surveillance: listed active, no ASM or GSM stage
-        a new position (SWITCH buy leg, idle-cash buy) must also pass
+        > ? a new position (SWITCH buy leg, idle-cash buy) must also pass
           price inside its idea's entry band
           identity resolved; close dated D (enforce)
           resale wait: not sold by this book since its idea was decided
           the analysis rates it BUY, by the composite's band AND by its own model
           the idea's analysis is of this symbol, not another company
+        > ?! any check fails ─► skipped; the money stays in cash; the reason is recorded
+        every trade, sells too, pays its costs (STT, stamp, exchange, SEBI, GST, DP) from
+        | cash
         a top-up (ADD) reads neither verdict: it rests on the advisor's own ADD
         | conditions (M5.2) and the cooldown
-        any check fails ─► skipped; the money stays in cash; the reason is recorded
-        every trade pays its costs (STT, stamp, exchange, SEBI, GST, DP) from cash
         txn_id = hash(user, date, symbol, side, ref) ─► a re-run never trades twice
-        a new position ─► an investment case is written (M5.5)
+        ? a new position ─► an investment case is written (M5.5)
         the managed list follows the holdings
           a sold stock leaves the 16:30 review (unless someone watches it)
           a new holding joins it

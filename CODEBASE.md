@@ -243,9 +243,13 @@ StockAgent-main/
 │   ├── integration/               # Integration tests
 │   └── unit/                      # Unit tests
 ├── tools/                         # Developer tooling: never copied into the image
-│   └── architecture_map/model/    # The architecture map's model (MAP-001): generate.py writes
-│                                  #  docs/architecture-map/model.json and TREES.md from the code
-│                                  #  and curated/ (YAML); check.py is the CI guard
+│   └── architecture_map/
+│       ├── model/                 # The architecture map's model (MAP-001): generate.py writes
+│       │                          #  docs/architecture-map/model.json and TREES.md from the code
+│       │                          #  and curated/ (YAML); check.py is the CI guard
+│       └── viewer/                # The map's 3D page (MAP-002): its own npm project (React,
+│                                  #  three.js, ELK); npm run build writes
+│                                  #  docs/architecture-map/index.html, one offline file
 ├── config/
 │   ├── instruments.yaml           # Instrument registry (ticker → symbol, basis, identity status)
 │   └── sector_toggles.json        # Enable/disable sectors at runtime
@@ -256,7 +260,8 @@ StockAgent-main/
 │                                  #  redeploy. Nothing should default here.
 ├── outputs/                       # Report output files
 ├── docs/                          # Design documentation (index: docs/README.md)
-│   └── architecture-map/          # Generated: TREES.md and model.json (never edit by hand)
+│   └── architecture-map/          # index.html, TREES.md, model.json (generated: never edit
+│                                  #  by hand), DESIGN.md, UI-CHECKLIST.md, README.md
 ├── Dockerfile                     # THE deploy artifact: core/ services/ src/backend→backend/
 │                                  #  scripts/ config.yaml config/ prototypes → anything outside
 │                                  #  its COPY set is dead in prod by construction
@@ -272,7 +277,10 @@ StockAgent-main/
 > `python tools/architecture_map/model/generate.py` and commit what it writes. The guard
 > (`tools/architecture_map/model/check.py`, in CI's guards job and in the tests) fails otherwise,
 > and also when a new job, route or Python file belongs to no module in `curated/`. Read it as
-> trees in [docs/architecture-map/TREES.md](docs/architecture-map/TREES.md).
+> trees in [docs/architecture-map/TREES.md](docs/architecture-map/TREES.md), or open the 3D map,
+> [docs/architecture-map/index.html](docs/architecture-map/index.html). The page holds a copy of
+> the model: after a change to the curated files, a setting's default or a job, rebuild it too
+> ([README](docs/architecture-map/README.md)); a test fails otherwise.
 
 > **Deleted in audit Wave E (2026-07-17, −34.8K lines)** — if you're looking for these, they're
 > gone on purpose: `core/sectors/` (22 sector skeletons, never live), `core/graphs/`,

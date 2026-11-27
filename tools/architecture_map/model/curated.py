@@ -129,7 +129,7 @@ def _module(data: dict, label: str, problems: list[str]) -> dict | None:
         try:
             logic = tree.parse_tree(sub["logic"])
         except tree.TreeError as exc:
-            problems.append(f"{where}: logic tree {exc}; fix: correct the indentation")
+            problems.append(f"{where}: logic tree {exc}; fix: correct the tree")
             continue
         if not logic:
             problems.append(f"{where}: the logic tree is empty; fix: write it")

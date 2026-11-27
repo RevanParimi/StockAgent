@@ -11,7 +11,7 @@ April 2026 version of this page described a layout that no longer exists.
 | `tests/integration/` | Several modules together: API routes, fetchers with mocked transports, stores. |
 | `tests/contract/` | JSON shapes and settings other components rely on. |
 | `tests/test_*.py` | Older top-level tests, collected with the rest. |
-| `tests/frontend/` | The browser suites (Node and Chromium), run by `npm run test:frontend`: the chat Markdown boundary, the Logs screen, real figures with owner-only operator tools (`no_invented_figures.test.mjs`) and the member screens (`member_screens.test.mjs`). Each serves the real prototype files and answers the API from the test's own plan; nothing reaches the network. |
+| `tests/frontend/` | The browser suites (Node and Chromium), run by `npm run test:frontend`: the chat Markdown boundary, the Logs screen, real figures with owner-only operator tools (`no_invented_figures.test.mjs`), the member screens (`member_screens.test.mjs`) and the architecture map (`architecture_map.test.mjs` opens the committed page from disk with the network off; `architecture_map_logic.test.mjs` checks its layout, flowcharts, colours and rebuild without a browser). The app suites serve the real prototype files and answer the API from the test's own plan; nothing reaches the network. |
 | `tests/fixtures/` | Captured payloads. Read them through `Path(__file__)`, never a relative path. |
 | `tests/hermetic.py` | The suite's hermetic boundary, described below. |
 | `tests/guard_plugin.py`, `tests/proc_tree.py` | The memory guard's pytest plugin and its process-tree helpers, described below. |
@@ -63,9 +63,10 @@ On the code-server, run the full suite through the guard, not bare pytest:
 
 The test run before a push (`autopilot/prepush-suite.sh`, outside git) calls
 the same script. The full suite is two steps, and both must pass: `main`
-(everything but the three browser files) and then `browser`
+(everything but the four browser files) and then `browser`
 (`test_chat_markdown_boundary.py`, `test_member_screens_pr040.py`,
-`test_ui_no_invented_figures_pr001.py`). A new test file that starts a browser
+`test_ui_no_invented_figures_pr001.py` and
+`architecture_map/test_viewer_browser_map002.py`). A new test file that starts a browser
 belongs in `BROWSER_FILES` in the script; a test fails if it is missing.
 
 | Rule | Limit | What happens |
@@ -184,7 +185,8 @@ Local runs use Python 3.13 on Windows; CI and production use 3.11 on Linux.
   to fail `test_delivery_api`, `test_ops_alerts` and `test_portfolio_locking`
   intermittently.
 - The browser suites run inside pytest too (`test_chat_markdown_boundary.py`,
-  `test_member_screens_pr040.py`, `test_ui_no_invented_figures_pr001.py`) and
+  `test_member_screens_pr040.py`, `test_ui_no_invented_figures_pr001.py`,
+  `architecture_map/test_viewer_browser_map002.py`) and
   skip there when Node or Chromium is missing. CI runs them as a separate job,
   so there they cannot be skipped.
 

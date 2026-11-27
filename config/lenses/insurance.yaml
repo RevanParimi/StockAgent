@@ -1,0 +1,25 @@
+# PR-032 industry lens (Insurance). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: insurance
+display: "Insurance"
+industries:
+  - "Insurance - Life"
+  - "Insurance - Property & Casualty"
+  - "Insurance - Reinsurance"
+  - "Insurance - Specialty"
+  - "Insurance - Diversified"
+  - "Insurance Brokers"
+kpis:
+  - "premium growth (APE or GWP)"
+  - "value of new business margin"
+  - "combined ratio for general insurers"
+  - "persistency"
+  - "solvency ratio"
+  - "market share"
+news_terms: "results premium growth VNB"
+sector_query: "India insurance premiums IRDAI regulation demand news {month} {year}"
+policy_query: "{company_name} premium growth VNB margin solvency results {year}"
+macro_drivers:
+  - "interest rates"
+  - "equity markets"

@@ -244,6 +244,7 @@ resolved at import, so editing a file does not imply live reconfiguration.
 | `rl.learning_mode: adapt` | Learning switch, env `RL_LEARNING_MODE`. `adapt` lets learned weights and lesson emphasis move decisions; `observe` contains them (section 5). Any other value fails closed to `observe`. Production sets `observe`. |
 | `decision_gate.mode: record` | Essential-data gate switch, env `DECISION_GATE_MODE`. `record` computes and records the gate everywhere and changes nothing; `enforce` withholds verdicts, forecasts, learning and new-risk buys that rest on unverified data or an unresolved identity (sections 4–6). Any other value fails closed to `enforce`. |
 | `peers.count: 5`, `peers.minimum: 3` | Valuation peers: at most 5 same-industry peers, none with fewer than 3 (section 4). `peers.cache_days: 30` and `peers.max_lookups: 25` bound the Yahoo lookups behind them. |
+| `lenses.enabled: false` | Industry lenses: on the general path, word the four web searches from the stock's industry lens (`config/lenses`) and tell the analyst the industry (section 4). Off: today's queries everywhere. Switching it on is the owner's word after the bench. |
 | `search_shadow.enabled: true` | The search shadow (section 4): after each analysis, its company search also goes to each engine in `search_shadow.engines` (Parallel `fast`, then Exa) through OpenRouter, and the results are recorded, never read. `search_shadow.weekly_budget: 200` calls a week per engine. `false` is the rollback. |
 | `discovery.max_unnamed_redives: 2` | A shelf idea still without a sector key after this many re-dives in a row is dropped with the reason (section 8); 0 = no limit. |
 | [`config/instruments.yaml`](../config/instruments.yaml) | The instrument registry: effective-dated records of which provider symbol each listed ticker is priced from, on which price basis, and whether its identity is resolved (section 4). Evidence is needed to resolve an identity, never to quarantine one. It lists TATAMOTORS and HEXAWARE as unresolved, GATI and INOXLEISUR as delisted, and two plain aliases and five NSE renames as resolved. Quarantine acts through `decision_gate.mode`. |
@@ -676,6 +677,69 @@ makers, HDFCBANK five banks, INFY five IT services companies and ADANIGREEN
 three renewable utilities. APOLLOHOSP ("Medical Care Facilities"), LT and
 ITC had fewer than three known peers: 69 of the registry's 202 tickers are
 in such an industry, so they read `peers unavailable`.
+
+### Industry lenses
+
+On the general path (every stock outside automobiles, banking, IT and
+renewables) the four web searches can be worded from the stock's industry
+instead of the same words for every stock
+(`services/data/context/lenses.py`, files in `config/lenses`, format in its
+README). It runs only when
+`lenses.enabled` is on; the setting ships **off**, and with it off every
+query on every path is the one described above. The four sector paths never
+read a lens.
+
+- **A lens** is one small YAML file per industry group: the Yahoo industry
+  labels it covers, the KPIs that move the industry's profits, news terms, a
+  sector query, a page-extract query and macro drivers. It is the first slice
+  of the adopted lenses design, in the file shape SA-026 would extend. Files
+  are drafted offline from a fixed brief (`scripts/lenses/draft_lens.py`, one
+  model call), read by a person and committed; nothing is written at run
+  time, so the same stock on the same day gets the same searches.
+- **Which lens:** the stock's Yahoo industry from the peer choice above. With
+  lenses on, the bundle makes that choice before the searches and hands it to
+  the peers section, so there is still one choice and no extra lookup. A
+  label a lens lists gives that lens; a label none lists gives the default
+  lens, whose sector search is worded from the label; no label keeps today's
+  wording.
+- **The searches** (still three Serper searches and one Tavily page): the
+  company search adds the lens's news terms; the sector search is the lens's
+  own; the macro search names the lens's macro drivers (default lens and no
+  label: "India economy inflation RBI rupee crude oil news"), so no
+  general-path query says "generic" any more; the page extract reads the
+  lens's query.
+- **The analyst is told the industry**: a short block above the sections
+  (`## INDUSTRY`) names the industry, its KPIs and macro items, and says that
+  a number the bundle does not contain stays unknown. It is not a section: it
+  has no status, the data-health row does not count it, it is never
+  essential, and the bundle's length cap applies to the sections beneath it.
+  No prompt file changes.
+- **The record:** the four search sections' provenance holds `lens` (the
+  lens's id, `default` or `none`), so the data-health row has it and dive
+  results can be split by it.
+- **Checks:** the server loads and checks the files at startup: required
+  fields, ids equal to file names, no label in two lenses, only the allowed
+  placeholders, never the word "generic". A broken set is an ERROR line and
+  today's wording; the server still starts. The suite loads the same files.
+- **Coverage:** the Saturday discovery log says how many general-path dives
+  had a lens, the default or no label, and which industries lacked one
+  ("Discovery lenses"). `scripts/lenses/coverage_report.py` counts the last 8
+  weeks against the target of 80%.
+- **Before it acts:** `scripts/lenses/bench.py` compares today's wording (A),
+  the lens searches (B) and the searches with the block (C) on 20 stocks the
+  same day, with its rule written in the script. Switching the setting on is
+  the owner's word after that read.
+
+**Example:** a cement maker (Yahoo: "Building Materials") searched "India
+stock market November 2026 sector news policy demand" and "India generic
+sector macro economy INR USD crude oil RBI November 2026". With lenses on it
+searches "India cement prices demand volumes capacity news November 2026" and
+"India coal petcoke prices housing infrastructure spending diesel freight costs
+economy news November 2026", and the analyst reads that realisation per tonne,
+volumes and power and fuel cost drive its profits. A hospital chain
+("Medical Care Facilities") gets the healthcare lens; a conglomerate, which
+no lens lists, searches "India Conglomerates industry demand prices policy
+news November 2026".
 
 ### Decision gate
 
@@ -4293,7 +4357,10 @@ adopted on 2026-09-26, replaces the per-sector graphs in four parts:
   bands. With fewer than 4 of 6 factors it gives no directional verdict. The
   LLM explains the verdict but cannot change it.
 
-Peers already follow the stock's industry (section 4). SA-026, SA-045 and
+Peers already follow the stock's industry (section 4). The design's first
+slice exists: industry lenses word the general path's searches and tell its
+analyst the industry, off until the owner switches them on (section 4,
+"Industry lenses"). SA-026, SA-045 and
 SA-046 run in shadow. SA-047
 switches only when the engine is right on at least 50% of disagreements with
 today's analyst, and SA-027 then deletes the sector packages. Each lens also

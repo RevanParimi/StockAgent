@@ -1,0 +1,27 @@
+# PR-032 industry lens (Oil and gas). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: oil_gas
+display: "Oil and gas"
+industries:
+  - "Oil & Gas Refining & Marketing"
+  - "Oil & Gas Integrated"
+  - "Oil & Gas E&P"
+  - "Oil & Gas Midstream"
+  - "Oil & Gas Equipment & Services"
+  - "Oil & Gas Drilling"
+  - "Utilities - Regulated Gas"
+kpis:
+  - "gross refining margins"
+  - "marketing margins on petrol, diesel and LPG"
+  - "crude oil and gas production"
+  - "gas sales volumes and spreads"
+  - "government pricing and windfall taxes"
+  - "capex"
+news_terms: "results margins production volumes"
+sector_query: "India oil gas refining margins fuel prices gas pricing policy news {month} {year}"
+policy_query: "{company_name} refining marketing margins gas volumes results commentary {year}"
+macro_drivers:
+  - "crude oil prices"
+  - "LNG prices"
+  - "rupee dollar rate"

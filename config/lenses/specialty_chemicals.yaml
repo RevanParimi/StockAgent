@@ -1,0 +1,22 @@
+# PR-032 industry lens (Chemicals). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: specialty_chemicals
+display: "Chemicals"
+industries:
+  - "Specialty Chemicals"
+  - "Chemicals"
+kpis:
+  - "volume growth by segment"
+  - "gross margin or EBITDA per kg"
+  - "raw material and feedstock prices"
+  - "Chinese pricing and dumping pressure"
+  - "capacity additions and utilisation"
+  - "export demand from US and European customers"
+news_terms: "results volumes margins capacity"
+sector_query: "India specialty chemicals demand prices China dumping exports news {month} {year}"
+policy_query: "{company_name} chemicals volumes margins capex results commentary {year}"
+macro_drivers:
+  - "crude oil prices"
+  - "China chemical prices"
+  - "rupee dollar rate"

@@ -1,0 +1,21 @@
+# PR-032 industry lens (Steel). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: steel
+display: "Steel"
+industries:
+  - "Steel"
+kpis:
+  - "realisation per tonne"
+  - "sales volumes"
+  - "coking coal and iron ore cost per tonne"
+  - "EBITDA per tonne"
+  - "capacity expansion"
+  - "net debt"
+news_terms: "results volumes prices capacity"
+sector_query: "India steel prices demand imports safeguard duty news {month} {year}"
+policy_query: "{company_name} steel volumes realisation EBITDA per tonne results commentary {year}"
+macro_drivers:
+  - "coking coal iron ore prices"
+  - "China steel exports"
+  - "infrastructure spending"

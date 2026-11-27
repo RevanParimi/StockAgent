@@ -154,6 +154,11 @@ today:** RoE/RoCE, debt, cash flow and pledge data. Quality starts thin (§4.2).
 
 ### 4.1 Lenses: sector knowledge as data
 
+**First slice built (PR-032, 27 Nov 2026):** lens files in `config/lenses/` in this shape
+(`industries` holds Yahoo labels, since NSE's industry field is gone), read only for the general
+path's four web searches and an industry block for its analyst, behind `lenses.enabled` (off).
+`store_key`, `benchmark`, `peers` and the rest stay with SA-026.
+
 One small YAML file per industry group. The shape below is illustrative; SA-026 fixes exact values.
 
 ```yaml

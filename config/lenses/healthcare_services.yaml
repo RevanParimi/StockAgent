@@ -1,0 +1,24 @@
+# PR-032 industry lens (Hospitals, diagnostics and medical devices). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: healthcare_services
+display: "Hospitals, diagnostics and medical devices"
+industries:
+  - "Medical Care Facilities"
+  - "Diagnostics & Research"
+  - "Medical Devices"
+  - "Medical Instruments & Supplies"
+  - "Medical Distribution"
+  - "Health Information Services"
+kpis:
+  - "bed occupancy and average revenue per occupied bed"
+  - "new beds and centres added"
+  - "test volumes and revenue per patient"
+  - "EBITDA margin"
+  - "payer mix: cash, insurance and government schemes"
+news_terms: "results occupancy expansion beds"
+sector_query: "India hospitals diagnostics healthcare demand pricing regulation news {month} {year}"
+policy_query: "{company_name} occupancy ARPOB bed expansion results commentary {year}"
+macro_drivers:
+  - "health insurance penetration"
+  - "government health spending"

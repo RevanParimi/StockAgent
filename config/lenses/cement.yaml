@@ -1,0 +1,20 @@
+# PR-032 industry lens (Cement). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: cement
+display: "Cement"
+industries:
+  - "Building Materials"
+kpis:
+  - "realisation per tonne"
+  - "sales volume growth"
+  - "power and fuel cost per tonne"
+  - "capacity utilisation and new capacity"
+  - "EBITDA per tonne"
+news_terms: "results volumes realisation capacity"
+sector_query: "India cement prices demand volumes capacity news {month} {year}"
+policy_query: "{company_name} cement volumes realisation EBITDA per tonne capacity expansion {year}"
+macro_drivers:
+  - "coal petcoke prices"
+  - "housing infrastructure spending"
+  - "diesel freight costs"

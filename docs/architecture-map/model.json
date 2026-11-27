@@ -481,13 +481,14 @@
     "core/discovery/screen.py",
     "core/discovery/sector_naming.py",
     "core/discovery/shelf.py",
+    "services/data/context/lenses.py",
     "services/data/fetchers/bhavcopy.py",
     "services/data/fetchers/bulk_block.py",
     "services/data/fetchers/ipo.py",
     "services/data/fetchers/surveillance.py",
     "src/backend/shared/schemas/discovery.py"
    ],
-   "lines": 309,
+   "lines": 318,
    "owner": "M6.1",
    "path": "core/discovery/__init__.py"
   },
@@ -2040,6 +2041,43 @@
   {
    "imports": [
     "core/config/settings/__init__.py",
+    "core/intelligence/rl/workflows/sector_router.py",
+    "scripts/lenses/coverage_report.py",
+    "services/clients/tavily_fetcher.py",
+    "services/data/context/bundle_builder.py",
+    "services/data/context/lenses.py",
+    "services/data/context/peers.py",
+    "services/data/fetchers/news.py",
+    "src/backend/shared/pipeline/unified_analyst.py",
+    "src/backend/shared/pipeline/verdict_shadow.py"
+   ],
+   "lines": 464,
+   "owner": "M2.2",
+   "path": "scripts/lenses/bench.py"
+  },
+  {
+   "imports": [
+    "core/config/settings/__init__.py",
+    "services/data/context/lenses.py",
+    "services/data/context/peers.py"
+   ],
+   "lines": 197,
+   "owner": "M2.2",
+   "path": "scripts/lenses/coverage_report.py"
+  },
+  {
+   "imports": [
+    "core/config/settings/__init__.py",
+    "services/clients/llm_client.py",
+    "services/data/context/lenses.py"
+   ],
+   "lines": 129,
+   "owner": "M2.2",
+   "path": "scripts/lenses/draft_lens.py"
+  },
+  {
+   "imports": [
+    "core/config/settings/__init__.py",
     "core/discovery/guards.py",
     "core/discovery/shelf.py",
     "core/discovery/universe.py",
@@ -2369,6 +2407,7 @@
     "services/api/routes/scheduler_api.py",
     "services/api/routes/stream.py",
     "services/api/routes/ui_data.py",
+    "services/data/context/lenses.py",
     "services/data/stores/api_usage.py",
     "services/data/stores/chat_session_store.py",
     "services/data/stores/log_store.py",
@@ -2376,7 +2415,7 @@
     "services/data/stores/user_store.py",
     "services/scheduler/python/scheduler.py"
    ],
-   "lines": 558,
+   "lines": 579,
    "owner": "M1.1",
    "path": "services/api/server.py"
   },
@@ -2461,6 +2500,7 @@
     "core/schemas/pipeline.py",
     "services/clients/tavily_fetcher.py",
     "services/data/context/fetch_result.py",
+    "services/data/context/lenses.py",
     "services/data/context/peers.py",
     "services/data/fetchers/fundamentals.py",
     "services/data/fetchers/macro.py",
@@ -2469,7 +2509,7 @@
     "services/data/fetchers/nse_announcements.py",
     "services/data/fetchers/nse_market.py"
    ],
-   "lines": 576,
+   "lines": 668,
    "owner": "M2.2",
    "path": "services/data/context/bundle_builder.py"
   },
@@ -2480,6 +2520,14 @@
    "lines": 122,
    "owner": "M2.2",
    "path": "services/data/context/fetch_result.py"
+  },
+  {
+   "imports": [
+    "src/backend/shared/config/settings/loader.py"
+   ],
+   "lines": 407,
+   "owner": "M2.2",
+   "path": "services/data/context/lenses.py"
   },
   {
    "imports": [
@@ -2853,6 +2901,7 @@
     "services/api/log_buffer.py",
     "services/background/macro_news_fetcher.py",
     "services/data/backup.py",
+    "services/data/context/lenses.py",
     "services/data/fetchers/bhavcopy.py",
     "services/data/fetchers/ipo.py",
     "services/data/stores/atlas_store.py",
@@ -2863,7 +2912,7 @@
     "src/backend/shared/config/settings/loader.py",
     "src/backend/shared/pipeline/no_analysis.py"
    ],
-   "lines": 1574,
+   "lines": 1581,
    "owner": "M1.2",
    "path": "services/scheduler/python/scheduler.py"
   },
@@ -5160,15 +5209,18 @@
     {
      "code": [
       "services/data/context/bundle_builder.py::build_sector_bundle",
-      "services/data/context/fetch_result.py::FetchResult"
+      "services/data/context/fetch_result.py::FetchResult",
+      "services/data/context/lenses.py::LensSet"
      ],
      "config": [
       "unified_analyst.section_max_chars",
       "unified_analyst.bundle_max_chars",
-      "observability.data_health_essential_sections"
+      "observability.data_health_essential_sections",
+      "lenses.enabled"
      ],
      "files": [
-      "services/data/context/**/*.py"
+      "services/data/context/**/*.py",
+      "scripts/lenses/*.py"
      ],
      "id": "M2.2",
      "logic": [
@@ -5252,13 +5304,69 @@
         }
        ],
        "text": "build_sector_bundle(stock, sector)      one fetch pass per analysis; never raises"
+      },
+      {
+       "children": [
+        {
+         "children": [
+          {
+           "children": [],
+           "kind": "end",
+           "text": "no ─► every query is today's; the four sector paths never read a lens"
+          },
+          {
+           "children": [
+            {
+             "children": [
+              {
+               "children": [],
+               "text": "yes ─► its words for the 4 searches; the analyst is told the industry\nand its KPIs above the sections (not a section; never essential)"
+              },
+              {
+               "children": [],
+               "text": "no lens lists it ─► the default lens, worded from the label"
+              },
+              {
+               "children": [],
+               "text": "no label at all ─► today's wording (the macro search drops \"generic\")"
+              }
+             ],
+             "kind": "decision",
+             "text": "a lens file in config/lenses lists the label"
+            },
+            {
+             "children": [],
+             "text": "the 4 search sections record lens: <id> / default / none",
+             "then": true
+            }
+           ],
+           "text": "yes ─► the stock's Yahoo industry, from the one peer choice the bundle makes"
+          }
+         ],
+         "kind": "decision",
+         "text": "the graph is \"generic\" and the setting is on"
+        },
+        {
+         "children": [],
+         "text": "lens files are written offline (scripts/lenses/draft_lens.py) and reviewed;\nchecked at startup (an ERROR line and today's wording if one is broken)"
+        },
+        {
+         "children": [],
+         "text": "scripts/lenses/coverage_report.py and bench.py ─► the owner's production reads"
+        }
+       ],
+       "text": "Industry lenses (general path only; lenses.enabled, default off)"
       }
      ],
      "name": "Sector data bundle",
      "python_files": [
+      "scripts/lenses/bench.py",
+      "scripts/lenses/coverage_report.py",
+      "scripts/lenses/draft_lens.py",
       "services/data/context/__init__.py",
       "services/data/context/bundle_builder.py",
       "services/data/context/fetch_result.py",
+      "services/data/context/lenses.py",
       "services/data/context/peers.py"
      ],
      "summary": "one checked fetch pass per analysis"
@@ -10287,7 +10395,7 @@
   ]
  },
  "stamp": {
-  "commit": "fc01cb407ffad562ed1c12135bebeb8d9f5404a9",
+  "commit": "eb5da629c868e239234bee5f6c09171d4defee5d",
   "uncommitted_code": true
  },
  "stores": [
@@ -11128,6 +11236,12 @@
    "default_source": "config.yaml",
    "env": null,
    "key": "ipo.gmp_enabled"
+  },
+  {
+   "default": false,
+   "default_source": "config.yaml",
+   "env": null,
+   "key": "lenses.enabled"
   },
   {
    "default": "deepseek/deepseek-v4-flash",

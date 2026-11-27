@@ -1,0 +1,20 @@
+# PR-032 industry lens (Agri commodities: sugar, rice, edible oils). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: agri_food
+display: "Agri commodities: sugar, rice, edible oils"
+industries:
+  - "Farm Products"
+kpis:
+  - "sugar or crop realisation"
+  - "cane or crop cost"
+  - "ethanol volumes and prices"
+  - "export quotas and duties"
+  - "inventory levels"
+news_terms: "results prices exports ethanol"
+sector_query: "India sugar rice edible oil prices exports ethanol policy news {month} {year}"
+policy_query: "{company_name} realisation volumes ethanol exports results commentary {year}"
+macro_drivers:
+  - "monsoon rainfall"
+  - "export policy"
+  - "global agri commodity prices"

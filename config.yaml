@@ -446,6 +446,15 @@ peers:
   cache_days: 30
   max_lookups: 25
 
+lenses:
+  # PR-032 (services/data/context/lenses.py): on the general path ("generic"),
+  # word the four web searches from the stock's industry lens
+  # (config/lenses/<id>.yaml, picked by its Yahoo industry label) and tell the
+  # analyst the industry above the bundle. Off: every query is today's. The
+  # four sector paths never read a lens. Switching it on is the owner's word,
+  # after the review and the bench (scripts/lenses/bench.py).
+  enabled: false
+
 # =============================================================================
 # Compass Phase A — Portfolio Core + Position Advisor (spec 2026-07-06)
 # =============================================================================

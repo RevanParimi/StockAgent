@@ -286,6 +286,26 @@ def _log_run_history_check() -> None:
         logger.warning("[startup] run history boot check failed (non-fatal): %s", exc)
 
 
+def _log_lens_check() -> None:
+    """
+    PR-032: load and check the industry lens files (config/lenses) at boot,
+    and say whether `lenses.enabled` is on. Files that do not load (a missing
+    field, a label in two lenses, an unknown placeholder) are logged as an
+    ERROR, and every bundle keeps today's wording; the server still starts,
+    so the daily review and the portfolio never wait on a lens file. The
+    suite loads the same files, so a broken one fails CI before a deploy.
+    """
+    try:
+        from services.data.context.lenses import checked_lenses, startup_line
+        found, why = checked_lenses()
+        if found is None:
+            logger.error("[startup] industry lenses: %s", startup_line())
+        else:
+            logger.info("[startup] industry lenses: %s", startup_line())
+    except Exception as exc:
+        logger.warning("[startup] lens check failed (non-fatal): %s", exc)
+
+
 # ---------------------------------------------------------------------------
 # Calendar first-run
 # ---------------------------------------------------------------------------
@@ -363,6 +383,7 @@ async def lifespan(app: FastAPI):
     _log_volume_check()
     _log_api_usage_check()      # F4: monthly counter must survive redeploys
     _log_run_history_check()    # B1: run summaries must survive redeploys
+    _log_lens_check()           # PR-032: the industry lens files load and are checked
 
     # 1. Calendar file (sync, fast — just a file check + possible HTTP call)
     _ensure_calendar_file()

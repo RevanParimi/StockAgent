@@ -1,0 +1,23 @@
+# PR-032 industry lens (Logistics and shipping). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: logistics
+display: "Logistics and shipping"
+industries:
+  - "Integrated Freight & Logistics"
+  - "Trucking"
+  - "Marine Shipping"
+  - "Railroads"
+kpis:
+  - "volume growth in tonnes, containers or shipments"
+  - "realisation per unit"
+  - "freight rates"
+  - "fleet or capacity utilisation"
+  - "diesel cost"
+news_terms: "results volumes freight rates"
+sector_query: "India logistics freight volumes rates ports rail cargo news {month} {year}"
+policy_query: "{company_name} volumes freight realisation results commentary {year}"
+macro_drivers:
+  - "diesel prices"
+  - "trade volumes"
+  - "global freight rates"

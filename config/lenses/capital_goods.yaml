@@ -1,0 +1,27 @@
+# PR-032 industry lens (Capital goods and electrical equipment). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: capital_goods
+display: "Capital goods and electrical equipment"
+industries:
+  - "Specialty Industrial Machinery"
+  - "Electrical Equipment & Parts"
+  - "Metal Fabrication"
+  - "Industrial Distribution"
+  - "Tools & Accessories"
+  - "Pollution & Treatment Controls"
+  - "Business Equipment & Supplies"
+kpis:
+  - "order inflow"
+  - "order book and book-to-bill"
+  - "execution and revenue growth"
+  - "EBITDA margin"
+  - "commodity costs: copper, steel"
+  - "working capital"
+news_terms: "results orders order book margins"
+sector_query: "India capital goods orders capex transmission industrial demand news {month} {year}"
+policy_query: "{company_name} order inflow order book execution margin guidance {year}"
+macro_drivers:
+  - "government capex"
+  - "private capex"
+  - "copper steel prices"

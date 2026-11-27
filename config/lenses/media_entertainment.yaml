@@ -1,0 +1,23 @@
+# PR-032 industry lens (Media and entertainment). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: media_entertainment
+display: "Media and entertainment"
+industries:
+  - "Entertainment"
+  - "Broadcasting"
+  - "Publishing"
+  - "Advertising Agencies"
+  - "Electronic Gaming & Multimedia"
+kpis:
+  - "advertising revenue growth"
+  - "subscription revenue"
+  - "content costs"
+  - "box office or viewership"
+  - "digital platform growth"
+news_terms: "results advertising subscribers content"
+sector_query: "India media entertainment advertising streaming box office news {month} {year}"
+policy_query: "{company_name} advertising revenue subscribers content costs results {year}"
+macro_drivers:
+  - "advertising spending"
+  - "consumer spending"

@@ -1,0 +1,30 @@
+# PR-032 industry lens (Retail and restaurants). Drafted from the brief in
+# scripts/lenses/draft_lens.py; read by the general path only when
+# lenses.enabled is on. Format: config/lenses/README.md.
+id: retail
+display: "Retail and restaurants"
+industries:
+  - "Specialty Retail"
+  - "Apparel Retail"
+  - "Department Stores"
+  - "Home Improvement Retail"
+  - "Internet Retail"
+  - "Luxury Goods"
+  - "Discount Stores"
+  - "Grocery Stores"
+  - "Pharmaceutical Retailers"
+  - "Restaurants"
+kpis:
+  - "same-store sales growth"
+  - "store additions and retail area"
+  - "revenue per square foot"
+  - "gross margin"
+  - "footfalls and conversion"
+  - "gold prices for jewellers"
+news_terms: "results same store sales stores"
+sector_query: "India retail consumption demand same store sales festive season news {month} {year}"
+policy_query: "{company_name} same store sales growth store additions margins commentary {year}"
+macro_drivers:
+  - "consumer spending"
+  - "food inflation"
+  - "gold prices"

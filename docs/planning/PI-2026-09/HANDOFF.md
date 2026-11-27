@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-27 (NEXT PR-032; PR-041's run waits for you; push pending)
+# Current handoff - 2026-11-27 (NEXT PR-032's fresh review; PR-041's run waits for you; push pending)
 
 ## Now
 
@@ -13,11 +13,14 @@
   production run.
 - **Box:** full suite only via `scripts/ci/guarded_suite.py`; limit 8 GB. After a redeploy
   check `~/devbox/boot.log` (the Chromium reinstall is unproven).
-- **Next `continue`:** **PR-032** (decision path: Opus).
+- **PR-032** ([receipt](evidence/PR-032-implementation.md)): built on `story/PR-032` (`f705a86`),
+  **`review_required`**; `lenses.enabled` ships off, so a deploy changes no query.
+- **Next `continue`:** **PR-032's fresh review** (decision path: Opus).
 - **Production reads, your word:** `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`.
 - **Git:** `origin/main` = `69e7c28`; unpushed on `main`: its deploy record, MAP-003 to MAP-005,
-  PR-007, PR-018 and PR-041. Push from 00:10 IST Sat 28 Nov after the guarded suite (B-53 and
-  B-59 are flaky in its browser step); then check the deploy, `/health` and CI's browser job (B-46).
+  PR-007, PR-018, PR-041, PR-032's records (code on `story/PR-032`). Push from 00:10 IST Sat
+  28 Nov after the guarded suite (B-53 and B-59 are flaky in its browser step); then check the
+  deploy, `/health` and CI's browser job (B-46).
 
 ## Waits for you
 
@@ -34,16 +37,16 @@
 - **PR-047's read** (read-only; from Tue 1 Dec, best Sat 12 or Sun 13 Dec, before `PR-014-R1`):
   say "run the PR-047 measure"; command in its receipt.
 - **PR-037's catch-up run**, a weekday 09:30–14:00 IST: say "run the PR-037 catch-up" in a
-  session and allow it, or run from the StockAgent folder:
-  `railway ssh 'python -c "import os,urllib.request as u;r=u.Request(\"http://127.0.0.1:\"+os.environ.get(\"PORT\",\"8000\")+\"/discovery/run\",method=\"POST\",headers={\"X-Scheduler-Key\":os.environ.get(\"SCHEDULER_KEY\",\"\")});print(u.urlopen(r,timeout=30).status)"'`
-  (prints 202; the key never leaves the container).
-- **`PR-042-W0`'s read** (read-only): `railway ssh 'printenv DECISION_GATE_MODE; python -c "import json,os,collections;p=os.path.join(os.environ.get(\"LOGS_DIR\",\"data/logs\"),\"decision_gate.jsonl\");print(dict(collections.Counter((r.get(\"mode\"),r.get(\"enforced\")) for r in map(json.loads,open(p)) if r.get(\"ts\",\"\")>=\"2026-11-19T18:47\")))"'`.
+  session and allow it, or run the command in [its receipt](evidence/PR-037-implementation.md).
+- **`PR-042-W0`'s read** (read-only; command in STATE `PR-042-W0`).
   Pass: `enforce`, and rows since the deploy read `('enforce', True)`.
 - **PR-033's probe run:** say "run the PR-033 probe" (read-only; the command is in its receipt),
   and confirm the closure list: SA-001 alone.
 - **PR-005's backfill:** say "run the PR-005 backfill" (a dry run, then `--apply`).
 - **PR-038's re-read** (Sat 21 Nov, `PR-038-R1`) and **PR-040's walk-through** (`PR-040-W1`,
   guide 11-M).
+- **PR-032's reads**, after its review and a deploy: "run the PR-032 coverage" (read-only), then
+  "run the PR-032 bench" (it spends). Lenses go on only at your word after it (B-61).
 - **Optional:** remove the weekly off-site-copy watchdog line.
 
 ## Watched, and from when
@@ -72,6 +75,8 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Fri 27 Nov | `PR-047-W1` | after the 16:30 review: no buy whose own model did not say BUY; Sat 28 Nov: `hygiene.model_verdicts`, `not_buy_model` |
 | first review after deploy | `PR-007-W1` | the stored words, the model's share and tokens (your word) |
 | after deploy | `PR-041-W1` | the screen-cut report's one run (your word); B-57's count |
+| after its deploy | `PR-032-C1` | lens coverage of general-path dives, target 80% (your word) |
+| after `C1` | `PR-032-B1` | the lens bench and its rule (your word) |
 | Tue 1 Dec | `PR-047-S1` | PR-047's measure, at your word; best 12-13 Dec |
 | Tue 1 Dec | `PR-014-D1` | the door read: what the buy list offered and refused (and BACKLOG B-13) |
 | Tue 1 Dec | `FIX-015-W1` | every shock sale since the deploy, read with `PR-014-D1` |

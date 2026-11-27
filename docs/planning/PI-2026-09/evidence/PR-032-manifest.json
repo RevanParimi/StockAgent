@@ -1,0 +1,235 @@
+{
+  "story": "PR-032",
+  "phase": "implementation",
+  "baseline": "eb5da62",
+  "revision": "f705a86",
+  "branch": "story/PR-032",
+  "hash_convention": "git blob bytes after .gitattributes normalization (CRLF->LF for text, binary unchanged); verify with scripts/docs/kt_manifest.py verify",
+  "files": [
+    {
+      "path": "CODEBASE.md",
+      "git_blob": "be9edbbb6281518139c42be60b403284d22d719f",
+      "sha256": "6058e26dcfc671f58b591b8d22605db3a6c3248ff4664f7a4d68d8edbada64f2"
+    },
+    {
+      "path": "config.yaml",
+      "git_blob": "d79cf07a13df7178e64317a6585e8797559fa83f",
+      "sha256": "2cf2c750f74e5c7a1f09c17959abdf3e6d79539765add7f78d6bdf370f795854"
+    },
+    {
+      "path": "config/lenses/README.md",
+      "git_blob": "0d4ac7179972a2aedf69e8054ac7ad0027fa54f7",
+      "sha256": "e025134d0a74b28cc101942bd99518b8471e1dd0f4cd8c087a0e8cdaf5d66478"
+    },
+    {
+      "path": "config/lenses/agri_food.yaml",
+      "git_blob": "62658d3d3bcea9732eaf5211dcd94e9403c54368",
+      "sha256": "2cbf7724f8cb8953e966bf0650f82a2754ff89a0a52bbc9e5a2fe228611eb2ba"
+    },
+    {
+      "path": "config/lenses/agri_inputs.yaml",
+      "git_blob": "123d3369fef8cf720a4e5328bbf2b2245cea87be",
+      "sha256": "53a3c8fb330864dfc120d3e40fec0b78af6d3f15cf2e0b2309187550c207e7d5"
+    },
+    {
+      "path": "config/lenses/building_products.yaml",
+      "git_blob": "8be7515c0a7741fe1a23db77ce3e7f8277400f3a",
+      "sha256": "4822e010c33b618e75f66421a0c20ca15a63449a06754b99c49da5a315c22497"
+    },
+    {
+      "path": "config/lenses/capital_goods.yaml",
+      "git_blob": "0895107544cb458fb8147618cb8f2e136d96feea",
+      "sha256": "e7d2a2e06c27f79366202f9fc6ef57a966bba3176e8c4c0abf632e1b510f4fd0"
+    },
+    {
+      "path": "config/lenses/cement.yaml",
+      "git_blob": "d5d16b756e73f5daf13a2527d85e6c158bccb9eb",
+      "sha256": "2b31d9e3308925b28d54a8351f5036ea041334fd225686b9c2d2d0f41b48cdd7"
+    },
+    {
+      "path": "config/lenses/construction_infra.yaml",
+      "git_blob": "6784f1caa1869fd0ba6fb21ff0946990a334f38d",
+      "sha256": "2a596183ed265871043fad64febcfe500d0eb464e0d350b16fa35547142e9514"
+    },
+    {
+      "path": "config/lenses/consumer_durables.yaml",
+      "git_blob": "3c238cdb6aa23d166ba6aadcc600cac174f10d68",
+      "sha256": "228aab4d03dbd946a63b60694c4301319f253a3e8cd05a9ecf2708e1589e56d0"
+    },
+    {
+      "path": "config/lenses/defence.yaml",
+      "git_blob": "f8c08cf73aec3296be813510e7e97b73fdaddb19",
+      "sha256": "27742c4b10468d443e994c683c0aa230c5ab11f52f1f3c6232a38437376d4d08"
+    },
+    {
+      "path": "config/lenses/electronics.yaml",
+      "git_blob": "dc3d11f08c57fd7125856535bbf0eaac477a8dc5",
+      "sha256": "f5483da9b705078f7acc7b7a09636151d5349381fe7ff02569f8d7ebd18eef5f"
+    },
+    {
+      "path": "config/lenses/fmcg.yaml",
+      "git_blob": "b83f037b33343962a2542a4330d5f89282dfdd46",
+      "sha256": "2abae4d79d7bee8b86b173210a1384f8e031a24c3a65efecf031de9b0eaa4d09"
+    },
+    {
+      "path": "config/lenses/healthcare_services.yaml",
+      "git_blob": "1e678902a2fe23e704781beb1632f1077b45e254",
+      "sha256": "dde5ff98af158feecf9603289f2df62d3ee5b16216ad1582469fdd86ba8bc71b"
+    },
+    {
+      "path": "config/lenses/hospitality_travel.yaml",
+      "git_blob": "cc1f3254b44ab81b52e8964e41d6646c6935154c",
+      "sha256": "bfb56891d5481fb992c7c6c7f9a066f06dc00a8732a88878b1933582276d7844"
+    },
+    {
+      "path": "config/lenses/insurance.yaml",
+      "git_blob": "2c2626dbfe5d405feb085fc96b95051620668090",
+      "sha256": "d96ef8aaa4c319df9c2bba2374e58f366f95fe9f068b463f6c61d459c6327c5c"
+    },
+    {
+      "path": "config/lenses/internet_platforms.yaml",
+      "git_blob": "2e647d657c07d368930047e3ced54db193605379",
+      "sha256": "a93952d15a03ed8a70615c9f43078b53e142d94d42852229655d74994644391c"
+    },
+    {
+      "path": "config/lenses/logistics.yaml",
+      "git_blob": "5fa36a17f266431e074f1d9cb9362569dcff1a4d",
+      "sha256": "0474f80af851e8511de080b1fbe85a58406c011f124c4a8dea00b77b189cd60f"
+    },
+    {
+      "path": "config/lenses/media_entertainment.yaml",
+      "git_blob": "3ac20bea53622862873639b6709c4f886260c5cd",
+      "sha256": "aeca95685b7363cad440ac1f24535f68f5ca1be06037ccb27c506f13d3f4961c"
+    },
+    {
+      "path": "config/lenses/metals_mining.yaml",
+      "git_blob": "0e6f7554367d23858bee304af6704f5c7fd01fa5",
+      "sha256": "93d8d9f7553b6b36cda949e0932176ec1ea500d98cbccb48ac0c5add91601c49"
+    },
+    {
+      "path": "config/lenses/oil_gas.yaml",
+      "git_blob": "09ad63d05ee0dfe2fbe2725cbcefc7a0c813d01e",
+      "sha256": "b5d47e669ed51d460442c48f822a753b57e905d07d16e7339b11385c95b58291"
+    },
+    {
+      "path": "config/lenses/paper_packaging.yaml",
+      "git_blob": "fe6e844f25331aa7a96e1bbbfbab5f053aaaa535",
+      "sha256": "88ba6dc1ae59e0a5301f75ff27ebd28048787bfd82fac80bd1ef34947c4fa590"
+    },
+    {
+      "path": "config/lenses/pharma.yaml",
+      "git_blob": "b52145a8566354f9ccc09b564602494c61efa7fc",
+      "sha256": "b44ffa39f5e54d69be05064e38f5baf11ef7663e096e53eb2f56a522ed2312a3"
+    },
+    {
+      "path": "config/lenses/real_estate.yaml",
+      "git_blob": "be835e64d61d6992de38458af6c78b1de51cf1bf",
+      "sha256": "3e6423bdadf10b2309a0eda67dde94884a3c35798dc3dd9b10425810014afcaf"
+    },
+    {
+      "path": "config/lenses/retail.yaml",
+      "git_blob": "e39719e146aca17c4bda4811676bd570dbee3414",
+      "sha256": "1e43af92c6810ff60e3361bfa94ea6972efa5354f9f2eabc689b8ecb160e3e4f"
+    },
+    {
+      "path": "config/lenses/specialty_chemicals.yaml",
+      "git_blob": "2ada8f4a07cb851faef5b0cc82e7b3ee900a20f0",
+      "sha256": "1cd912b4ad97bc402d974dd899fd8ecce8ee157a93800ab7e967ef6a6b2b8671"
+    },
+    {
+      "path": "config/lenses/steel.yaml",
+      "git_blob": "cd13ca1b27971b01d0e54b74beefbcbb272413e5",
+      "sha256": "edec611b26d09d3acb81cff1ba59a9e8a04f85b05550838d1835facdcbbaffc8"
+    },
+    {
+      "path": "config/lenses/textiles_apparel.yaml",
+      "git_blob": "2e1faa18431d61d54d325f0f3c1e1dae2c3f868f",
+      "sha256": "2b0b3a753b9208cf78d11f59e75e44444e840bf4e136d95373c0f7e5167903f4"
+    },
+    {
+      "path": "core/discovery/__init__.py",
+      "git_blob": "fa0ce10293f9f77095226b55a1ace16620ecb87c",
+      "sha256": "c044bfe3bd73e63800eeed6ba7f091f9c21310ea8ace71202d7b864538878a0c"
+    },
+    {
+      "path": "docs/TEAM_TESTING_GUIDE.md",
+      "git_blob": "c1199222fa852457a7576eb442534f29f72942fa",
+      "sha256": "466f1298bafd7253f466cf7596c150753557563e06a6d0152fbbdd70b93023a5"
+    },
+    {
+      "path": "docs/TECHNICAL_DESIGN.md",
+      "git_blob": "a86e1e15d14bdd7f406ed1829e7a7bb730dc5156",
+      "sha256": "b6fbb4d8aebc04abbf6bd8853421a7ee8cca2cd6f9a3fea2102c2f0c294bf7ef"
+    },
+    {
+      "path": "docs/architecture-map/TREES.md",
+      "git_blob": "ae0a140720a28b65a05ffb0ba415cc9195992b5d",
+      "sha256": "e671b9b799986b0b032664086134dfd82eaf2cd5da5484a9673c02babe94488d"
+    },
+    {
+      "path": "docs/architecture-map/index.html",
+      "git_blob": "732e72ba52bfc7c890ae0c3f9cd14b9d2de04d58",
+      "sha256": "d36729e6d9fa271ab5e21c076e4664ebb0941201d79993e8a0e0f97b99d8267a"
+    },
+    {
+      "path": "docs/architecture-map/model.json",
+      "git_blob": "ee661107aa0fcc727acc601742c39f70141a1817",
+      "sha256": "b9864a9bd386341a5b4d7d55d449ee3d6601d75cc0eba71e1f728a8d7fa65605"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-09-26-one-engine-sector-lenses-design.md",
+      "git_blob": "051ab64e11ecbe9e03f58289ad774628b6e66ad5",
+      "sha256": "0c7b708b46a27ab1fe552ad57b27bf0978408178bfcfbf5ff6367b2cb9ca4604"
+    },
+    {
+      "path": "scripts/lenses/bench.py",
+      "git_blob": "8650a3f40b1ea75f6c22cd38138087ea50d69a91",
+      "sha256": "09098c340b0480b3631ebd5c4adf1a611b88e8040a6cfe879e8a3ce9f2a86b0b"
+    },
+    {
+      "path": "scripts/lenses/coverage_report.py",
+      "git_blob": "67c8d3331fc574fc047aa9490e8e1aa2551e8614",
+      "sha256": "c846360888300075792c9dd8945617f9e58839802310537cc81bb51f08ade666"
+    },
+    {
+      "path": "scripts/lenses/draft_lens.py",
+      "git_blob": "b94d11b9aa58fb17dff533c34cb5e8b655ca91bb",
+      "sha256": "9fd96ce2c41fe932f8373ee1915fc62c1ed17b163a7a9cae1c99e1e7d9ca4c26"
+    },
+    {
+      "path": "services/api/server.py",
+      "git_blob": "ececd9e650d6b76bb5d5b83e6fbd86ef2026aac9",
+      "sha256": "6cb7f7842b39c2a8179be02ef44a31cb09a35761420c15b89c5548d7b291968d"
+    },
+    {
+      "path": "services/data/context/bundle_builder.py",
+      "git_blob": "9d623af7d509243fcd9a4c32e8527d1324a1222f",
+      "sha256": "8546e76bc2002279d277fe836185dac98d4dfaaae5c73658fe97fc2469c75c6a"
+    },
+    {
+      "path": "services/data/context/lenses.py",
+      "git_blob": "2a8c2f491cc32860a4d6b528748f1e7e983b3f59",
+      "sha256": "9bf7ac69ed9caf559df4e2932f4f0170e8308eb3540ee23e971174e224459f23"
+    },
+    {
+      "path": "services/scheduler/python/scheduler.py",
+      "git_blob": "3a4d27a1f72353598849e199d3a35968690b1c53",
+      "sha256": "5edf887350138aa3477f416206b8f79a29aae5be2fa9b2c486bca22f674a6e91"
+    },
+    {
+      "path": "tests/unit/test_lens_scripts_pr032.py",
+      "git_blob": "47dbc9489d9575536d62ccc8d40499f825e0e3e0",
+      "sha256": "0c34bd01c919de40705750294ed8ecb3f0dbe5df9fa1825514fe62ebaddb07ee"
+    },
+    {
+      "path": "tests/unit/test_lenses_pr032.py",
+      "git_blob": "c37aed0a968535daa29749677438ea46229ff8e3",
+      "sha256": "8b2a16cc004bfe48ec2f5313544b883413af5c1eaa3143738de4377eaa3c69df"
+    },
+    {
+      "path": "tools/architecture_map/model/curated/modules/M02-data.yaml",
+      "git_blob": "5b271e22a91fcd06f4945b70ef61026d0970c0ae",
+      "sha256": "9aa5c08a14f55040e43a31971bc654ae529dc2904d3ba5111e623a751278b33a"
+    }
+  ]
+}

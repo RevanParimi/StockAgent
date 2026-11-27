@@ -22,21 +22,26 @@ submodules:
     config: [ipo.enabled, ipo.gmp_enabled, ipo.deep_dive_lead_days]
     logic: |
       08:00 and 17:45 refresh: NSE calendar + bid ladder (QIB, retail, total ×) ─► cache
-      19:00 deep dive sweep (reads the cache; no NSE calls)
-        issues closing tomorrow (T-1): full research
-          research: Tavily pages (prospectus financials, peers, promoter, anchors,
-          | use of proceeds, risks)
-          extract: one model call per page; code stamps the page URL on every claim
-          corroborate: every number needs at least 2 domains that agree, else it is None
-        closed but not listed: re-read from the cache (the post-close row)
-      hype
-        demand: fitted on 188 past listings (QIB ≥ total > retail)
-        froth: unfitted (retail ×, skew, cut-off share, GMP) ─► only widens the band
-      substance: profit, revenue, P/E vs peers and QIB × (only QIB × is fitted)
-      verdict
-        SHORT (listing day) lean ─► from demand alone
-        LONG ─► dark: no direction; the reasoning is kept for later
-      narrate: facts only; a number not in the facts ─► rejected; advice words ─► rejected
-      after listing: the auditor's IPO lane grades it
-      Nothing appears on a screen until its visibility milestone passes (the watchdog
-      | tracks it).
+      19:00 deep dive sweep (reads the cache; no NSE calls; at most 5 issues a run)
+        which issues
+          closing tomorrow (T-1): full research
+            research: Tavily pages (prospectus financials, peers, promoter, anchors,
+            | use of proceeds, risks)
+            > extract: one model call per page; code stamps the page URL on every claim
+            > corroborate: every number needs at least 2 domains that agree, else it is None
+          closed but not listed: re-read from the cache (the post-close row)
+        > hype
+          demand: fitted on 188 past listings (QIB ≥ total > retail)
+          froth: unfitted (retail ×, skew, cut-off share, GMP) ─► only widens the band
+        > substance: profit, revenue, P/E vs peers and QIB × (only QIB × is fitted)
+        > verdict
+          SHORT (listing day) lean ─► from demand alone
+          LONG ─► dark: no direction; the reasoning is kept for later
+        > narrate: facts only; a number not in the facts ─► rejected; advice words ─►
+        | rejected
+        > after listing: the auditor's IPO lane grades it
+      What people see
+        the verdicts and notes ─► no screen until the visibility milestone passes (the
+        | watchdog tracks it)
+        the brief and the weekly review ─► an IPO watch: window, bids and a demand-only
+        | lean, labelled research view, not advice

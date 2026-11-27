@@ -14,23 +14,23 @@ submodules:
     config: [scheduler.enabled]
     logic: |
       Docker starts uvicorn with 2 workers ── each worker runs lifespan()
-        every worker
+        every worker first
           logging: console, plus WARNING+ kept in data/telemetry.db
           self-checks in the log: volume mounted? managed_tickers.json? API counter?
           | run history?
-          NSE holiday file has this year? ── no ─► fetch it (hardcoded list as fallback)
-        try to bind 127.0.0.1:59321 (the singleton lock)
-          got it = PRIMARY worker
+          NSE holiday file lacks this year ─► fetch it (hardcoded list as fallback)
+        > ? try to bind 127.0.0.1:59321 (the singleton lock)
+          got it ─► PRIMARY worker
             thread "RL self-heal" (starts after 10 s)
               for each managed stock, in its own sector
-                already done this month (checkpoint file)? ─► skip
-                no envelope this month? ─► generate_forecast (M4.1)
-                  fails ─► skip this stock; the next deploy retries it
-                trading days without a review? ─► run_daily_review for each
-            start the scheduler (M1.2)
-            sweep expired chat sessions and login sessions
-            start the outbox drainer (M9.5)
-          lost it = API-only worker: serves requests, runs no jobs
+                ?! done this month (checkpoint file) ─► skip
+                > ? no envelope this month ─► generate_forecast (M4.1); if it fails, skip
+                | this stock (the next deploy retries it)
+                > backfill: run_daily_review for each trading day without a review
+            > start the scheduler (M1.2)
+            > sweep expired chat sessions and login sessions
+            > start the outbox drainer (M9.5)
+          lost it ─► API-only worker: serves requests, runs no jobs
           Why: before this lock every job ran twice (2x LLM cost, racing file writes).
   - id: M1.2
     name: Scheduler
@@ -48,34 +48,36 @@ submodules:
            "core/intelligence/rl/calendar_updater.py::update_calendar"]
     config: [scheduler.enabled, scheduler.feedback_cron, rl.scheduler_max_workers]
     logic: |
-      scheduler.enabled off ─► start() returns: nothing below runs
-      Registration (APScheduler, timezone Asia/Kolkata)
-        always: daily review, monthly forecast, calendar, ledger cleanup, pre-open check,
-        | backup, 3 Atlas jobs
-        only when the flag is on
-          macro_news.enabled ─► 2 macro news jobs
-          scorecard / event ingest / research loop flags ─► those jobs
-          events.enabled ─► company_events_am, company_events_pm
-          discovery.enabled ─► bhavcopy sync, discovery_weekly
-          delivery.enabled ─► morning_brief, weekly_review
-          audit.enabled ─► audit_nightly
-          ipo.enabled ─► 2 IPO refreshes, IPO deep dive
-          watchdog.enabled ─► ops_watchdog
-        every job: coalesce (missed runs fold into one), misfire grace 15 min to 6 h
-        a job crashes ─► error listener ─► one critical alert to the owner
+      AutomobileScheduler() registers the timed jobs; start() starts them
+        Registration (APScheduler, timezone Asia/Kolkata)
+          always: daily review, monthly forecast, calendar, ledger cleanup, pre-open check,
+          | backup, 3 Atlas jobs
+          only when the flag is on
+            macro_news.enabled ─► 2 macro news jobs
+            scorecard / event ingest / research loop flags ─► those jobs
+            events.enabled ─► company_events_am, company_events_pm
+            discovery.enabled ─► bhavcopy sync, discovery_weekly
+            delivery.enabled ─► morning_brief, weekly_review
+            audit.enabled ─► audit_nightly
+            ipo.enabled ─► 2 IPO refreshes, IPO deep dive
+            watchdog.enabled ─► ops_watchdog
+          every job: coalesce (missed runs fold into one), misfire grace 15 min to 6 h
+          a job crashes ─► error listener ─► one critical alert to the owner
+        > ?! scheduler.enabled off ─► start() returns: registered, but no job runs
+        > ! else the jobs run at their times
       The 16:30 daily-review job (the heart of the day)
         review_date = the previous trading session (skips holidays)
-        cohort = enabled managed stocks, each once (duplicates logged)
-        thread pool ─► run_daily_review(stock, review_date, sector) (M4.2)
+        > cohort = enabled managed stocks, each once (duplicates logged)
+        > thread pool ─► run_daily_review(stock, review_date, sector) (M4.2)
           total budget 300 s × number of stocks
             budget runs out ─► keep the finished reviews, mark the rest timed out,
             | carry on (a slow day must not kill the trading day)
-        each stock gets ONE outcome: completed | degraded | data_gated | skipped | failed
-        produced = completed + degraded
+        > each stock gets ONE outcome: completed | degraded | data_gated | skipped | failed
+        > produced = completed + degraded
           produced = 0 ─► zero-output alert (owner)
           produced < required ─► partial-output alert naming each stock and reason
-        run_post_review_pipeline(review_date) (M5.1); its failure never fails the reviews
-        record the outcome ─► GET /scheduler/status "last_runs"
+        > run_post_review_pipeline(review_date) (M5.1); its failure never fails the reviews
+        > record the outcome ─► GET /scheduler/status "last_runs"
   - id: M1.3
     name: Config and switches
     summary: config.yaml, then the settings the code reads
@@ -90,11 +92,12 @@ submodules:
            "src/backend/shared/config/settings/loader.py::load_yaml"]
     logic: |
       settings.X = cfg("section.key", env="VAR", fallback=...)
-        1 environment variable (Railway) ... wins
-        2 config.yaml ...................... otherwise
-        3 the code's fallback .............. otherwise
-        config.yaml malformed ─► the app refuses to start (fails loudly)
-        config.yaml missing ─► one warning, every fallback applies
+        ?! it names an environment variable, and that is set ─► the variable wins
+        > ?! else config.yaml has the key ─► its value
+        > ! else the code's fallback
+      config.yaml, read once at start
+        malformed ─► the app refuses to start (fails loudly)
+        missing ─► one warning, every fallback applies
       Switches that change behaviour (defaults below; production values at the end)
         rl.learning_mode ................. observe or adapt (M4.3)
         decision_gate.mode ............... record or enforce (M3.4)
@@ -140,7 +143,8 @@ submodules:
       Rules
         writes are atomic (temp file + rename)
         ledgers are append-only
-        transactions.jsonl is the authority; portfolio.json is derived from it
+        transactions.jsonl is the audit authority; portfolio.json is checked against it
+        | each day (M5.6), never repaired from it
       The plane boundary: the portfolio pipeline reads stored forecasts through
       | VerdictStore, and the learning code never imports the user stores (a test checks)
   - id: M1.5

@@ -57,9 +57,11 @@ submodules:
     config: [auth.required, analyse.daily_quota]
     logic: |
       get_current_user(request)
-        auth.required off ─► an anonymous request acts as the owner ("primary")
-        valid bearer token ─► that user (owner or member)
-        otherwise ─► 401
+        ?! a valid bearer token ─► that user (owner or member)
+        > ?! else a token that is invalid or expired ─► 401
+        > ?! else no token, and auth.required off ─► the request acts as the owner
+        | ("primary")
+        > ! else 401
       owner-only routes: deposit, outbox, error backlog, audit backfill ...
       machine routes: X-Scheduler-Key (open, with a warning, while SCHEDULER_KEY is unset)
       quotas: chat questions a day per member; on-demand analyses a day; the owner is
@@ -78,8 +80,8 @@ submodules:
           | cases
           inbox.jsx + brief, digest and weekly views, shown on Today
           settings.jsx, auth.jsx
-        owner only (loaded only for the owner): analytics.jsx, rl-monitor.jsx,
-        | agents-page.jsx (weights), logs.jsx
+        owner only (loaded only for the owner): analytics.jsx, rl-data.jsx,
+        | rl-monitor.jsx, agents-page.jsx (weights), logs.jsx
         chat replies rendered by chat-markdown.js (marked + DOMPurify, pinned with SRI
         | hashes)
         sw.js + manifest.json ─► installable app, web push
@@ -93,17 +95,19 @@ submodules:
     config: [chat.daily_quota]
     logic: |
       POST /ui/chat/stream {message, session_id}
-        signed in? quota left? (members have a daily limit)
-        prompt = system + IST market session + macro context + last 12 messages + message
-        pre-router (no model): a buy / sell / momentum question with a sector?
-          yes ─► run screen_stocks + search_market_news first and add the results
-        tool loop: fast model, at most 4 rounds, 45-second budget
+        ?! not signed in, or no quota left (members have a daily limit) ─► refused
+        > prompt = system + IST market session + macro news + the latest verdicts of the
+        | stocks you may see + last 12 messages + message
+        > pre-router (no model): a buy / sell / momentum question with a sector ─► run
+        | screen_stocks + search_market_news first and add the results
+        > tool loop: fast model, at most 4 rounds, 45-second budget
           the model asks for tools ─► they run in parallel ─► results go back ─► repeat
           no tool call ─► that text is the answer
           13 tools: live price, historical prices, macro news, market news search, screen
           | stocks, stock analysis, analysis history, RL insights, sector snapshot, run
           | analysis (M3), RL prediction, dossier, portfolio brief (the caller's own data
           | only)
-        rounds or budget spent ─► one last call without tools
-        errors: retries per model, then the reasoning model as fallback
-        strip <think>, clean up, stream in small word groups, save the turn
+        > rounds or budget spent ─► one last call without tools
+        > strip <think>, clean up, stream in small word groups, save the turn
+        errors: retries per model, then the reasoning model as fallback; if every call
+        | fails, a "retry in a few seconds" notice or a canned reply

@@ -18,19 +18,21 @@ submodules:
       run_event_feed()    08:15 and 18:30 on trading days; never raises
         which stocks: holdings ─► watchlists ─► shelf ideas (each once, up to a cap)
           identity unresolved ─► skipped and named
-        which items
+        > which items
           NSE announcements + board meetings (last N days)
           NSE disclosures: insider trades, SAST deals, pledges, shareholding
-          company news searches (daily budget, half per run)
-        new items only (by item identity; "not about this company" answers remembered)
-        typing
+          company news searches (daily budget, half per run; an article that never names
+          | the company is dropped)
+        > new items only (by item identity; "not about this company" answers remembered)
+        > typing
           disclosures ─► fixed rules, no model (insider, deal, pledge, ownership)
           announcements + news ─► one bulk model call per batch of a stock's items
             must cite an item it was given ─► else dropped (ungrounded)
             every figure of two or more digits must appear in the item ─► else dropped
             unknown category, direction or materiality ─► dropped (invalid)
-        the date is when NSE published it, never the trade day (when we could have known)
-        stored in data/events/<SYMBOL>.jsonl (no user data in it)
-        a new qualifying announcement ─► the dossier ingests it in this run (M4.4)
-      Read by: the evidence exit rule (case_broken), case pillar review,
-      | GET /events/{symbol}
+        > the date is when NSE published it, never the trade day (when we could have known)
+        > stored in data/events/<SYMBOL>.jsonl (no user data in it)
+        > a new qualifying announcement of a managed stock ─► the dossier ingests it in
+        | this run (M4.4), if switched on
+      Read by: the evidence exit rule (case_broken), the investment case and its pillar
+      | review (M5.5), GET /events/{symbol}

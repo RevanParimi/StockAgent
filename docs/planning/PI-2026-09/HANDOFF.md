@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-27 (NEXT MAP-005; MAP-004 accepted; pushes wait for a window)
+# Current handoff - 2026-11-27 (NEXT PR-007; MAP-005 accepted; the autopilot stops here)
 
 ## Now
 
@@ -7,33 +7,29 @@
   MAP-001 and your walkthrough copy. `PR-047-W1` reads today's 16:30 review. Since 23 Nov
   (`4c7f611`) the evidence exit rule decides; PR-015, PR-017, FIX-033 and PR-046 stay
   `pending_observation`.
-- **21 Nov:** the [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against
-  their own analysis; DEEPA sold. FIX-033, PR-047. No hand trades.
-- **26 Nov, PR-047 accepted** by its fresh review ([receipt](evidence/PR-047-review.md)), merged
-  as `6eca615`: a buy needs the band's BUY and the model's own, so TVSMOTOR's kind is refused.
-  B-42: a top-up reads neither verdict (`PR-014-R1`). `PR-047-S1` waits for your word.
-- **Box rules** (OPS-002 to 006): full suite only via `scripts/ci/guarded_suite.py`; a box event
-  holds the autopilot until `autopilot.sh seen`; `autopilot.sh health` writes a daily box line.
-- **27 Nov, MAP-001 to MAP-004 done** ([receipt](evidence/MAP-004.md)): open
-  [the 3D map](../../architecture-map/index.html) (offline; clock `5`, "Trace a stock", Tour;
-  Developer, then `G`: the code galaxy). Code changes need the map regenerated; model or viewer
-  changes also its page rebuilt.
-- **Next `continue`:** **MAP-005** (light, 3 points), then PR-007 (your order, 26 Nov).
-  **Autopilot, your word:** run to MAP-005; the phase that accepts it runs
-  `/home/coder/project/autopilot/autopilot.sh stop` before writing its status. `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`: production reads,
-  your word.
-- **Autopilot** (started 14:49 IST, 26 Nov): its retry box checks and health line need your next
-  `start`.
-- **Git:** `origin/main` = `69e7c28`; `main` holds its deploy record, MAP-003 and MAP-004. The runner
-  pushes between phases in the window (00:10–06:20 IST) after the guarded suite; then check the
-  deploy, `/health` and CI's browser job (B-46).
+- **PR-047** (accepted 26 Nov, [receipt](evidence/PR-047-review.md)): a buy needs the band's BUY
+  and the model's own. B-42: a top-up reads neither verdict (`PR-014-R1`).
+- **Box rules** (OPS-002 to 006): full suite only via `scripts/ci/guarded_suite.py`.
+- **Box, 27 Nov:** limit 8 GB (`memory.max` 7,629 MB), warning 4,000 MB. Events 14:01 `ANOMALY`
+  2,734 MB (the map's page build, B-50) and 16:00 `BOOT` (the redeploy; no OOM kill; `anon` 991 MB
+  just before), both seen at your word. A redeploy removes system packages: your startup script now
+  reinstalls Chromium's libraries (your word; not yet proven at a boot, see `~/devbox/boot.log`).
+- **27 Nov, MAP-001 to MAP-005 done** ([receipt](evidence/MAP-005.md)): open
+  [the map](../../architecture-map/index.html) (offline; 3D, or flat on a phone; clock `5`, "Trace a
+  stock", Tour; Developer, then `G`). Code changes need the map regenerated; model or viewer changes
+  also its page rebuilt.
+- **Next `continue`:** **PR-007** (light; your order, 26 Nov). The autopilot stops after MAP-005
+  (your word): `start` it again for PR-007 once tonight's push is done.
+- **Production reads, your word:** `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`.
+- **Git:** `origin/main` = `69e7c28`; `main` holds its deploy record, MAP-003, MAP-004 and MAP-005,
+  unpushed. The waiting runner pushes after its guarded suite, from 00:10 IST Sat 28 Nov, if the
+  checkout is clean. Then check the deploy, `/health` and CI's browser job (B-46).
 
 ## Waits for you
 
+- **The map's walk-through** (guide 11-P), on a laptop and a phone.
 - **PR-047's read** (read-only; from Tue 1 Dec, best Sat 12 or Sun 13 Dec, before `PR-014-R1`):
   say "run the PR-047 measure"; command in its receipt.
-- **The Railway limit, 4 GB to 3 GB:** yours; OPS-002 has landed (still 4 GB on 26 Nov); about
-  440 MB above the guard then, one guarded full run after it.
 - **PR-037's catch-up run**, a weekday 09:30–14:00 IST: say "run the PR-037 catch-up" in a
   session and allow it, or run from the StockAgent folder:
   `railway ssh 'python -c "import os,urllib.request as u;r=u.Request(\"http://127.0.0.1:\"+os.environ.get(\"PORT\",\"8000\")+\"/discovery/run\",method=\"POST\",headers={\"X-Scheduler-Key\":os.environ.get(\"SCHEDULER_KEY\",\"\")});print(u.urlopen(r,timeout=30).status)"'`

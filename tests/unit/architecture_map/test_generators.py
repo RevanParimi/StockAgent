@@ -56,6 +56,28 @@ def test_a_changed_default_changes_the_job(repo):
     assert _by_id(jobs.scheduled_jobs(repo))["events_am"]["cron"]["hour"] == "7"
 
 
+@pytest.mark.parametrize("scheduler_name,shown", [
+    ("Morning brief (M4 proactive delivery)", "Morning brief"),
+    ("Weekly portfolio review + index watch (M4)", "Weekly portfolio review + index watch"),
+    ("Atlas cost-by-user rollup (BP4)", "Atlas cost-by-user rollup"),
+    ("IPO T-1 deep dive + post-close re-read (P3, dark)",
+     "IPO T-1 deep dive + post-close re-read"),
+    # words in brackets stay, also those that only start like a code
+    ("Company-event feed (am)", "Company-event feed (am)"),
+    ("Macro news — daily policy/RBI (7:30 IST)", "Macro news — daily policy/RBI (7:30 IST)"),
+    ("Ledger cleanup (Mondays)", "Ledger cleanup (Mondays)"),
+    ("Retention prune (bounded stores)", "Retention prune (bounded stores)"),
+    # only a closing bracket, and never the whole name
+    ("Backfill (M2) then grade", "Backfill (M2) then grade"),
+    ("(M4)", "(M4)"),
+])
+def test_a_job_is_shown_without_an_old_plans_code(scheduler_name, shown):
+    job = jobs.shown({"id": "j", "name": scheduler_name})
+    assert job["name"] == shown
+    # the scheduler's own name is kept exactly when the map shows another
+    assert job.get("scheduler_name") == (scheduler_name if shown != scheduler_name else None)
+
+
 @pytest.mark.parametrize("old,new,message", [
     ('id="macro"', 'id=make_id()', "cannot read the call"),
     ('hour="9,12"', 'hour=self.hour', "cannot read the expression"),

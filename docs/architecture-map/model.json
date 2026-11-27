@@ -3575,7 +3575,7 @@
     "S.telemetry"
    ],
    "module": "M1.5",
-   "name": "Atlas cost-by-user rollup (BP4)",
+   "name": "Atlas cost-by-user rollup",
    "schedule": {
     "group": "daily",
     "sort": [
@@ -3585,6 +3585,7 @@
     "time": "23:15",
     "when": "Daily"
    },
+   "scheduler_name": "Atlas cost-by-user rollup (BP4)",
    "timezone": "Asia/Kolkata"
   },
   {
@@ -3906,7 +3907,7 @@
     "S.ipo"
    ],
    "module": "M8.1",
-   "name": "IPO T-1 deep dive + post-close re-read (P3, dark)",
+   "name": "IPO T-1 deep dive + post-close re-read",
    "schedule": {
     "group": "daily",
     "sort": [
@@ -3916,6 +3917,7 @@
     "time": "19:00",
     "when": "Daily"
    },
+   "scheduler_name": "IPO T-1 deep dive + post-close re-read (P3, dark)",
    "timezone": "Asia/Kolkata"
   },
   {
@@ -4095,7 +4097,7 @@
     "S.delivery"
    ],
    "module": "M9.1",
-   "name": "Morning brief (M4 proactive delivery)",
+   "name": "Morning brief",
    "schedule": {
     "group": "daily",
     "sort": [
@@ -4105,6 +4107,7 @@
     "time": "08:50",
     "when": "Mon–Fri"
    },
+   "scheduler_name": "Morning brief (M4 proactive delivery)",
    "timezone": "Asia/Kolkata"
   },
   {
@@ -4405,7 +4408,7 @@
     "S.delivery"
    ],
    "module": "M9.2",
-   "name": "Weekly portfolio review + index watch (M4)",
+   "name": "Weekly portfolio review + index watch",
    "schedule": {
     "group": "weekly",
     "sort": [
@@ -4416,6 +4419,7 @@
     "time": "18:00",
     "when": "Sunday"
    },
+   "scheduler_name": "Weekly portfolio review + index watch (M4)",
    "timezone": "Asia/Kolkata"
   }
  ],
@@ -4458,10 +4462,10 @@
           },
           {
            "children": [],
-           "text": "NSE holiday file has this year? ── no ─► fetch it (hardcoded list as fallback)"
+           "text": "NSE holiday file lacks this year ─► fetch it (hardcoded list as fallback)"
           }
          ],
-         "text": "every worker"
+         "text": "every worker first"
         },
         {
          "children": [
@@ -4473,20 +4477,20 @@
                "children": [
                 {
                  "children": [],
-                 "text": "already done this month (checkpoint file)? ─► skip"
-                },
-                {
-                 "children": [
-                  {
-                   "children": [],
-                   "text": "fails ─► skip this stock; the next deploy retries it"
-                  }
-                 ],
-                 "text": "no envelope this month? ─► generate_forecast (M4.1)"
+                 "ends": true,
+                 "kind": "decision",
+                 "text": "done this month (checkpoint file) ─► skip"
                 },
                 {
                  "children": [],
-                 "text": "trading days without a review? ─► run_daily_review for each"
+                 "kind": "decision",
+                 "text": "no envelope this month ─► generate_forecast (M4.1); if it fails, skip\nthis stock (the next deploy retries it)",
+                 "then": true
+                },
+                {
+                 "children": [],
+                 "text": "backfill: run_daily_review for each trading day without a review",
+                 "then": true
                 }
                ],
                "text": "for each managed stock, in its own sector"
@@ -4496,29 +4500,34 @@
             },
             {
              "children": [],
-             "text": "start the scheduler (M1.2)"
+             "text": "start the scheduler (M1.2)",
+             "then": true
             },
             {
              "children": [],
-             "text": "sweep expired chat sessions and login sessions"
+             "text": "sweep expired chat sessions and login sessions",
+             "then": true
             },
             {
              "children": [],
-             "text": "start the outbox drainer (M9.5)"
+             "text": "start the outbox drainer (M9.5)",
+             "then": true
             }
            ],
-           "text": "got it = PRIMARY worker"
+           "text": "got it ─► PRIMARY worker"
           },
           {
            "children": [],
-           "text": "lost it = API-only worker: serves requests, runs no jobs"
+           "text": "lost it ─► API-only worker: serves requests, runs no jobs"
           },
           {
            "children": [],
            "text": "Why: before this lock every job ran twice (2x LLM cost, racing file writes)."
           }
          ],
-         "text": "try to bind 127.0.0.1:59321 (the singleton lock)"
+         "kind": "decision",
+         "text": "try to bind 127.0.0.1:59321 (the singleton lock)",
+         "then": true
         }
        ],
        "text": "Docker starts uvicorn with 2 workers ── each worker runs lifespan()"
@@ -4553,62 +4562,76 @@
      "id": "M1.2",
      "logic": [
       {
-       "children": [],
-       "text": "scheduler.enabled off ─► start() returns: nothing below runs"
-      },
-      {
        "children": [
-        {
-         "children": [],
-         "text": "always: daily review, monthly forecast, calendar, ledger cleanup, pre-open check,\nbackup, 3 Atlas jobs"
-        },
         {
          "children": [
           {
            "children": [],
-           "text": "macro_news.enabled ─► 2 macro news jobs"
+           "text": "always: daily review, monthly forecast, calendar, ledger cleanup, pre-open check,\nbackup, 3 Atlas jobs"
+          },
+          {
+           "children": [
+            {
+             "children": [],
+             "text": "macro_news.enabled ─► 2 macro news jobs"
+            },
+            {
+             "children": [],
+             "text": "scorecard / event ingest / research loop flags ─► those jobs"
+            },
+            {
+             "children": [],
+             "text": "events.enabled ─► company_events_am, company_events_pm"
+            },
+            {
+             "children": [],
+             "text": "discovery.enabled ─► bhavcopy sync, discovery_weekly"
+            },
+            {
+             "children": [],
+             "text": "delivery.enabled ─► morning_brief, weekly_review"
+            },
+            {
+             "children": [],
+             "text": "audit.enabled ─► audit_nightly"
+            },
+            {
+             "children": [],
+             "text": "ipo.enabled ─► 2 IPO refreshes, IPO deep dive"
+            },
+            {
+             "children": [],
+             "text": "watchdog.enabled ─► ops_watchdog"
+            }
+           ],
+           "text": "only when the flag is on"
           },
           {
            "children": [],
-           "text": "scorecard / event ingest / research loop flags ─► those jobs"
+           "text": "every job: coalesce (missed runs fold into one), misfire grace 15 min to 6 h"
           },
           {
            "children": [],
-           "text": "events.enabled ─► company_events_am, company_events_pm"
-          },
-          {
-           "children": [],
-           "text": "discovery.enabled ─► bhavcopy sync, discovery_weekly"
-          },
-          {
-           "children": [],
-           "text": "delivery.enabled ─► morning_brief, weekly_review"
-          },
-          {
-           "children": [],
-           "text": "audit.enabled ─► audit_nightly"
-          },
-          {
-           "children": [],
-           "text": "ipo.enabled ─► 2 IPO refreshes, IPO deep dive"
-          },
-          {
-           "children": [],
-           "text": "watchdog.enabled ─► ops_watchdog"
+           "text": "a job crashes ─► error listener ─► one critical alert to the owner"
           }
          ],
-         "text": "only when the flag is on"
+         "text": "Registration (APScheduler, timezone Asia/Kolkata)"
         },
         {
          "children": [],
-         "text": "every job: coalesce (missed runs fold into one), misfire grace 15 min to 6 h"
+         "ends": true,
+         "kind": "decision",
+         "text": "scheduler.enabled off ─► start() returns: registered, but no job runs",
+         "then": true
         },
         {
          "children": [],
-         "text": "a job crashes ─► error listener ─► one critical alert to the owner"
+         "kind": "end",
+         "text": "else the jobs run at their times",
+         "then": true
         }
        ],
-       "text": "Registration (APScheduler, timezone Asia/Kolkata)"
+       "text": "AutomobileScheduler() registers the timed jobs; start() starts them"
       },
       {
        "children": [
@@ -4618,7 +4641,8 @@
         },
         {
          "children": [],
-         "text": "cohort = enabled managed stocks, each once (duplicates logged)"
+         "text": "cohort = enabled managed stocks, each once (duplicates logged)",
+         "then": true
         },
         {
          "children": [
@@ -4632,11 +4656,13 @@
            "text": "total budget 300 s × number of stocks"
           }
          ],
-         "text": "thread pool ─► run_daily_review(stock, review_date, sector) (M4.2)"
+         "text": "thread pool ─► run_daily_review(stock, review_date, sector) (M4.2)",
+         "then": true
         },
         {
          "children": [],
-         "text": "each stock gets ONE outcome: completed | degraded | data_gated | skipped | failed"
+         "text": "each stock gets ONE outcome: completed | degraded | data_gated | skipped | failed",
+         "then": true
         },
         {
          "children": [
@@ -4649,15 +4675,18 @@
            "text": "produced < required ─► partial-output alert naming each stock and reason"
           }
          ],
-         "text": "produced = completed + degraded"
+         "text": "produced = completed + degraded",
+         "then": true
         },
         {
          "children": [],
-         "text": "run_post_review_pipeline(review_date) (M5.1); its failure never fails the reviews"
+         "text": "run_post_review_pipeline(review_date) (M5.1); its failure never fails the reviews",
+         "then": true
         },
         {
          "children": [],
-         "text": "record the outcome ─► GET /scheduler/status \"last_runs\""
+         "text": "record the outcome ─► GET /scheduler/status \"last_runs\"",
+         "then": true
         }
        ],
        "text": "The 16:30 daily-review job (the heart of the day)"
@@ -4695,26 +4724,38 @@
        "children": [
         {
          "children": [],
-         "text": "1 environment variable (Railway) ... wins"
+         "ends": true,
+         "kind": "decision",
+         "text": "it names an environment variable, and that is set ─► the variable wins"
         },
         {
          "children": [],
-         "text": "2 config.yaml ...................... otherwise"
+         "ends": true,
+         "kind": "decision",
+         "text": "else config.yaml has the key ─► its value",
+         "then": true
         },
         {
          "children": [],
-         "text": "3 the code's fallback .............. otherwise"
-        },
-        {
-         "children": [],
-         "text": "config.yaml malformed ─► the app refuses to start (fails loudly)"
-        },
-        {
-         "children": [],
-         "text": "config.yaml missing ─► one warning, every fallback applies"
+         "kind": "end",
+         "text": "else the code's fallback",
+         "then": true
         }
        ],
        "text": "settings.X = cfg(\"section.key\", env=\"VAR\", fallback=...)"
+      },
+      {
+       "children": [
+        {
+         "children": [],
+         "text": "malformed ─► the app refuses to start (fails loudly)"
+        },
+        {
+         "children": [],
+         "text": "missing ─► one warning, every fallback applies"
+        }
+       ],
+       "text": "config.yaml, read once at start"
       },
       {
        "children": [
@@ -4851,7 +4892,7 @@
         },
         {
          "children": [],
-         "text": "transactions.jsonl is the authority; portfolio.json is derived from it"
+         "text": "transactions.jsonl is the audit authority; portfolio.json is checked against it\neach day (M5.6), never repaired from it"
         }
        ],
        "text": "Rules"
@@ -4968,21 +5009,22 @@
        "children": [
         {
          "children": [],
-         "text": "three readers: get_verified_close (the latest close, for forecasts),\ncross_check_close (the daily review's session D), session_close (the portfolio)"
+         "text": "which symbol? ─► the instrument registry (ZOMATO is priced as ETERNAL.NS, a\nrecorded rename)"
         },
         {
          "children": [],
-         "text": "which symbol? ─► the instrument registry (ZOMATO is priced as ETERNAL.NS, a\nrecorded rename)"
+         "text": "yfinance close + NSE official close (when rl.close_verify_enabled)",
+         "then": true
         },
         {
          "children": [
           {
            "children": [],
-           "text": "both present, within tolerance ─► yfinance value (\"agree\")"
+           "text": "both, within tolerance ─► yfinance value (\"agree\")"
           },
           {
            "children": [],
-           "text": "both present, too far apart ─► NSE value + warning\n(yfinance once returned another company's price for MARUTI: ~131 vs ~13,000)"
+           "text": "both, too far apart ─► NSE value + warning\n(yfinance once returned another company's price for MARUTI: ~131 vs ~13,000)"
           },
           {
            "children": [],
@@ -4993,19 +5035,13 @@
            "text": "none ─► None"
           }
          ],
-         "text": "yfinance close + NSE official close (when rl.close_verify_enabled)"
+         "kind": "decision",
+         "text": "the two closes",
+         "then": true
         },
         {
          "children": [],
-         "text": "D is not a trading day ─► the last trading day before it"
-        },
-        {
-         "children": [],
-         "text": "no close for that session after one retry ─► PriceUnavailableError\n(the portfolio skips that holding today)"
-        },
-        {
-         "children": [],
-         "text": "a bar older than D ─► fresh_for(D) = False ─► the gates call it stale"
+         "text": "three readers: get_verified_close (the latest close, for forecasts),\ncross_check_close (the daily review's session D), session_close (the portfolio)"
         }
        ],
        "text": "\"What did stock X close at?\""
@@ -5014,7 +5050,39 @@
        "children": [
         {
          "children": [],
-         "text": "19:00 bhavcopy sync (last 7 days, so it heals after an outage)\n─► one parquet per day (EodStore)\n─► read by the discovery screen, the weekly review, the executable-price check"
+         "text": "D is not a trading day ─► the last trading day before it"
+        },
+        {
+         "children": [],
+         "ends": true,
+         "kind": "decision",
+         "text": "no close for that session after one retry ─► PriceUnavailableError\n(the portfolio skips that holding today)",
+         "then": true
+        },
+        {
+         "children": [],
+         "kind": "decision",
+         "text": "a bar older than D ─► fresh_for(D) = False: the gates call it stale",
+         "then": true
+        }
+       ],
+       "text": "The portfolio's session close"
+      },
+      {
+       "children": [
+        {
+         "children": [],
+         "text": "19:00 bhavcopy sync (last 7 days, so it heals after an outage)"
+        },
+        {
+         "children": [],
+         "text": "one parquet per day (EodStore)",
+         "then": true
+        },
+        {
+         "children": [],
+         "text": "read by discovery (screen, deep dive, buy list, IPO tracker), the weekly review\nand the executable-price check",
+         "then": true
         }
        ],
        "text": "Prices for every NSE stock at once"
@@ -5117,11 +5185,13 @@
            "text": "unverified ..................... plain text came back with no proof"
           }
          ],
-         "text": "each section returns text + a STATUS set by its producer from the data, not the text"
+         "text": "each section returns text + a STATUS set by its producer from the data, not the text",
+         "then": true
         },
         {
          "children": [],
-         "text": "capped per section and in total ─► to_prompt_text() for the analyst"
+         "text": "capped per section and in total ─► to_prompt_text() for the analyst",
+         "then": true
         }
        ],
        "text": "build_sector_bundle(stock, sector)      one fetch pass per analysis; never raises"
@@ -5152,51 +5222,59 @@
       {
        "children": [
         {
-         "children": [
-          {
-           "children": [],
-           "text": "a full provider symbol ─► itself"
-          },
-          {
-           "children": [
-            {
-             "children": [],
-             "text": "active ─► that period's provider symbol + price basis"
-            },
-            {
-             "children": [
-              {
-               "children": [],
-               "text": "research ─► the decision gate abstains"
-              },
-              {
-               "children": [],
-               "text": "daily review ─► the day is not graded"
-              },
-              {
-               "children": [],
-               "text": "portfolio ─► the holding is HELD (even exits) until an operator runs\nidentity_reconcile plan (read-only) ─► apply --approve <digest>"
-              }
-             ],
-             "text": "unresolved / suspended / delisted ─► UNRESOLVED, and then"
-            }
-           ],
-           "text": "listed in config/instruments.yaml ─► the dated segment decides"
-          },
-          {
-           "children": [],
-           "text": "a learned mapping to another code (never reviewed) ─► UNRESOLVED"
-          },
-          {
-           "children": [],
-           "text": "no entry ─► its own NSE listing, resolved"
-          }
-         ],
+         "children": [],
          "text": "resolve_identity(ticker, D), first match wins"
         },
         {
          "children": [],
-         "text": "prices came from a different symbol ─► the gate abstains"
+         "ends": true,
+         "kind": "decision",
+         "text": "a full provider symbol ─► itself",
+         "then": true
+        },
+        {
+         "children": [],
+         "ends": true,
+         "kind": "decision",
+         "text": "else the instrument registry cannot be used ─► UNRESOLVED",
+         "then": true
+        },
+        {
+         "children": [
+          {
+           "children": [],
+           "kind": "end",
+           "text": "active ─► that period's provider symbol + price basis"
+          },
+          {
+           "children": [],
+           "kind": "end",
+           "text": "not active ─► UNRESOLVED (unresolved, suspended, delisted or a bad record)"
+          }
+         ],
+         "kind": "decision",
+         "text": "else listed in config/instruments.yaml",
+         "then": true
+        },
+        {
+         "children": [],
+         "ends": true,
+         "kind": "decision",
+         "text": "else a learned listing of the same code (SUZLON as SUZLON.BO) ─► that one",
+         "then": true
+        },
+        {
+         "children": [],
+         "ends": true,
+         "kind": "decision",
+         "text": "else a learned mapping to another code (never reviewed) ─► UNRESOLVED",
+         "then": true
+        },
+        {
+         "children": [],
+         "kind": "end",
+         "text": "else its own NSE listing, resolved",
+         "then": true
         }
        ],
        "text": "Is TICKER on date D the company we think, priced on the right basis?"
@@ -5205,12 +5283,41 @@
        "children": [
         {
          "children": [],
+         "text": "research ─► the decision gate abstains"
+        },
+        {
+         "children": [],
+         "text": "daily review ─► the day is not graded"
+        },
+        {
+         "children": [],
+         "text": "portfolio ─► the holding is HELD (even exits) until an operator runs\nidentity_reconcile plan (read-only) ─► apply --approve <digest>"
+        }
+       ],
+       "text": "What UNRESOLVED stops"
+      },
+      {
+       "children": [],
+       "text": "Prices that came from a different symbol ─► the gate abstains"
+      },
+      {
+       "children": [
+        {
+         "children": [],
+         "ends": true,
+         "kind": "decision",
          "text": "a managed or tracked ticker ─► itself, no model"
+        },
+        {
+         "children": [],
+         "text": "bulk model guess",
+         "then": true
         },
         {
          "children": [
           {
            "children": [],
+           "kind": "end",
            "text": "yes ─► use the guess"
           },
           {
@@ -5218,7 +5325,9 @@
            "text": "no ─► Serper search ─► the model again with the snippets (\"do not guess\")"
           }
          ],
-         "text": "otherwise ─► bulk model guess ─► does yfinance have a price for it?"
+         "kind": "decision",
+         "text": "does yfinance have a price for it?",
+         "then": true
         }
        ],
        "text": "The user typed a name, not a ticker         (the orchestrator, M3.1)"
@@ -5227,11 +5336,26 @@
        "children": [
         {
          "children": [],
-         "text": "listed (cached listing, else a yfinance price) ─► analysed as itself, no model"
+         "ends": true,
+         "kind": "decision",
+         "text": "a managed or tracked ticker ─► analysed as itself, no model"
         },
         {
-         "children": [],
-         "text": "not listed ─► the run stops (UnlistedSymbol)"
+         "children": [
+          {
+           "children": [],
+           "kind": "end",
+           "text": "yes ─► analysed as itself, no model"
+          },
+          {
+           "children": [],
+           "kind": "end",
+           "text": "no ─► the run stops (UnlistedSymbol)"
+          }
+         ],
+         "kind": "decision",
+         "text": "else listed (cached listing, else a yfinance price)",
+         "then": true
         }
        ],
        "text": "An exact NSE symbol (deep dive, daily review, monthly forecast)"
@@ -5959,17 +6083,23 @@
          "text": "weights: observe ─► sector defaults | adapt ─► stored weights"
         },
         {
-         "children": [
-          {
-           "children": [],
-           "text": "not actionable + enforce ─► InsufficientDataError, NO envelope"
-          }
-         ],
-         "text": "run the analysis (M3), asking for the exact symbol"
+         "children": [],
+         "text": "run the analysis (M3), asking for the exact symbol",
+         "then": true
         },
         {
          "children": [],
-         "text": "base close (one retry after 15 s) ── none ─► fail; the next run retries"
+         "ends": true,
+         "kind": "decision",
+         "text": "not actionable + enforce ─► InsufficientDataError, NO envelope",
+         "then": true
+        },
+        {
+         "children": [],
+         "ends": true,
+         "kind": "decision",
+         "text": "no base close, even after one retry in 15 s ─► fail; the next run retries",
+         "then": true
         },
         {
          "children": [
@@ -5994,15 +6124,18 @@
            "text": "regime label, F&O snapshot, per-dimension catalyst predictions"
           }
          ],
-         "text": "context"
+         "text": "context",
+         "then": true
         },
         {
          "children": [],
-         "text": "30 trading-day rows: predicted close, verdict, confidence, key assumptions,\ngate status + source run id"
+         "text": "30 trading-day rows: predicted close, verdict, confidence, key assumptions,\ngate status + source run id",
+         "then": true
         },
         {
          "children": [],
-         "text": "save <TICKER>_<YYYY-MM>_prediction_envelope.json\n(stamped with weight version, learning mode, gate and instrument)"
+         "text": "save <TICKER>_<YYYY-MM>_prediction_envelope.json\n(stamped with weight version, learning mode, gate and instrument)",
+         "then": true
         }
        ],
        "text": "generate_forecast(stock, sector)     1st of month · startup self-heal · manual"
@@ -6271,12 +6404,17 @@
       {
        "children": [
         {
-         "children": [],
-         "text": "the model was not at fault (data_gap, data_stale, external_shock) ─► no penalty"
-        },
-        {
-         "children": [],
-         "text": "a timing miss of 3 sessions or less ─► no penalty"
+         "children": [
+          {
+           "children": [],
+           "text": "the model was not at fault (data_gap, data_stale, external_shock) ─► no penalty"
+          },
+          {
+           "children": [],
+           "text": "a timing miss of 3 sessions or less ─► no bias penalty (it still counts as a\nmiss in the hit rate)"
+          }
+         ],
+         "text": "what counts against a dimension"
         },
         {
          "children": [
@@ -6289,23 +6427,23 @@
            "text": "≤ 40% ─► −0.03"
           }
          ],
-         "text": "hit rate per dimension over the last N sessions"
+         "text": "hit rate per dimension over the last N sessions",
+         "then": true
         },
         {
          "children": [],
-         "text": "weighted rolling miss rate (5/10/21 sessions) ≥ 0.55 ─► bias penalty"
+         "text": "weighted rolling miss rate (5/10/21 sessions) ≥ 0.55 ─► bias penalty\n(the factor regime, IIMA momentum, scales it)",
+         "then": true
         },
         {
          "children": [],
-         "text": "factor regime (IIMA momentum) scales the penalties"
+         "text": "clamp: largest step per day, largest drift from the base (wider after 14\ncorrect sessions in a row)",
+         "then": true
         },
         {
          "children": [],
-         "text": "clamp: largest step per day, largest drift from the base"
-        },
-        {
-         "children": [],
-         "text": "renormalise so the weights sum to 1.0"
+         "text": "renormalise so the weights sum to 1.0",
+         "then": true
         }
        ],
        "text": "WeightAdapter (one weight per dimension)"
@@ -6325,7 +6463,8 @@
          "text": "an unknown value ─► fails closed to observe"
         }
        ],
-       "text": "learning_mode decides what happens to that result"
+       "kind": "decision",
+       "text": "learning_mode: what happens to that result"
       }
      ],
      "name": "Weights and learning mode",
@@ -6363,24 +6502,30 @@
       {
        "children": [
         {
-         "children": [],
-         "text": "scope stock_specific ─► the stock's learning ledger only"
+         "children": [
+          {
+           "children": [],
+           "text": "stock_specific ─► the stock's learning ledger only"
+          },
+          {
+           "children": [],
+           "text": "sector_wide ─► + <sector>/_shared_ledger.json"
+          },
+          {
+           "children": [],
+           "text": "market_wide ─► + the sector ledger and _market_ledger.json"
+          }
+         ],
+         "kind": "decision",
+         "text": "the scope of a lesson"
         },
         {
          "children": [],
-         "text": "scope sector_wide ─► + <sector>/_shared_ledger.json"
+         "text": "read back as tiers: the stock's top 6, sector top 3, market top 2 (faded ones\nleft out)"
         },
         {
          "children": [],
-         "text": "scope market_wide ─► + _market_ledger.json"
-        },
-        {
-         "children": [],
-         "text": "read back as tiers: the stock's top lessons, sector top 3, market top 2"
-        },
-        {
-         "children": [],
-         "text": "Monday 03:30 cleans old lessons"
+         "text": "Monday 03:30 cleans old lessons and distils each dossier"
         }
        ],
        "text": "Lessons (written by the FeedbackAgent)"
@@ -6404,7 +6549,7 @@
       },
       {
        "children": [],
-       "text": "Read by: the bundle's \"dossier\" section (M3), the chat's get_ticker_dossier"
+       "text": "Read by: the bundle's \"dossier\" section (M3), the chat's get_ticker_dossier, the\ninvestment case at purchase (M5.5), the morning brief and the monthly scorecard"
       }
      ],
      "name": "Lessons and company knowledge",
@@ -6445,31 +6590,43 @@
        "children": [
         {
          "children": [],
-         "text": "MACRO_CRISIS ....... VIX > 22 and FII proxy < −1%"
+         "ends": true,
+         "kind": "decision",
+         "text": "VIX > 22 and FII proxy < −1% ─► MACRO_CRISIS"
         },
         {
          "children": [],
-         "text": "RISK_OFF ........... VIX > 22, or VIX 14–22 with FII proxy < −1%"
+         "ends": true,
+         "kind": "decision",
+         "text": "else VIX > 22, or VIX 14–22 with FII proxy < −1% ─► RISK_OFF",
+         "then": true
         },
         {
          "children": [],
-         "text": "MOMENTUM_EXTENDED .. VIX < 14, FII > +1%, RSI > 70"
+         "ends": true,
+         "kind": "decision",
+         "text": "else VIX < 14, FII > +1%, RSI > 70 ─► MOMENTUM_EXTENDED",
+         "then": true
         },
         {
          "children": [],
-         "text": "RISK_ON ............ VIX < 22, FII > +1%, RSI < 70"
+         "ends": true,
+         "kind": "decision",
+         "text": "else VIX < 22, FII > +1%, RSI < 70 ─► RISK_ON",
+         "then": true
         },
         {
          "children": [],
-         "text": "OVERSOLD ........... RSI < 30"
+         "ends": true,
+         "kind": "decision",
+         "text": "else RSI < 30 ─► OVERSOLD",
+         "then": true
         },
         {
          "children": [],
-         "text": "NORMAL ............. anything else"
-        },
-        {
-         "children": [],
-         "text": "2 of 3 global stress signals (Brent up 8% in 5 days, USD/INR up 1.5% in 5\ndays, S&P 500 down 2%) ─► one notch more severe"
+         "kind": "end",
+         "text": "else NORMAL",
+         "then": true
         }
        ],
        "text": "RegimeDetector (no model: VIX, 5-day FII proxy, sector RSI), first match wins"
@@ -6478,18 +6635,28 @@
        "children": [
         {
          "children": [],
-         "text": "severe label (RISK_OFF, MACRO_CRISIS) ─► entered at once"
-        },
-        {
-         "children": [],
-         "text": "a milder reading while severe ─► calm_streak + 1; leave after 3 calm days"
-        },
-        {
-         "children": [],
-         "text": "inputs unavailable ─► keep the last label, mark the day ─► no ADD, no new\ndeployment"
+         "text": "2 of 3 signals (Brent up 8% in 5 days, USD/INR up 1.5% in 5 days, S&P 500 down\n2%) ─► one notch more severe"
         }
        ],
-       "text": "Sticky label (market-wide, _regime_state.json)"
+       "text": "Global stress, applied to that label"
+      },
+      {
+       "children": [
+        {
+         "children": [],
+         "text": "severe ─► RISK_OFF or MACRO_CRISIS is entered at once"
+        },
+        {
+         "children": [],
+         "text": "milder while severe ─► calm_streak + 1; leave after 3 calm days"
+        },
+        {
+         "children": [],
+         "text": "inputs unavailable ─► keep the last label (or a severer one the answering inputs\nprove), mark the day ─► no ADD, no new deployment"
+        }
+       ],
+       "kind": "decision",
+       "text": "Sticky label (market-wide, _regime_state.json): a new reading"
       },
       {
        "children": [
@@ -6516,16 +6683,27 @@
        "children": [
         {
          "children": [],
+         "ends": true,
+         "kind": "decision",
          "text": "overnight shock severity below the threshold ─► nothing"
         },
         {
          "children": [
           {
            "children": [],
-           "text": "yes ─► regenerate_envelope(trigger=\"preopen_shock\")"
+           "ends": true,
+           "kind": "decision",
+           "text": "no forecast for today, or it does not contradict the shock ─► left as it is"
+          },
+          {
+           "children": [],
+           "kind": "end",
+           "text": "else regenerate_envelope(trigger=\"preopen_shock\")",
+           "then": true
           }
          ],
-         "text": "at or above ─► for each stock: does today's forecast contradict the shock?"
+         "text": "for each stock in the four sector configs' own lists (the managed list and the\nholdings are not read)",
+         "then": true
         }
        ],
        "text": "Pre-open check 08:45 (1 search + 1 fast model call in total)"
@@ -6579,33 +6757,37 @@
        "children": [
         {
          "children": [],
+         "ends": true,
+         "kind": "decision",
          "text": "advisor off, or D not a trading day ─► stop"
-        },
-        {
-         "children": [],
-         "text": "NSE surveillance report: read at most once per run"
         },
         {
          "children": [
           {
            "children": [],
-           "text": "1  corporate-action sync FIRST (bonus, split, dividend adjust cost and\nquantity)"
+           "text": "1  corporate-action sync FIRST (bonus and split adjust cost and quantity; a\ndividend credits cash)"
           },
           {
            "children": [],
-           "text": "no holdings and no idle-cash deployment ─► next user"
+           "ends": true,
+           "kind": "decision",
+           "text": "no holdings and no idle-cash deployment ─► next user",
+           "then": true
           },
           {
            "children": [],
-           "text": "2  buy candidates = fresh shelf ideas + own watchlist BUYs − resale wait (M6.4)"
+           "text": "2  buy candidates = fresh shelf ideas + own watchlist BUYs − resale wait (M6.4)",
+           "then": true
           },
           {
            "children": [],
-           "text": "3  closes for D (holdings and candidates); sector weights on total equity"
+           "text": "3  closes for D (holdings and candidates); sector weights on total equity",
+           "then": true
           },
           {
            "children": [],
-           "text": "4  refresh the results calendar for held stocks"
+           "text": "4  refresh the results calendar for held stocks",
+           "then": true
           },
           {
            "children": [
@@ -6615,60 +6797,73 @@
             },
             {
              "children": [],
-             "text": "decide with the acting exit rule + the data gate (M5.2)"
+             "text": "decide with the acting exit rule + the data gate (M5.2)",
+             "then": true
             },
             {
              "children": [],
-             "text": "decide again with the other exit rule ─► exit_shadow row (never acted on)"
+             "text": "decide again with the other exit rule ─► exit_shadow row (never acted on)",
+             "then": true
             },
             {
              "children": [],
-             "text": "narrate (bulk model; template text on failure)"
+             "text": "narrate (bulk model; template text on failure)",
+             "then": true
             },
             {
              "children": [],
-             "text": "append the advice record to advice_ledger.jsonl"
+             "text": "append the advice record to advice_ledger.jsonl",
+             "then": true
             },
             {
              "children": [],
-             "text": "compare with the top 5 shelf ideas ─► switch evaluations (for grading)"
+             "text": "compare with the top 5 shelf ideas ─► switch evaluations (for grading)",
+             "then": true
             }
            ],
-           "text": "5  for each holding"
+           "text": "5  for each holding",
+           "then": true
           },
           {
            "children": [],
-           "text": "6  autopilot executes (M5.3)"
+           "text": "6  autopilot executes (M5.3); when a buy is possible, NSE's surveillance\nreport is read first, at most once per run",
+           "then": true
           },
           {
            "children": [],
-           "text": "7  case upkeep: retry a missing invalidation price; events challenge pillars"
+           "text": "7  case upkeep: retry a missing invalidation price; events challenge pillars",
+           "then": true
           },
           {
            "children": [],
-           "text": "8  value point: equity at D's marks ─► value history"
+           "text": "8  value point: equity at D's marks ─► value history",
+           "then": true
           },
           {
            "children": [],
-           "text": "9  reconcile the ledger with portfolio.json (detects and alerts, never repairs)"
+           "text": "9  reconcile the ledger with portfolio.json (detects and alerts, never repairs)",
+           "then": true
           },
           {
            "children": [],
-           "text": "10 digest for D"
+           "text": "10 digest for D",
+           "then": true
           },
           {
            "children": [],
-           "text": "11 alerts: TRIM/EXIT/SWITCH, each trade, a skipped switch buy; end-of-day\ndigest push"
+           "text": "11 alerts: TRIM/EXIT/SWITCH, each trade, a skipped switch buy; end-of-day\ndigest push",
+           "then": true
           }
          ],
-         "text": "for each active user"
+         "text": "for each active user",
+         "then": true
+        },
+        {
+         "children": [],
+         "text": "Every step is non-fatal: one holding or one user failing never stops the rest."
         }
        ],
        "text": "run_post_review_pipeline(session D)"
-      },
-      {
-       "children": [],
-       "text": "Every step is non-fatal: one holding or one user failing never stops the rest."
       }
      ],
      "name": "Post-review pipeline",
@@ -7004,19 +7199,29 @@
         },
         {
          "children": [],
-         "text": "position size = the NORMAL share ÷ target_holdings (80% ÷ 25 = 3.2% of\nequity), whatever today's regime"
+         "text": "position size = the NORMAL share ÷ target_holdings (80% ÷ 25 = 3.2% of\nequity), whatever today's regime",
+         "then": true
         },
         {
          "children": [],
-         "text": "at most 5 new positions a day; at most 30 holdings; a minimum of 20 is reported,\nnever forced"
+         "text": "candidates by conviction, best first",
+         "then": true
         },
         {
          "children": [],
-         "text": "candidates by conviction, best first ─► each through the buy checks (M5.3)"
+         "ends": true,
+         "kind": "decision",
+         "text": "target met, 30 holdings, 5 opened today, crisis or regime unknown ─► stop",
+         "then": true
         },
         {
          "children": [],
-         "text": "stops when: target met, 30 holdings, 5 opened today, crisis, or regime unknown"
+         "text": "each through the buy checks (M5.3), then the next candidate",
+         "then": true
+        },
+        {
+         "children": [],
+         "text": "at most 5 new positions a day; at most 30 holdings; a minimum of 20 (calm\nregimes) is reported, never forced"
         },
         {
          "children": [],
@@ -7068,23 +7273,27 @@
        "children": [
         {
          "children": [],
-         "text": "inputs: the newest actionable analysis, the shelf idea, prices"
+         "text": "inputs: the newest actionable analysis, the shelf idea, the dossier, company\nevents, prices"
         },
         {
          "children": [],
-         "text": "one reasoning call writes: pillars with evidence, expectations,\nwhat would prove us wrong, what to watch"
+         "text": "one reasoning call writes: pillars with evidence, expectations,\nwhat would prove us wrong, what to watch",
+         "then": true
         },
         {
          "children": [],
-         "text": "every figure is checked against the inputs ─► an invented figure ─► a plain\ndeterministic case is stored instead"
+         "text": "every figure is checked against the inputs ─► an invented figure: a plain\ndeterministic case is stored instead",
+         "then": true
         },
         {
          "children": [],
-         "text": "invalidation price: used only if it is above the purchase-day stop and at least\n1.5 ATR below the entry"
+         "text": "invalidation price (set by code): used only if it is above the purchase-day stop\nand at least 1.5 ATR below the entry",
+         "then": true
         },
         {
          "children": [],
-         "text": "each day new company events challenge the pillars (a record, never a sale by\nitself)"
+         "text": "each day new company events challenge the pillars (a record, never a sale by\nitself)",
+         "then": true
         }
        ],
        "text": "Investment case (written when a position opens: SWITCH buy, deployment buy,\nmanual add)"
@@ -7108,6 +7317,7 @@
          "text": "an unknown value ─► reads as shadow"
         }
        ],
+       "kind": "decision",
        "text": "Exit rule mode (advisor.exit_rule)"
       }
      ],
@@ -7140,8 +7350,22 @@
       {
        "children": [
         {
-         "children": [],
-         "text": "bonus / split / dividend ─► adj_avg_price and adj_qty; the raw quantity and\nprice never change"
+         "children": [
+          {
+           "children": [],
+           "text": "bonus or split ─► adj_avg_price and adj_qty; the raw quantity and price never\nchange"
+          },
+          {
+           "children": [],
+           "text": "dividend ─► cash credit, recorded on the holding"
+          },
+          {
+           "children": [],
+           "text": "unreadable ─► never applied (the gap is recorded)"
+          }
+         ],
+         "kind": "decision",
+         "text": "the kind of action"
         },
         {
          "children": [],
@@ -7169,7 +7393,7 @@
       },
       {
        "children": [],
-       "text": "promotion: a held or watched stock ─► managed_tickers.json (cap 60;\nonly watchlist entries are ever evicted)"
+       "text": "promotion: a held or watched stock ─► managed_tickers.json (cap 60; only watchlist\nentries are ever evicted; one nobody holds or lists is switched off)"
       }
      ],
      "name": "Integrity guards",
@@ -7773,14 +7997,16 @@
           },
           {
            "children": [],
-           "text": "company news searches (daily budget, half per run)"
+           "text": "company news searches (daily budget, half per run; an article that never names\nthe company is dropped)"
           }
          ],
-         "text": "which items"
+         "text": "which items",
+         "then": true
         },
         {
          "children": [],
-         "text": "new items only (by item identity; \"not about this company\" answers remembered)"
+         "text": "new items only (by item identity; \"not about this company\" answers remembered)",
+         "then": true
         },
         {
          "children": [
@@ -7806,26 +8032,30 @@
            "text": "announcements + news ─► one bulk model call per batch of a stock's items"
           }
          ],
-         "text": "typing"
+         "text": "typing",
+         "then": true
         },
         {
          "children": [],
-         "text": "the date is when NSE published it, never the trade day (when we could have known)"
+         "text": "the date is when NSE published it, never the trade day (when we could have known)",
+         "then": true
         },
         {
          "children": [],
-         "text": "stored in data/events/<SYMBOL>.jsonl (no user data in it)"
+         "text": "stored in data/events/<SYMBOL>.jsonl (no user data in it)",
+         "then": true
         },
         {
          "children": [],
-         "text": "a new qualifying announcement ─► the dossier ingests it in this run (M4.4)"
+         "text": "a new qualifying announcement of a managed stock ─► the dossier ingests it in\nthis run (M4.4), if switched on",
+         "then": true
         }
        ],
        "text": "run_event_feed()    08:15 and 18:30 on trading days; never raises"
       },
       {
        "children": [],
-       "text": "Read by: the evidence exit rule (case_broken), case pillar review,\nGET /events/{symbol}"
+       "text": "Read by: the evidence exit rule (case_broken), the investment case and its pillar\nreview (M5.5), GET /events/{symbol}"
       }
      ],
      "name": "Company-event feed",
@@ -7886,68 +8116,89 @@
         {
          "children": [
           {
-           "children": [],
-           "text": "research: Tavily pages (prospectus financials, peers, promoter, anchors,\nuse of proceeds, risks)"
+           "children": [
+            {
+             "children": [],
+             "text": "research: Tavily pages (prospectus financials, peers, promoter, anchors,\nuse of proceeds, risks)"
+            },
+            {
+             "children": [],
+             "text": "extract: one model call per page; code stamps the page URL on every claim",
+             "then": true
+            },
+            {
+             "children": [],
+             "text": "corroborate: every number needs at least 2 domains that agree, else it is None",
+             "then": true
+            }
+           ],
+           "text": "closing tomorrow (T-1): full research"
           },
           {
            "children": [],
-           "text": "extract: one model call per page; code stamps the page URL on every claim"
-          },
-          {
-           "children": [],
-           "text": "corroborate: every number needs at least 2 domains that agree, else it is None"
+           "text": "closed but not listed: re-read from the cache (the post-close row)"
           }
          ],
-         "text": "issues closing tomorrow (T-1): full research"
+         "text": "which issues"
+        },
+        {
+         "children": [
+          {
+           "children": [],
+           "text": "demand: fitted on 188 past listings (QIB ≥ total > retail)"
+          },
+          {
+           "children": [],
+           "text": "froth: unfitted (retail ×, skew, cut-off share, GMP) ─► only widens the band"
+          }
+         ],
+         "text": "hype",
+         "then": true
         },
         {
          "children": [],
-         "text": "closed but not listed: re-read from the cache (the post-close row)"
+         "text": "substance: profit, revenue, P/E vs peers and QIB × (only QIB × is fitted)",
+         "then": true
+        },
+        {
+         "children": [
+          {
+           "children": [],
+           "text": "SHORT (listing day) lean ─► from demand alone"
+          },
+          {
+           "children": [],
+           "text": "LONG ─► dark: no direction; the reasoning is kept for later"
+          }
+         ],
+         "text": "verdict",
+         "then": true
+        },
+        {
+         "children": [],
+         "text": "narrate: facts only; a number not in the facts ─► rejected; advice words ─►\nrejected",
+         "then": true
+        },
+        {
+         "children": [],
+         "text": "after listing: the auditor's IPO lane grades it",
+         "then": true
         }
        ],
-       "text": "19:00 deep dive sweep (reads the cache; no NSE calls)"
+       "text": "19:00 deep dive sweep (reads the cache; no NSE calls; at most 5 issues a run)"
       },
       {
        "children": [
         {
          "children": [],
-         "text": "demand: fitted on 188 past listings (QIB ≥ total > retail)"
+         "text": "the verdicts and notes ─► no screen until the visibility milestone passes (the\nwatchdog tracks it)"
         },
         {
          "children": [],
-         "text": "froth: unfitted (retail ×, skew, cut-off share, GMP) ─► only widens the band"
+         "text": "the brief and the weekly review ─► an IPO watch: window, bids and a demand-only\nlean, labelled research view, not advice"
         }
        ],
-       "text": "hype"
-      },
-      {
-       "children": [],
-       "text": "substance: profit, revenue, P/E vs peers and QIB × (only QIB × is fitted)"
-      },
-      {
-       "children": [
-        {
-         "children": [],
-         "text": "SHORT (listing day) lean ─► from demand alone"
-        },
-        {
-         "children": [],
-         "text": "LONG ─► dark: no direction; the reasoning is kept for later"
-        }
-       ],
-       "text": "verdict"
-      },
-      {
-       "children": [],
-       "text": "narrate: facts only; a number not in the facts ─► rejected; advice words ─► rejected"
-      },
-      {
-       "children": [],
-       "text": "after listing: the auditor's IPO lane grades it"
-      },
-      {
-       "children": [],
-       "text": "Nothing appears on a screen until its visibility milestone passes (the watchdog\ntracks it)."
+       "text": "What people see"
       }
      ],
      "name": "IPO pipeline",
@@ -8011,18 +8262,31 @@
        "children": [
         {
          "children": [],
-         "text": "assembled by code: the regime in plain words, the overnight markets and news,\nholdings needing attention, results due, new shelf ideas, IPOs and lock-in\nexpiries"
+         "ends": true,
+         "kind": "decision",
+         "text": "not a trading day ─► skipped"
         },
         {
          "children": [],
-         "text": "one bulk model call for the headline (fallback text on failure)"
+         "text": "assembled by code: the regime in plain words, the overnight markets and news,\nholdings needing attention, results due, new shelf ideas, IPOs and lock-in\nexpiries",
+         "then": true
         },
         {
          "children": [],
-         "text": "research tone; never the word \"advice\""
+         "text": "one bulk model call: the headline and a note on each overnight item (fallback\ntext on failure)",
+         "then": true
+        },
+        {
+         "children": [],
+         "text": "sent by push and email; lock-in expiries also go to that account's alerts",
+         "then": true
+        },
+        {
+         "children": [],
+         "text": "research tone: the model is told never to call it advice; the page says it is not\nadvice"
         }
        ],
-       "text": "Morning brief (not a trading day ─► skipped)"
+       "text": "Morning brief (08:50, weekdays)"
       }
      ],
      "name": "Morning brief",
@@ -8062,14 +8326,16 @@
         },
         {
          "children": [],
-         "text": "results scorecard ─► allocation vs risk profile ─► laggards ─► switch calls\n(last 4 weeks) ─► shelf candidates"
+         "text": "results scorecard ─► allocation vs risk profile ─► laggards ─► switch calls\n(last 4 weeks) ─► shelf candidates ─► IPO watch",
+         "then": true
         },
         {
          "children": [],
-         "text": "one bulk model headline call"
+         "text": "one bulk model headline call",
+         "then": true
         }
        ],
-       "text": "Weekly review"
+       "text": "Weekly review (Sunday 18:00)"
       }
      ],
      "name": "Weekly review",
@@ -8093,28 +8359,38 @@
        "children": [
         {
          "children": [],
-         "text": "operator notices (system health, job crash, model down) ─► the owner only"
+         "text": "operator notice ─► the owner only (system health, job crash, model down)"
         },
         {
          "children": [],
-         "text": "market notices (shelf adds, IPOs, index changes for shelf stocks) ─► everyone"
+         "text": "market notice ─► everyone (shelf adds, pre-open re-forecasts, index changes for\nshelf stocks)"
         },
         {
          "children": [],
-         "text": "account notices (your advice, your trades, your stocks) ─► that account only"
+         "text": "account notice ─► that account only (your advice, your trades, your stocks,\nlock-in expiries)"
         }
        ],
+       "kind": "decision",
        "text": "who gets what"
       },
       {
        "children": [
         {
          "children": [],
+         "ends": true,
+         "kind": "decision",
          "text": "already delivered today ─► not sent again"
         },
         {
          "children": [],
-         "text": "no channel accepted it ─► marked undelivered ─► retried at the next emit"
+         "text": "send it",
+         "then": true
+        },
+        {
+         "children": [],
+         "kind": "decision",
+         "text": "no channel accepted it ─► marked undelivered ─► retried at the next emit",
+         "then": true
         }
        ],
        "text": "dedupe key user|date|kind|symbol in alerts_sent.jsonl"
@@ -8145,7 +8421,16 @@
        "children": [
         {
          "children": [],
-         "text": "Atlas on ─► put it on the outbox (M9.5)"
+         "ends": true,
+         "kind": "decision",
+         "text": "delivery off ─► nothing is sent"
+        },
+        {
+         "children": [],
+         "ends": true,
+         "kind": "decision",
+         "text": "else Atlas on, and the outbox can be written ─► queued for its sender (M9.5)",
+         "then": true
         },
         {
          "children": [
@@ -8158,11 +8443,13 @@
            "text": "email ─► SMTP or Resend (\"auto\" uses Resend when a key is set)"
           }
          ],
-         "text": "otherwise send now"
+         "text": "else send now",
+         "then": true
         },
         {
          "children": [],
-         "text": "each send returns SendResult: accepted? permanent? reason (addresses masked)"
+         "text": "each send returns SendResult: accepted? permanent? reason (addresses masked)",
+         "then": true
         },
         {
          "children": [],
@@ -8199,6 +8486,11 @@
          "text": "claim a row: UPDATE ... SET status='sending' ─► one sender only"
         },
         {
+         "children": [],
+         "text": "send it",
+         "then": true
+        },
+        {
          "children": [
           {
            "children": [],
@@ -8213,14 +8505,16 @@
            "text": "transient failure ─► retry after backoff (≥ the provider's Retry-After)\n─► too many attempts ─► dead letter"
           }
          ],
-         "text": "send it"
-        },
-        {
-         "children": [],
-         "text": "a row left in 'sending' by a restart ─► dead letter (outcome unknown; never\nresent)"
+         "kind": "decision",
+         "text": "the result",
+         "then": true
         }
        ],
        "text": "Drainer (runs only in the primary worker)"
+      },
+      {
+       "children": [],
+       "text": "a row left in 'sending' by a restart ─► dead letter (outcome unknown; never resent)"
       },
       {
        "children": [],
@@ -8372,15 +8666,29 @@
        "children": [
         {
          "children": [],
-         "text": "auth.required off ─► an anonymous request acts as the owner (\"primary\")"
+         "ends": true,
+         "kind": "decision",
+         "text": "a valid bearer token ─► that user (owner or member)"
         },
         {
          "children": [],
-         "text": "valid bearer token ─► that user (owner or member)"
+         "ends": true,
+         "kind": "decision",
+         "text": "else a token that is invalid or expired ─► 401",
+         "then": true
         },
         {
          "children": [],
-         "text": "otherwise ─► 401"
+         "ends": true,
+         "kind": "decision",
+         "text": "else no token, and auth.required off ─► the request acts as the owner\n(\"primary\")",
+         "then": true
+        },
+        {
+         "children": [],
+         "kind": "end",
+         "text": "else 401",
+         "then": true
         }
        ],
        "text": "get_current_user(request)"
@@ -8440,7 +8748,7 @@
         },
         {
          "children": [],
-         "text": "owner only (loaded only for the owner): analytics.jsx, rl-monitor.jsx,\nagents-page.jsx (weights), logs.jsx"
+         "text": "owner only (loaded only for the owner): analytics.jsx, rl-data.jsx,\nrl-monitor.jsx, agents-page.jsx (weights), logs.jsx"
         },
         {
          "children": [],
@@ -8478,20 +8786,19 @@
        "children": [
         {
          "children": [],
-         "text": "signed in? quota left? (members have a daily limit)"
+         "ends": true,
+         "kind": "decision",
+         "text": "not signed in, or no quota left (members have a daily limit) ─► refused"
         },
         {
          "children": [],
-         "text": "prompt = system + IST market session + macro context + last 12 messages + message"
+         "text": "prompt = system + IST market session + macro news + the latest verdicts of the\nstocks you may see + last 12 messages + message",
+         "then": true
         },
         {
-         "children": [
-          {
-           "children": [],
-           "text": "yes ─► run screen_stocks + search_market_news first and add the results"
-          }
-         ],
-         "text": "pre-router (no model): a buy / sell / momentum question with a sector?"
+         "children": [],
+         "text": "pre-router (no model): a buy / sell / momentum question with a sector ─► run\nscreen_stocks + search_market_news first and add the results",
+         "then": true
         },
         {
          "children": [
@@ -8508,19 +8815,22 @@
            "text": "13 tools: live price, historical prices, macro news, market news search, screen\nstocks, stock analysis, analysis history, RL insights, sector snapshot, run\nanalysis (M3), RL prediction, dossier, portfolio brief (the caller's own data\nonly)"
           }
          ],
-         "text": "tool loop: fast model, at most 4 rounds, 45-second budget"
+         "text": "tool loop: fast model, at most 4 rounds, 45-second budget",
+         "then": true
         },
         {
          "children": [],
-         "text": "rounds or budget spent ─► one last call without tools"
+         "text": "rounds or budget spent ─► one last call without tools",
+         "then": true
         },
         {
          "children": [],
-         "text": "errors: retries per model, then the reasoning model as fallback"
+         "text": "strip <think>, clean up, stream in small word groups, save the turn",
+         "then": true
         },
         {
          "children": [],
-         "text": "strip <think>, clean up, stream in small word groups, save the turn"
+         "text": "errors: retries per model, then the reasoning model as fallback; if every call\nfails, a \"retry in a few seconds\" notice or a canned reply"
         }
        ],
        "text": "POST /ui/chat/stream {message, session_id}"
@@ -8610,19 +8920,23 @@
            "text": "the idea lanes (dive, screen, bare) enter at the next session's open; they\nrecord results, not \"correct\""
           }
          ],
-         "text": "\"correct\" = EXCESS return vs NIFTY 50 over the horizon, never raw return\n(in a rising market raw return makes every HOLD look right)"
+         "text": "\"correct\" = EXCESS return vs NIFTY 50 over the horizon, never raw return\n(in a rising market raw return makes every HOLD look right)",
+         "then": true
         },
         {
          "children": [],
-         "text": "not matured yet ─► waits; no price ─► counted as unpriceable"
+         "text": "not matured yet ─► waits; no price ─► counted as unpriceable",
+         "then": true
         },
         {
          "children": [],
-         "text": "report ─► one verdict word (INSUFFICIENT_DATA while the sample is small),\nWilson intervals"
+         "text": "report ─► one verdict word (INSUFFICIENT_DATA while the sample is small),\nWilson intervals",
+         "then": true
         },
         {
          "children": [],
-         "text": "breach rules ─► owner alerts"
+         "text": "breach rules ─► owner alerts",
+         "then": true
         }
        ],
        "text": "grade_due(today)      safe to re-run: one grade per (call, horizon)"
@@ -8665,14 +8979,19 @@
        "children": [
         {
          "children": [],
-         "text": "direction accuracy, Brier score, coverage vs simple baselines\n(persistence, always-up): the \"baseline duel\""
+         "text": "scorecard: direction accuracy, Brier score, coverage vs simple baselines\n(persistence, always-up): the \"baseline duel\""
+        },
+        {
+         "children": [],
+         "text": "learning-evidence report (did the learned weights beat the base weights?) with\nthe auditor's money section, emailed to the owner",
+         "then": true
         }
        ],
        "text": "1st of the month 02:00 ─► the previous month, from the feedback logs"
       },
       {
        "children": [],
-       "text": "Learning evidence and a missed-risers report run by hand (read only)"
+       "text": "A missed-risers report runs by hand (read only)"
       }
      ],
      "name": "Monthly scorecard",
@@ -8800,34 +9119,50 @@
        "children": [
         {
          "children": [],
-         "text": "satisfied after not being satisfied ─► \"resolved\" once, then silent"
+         "ends": true,
+         "kind": "decision",
+         "text": "satisfied ─► \"resolved\" once if it was not before, then silent"
         },
         {
          "children": [],
-         "text": "unknown (the check crashed) ─► warning every day (a silent watchdog is worse\nthan none)"
+         "ends": true,
+         "kind": "decision",
+         "text": "else unknown (the check crashed) ─► warning every day (a silent watchdog is\nworse than none)",
+         "then": true
         },
         {
          "children": [],
-         "text": "past its deadline, not satisfied ─► critical every 7 days, indefinitely"
+         "ends": true,
+         "kind": "decision",
+         "text": "else past its deadline ─► critical every 7 days, indefinitely",
+         "then": true
         },
         {
          "children": [],
-         "text": "window open (or no window) ─► warning every day (a check may ask for slower)"
+         "ends": true,
+         "kind": "decision",
+         "text": "else window open, or no window ─► warning every day (a check may ask for\nslower; a monthly one warns once a month)",
+         "then": true
         },
         {
          "children": [],
-         "text": "window near ─► info once"
+         "ends": true,
+         "kind": "decision",
+         "text": "else window near ─► info once",
+         "then": true
         },
         {
          "children": [],
-         "text": "otherwise silent"
+         "kind": "end",
+         "text": "else silent",
+         "then": true
+        },
+        {
+         "children": [],
+         "text": "examples: backup restorable, audit ran, IPO cache fresh, screen guard sources\nalive, error backlog needs triage, scorecard written"
         }
        ],
        "text": "06:30: config/milestones.yaml + named checks; the ladder is a pure function"
-      },
-      {
-       "children": [],
-       "text": "examples: backup restorable, audit ran, IPO cache fresh, screen guard sources\nalive, error backlog needs triage, scorecard written"
       }
      ],
      "name": "Watchdog",
@@ -8860,13 +9195,14 @@
          "text": "one issue per cause: new | regressed | ongoing | quiet, with a spiking flag"
         },
         {
-         "children": [
-          {
-           "children": [],
-           "text": "\"fixed\" is proven by later data; a recurrence reopens the issue"
-          }
-         ],
-         "text": "triage by the owner: open | acknowledged | fixed | wontfix"
+         "children": [],
+         "text": "triage by the owner: open | acknowledged | fixed | wontfix",
+         "then": true
+        },
+        {
+         "children": [],
+         "text": "\"fixed\" is proven by later data; a recurrence reopens the issue",
+         "then": true
         }
        ],
        "text": "every WARNING+ in telemetry.db ─► normalised text ─► fingerprint"
@@ -8896,7 +9232,7 @@
       },
       {
        "children": [],
-       "text": "a job with zero or partial output ─► an alert naming each stock and reason"
+       "text": "a job with zero or partial output ─► an alert (the daily review's names each stock\nand reason)"
       },
       {
        "children": [],
@@ -8930,19 +9266,23 @@
         },
         {
          "children": [],
-         "text": "manifest: SHA-256, integrity, row counts"
+         "text": "manifest: SHA-256, integrity, row counts",
+         "then": true
         },
         {
          "children": [],
-         "text": "restore drill"
+         "text": "restore drill",
+         "then": true
         },
         {
          "children": [],
-         "text": "keep 7"
+         "text": "keep 7",
+         "then": true
         },
         {
          "children": [],
-         "text": "off-site copy (AES-256-GCM) once a target is set; the watchdog says when none is\nconfirmed"
+         "text": "off-site copy (AES-256-GCM) of an archive that passed, once a target is set; the\nwatchdog says when none is confirmed",
+         "then": true
         },
         {
          "children": [],
@@ -8978,7 +9318,7 @@
         },
         {
          "children": [],
-         "text": "a run id on every warning"
+         "text": "a run id on warnings logged inside a run"
         }
        ],
        "text": "telemetry.db (model calls, run summaries, app logs, data health)"
@@ -9798,7 +10138,7 @@
   ]
  },
  "stamp": {
-  "commit": "69e7c28f4cb07177c5c50e93660384fd2636e21c",
+  "commit": "a173e22ab64b3b43434f21ba04e067c1046f5206",
   "uncommitted_code": false
  },
  "stores": [

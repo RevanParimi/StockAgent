@@ -4512,8 +4512,11 @@ from the model by `tools/architecture_map/viewer/` (its own npm project,
 `npm run build`); a test fails when the page was not built from the committed
 viewer, or shows other modules, logic, flows, stores, jobs, settings,
 production values, trace or tour than `model.json`. Its code galaxy draws every
-Python file and import from the model as it stood at the page's last build. The
-map is developer documentation: nothing of it ships in the image.
+Python file and import from the model as it stood at the page's last build.
+Without WebGL, or on a window 760 px wide or less, the page shows a flat map of
+the same model. A change that adds or moves a job, route, module, store or flow
+updates the map's curated model (AGENTS.md). The map is developer
+documentation: nothing of it ships in the image.
 
 The broad-exception guard fails when new code catches every exception without logging,
 re-raising or using it. The 154 handlers that already did so are grandfathered
@@ -4531,7 +4534,13 @@ Maintainer commands, with the required local dependencies installed:
 python scripts/docs/run_kt_checks.py
 python scripts/docs/build_kt_pdf.py
 python scripts/docs/check_kt_docs.py
+python tools/architecture_map/model/generate.py
+python tools/architecture_map/model/check.py
 ```
+
+The last two keep the architecture map current: the generator rewrites
+`docs/architecture-map/model.json` and `TREES.md` from the code and the curated
+model, and the guard fails, naming what is missing, when they disagree.
 
 The test runner copies tracked source to ignored `analysis_data/`, excludes
 `.env`/runtime stores, disables dotenv, and blocks external transports and test

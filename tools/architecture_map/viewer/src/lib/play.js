@@ -4,7 +4,7 @@
 
 import { moduleOf } from '../theme.js';
 import { findPart, related, timesOf } from './select.js';
-import { prose } from './flow.js';
+import { arrows } from './flow.js';
 import { LEVEL, boundsOf, flowKey } from './world.js';
 
 export const MODES = {
@@ -16,7 +16,6 @@ export const SPEEDS = [1, 2, 4];
 // The views a tour stop may ask for; the guard knows the same names (model/validate.py).
 export const TOUR_PRESETS = ['front', 'top', 'side', 'below', 'clock', 'focus'];
 
-const arrows = (text) => prose(String(text).replace(/\s*─►\s*/g, ' → '));
 const jobsById = (model) => new Map(model.jobs.map((j) => [j.id, j]));
 
 // -- the clock's times ------------------------------------------------------------------

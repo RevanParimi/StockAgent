@@ -14,6 +14,29 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 27 Nov, afternoon (autopilot `1127-1142-p14`, `1127-1604-p1`): MAP-005 → ACCEPTED (light)
+
+- **27 Nov, MAP-005 built, not accepted** ([receipt](evidence/MAP-005.md)), uncommitted on `main`
+  on the code-server. Opus check fixed; guarded main step passed, code unchanged since.
+- **Browser tests cannot start (about 16:05 IST):** the 16:00 redeploy removed Chromium's system
+  libraries (17 missing; 6 browser suites failed, 55 other tests passed; B-9). The session's `sudo`
+  reinstall was denied by auto mode.
+- **Accepted, 16:27 IST:** at the owner's word the libraries were reinstalled and the guarded
+  browser step passed (61 tests, peak `anon` 1,745 MB). The map's logic charts re-checked, the flat
+  map and phone layout, and the living-map rule are in. The owner's walk-through (11-P) is pending.
+
+## Moved from the current handoff on 27 Nov (MAP-005's phase)
+
+- **21 Nov:** the [B-32 read](evidence/B-32-read-2026-11-21.md): 5 of 10 new buys went against
+  their own analysis; DEEPA sold. FIX-033, PR-047. No hand trades.
+- **26 Nov, PR-047 accepted** by its fresh review ([receipt](evidence/PR-047-review.md)), merged
+  as `6eca615`: a buy needs the band's BUY and the model's own, so TVSMOTOR's kind is refused.
+  B-42: a top-up reads neither verdict (`PR-014-R1`). `PR-047-S1` waits for your word.
+- **27 Nov, MAP-001 to MAP-004 done** ([receipt](evidence/MAP-004.md)): open
+  [the 3D map](../../architecture-map/index.html) (offline; clock `5`, "Trace a stock", Tour;
+  Developer, then `G`: the code galaxy). Code changes need the map regenerated; model or viewer
+  changes also its page rebuilt.
+
 ## 27 Nov, morning (autopilot `1127-0605-p12`): MAP-003 → ACCEPTED (light)
 
 - **27 Nov, MAP-003 done** (light, [receipt](evidence/MAP-003.md), base `69e7c28`): the map

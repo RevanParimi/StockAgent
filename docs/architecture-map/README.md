@@ -4,7 +4,7 @@ Developer documentation: nothing here ships in the app, and the app reads none o
 
 | File | What it is |
 |---|---|
-| [index.html](index.html) | The map in 3D: one self-contained file. Open it by double click. It works offline and asks for nothing from the network. Generated; never edit it. |
+| [index.html](index.html) | The map (3D, or flat on a phone and without WebGL): one self-contained file. Open it by double click. It works offline and asks for nothing from the network. Generated; never edit it. |
 | [TREES.md](TREES.md) | The same content as text trees (generated). |
 | `model.json` | The model both are drawn from (generated). |
 | [DESIGN.md](DESIGN.md) | The map's own design rules. A new visual element goes here first. |
@@ -13,9 +13,9 @@ Developer documentation: nothing here ships in the app, and the app reads none o
 
 ## Open it
 
-Open `docs/architecture-map/index.html` in a browser that draws WebGL (any current Chrome,
-Firefox, Edge or Safari). Without WebGL it says so, and the legend, search and the panel still show
-every module (a flat 2D view is MAP-005's).
+Open `docs/architecture-map/index.html` in any current Chrome, Firefox, Edge or Safari. A browser
+that draws WebGL shows the 3D map. Without WebGL, if the 3D view fails, or on a window 760 px wide
+or less (a phone), it shows the [flat map](#the-flat-map-and-phones) of the same model.
 
 What you see: the three heights are what people see, the product flowing left to right, and storage;
 the platform is the frame under the product; measurement and operations sit on a ring outside it.
@@ -46,6 +46,20 @@ Three things play step by step in a bar under the world, with Back, Next, Play o
   starts here; `Esc` leaves it. Autoplay never starts by itself.
 
 Their addresses can be shared: `index.html#p=clock&s=16`, `#p=trace&s=6`, `#p=tour&s=1`.
+
+## The flat map and phones
+
+One drawing of the same model: the planes as bands from top to bottom, each module at its column,
+the outside parties beside them, the stores under them. It has the same legend, panel, search,
+player and deep links as the 3D map, and nothing in it moves.
+
+- Choose a card (or a module in the legend) to open it. What it touches stays bright, the rest
+  fades, its flows brighten, and its parts are listed under the drawing.
+- `1` to `4` change what stands out: flows, flows without storage, planes, or storage. `5`, Trace a
+  stock and the Tour light each step on the drawing.
+- `+` and `−`, or the buttons above the drawing, change its size; a wider drawing scrolls.
+- In the code galaxy each card counts its module's files; a card holds the shared files.
+- On a phone the player stands above the map, and opening something moves to its panel.
 
 ## The code galaxy
 
@@ -82,8 +96,8 @@ Addresses: `index.html#g` is the galaxy, `#g&m=M5` lights a module's files and
 | `G` | The code galaxy (developer view) |
 | `R` | Reset the view |
 | `/` | Search modules, parts, stores, jobs, settings, functions and files |
-| `P` | Pause or resume motion |
-| `← → ↑ ↓` and `+ −` | Turn and zoom the 3D view, once it has the focus (Tab to it) |
+| `P` | Pause or resume motion (3D view; the flat map does not move) |
+| `← → ↑ ↓` and `+ −` | Turn and zoom the 3D view, once it has the focus (Tab to it); on the flat map `+ −` change its size and the arrows scroll it |
 | `Shift` + arrows | Move the 3D view sideways, once it has the focus |
 | `Esc` | Close the dialog, then the clock, trace or tour, then the panel, then the galaxy |
 | `?` | The list of keys |
@@ -129,7 +143,8 @@ the commit shown in the header (`Code inspected`) are only as new as the last re
 
 `npm run test:frontend` at the repository root runs `tests/frontend/architecture_map.test.mjs`
 (the built page in Chromium with software WebGL, opened from disk with the network off),
-`architecture_map_galaxy.test.mjs` (the code galaxy, the same way) and
-`architecture_map_logic.test.mjs` (layout, flowchart rules, what each step and choice lights, the
-clock ring, the galaxy's balls and dots, colours and contrast, the rebuild check). None needs the
-viewer's own packages.
+`architecture_map_galaxy.test.mjs` (the code galaxy, the same way),
+`architecture_map_flat.test.mjs` (the flat map without WebGL and on a phone, every part's panel)
+and `architecture_map_logic.test.mjs` (layout, flowchart rules, what each step and choice lights,
+the clock ring, the galaxy's balls and dots, the flat map's places and states, colours and
+contrast, the rebuild check). None needs the viewer's own packages.

@@ -184,11 +184,73 @@ button.label:hover { background: var(--raised); }
   pointer-events: none; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
-.notice, .no-view {
+.notice {
   position: absolute; left: 16px; right: 16px; bottom: 16px; background: var(--raised);
   border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; max-width: 640px;
 }
-.no-view { top: 16px; bottom: auto; }
+
+/* the flat map (MAP-005): DESIGN.md */
+.flat {
+  position: absolute; inset: 0; display: grid; gap: 8px; align-content: start;
+  /* the drawing takes what it needs and scrolls when that is more than the room; the parts
+     of a chosen module follow it */
+  grid-template-rows: auto auto minmax(0, max-content) auto;
+  padding: 12px max(12px, env(safe-area-inset-right)) 12px max(12px, env(safe-area-inset-left));
+}
+.flat-note {
+  background: var(--raised); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px;
+  font-size: 13px;
+}
+.flat-tools { display: flex; gap: 6px; }
+.flat-tools button { min-width: 36px; }
+.flat-scroll { overflow: auto; overscroll-behavior: contain; border-radius: 8px; min-width: 0; }
+.flat-scroll:focus-visible { outline-offset: -2px; }
+.flat-scroll svg { display: block; margin: 0 auto; touch-action: manipulation; }
+.flat-band rect { fill: none; stroke-opacity: 0.45; }
+.flat-band text { fill: var(--ink2); font-size: 12px; }
+.flat-band.frame rect { stroke-dasharray: 4 3; stroke-opacity: 0.8; }
+.flat[data-view-shown="side"] .flat-band rect { stroke-opacity: 1; }
+.flat[data-view-shown="side"] .flat-band text { fill: var(--ink); font-weight: 600; }
+.flat-card { transition: opacity 120ms ease; }
+.flat-card .flat-box { fill: var(--panel); stroke: var(--line); stroke-width: 1; }
+.flat-card text { fill: var(--ink); font-size: 13px; }
+.flat-card .part-id { fill: var(--ink2); font-variant-numeric: tabular-nums; }
+.flat-card.store text { fill: var(--ink2); font-size: 12px; }
+.flat-card.external .flat-box { stroke: var(--edge); stroke-dasharray: 5 3; }
+a.flat-card { cursor: pointer; }
+a.flat-card:hover .flat-box { fill: var(--raised); stroke: var(--edge); }
+a.flat-card:active .flat-box { stroke: var(--ink); }
+.flat-card.selected .flat-box, .flat-card.lit .flat-box {
+  fill: var(--raised); stroke: var(--focus); stroke-width: 2; stroke-dasharray: none;
+}
+.flat-card.store.near text, .flat-card.store.lit text { fill: var(--ink); }
+.flat-card.store.near .flat-box { stroke: var(--tone); stroke-width: 1.5; }
+.flat-card.faded { opacity: 0.25; }
+/* a card with the focus is never faded, and its edge says where the focus is */
+a.flat-card:focus-visible { opacity: 1; }
+a.flat-card:focus-visible .flat-box { stroke: var(--focus); stroke-width: 3; }
+.flat-arrow { opacity: 0.55; transition: opacity 120ms ease; }
+.flat-arrow path { fill: none; stroke-width: 1.5; }
+.flat[data-flat="narrow"] .flat-arrow.rest { opacity: 0; pointer-events: none; }
+.flat-arrow.bright { opacity: 1; }
+.flat-arrow.bright path { stroke-width: 3; }
+.flat-arrow.faded { opacity: 0.08; }
+.flat-arrow.dim { opacity: 0.1; }
+.flat-arrow path.flat-hit { stroke: transparent; stroke-width: 10; pointer-events: stroke; }
+.flat-pipe { fill: none; stroke-width: 1; opacity: 0; transition: opacity 120ms ease; }
+.flat-pipe.show { opacity: 0.6; }
+.flat-pipe.bright { opacity: 0.85; stroke-width: 2; }
+.flat-parts { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 13px; }
+.flat-parts > span { color: var(--muted); font-size: 12px; }
+.flat-parts ul { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; }
+.flat-parts li a {
+  display: inline-flex; gap: 6px; align-items: center; min-height: 30px; padding: 3px 10px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink);
+  text-decoration: none;
+}
+.flat-parts li a:hover { background: var(--raised); border-color: var(--edge); }
+.flat-parts li a:active { background: var(--node); border-color: var(--ink); }
+.flat-parts li a[aria-current="true"] { border-color: var(--focus); background: var(--raised); }
 
 .panel {
   grid-area: panel; overflow: auto; overscroll-behavior: contain; background: var(--panel);
@@ -271,11 +333,14 @@ dialog::backdrop { background: rgba(4, 7, 16, 0.65); }
 .search li[aria-selected="true"] { background: var(--panel); border-color: var(--focus); }
 .kind { color: var(--muted); font-size: 12px; }
 
+@keyframes appear { from { opacity: 0; } to { opacity: 1; } }
+.panel, .player, dialog[open] { animation: appear 160ms ease; }
+
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition: none !important; }
+  *, *::before, *::after { transition: none !important; animation: none !important; }
 }
 
-/* A narrow window stacks the panel under the world; the phone layout is MAP-005. */
+/* A narrow window stacks the panel under the view. */
 @media (max-width: 900px) {
   .app, .app.with-panel, .app.with-panel.wide {
     grid-template-columns: minmax(0, 1fr); height: auto; min-height: 100vh;
@@ -287,4 +352,31 @@ dialog::backdrop { background: rgba(4, 7, 16, 0.65); }
     grid-template-areas: "top" "legend" "world" "player" "panel";
   }
   .legend ul { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+}
+
+/* A phone (MAP-005): the flat map, and the page scrolls from top to bottom. */
+@media (max-width: 760px) {
+  .app, .app.with-panel, .app.with-panel.wide { grid-template-rows: auto auto auto auto; }
+  .app.playing, .app.playing.with-panel {
+    grid-template-rows: auto auto auto auto auto;
+    grid-template-areas: "top" "legend" "player" "world" "panel";
+  }
+  .player { border-top: 0; border-bottom: 1px solid var(--line); }
+  .topbar { justify-content: flex-start; gap: 8px 12px; }
+  .topbar kbd, .player kbd { display: none; }
+  .topbar button, .player-controls button, .panel button, .flat-tools button { min-height: 36px; }
+  .world.flat-world { overflow: visible; }
+  .flat { position: static; grid-template-rows: none; }
+  .flat-parts li a { min-height: 36px; }
+  /* the modules are one row that scrolls sideways: the map below lists them too */
+  .legend { border-right: 0; border-bottom: 1px solid var(--line); padding-block: 8px; }
+  .legend h2, .legend .hint { position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap; }
+  .legend ul { display: flex; overflow-x: auto; padding: 3px; gap: 6px; }
+  .legend li { flex: none; }
+  .legend li a { min-height: 36px; padding: 3px 10px; white-space: nowrap; }
+  .panel { box-shadow: none; border-left: 0; border-top: 1px solid var(--line); }
+  .panel-actions button { min-height: 36px; }
+  .rows li { grid-template-columns: 72px minmax(0, 1fr); }
+  .search li { grid-template-columns: minmax(0, 1fr); gap: 2px; }
 }

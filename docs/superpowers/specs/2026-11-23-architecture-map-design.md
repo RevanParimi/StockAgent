@@ -3,8 +3,9 @@
 Status: **adopted as the plan** on 2026-11-23 (the owner, about 00:10 IST: "take it like phases
 that we do and complete all phases of this plan using our autopilot"). MAP-001 (the model, its
 generators and the guard), MAP-002 (the 3D world and the detail panel), MAP-003 (the day
-player, the stock trace and the guided tour) and MAP-004 (the code galaxy) are implemented;
-MAP-005 is not. Author: Claude + Revan. Date: 2026-11-23. Stories:
+player, the stock trace and the guided tour), MAP-004 (the code galaxy) and MAP-005 (every
+module's logic, the flat view, the phone layout and the living-map rule) are implemented.
+Author: Claude + Revan. Date: 2026-11-23. Stories:
 [MAP-001](../../planning/PI-2026-09/stories/MAP-001.md) to
 [MAP-005](../../planning/PI-2026-09/stories/MAP-005.md).
 
@@ -106,8 +107,8 @@ Labels in the 3D world are HTML overlays that always face the camera; long text 
 - **Guided tour** (MAP-003): about 8 scripted stops with one-line captions.
 - **Code galaxy** (MAP-004): a force graph of the Python files and their imports, coloured by
   module, sized by lines; selecting a module in the world lights its files, and back.
-- **2D fallback** (MAP-005): the same model as a flat map when WebGL is missing or the screen is
-  small.
+- **2D fallback** (MAP-005): the same model as a flat map when WebGL is missing, the 3D view
+  fails or the window is 760 px wide or less.
 
 ## Look and usability (added 2026-11-23; see "Decisions taken")
 

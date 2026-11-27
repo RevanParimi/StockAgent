@@ -188,7 +188,7 @@ def _assemble(root: Path, data: dict, problems: list[str],
         "traces": lists["traces"],
         "tours": lists["tours"],
         "production": [{**p, "as_of": str(p["as_of"])} for p in lists["production"]],
-        "jobs": [{**job, **data["jobs"][job["id"]],
+        "jobs": [{**jobs.shown(job), **data["jobs"][job["id"]],
                   "schedule": jobs.describe_schedule(job["cron"])} for job in job_list],
         "routes": [{**r, "module": validate.route_rule(r["path"], lists["routes"])["module"]}
                    for r in route_list],

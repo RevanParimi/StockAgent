@@ -6,8 +6,8 @@ import { clusterName, clusterOf, ownerName } from '../lib/galaxy.js';
 import { SHARED, SURFACE, moduleColour, nodeOf } from '../theme.js';
 
 export function TopBar({
-  model, preset, mode, code, audience, motion, reduced, onPreset, onReset, onStory, onCode,
-  onSearch, onAudience, onMotion, onHelp,
+  model, preset, mode, code, audience, motion, reduced, flat, onPreset, onReset, onStory,
+  onCode, onSearch, onAudience, onMotion, onHelp,
 }) {
   const commit = model.stamp.commit.slice(0, 7);
   return (
@@ -23,7 +23,8 @@ export function TopBar({
         {Object.entries(PRESETS).map(([id, p]) => (
           <button key={id} type="button" data-view={id} onClick={() => onPreset(id)}
             aria-pressed={preset === id}
-            title={code && id !== 'clock' ? 'Frame the galaxy from this side' : p.asks}>
+            title={code && id !== 'clock' ? (flat ? 'The code’s flat map' : 'Frame the galaxy from this side')
+              : p.asks}>
             {p.label} <kbd aria-hidden="true">{p.key}</kbd></button>
         ))}
         <button type="button" onClick={onReset}>Reset <kbd aria-hidden="true">R</kbd></button>
@@ -50,16 +51,19 @@ export function TopBar({
               onClick={() => onAudience(id)}>{label}</button>
           ))}
         </div>
-        <button type="button" onClick={onMotion} aria-pressed={!motion} disabled={reduced}
-          title={reduced ? 'Your system asks for reduced motion' : undefined}>
-          Pause motion <kbd aria-hidden="true">P</kbd></button>
+        {/* nothing moves on the flat map */}
+        {flat ? null : (
+          <button type="button" onClick={onMotion} aria-pressed={!motion} disabled={reduced}
+            title={reduced ? 'Your system asks for reduced motion' : undefined}>
+            Pause motion <kbd aria-hidden="true">P</kbd></button>
+        )}
         <button type="button" onClick={onHelp} aria-haspopup="dialog">Help <kbd aria-hidden="true">?</kbd></button>
       </div>
     </header>
   );
 }
 
-export function Legend({ model, selected, audience, code, onSelect }) {
+export function Legend({ model, selected, audience, code, flat, onSelect }) {
   const current = selected ? clusterOf(selected) : null;
   // in the galaxy the shared files are a ball of their own
   const entries = [...model.modules.map((m) => ({ id: m.id, name: m.short })),
@@ -85,7 +89,8 @@ export function Legend({ model, selected, audience, code, onSelect }) {
         ))}
       </ul>
       <p className="hint">
-        {code ? 'Choose a module to light its files. Press ' : 'Choose a module, or click its block. Press '}
+        {code ? 'Choose a module to light its files. Press '
+          : `Choose a module, or ${flat ? 'its card' : 'click its block'}. Press `}
         <kbd>/</kbd>{code ? ' to find a file by name.' : ' to search.'}
       </p>
     </nav>

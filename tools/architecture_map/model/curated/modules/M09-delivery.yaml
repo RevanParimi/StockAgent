@@ -14,12 +14,16 @@ submodules:
     code: ["core/delivery/brief.py::build_morning_brief"]
     config: [delivery.enabled]
     logic: |
-      Morning brief (not a trading day ─► skipped)
-        assembled by code: the regime in plain words, the overnight markets and news,
+      Morning brief (08:50, weekdays)
+        ?! not a trading day ─► skipped
+        > assembled by code: the regime in plain words, the overnight markets and news,
         | holdings needing attention, results due, new shelf ideas, IPOs and lock-in
         | expiries
-        one bulk model call for the headline (fallback text on failure)
-        research tone; never the word "advice"
+        > one bulk model call: the headline and a note on each overnight item (fallback
+        | text on failure)
+        > sent by push and email; lock-in expiries also go to that account's alerts
+        research tone: the model is told never to call it advice; the page says it is not
+        | advice
   - id: M9.2
     name: Weekly review
     summary: Sunday 18:00, with the index watch
@@ -27,26 +31,29 @@ submodules:
     code: ["core/delivery/weekly.py::build_weekly_review", "core/delivery/index_watch.py::run_index_watch"]
     config: [delivery.enabled]
     logic: |
-      Weekly review
+      Weekly review (Sunday 18:00)
         index watch first: constituent changes ─► alerts
           a shelf stock ─► everyone
           any other stock ─► only accounts holding or watching it
-        results scorecard ─► allocation vs risk profile ─► laggards ─► switch calls
-        | (last 4 weeks) ─► shelf candidates
-        one bulk model headline call
+        > results scorecard ─► allocation vs risk profile ─► laggards ─► switch calls
+        | (last 4 weeks) ─► shelf candidates ─► IPO watch
+        > one bulk model headline call
   - id: M9.3
     name: Alerts
     summary: who gets what, once
     files: [core/delivery/alerts.py]
     code: ["core/delivery/alerts.py::emit_alerts"]
     logic: |
-      who gets what
-        operator notices (system health, job crash, model down) ─► the owner only
-        market notices (shelf adds, IPOs, index changes for shelf stocks) ─► everyone
-        account notices (your advice, your trades, your stocks) ─► that account only
+      ? who gets what
+        operator notice ─► the owner only (system health, job crash, model down)
+        market notice ─► everyone (shelf adds, pre-open re-forecasts, index changes for
+        | shelf stocks)
+        account notice ─► that account only (your advice, your trades, your stocks,
+        | lock-in expiries)
       dedupe key user|date|kind|symbol in alerts_sent.jsonl
-        already delivered today ─► not sent again
-        no channel accepted it ─► marked undelivered ─► retried at the next emit
+        ?! already delivered today ─► not sent again
+        > send it
+        > ? no channel accepted it ─► marked undelivered ─► retried at the next emit
   - id: M9.4
     name: Channels
     summary: web push and email
@@ -55,11 +62,12 @@ submodules:
     config: [delivery.push_enabled, delivery.email_enabled]
     logic: |
       deliver(title, body, user, kind)
-        Atlas on ─► put it on the outbox (M9.5)
-        otherwise send now
+        ?! delivery off ─► nothing is sent
+        > ?! else Atlas on, and the outbox can be written ─► queued for its sender (M9.5)
+        > else send now
           web push (VAPID) ─► a dead subscription (400/403/404/410) is pruned
           email ─► SMTP or Resend ("auto" uses Resend when a key is set)
-        each send returns SendResult: accepted? permanent? reason (addresses masked)
+        > each send returns SendResult: accepted? permanent? reason (addresses masked)
         "accepted" means the transport took it; nothing confirms a person read it.
   - id: M9.5
     name: Outbox
@@ -70,11 +78,11 @@ submodules:
     logic: |
       Drainer (runs only in the primary worker)
         claim a row: UPDATE ... SET status='sending' ─► one sender only
-        send it
+        > send it
+        > ? the result
           accepted ─► delivered (+ which transport)
           permanent failure ─► dead letter at once
           transient failure ─► retry after backoff (≥ the provider's Retry-After)
           | ─► too many attempts ─► dead letter
-        a row left in 'sending' by a restart ─► dead letter (outcome unknown; never
-        | resent)
+      a row left in 'sending' by a restart ─► dead letter (outcome unknown; never resent)
       GET /delivery/outbox (owner): counts and dead letters, no message contents

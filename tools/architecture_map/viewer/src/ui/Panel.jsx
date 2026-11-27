@@ -2,7 +2,7 @@ import { forwardRef } from 'react';
 import {
   flowsFor, formatHash, jobsFor, routesFor, settingsFor, storesFor,
 } from '../lib/select.js';
-import { prose } from '../lib/flow.js';
+import { arrows } from '../lib/flow.js';
 import { moduleColour } from '../theme.js';
 import Flowchart from './Flowchart.jsx';
 
@@ -183,7 +183,7 @@ const Panel = forwardRef(function Panel({
           </p>
         ) : null}
       </div>
-      <p className="summary">{prose(sub ? sub.summary : module.summary)}</p>
+      <p className="summary">{arrows(sub ? sub.summary : module.summary)}</p>
       {developer ? (
         <p className="to-code">
           <GalaxyLink id={id} onGo={() => onCode(id)}>Show its code in the galaxy</GalaxyLink>
@@ -204,7 +204,7 @@ const Panel = forwardRef(function Panel({
               <PartLink id={s.id} audience={audience} onSelect={onSelect}>
                 <span className="part-id">{s.id}</span> {s.name}
               </PartLink>
-              {!sub ? <span className="sub">{prose(s.summary)}</span> : null}
+              {!sub ? <span className="sub">{arrows(s.summary)}</span> : null}
               {sub && s.id === sub.id ? <span className="here">shown above</span> : null}
             </li>
           ))}

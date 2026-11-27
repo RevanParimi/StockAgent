@@ -25,14 +25,14 @@ submodules:
           dive ...... every deep dive, at the conviction it was issued with
           screen .... the screen's candidates, dived or not
           bare ...... the plain model's answer to the same evidence
-        "correct" = EXCESS return vs NIFTY 50 over the horizon, never raw return
+        > "correct" = EXCESS return vs NIFTY 50 over the horizon, never raw return
         | (in a rising market raw return makes every HOLD look right)
           the idea lanes (dive, screen, bare) enter at the next session's open; they
           | record results, not "correct"
-        not matured yet ─► waits; no price ─► counted as unpriceable
-        report ─► one verdict word (INSUFFICIENT_DATA while the sample is small),
+        > not matured yet ─► waits; no price ─► counted as unpriceable
+        > report ─► one verdict word (INSUFFICIENT_DATA while the sample is small),
         | Wilson intervals
-        breach rules ─► owner alerts
+        > breach rules ─► owner alerts
   - id: M11.2
     name: Monthly scorecard
     summary: forecast accuracy against simple baselines
@@ -44,9 +44,11 @@ submodules:
     config: [rl.scorecard_enabled]
     logic: |
       1st of the month 02:00 ─► the previous month, from the feedback logs
-        direction accuracy, Brier score, coverage vs simple baselines
+        scorecard: direction accuracy, Brier score, coverage vs simple baselines
         | (persistence, always-up): the "baseline duel"
-      Learning evidence and a missed-risers report run by hand (read only)
+        > learning-evidence report (did the learned weights beat the base weights?) with
+        | the auditor's money section, emailed to the owner
+      A missed-risers report runs by hand (read only)
   - id: M11.3
     name: Weekly results
     summary: the money line, on Sunday (M5.7)

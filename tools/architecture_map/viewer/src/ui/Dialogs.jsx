@@ -97,9 +97,9 @@ const KEYS = [
   ['G', 'The code galaxy: every Python file (developer view)'],
   ['R', 'Reset the view'],
   ['/', 'Search'],
-  ['P', 'Pause or resume motion'],
-  ['← → ↑ ↓', 'Turn the 3D view (when it has the focus)'],
-  ['+ −', 'Zoom the 3D view (when it has the focus)'],
+  ['P', 'Pause or resume motion (3D view)'],
+  ['← → ↑ ↓', 'Turn the 3D view (when it has the focus); scroll the flat map'],
+  ['+ −', 'Zoom the 3D view, or size the flat map (when it has the focus)'],
   ['Shift + arrows', 'Move the 3D view sideways (when it has the focus)'],
   ['Esc', 'Close the dialog, then the clock, trace or tour, then the panel, then the galaxy'],
   ['?', 'This list'],
@@ -124,6 +124,9 @@ export function HelpDialog({ open, onClose }) {
       <p>In the developer view, the Code galaxy shows every Python file as a dot. Click a dot, or
         choose a module in the legend and then a file in the panel, or search a file by its name.
         Views 1 to 4 frame the galaxy; 5 leaves it for the clock.</p>
+      <p>Without WebGL, or on a window 760 px wide or less, the map is flat: choose a card to
+        open it; + and − (or the buttons above it) change its size; views 1 to 4 change what
+        stands out. The flat map has no motion.</p>
       <button type="button" onClick={onClose}>Close</button>
     </Modal>
   );

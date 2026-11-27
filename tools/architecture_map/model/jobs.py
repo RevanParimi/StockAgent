@@ -14,6 +14,7 @@ scheduler idiom is taught here and never silently dropped or read backwards.
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,22 @@ from tools.architecture_map.model import sources, switches
 SCHEDULER_FILE = "services/scheduler/python/scheduler.py"
 SETTINGS_NAMES = ("settings", "_macro_cfg")   # the scheduler's two names for settings
 CRON_FIELDS = ("year", "month", "day", "week", "day_of_week", "hour", "minute", "second")
+# Some scheduler names end in the code of an old plan, "(M4)", "(BP4)" or "(P3, dark)",
+# which reads like one of the map's module ids.
+_PLAN_CODE = re.compile(r"\s*\((?:M|BP|P)\d+\b[^()]*\)\s*$")
+
+
+def plain_name(name: str) -> str:
+    """A job's name as the map shows it: without a closing bracket that holds an old
+    plan's code. A name that is nothing else stays as it is."""
+    return _PLAN_CODE.sub("", name).strip() or name
+
+
+def shown(job: dict) -> dict:
+    """The job with the map's name; the scheduler's own is kept where it differs."""
+    name = plain_name(job["name"])
+    kept = {"scheduler_name": job["name"]} if name != job["name"] else {}
+    return {**job, "name": name, **kept}
 
 
 class _Reader:

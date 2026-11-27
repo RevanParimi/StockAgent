@@ -15,6 +15,14 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 export const PAGE = pathToFileURL(path.join(REPO, 'docs', 'architecture-map', 'index.html')).href;
 export const SLOW = { timeout: 180_000 };
 
+/** Runs in the page first: a browser that offers no WebGL. */
+export function withoutWebGL() {
+  const real = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function getContext(kind, ...rest) {
+    return String(kind).startsWith('webgl') ? null : real.call(this, kind, ...rest);
+  };
+}
+
 let browser;
 /** Starts a browser for the file's tests and closes it after them. */
 export function useBrowser() {
@@ -31,11 +39,13 @@ export function useBrowser() {
  *  page opened with no address starts on the guided tour; unless a test wants it, Esc
  *  leaves it first and the test begins on the map. A test that opens several pages in
  *  turn calls `close` on each: drawn in software, every open one holds much memory. */
-export async function open(t, { hash = '', motion = false, size = [1280, 800], tour = false } = {}) {
+export async function open(t, { hash = '', motion = false, size = [1280, 800], tour = false,
+  webgl = true } = {}) {
   const context = await browser.newContext({
     viewport: { width: size[0], height: size[1] }, offline: true,
     reducedMotion: motion ? 'no-preference' : 'reduce',
   });
+  if (!webgl) await context.addInitScript(withoutWebGL);
   const page = await context.newPage();
   const wrong = [];
   const asked = [];

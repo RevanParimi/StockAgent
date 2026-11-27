@@ -34,19 +34,19 @@ submodules:
     logic: |
       generate_forecast(stock, sector)     1st of month · startup self-heal · manual
         weights: observe ─► sector defaults | adapt ─► stored weights
-        run the analysis (M3), asking for the exact symbol
-          not actionable + enforce ─► InsufficientDataError, NO envelope
-        base close (one retry after 15 s) ── none ─► fail; the next run retries
-        context
+        > run the analysis (M3), asking for the exact symbol
+        > ?! not actionable + enforce ─► InsufficientDataError, NO envelope
+        > ?! no base close, even after one retry in 15 s ─► fail; the next run retries
+        > context
           learning ledger (past lessons)
           "blindspot" hints from past misses (saved for the month; the review reads them)
           seasonal calendar (sector events seeded per day)
           forecast profile: model-calibrated monthly return % + path shape
           | (front-loaded, back-loaded or linear; static values if the call fails)
           regime label, F&O snapshot, per-dimension catalyst predictions
-        30 trading-day rows: predicted close, verdict, confidence, key assumptions,
+        > 30 trading-day rows: predicted close, verdict, confidence, key assumptions,
         | gate status + source run id
-        save <TICKER>_<YYYY-MM>_prediction_envelope.json
+        > save <TICKER>_<YYYY-MM>_prediction_envelope.json
         | (stamped with weight version, learning mode, gate and instrument)
   - id: M4.2
     name: Daily review
@@ -122,16 +122,19 @@ submodules:
              rl.bias_trigger, rl.weight_max_step, rl.weight_max_drift]
     logic: |
       WeightAdapter (one weight per dimension)
-        the model was not at fault (data_gap, data_stale, external_shock) ─► no penalty
-        a timing miss of 3 sessions or less ─► no penalty
-        hit rate per dimension over the last N sessions
+        what counts against a dimension
+          the model was not at fault (data_gap, data_stale, external_shock) ─► no penalty
+          a timing miss of 3 sessions or less ─► no bias penalty (it still counts as a
+          | miss in the hit rate)
+        > hit rate per dimension over the last N sessions
           ≥ 70% ─► +0.02
           ≤ 40% ─► −0.03
-        weighted rolling miss rate (5/10/21 sessions) ≥ 0.55 ─► bias penalty
-        factor regime (IIMA momentum) scales the penalties
-        clamp: largest step per day, largest drift from the base
-        renormalise so the weights sum to 1.0
-      learning_mode decides what happens to that result
+        > weighted rolling miss rate (5/10/21 sessions) ≥ 0.55 ─► bias penalty
+        | (the factor regime, IIMA momentum, scales it)
+        > clamp: largest step per day, largest drift from the base (wider after 14
+        | correct sessions in a row)
+        > renormalise so the weights sum to 1.0
+      ? learning_mode: what happens to that result
         adapt ─► save a new weight version; lessons nudge dimension scores
         observe ─► the adapter runs on a copy; its proposal goes to
         | <TICKER>_weight_observations.json; decisions use the sector defaults;
@@ -157,11 +160,13 @@ submodules:
     config: [rl.event_ingest_enabled, rl.research_loop_enabled]
     logic: |
       Lessons (written by the FeedbackAgent)
-        scope stock_specific ─► the stock's learning ledger only
-        scope sector_wide ─► + <sector>/_shared_ledger.json
-        scope market_wide ─► + _market_ledger.json
-        read back as tiers: the stock's top lessons, sector top 3, market top 2
-        Monday 03:30 cleans old lessons
+        ? the scope of a lesson
+          stock_specific ─► the stock's learning ledger only
+          sector_wide ─► + <sector>/_shared_ledger.json
+          market_wide ─► + the sector ledger and _market_ledger.json
+        read back as tiers: the stock's top 6, sector top 3, market top 2 (faded ones
+        | left out)
+        Monday 03:30 cleans old lessons and distils each dossier
       Dossier (what we know about the company); every write goes through ONE bounded
       | merge
         daily ......... DossierCurator (Step 8.5): the day's observations
@@ -169,7 +174,8 @@ submodules:
         | + one Tavily page each (a qualifying new filing is ingested the same day)
         Sat 11:00 ..... QuestionResearcher: picks open questions, runs targeted
         | searches, one model call judges; questions that stay unanswered expire
-      Read by: the bundle's "dossier" section (M3), the chat's get_ticker_dossier
+      Read by: the bundle's "dossier" section (M3), the chat's get_ticker_dossier, the
+      | investment case at purchase (M5.5), the morning brief and the monthly scorecard
   - id: M4.5
     name: Regime and the living envelope
     summary: how rough is the market, and the pre-open shock check
@@ -183,25 +189,28 @@ submodules:
              rl.preopen_check_enabled, rl.preopen_shock_severity]
     logic: |
       RegimeDetector (no model: VIX, 5-day FII proxy, sector RSI), first match wins
-        MACRO_CRISIS ....... VIX > 22 and FII proxy < −1%
-        RISK_OFF ........... VIX > 22, or VIX 14–22 with FII proxy < −1%
-        MOMENTUM_EXTENDED .. VIX < 14, FII > +1%, RSI > 70
-        RISK_ON ............ VIX < 22, FII > +1%, RSI < 70
-        OVERSOLD ........... RSI < 30
-        NORMAL ............. anything else
-        2 of 3 global stress signals (Brent up 8% in 5 days, USD/INR up 1.5% in 5
-        | days, S&P 500 down 2%) ─► one notch more severe
-      Sticky label (market-wide, _regime_state.json)
-        severe label (RISK_OFF, MACRO_CRISIS) ─► entered at once
-        a milder reading while severe ─► calm_streak + 1; leave after 3 calm days
-        inputs unavailable ─► keep the last label, mark the day ─► no ADD, no new
-        | deployment
+        ?! VIX > 22 and FII proxy < −1% ─► MACRO_CRISIS
+        > ?! else VIX > 22, or VIX 14–22 with FII proxy < −1% ─► RISK_OFF
+        > ?! else VIX < 14, FII > +1%, RSI > 70 ─► MOMENTUM_EXTENDED
+        > ?! else VIX < 22, FII > +1%, RSI < 70 ─► RISK_ON
+        > ?! else RSI < 30 ─► OVERSOLD
+        > ! else NORMAL
+      Global stress, applied to that label
+        2 of 3 signals (Brent up 8% in 5 days, USD/INR up 1.5% in 5 days, S&P 500 down
+        | 2%) ─► one notch more severe
+      ? Sticky label (market-wide, _regime_state.json): a new reading
+        severe ─► RISK_OFF or MACRO_CRISIS is entered at once
+        milder while severe ─► calm_streak + 1; leave after 3 calm days
+        inputs unavailable ─► keep the last label (or a severer one the answering inputs
+        | prove), mark the day ─► no ADD, no new deployment
       Who reads the sticky label
         today's weight multipliers (M4.2 Step 5)
         advisor: crisis + falling path ─► EXIT; crisis or risk-off ─► no ADD
         deployment target: calm 80%, RISK_OFF 50%, MACRO_CRISIS 0% invested
         the brief's wording ("Steady", "Cautious", "Crisis")
       Pre-open check 08:45 (1 search + 1 fast model call in total)
-        overnight shock severity below the threshold ─► nothing
-        at or above ─► for each stock: does today's forecast contradict the shock?
-          yes ─► regenerate_envelope(trigger="preopen_shock")
+        ?! overnight shock severity below the threshold ─► nothing
+        > for each stock in the four sector configs' own lists (the managed list and the
+        | holdings are not read)
+          ?! no forecast for today, or it does not contradict the shock ─► left as it is
+          > ! else regenerate_envelope(trigger="preopen_shock")

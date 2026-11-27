@@ -19,6 +19,9 @@ import {
 } from '../../tools/architecture_map/viewer/src/lib/world.js';
 import { buildFlow } from '../../tools/architecture_map/viewer/src/lib/flow.js';
 import {
+  cardLabel, flatCodeStates, flatLayout, flatStates, wrapWords,
+} from '../../tools/architecture_map/viewer/src/lib/flat.js';
+import {
   findPart, formatHash, parseHash, related, search, searchIndex, settingsFor,
 } from '../../tools/architecture_map/viewer/src/lib/select.js';
 import {
@@ -1126,6 +1129,225 @@ test('text is readable and meaningful lines can be seen', () => {
       assert.ok(contrast(colour, SURFACE[surface]) >= 3, `${id} on ${surface}`);
     }
   }
+});
+
+// -- every module’s logic (MAP-005) ------------------------------------------------------
+
+// The parts that are lists of things, not an order of events or a choice.
+const LISTS = ['M1.4', 'M1.5', 'M2.4', 'M5.7', 'M10.1', 'M10.3', 'M11.3', 'M11.4', 'M12.3', 'M12.5'];
+
+test('every part that is a process is drawn with an order or a decision', () => {
+  const every = MODEL.modules.flatMap((m) => m.submodules.map((s) => s.id));
+  const plain = every.filter((id) => !buildFlow(logicOf(id))
+    .some((g) => g.sequential || g.nodes.some((n) => n.kind === 'decision')));
+  assert.deepEqual(plain.sort(), [...LISTS].sort());
+});
+
+test('the regime chart tries each label in the detector’s order and ends in one', () => {
+  inOrder(along('M4.5', 'VIX > 22 and FII'), ['VIX > 22 and FII', 'else VIX > 22', 'VIX < 14',
+    'VIX < 22', 'RSI < 30', 'NORMAL'], 'M4.5');
+  const [g] = buildFlow(logicOf('M4.5'));
+  assert.equal(edge(g, 'VIX > 22 and FII', 'MACRO_CRISIS').label, 'yes');
+});
+
+test('the sign-in chart answers a token first, then the switch, then refuses', () => {
+  inOrder(along('M10.2', 'valid bearer token'), ['valid bearer token', 'invalid or expired',
+    'auth.required off', 'else 401'], 'M10.2');
+});
+
+test('the watchdog chart climbs its ladder in the engine’s order', () => {
+  inOrder(along('M12.1', 'satisfied'), ['satisfied', 'unknown', 'past its deadline',
+    'window open', 'window near', 'silent'], 'M12.1');
+});
+
+test('no job’s name on the map ends in an old plan’s code', () => {
+  assert.deepEqual(MODEL.jobs.map((j) => j.name).filter((n) => /\((M|BP|P)\d/.test(n)), []);
+});
+
+// -- the flat map (MAP-005) --------------------------------------------------------------
+
+const GRAPH = codeGraph(MODEL);
+const WORLD = layoutWorld(MODEL);
+const WIDE = flatLayout(MODEL, WORLD);
+const NARROW = flatLayout(MODEL, WORLD, { narrow: true });
+const cardsOf = (layout) => new Map(layout.cards.map((c) => [c.id, c]));
+const cardsApart = (layout, what) => {
+  const { cards } = layout;
+  for (let i = 0; i < cards.length; i += 1) {
+    const a = cards[i];
+    assert.ok(a.x >= 0 && a.y >= 0 && a.x + a.w <= layout.width && a.y + a.h <= layout.height,
+      `${what}: ${a.id} is inside the drawing`);
+    for (const b of cards.slice(i + 1)) {
+      assert.ok(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y,
+        `${what}: ${a.id} overlaps ${b.id}`);
+    }
+  }
+};
+const lowest = (layout, ids) => Math.max(...ids.map((id) => cardsOf(layout).get(id).y));
+const highest = (layout, ids) => Math.min(...ids.map((id) => cardsOf(layout).get(id).y));
+const inPlane = (plane) => MODEL.modules.filter((m) => m.plane === plane).map((m) => m.id);
+
+test('the flat map has one card for every module, outside party and store, apart', () => {
+  for (const [layout, what] of [[WIDE, 'wide'], [NARROW, 'narrow']]) {
+    const wanted = [...MODEL.modules, ...MODEL.externals, ...MODEL.stores].map((x) => x.id);
+    assert.deepEqual(layout.cards.map((c) => c.id).sort(), wanted.sort(), what);
+    cardsApart(layout, what);
+  }
+  assert.equal(NARROW.width, 360, 'a narrow map is a phone wide');
+  const widths = (layout, ids) => new Set(ids.map((id) => cardsOf(layout).get(id).x)).size;
+  assert.equal(widths(NARROW, MODEL.modules.map((m) => m.id)), 2, 'modules two abreast');
+  assert.equal(widths(NARROW, MODEL.stores.map((s) => s.id)), 3, 'stores three abreast');
+});
+
+test('on the flat map the planes run top to bottom and columns left to right', () => {
+  const stores = MODEL.stores.map((s) => s.id);
+  const wide = [inPlane('top'), inPlane('middle'), inPlane('base'), stores];
+  const narrow = [inPlane('top'), inPlane('middle'), inPlane('base'), inPlane('ring'), stores];
+  for (const [layout, order] of [[WIDE, wide], [NARROW, narrow]]) {
+    for (let i = 1; i < order.length; i += 1) {
+      assert.ok(lowest(layout, order[i - 1]) < highest(layout, order[i]), `band ${i}`);
+    }
+  }
+  const at = cardsOf(WIDE);
+  const modules = MODEL.modules.filter((m) => m.plane !== 'ring');
+  for (const a of modules) {
+    for (const b of modules.filter((x) => x.plane === a.plane && x.column > a.column)) {
+      assert.ok(at.get(a.id).x < at.get(b.id).x, `${a.id} stands left of ${b.id}`);
+    }
+  }
+  // the watchers stand beside the product, to its right, inside one frame
+  const frame = WIDE.bands.find((b) => b.frame);
+  for (const id of inPlane('ring')) {
+    const card = at.get(id);
+    assert.ok(inPlane('middle').every((m) => at.get(m).x < card.x), `${id} is to the right`);
+    assert.ok(card.x >= frame.x && card.x + card.w <= frame.x + frame.w
+      && card.y >= frame.y && card.y + card.h <= frame.y + frame.h, `${id} is framed`);
+  }
+});
+
+// How far a point is from a card's outline.
+const offEdge = ([x, y], c) => {
+  const inX = x >= c.x - 0.1 && x <= c.x + c.w + 0.1;
+  const inY = y >= c.y - 0.1 && y <= c.y + c.h + 0.1;
+  const sides = [inY ? Math.abs(x - c.x) : Infinity, inY ? Math.abs(x - c.x - c.w) : Infinity,
+    inX ? Math.abs(y - c.y) : Infinity, inX ? Math.abs(y - c.y - c.h) : Infinity];
+  return Math.min(...sides);
+};
+
+test('every flow is one arrow from its source card to its target card; every writer a line', () => {
+  for (const layout of [WIDE, NARROW]) {
+    const at = cardsOf(layout);
+    assert.deepEqual(layout.arrows.map((a) => a.key).sort(),
+      MODEL.flows.map((f) => `${f.from}>${f.to}`).sort());
+    for (const arrow of layout.arrows) {
+      const flow = MODEL.flows.find((f) => `${f.from}>${f.to}` === arrow.key);
+      assert.equal(arrow.what, flow.what);
+      assert.ok(offEdge(arrow.start, at.get(flow.from)) < 0.2, `${arrow.key} leaves its source`);
+      assert.ok(offEdge(arrow.end, at.get(flow.to)) < 0.2, `${arrow.key} reaches its target`);
+      assert.match(arrow.d, /^M[\d.]+,[\d.]+ C/, arrow.key);
+    }
+    const writers = new Set(MODEL.stores.flatMap((s) => s.writers
+      .map((w) => `${w.split('.')[0]}>${s.id}`)));
+    assert.deepEqual(layout.pipes.map((p) => `${p.module}>${p.store}`).sort(), [...writers].sort());
+  }
+});
+
+const statesOf = (options) => flatStates(MODEL, WIDE, options);
+const choose = (id) => statesOf({ shown: id, touched: related(MODEL, id) });
+
+test('on the flat map a choice lights what it touches and fades the rest', () => {
+  const rest = statesOf({});
+  assert.ok([...rest.cards.values()].every((s) => s === 'rest'));
+  assert.ok([...rest.arrows.values()].every((s) => s === 'rest'));
+  assert.ok([...rest.pipes.values()].every((s) => s === 'off'));
+  const { cards, arrows, pipes } = choose('M5.2');
+  const near = new Set(MODEL.flows.filter((f) => [f.from, f.to].includes('M5'))
+    .flatMap((f) => [f.from, f.to]));
+  for (const m of MODEL.modules) {
+    assert.equal(cards.get(m.id), m.id === 'M5' ? 'selected' : near.has(m.id) ? 'rest' : 'faded',
+      m.id);
+  }
+  for (const f of MODEL.flows) {
+    assert.equal(arrows.get(`${f.from}>${f.to}`),
+      [f.from, f.to].includes('M5') ? 'bright' : 'faded', `${f.from}>${f.to}`);
+  }
+  // M5.2 reads and writes few stores: those stand out, its module's own lines only
+  const mine = new Set(MODEL.stores.filter((s) => [...s.writers, ...s.readers].includes('M5.2'))
+    .map((s) => s.id));
+  assert.ok(mine.size > 0);
+  for (const s of MODEL.stores) {
+    assert.equal(cards.get(s.id), mine.has(s.id) ? 'near' : 'faded', s.id);
+  }
+  for (const [key, level] of pipes) {
+    const [module, store] = key.split('>');
+    assert.equal(level, module === 'M5' && mine.has(store) ? 'bright' : 'off', key);
+  }
+});
+
+test('on the flat map a playing step lights only what it names', () => {
+  const job = MODEL.jobs.find((j) => j.id === 'rl_daily_review');
+  const lit = jobLights(job);
+  const { cards, arrows, pipes } = statesOf({ lit, preset: 'clock' });
+  const named = new Set(job.lights.map((id) => (id.startsWith('M') ? id.split('.')[0] : id)));
+  for (const [id, state] of cards) assert.equal(state, named.has(id) ? 'lit' : 'faded', id);
+  const running = new Set(job.flows);
+  for (const [key, level] of arrows) assert.equal(level, running.has(key) ? 'bright' : 'faded', key);
+  for (const [key, level] of pipes) {
+    const [module, store] = key.split('>');
+    assert.equal(level, named.has(module) && named.has(store) ? 'bright' : 'off', key);
+  }
+});
+
+test('the four views change what stands out on the flat map, not where it stands', () => {
+  const view = (preset) => statesOf({ preset });
+  assert.ok([...view('below').arrows.values()].every((s) => s === 'dim'));
+  assert.ok([...view('below').pipes.values()].every((s) => s === 'show'));
+  assert.ok(MODEL.stores.every((s) => view('below').cards.get(s.id) === 'near'));
+  assert.ok([...view('side').arrows.values()].every((s) => s === 'dim'));
+  assert.ok(MODEL.stores.every((s) => view('top').cards.get(s.id) === 'faded'));
+  assert.ok(MODEL.modules.every((m) => view('top').cards.get(m.id) === 'rest'));
+});
+
+test('the flat galaxy shows each module’s files and the shared ones, and no flows', () => {
+  for (const narrow of [false, true]) {
+    const layout = flatLayout(MODEL, WORLD, { narrow, code: GRAPH });
+    assert.deepEqual(layout.cards.map((c) => c.id).sort(),
+      [...MODEL.modules.map((m) => m.id), 'shared'].sort());
+    assert.equal(layout.arrows.length + layout.pipes.length, 0);
+    cardsApart(layout, 'code');
+    for (const card of layout.cards) {
+      const files = MODEL.files.filter((f) => f.owner.split('.')[0] === card.id).length;
+      assert.equal(card.lines.at(-1), `${files} file${files === 1 ? '' : 's'}`, card.id);
+    }
+    const states = flatCodeStates(layout, 'M5.2').cards;
+    assert.equal(states.get('M5'), 'selected');
+    assert.equal(states.get('shared'), 'faded');
+    assert.equal(flatCodeStates(layout, 'shared').cards.get('shared'), 'selected');
+    assert.ok([...flatCodeStates(layout, null).cards.values()].every((s) => s === 'rest'));
+  }
+});
+
+test('a card’s words wrap within its lines, and say so when they do not fit', () => {
+  assert.deepEqual(wrapWords('Value history, digests and results', 14),
+    ['Value history,', 'digests and', 'results']);
+  assert.deepEqual(wrapWords('one two three four five six', 9, 2), ['one two', 'three…']);
+  assert.deepEqual(wrapWords('averyveryverylongword x', 8), ['averyveryverylongword', 'x']);
+  for (const layout of [WIDE, NARROW]) {
+    for (const store of MODEL.stores) {
+      const card = cardsOf(layout).get(store.id);
+      // whole, in at most three lines: the browser test measures that they fit
+      assert.equal(card.lines.join(' '), store.name, `${store.id} shows its whole name`);
+      assert.ok(card.lines.length <= 3, store.id);
+    }
+  }
+});
+
+test('a card says what it is to those who cannot see it', () => {
+  const at = cardsOf(WIDE);
+  const m5 = MODEL.modules.find((m) => m.id === 'M5');
+  assert.equal(cardLabel(MODEL, at.get('M5')), `M5 Portfolio: ${m5.summary}`);
+  assert.match(cardLabel(MODEL, at.get('S.cases')), /^Store Investment cases: opens the part/);
+  assert.equal(cardLabel(MODEL, at.get('ext.owner')), 'The owner');
 });
 
 // -- the committed page ------------------------------------------------------------------

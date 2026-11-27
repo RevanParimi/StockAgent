@@ -21,24 +21,27 @@ submodules:
     config: [rl.close_verify_enabled, rl.close_verify_tolerance_pct]
     logic: |
       "What did stock X close at?"
-        three readers: get_verified_close (the latest close, for forecasts),
-        | cross_check_close (the daily review's session D), session_close (the portfolio)
         which symbol? ─► the instrument registry (ZOMATO is priced as ETERNAL.NS, a
         | recorded rename)
-        yfinance close + NSE official close (when rl.close_verify_enabled)
-          both present, within tolerance ─► yfinance value ("agree")
-          both present, too far apart ─► NSE value + warning
+        > yfinance close + NSE official close (when rl.close_verify_enabled)
+        > ? the two closes
+          both, within tolerance ─► yfinance value ("agree")
+          both, too far apart ─► NSE value + warning
           | (yfinance once returned another company's price for MARUTI: ~131 vs ~13,000)
           only one present ─► that one
           none ─► None
+        three readers: get_verified_close (the latest close, for forecasts),
+        | cross_check_close (the daily review's session D), session_close (the portfolio)
+      The portfolio's session close
         D is not a trading day ─► the last trading day before it
-        no close for that session after one retry ─► PriceUnavailableError
+        > ?! no close for that session after one retry ─► PriceUnavailableError
         | (the portfolio skips that holding today)
-        a bar older than D ─► fresh_for(D) = False ─► the gates call it stale
+        > ? a bar older than D ─► fresh_for(D) = False: the gates call it stale
       Prices for every NSE stock at once
         19:00 bhavcopy sync (last 7 days, so it heals after an outage)
-        | ─► one parquet per day (EodStore)
-        | ─► read by the discovery screen, the weekly review, the executable-price check
+        > one parquet per day (EodStore)
+        > read by discovery (screen, deep dive, buy list, IPO tracker), the weekly review
+        | and the executable-price check
   - id: M2.2
     name: Sector data bundle
     summary: one checked fetch pass per analysis
@@ -62,13 +65,13 @@ submodules:
           flows_sentiment ..... NSE bulk deals, FII/DII, mutual-fund herding
           peers_valuation ..... ESSENTIAL (peers by industry and size)
           dossier ............. what the learning loop knows about the company (M4.4)
-        each section returns text + a STATUS set by its producer from the data, not the text
+        > each section returns text + a STATUS set by its producer from the data, not the text
           ok / cache_hit ................. usable
           stale / fallback / empty ....... weak
           n/a ............................ deliberately not fetched
           failed:<ErrorType> ............. the fetcher raised; text = "unavailable"
           unverified ..................... plain text came back with no proof
-        capped per section and in total ─► to_prompt_text() for the analyst
+        > capped per section and in total ─► to_prompt_text() for the analyst
   - id: M2.3
     name: Identity
     summary: which company is this ticker, on this date
@@ -81,25 +84,31 @@ submodules:
     logic: |
       Is TICKER on date D the company we think, priced on the right basis?
         resolve_identity(ticker, D), first match wins
-          a full provider symbol ─► itself
-          listed in config/instruments.yaml ─► the dated segment decides
-            active ─► that period's provider symbol + price basis
-            unresolved / suspended / delisted ─► UNRESOLVED, and then
-              research ─► the decision gate abstains
-              daily review ─► the day is not graded
-              portfolio ─► the holding is HELD (even exits) until an operator runs
-              | identity_reconcile plan (read-only) ─► apply --approve <digest>
-          a learned mapping to another code (never reviewed) ─► UNRESOLVED
-          no entry ─► its own NSE listing, resolved
-        prices came from a different symbol ─► the gate abstains
+        > ?! a full provider symbol ─► itself
+        > ?! else the instrument registry cannot be used ─► UNRESOLVED
+        > ? else listed in config/instruments.yaml
+          ! active ─► that period's provider symbol + price basis
+          ! not active ─► UNRESOLVED (unresolved, suspended, delisted or a bad record)
+        > ?! else a learned listing of the same code (SUZLON as SUZLON.BO) ─► that one
+        > ?! else a learned mapping to another code (never reviewed) ─► UNRESOLVED
+        > ! else its own NSE listing, resolved
+      What UNRESOLVED stops
+        research ─► the decision gate abstains
+        daily review ─► the day is not graded
+        portfolio ─► the holding is HELD (even exits) until an operator runs
+        | identity_reconcile plan (read-only) ─► apply --approve <digest>
+      Prices that came from a different symbol ─► the gate abstains
       The user typed a name, not a ticker         (the orchestrator, M3.1)
-        a managed or tracked ticker ─► itself, no model
-        otherwise ─► bulk model guess ─► does yfinance have a price for it?
-          yes ─► use the guess
+        ?! a managed or tracked ticker ─► itself, no model
+        > bulk model guess
+        > ? does yfinance have a price for it?
+          ! yes ─► use the guess
           no ─► Serper search ─► the model again with the snippets ("do not guess")
       An exact NSE symbol (deep dive, daily review, monthly forecast)
-        listed (cached listing, else a yfinance price) ─► analysed as itself, no model
-        not listed ─► the run stops (UnlistedSymbol)
+        ?! a managed or tracked ticker ─► analysed as itself, no model
+        > ? else listed (cached listing, else a yfinance price)
+          ! yes ─► analysed as itself, no model
+          ! no ─► the run stops (UnlistedSymbol)
   - id: M2.4
     name: Other feeds
     summary: news, filings, macro, surveillance and fundamentals

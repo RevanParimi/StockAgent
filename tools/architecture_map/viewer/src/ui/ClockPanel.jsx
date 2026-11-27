@@ -81,6 +81,7 @@ export default function ClockPanel({
           <p className="sub">
             <Code>{job.id}</Code>{' '}<Code>{job.handler}</Code>{' '}
             <Code>{Object.entries(job.cron).map(([k, v]) => `${k}=${v}`).join(' ')}</Code>
+            {job.scheduler_name ? <> · the scheduler calls it “{job.scheduler_name}”</> : null}
           </p>
         ) : null}
       </section>

@@ -247,10 +247,11 @@ StockAgent-main/
 │       ├── model/                 # The architecture map's model (MAP-001): generate.py writes
 │       │                          #  docs/architecture-map/model.json and TREES.md from the code
 │       │                          #  and curated/ (YAML); check.py is the CI guard
-│       └── viewer/                # The map's 3D page (MAP-002): its own npm project (React,
+│       └── viewer/                # The map's page (MAP-002): its own npm project (React,
 │                                  #  three.js, ELK): the world, the panel, the day on the
-│                                  #  clock, one stock's trace, the tour and the code galaxy;
-│                                  #  npm run build writes docs/architecture-map/index.html
+│                                  #  clock, one stock's trace, the tour, the code galaxy and
+│                                  #  the flat map (no WebGL, phones); npm run build writes
+│                                  #  docs/architecture-map/index.html
 ├── config/
 │   ├── instruments.yaml           # Instrument registry (ticker → symbol, basis, identity status)
 │   └── sector_toggles.json        # Enable/disable sectors at runtime
@@ -278,8 +279,9 @@ StockAgent-main/
 > `python tools/architecture_map/model/generate.py` and commit what it writes. The guard
 > (`tools/architecture_map/model/check.py`, in CI's guards job and in the tests) fails otherwise,
 > and also when a new job, route or Python file belongs to no module in `curated/`. Read it as
-> trees in [docs/architecture-map/TREES.md](docs/architecture-map/TREES.md), or open the 3D map,
-> [docs/architecture-map/index.html](docs/architecture-map/index.html). The page holds a copy of
+> trees in [docs/architecture-map/TREES.md](docs/architecture-map/TREES.md), or open the map
+> (3D, or flat on a phone), [docs/architecture-map/index.html](docs/architecture-map/index.html).
+> The page holds a copy of
 > the model: after a change to the curated files, a setting's default or a job, rebuild it too
 > ([README](docs/architecture-map/README.md)); a test fails otherwise.
 

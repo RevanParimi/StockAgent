@@ -7,7 +7,8 @@ its check stay offline and repeatable. Nothing fetches it at build or test time.
 adopted only by editing this file.
 
 Each map story passes the list for what it adds; its receipt marks every item **passed** or
-**not applicable**, with a reason. `Deferred (MAP-005)` is allowed only where this list says so.
+**not applicable**, with a reason. MAP-005 passed the whole list over the whole map: the 3D view,
+the flat map and the phone layout.
 
 ## Keyboard and focus
 
@@ -43,7 +44,7 @@ Each map story passes the list for what it adds; its receipt marks every item **
 
 | # | Check |
 |---|---|
-| M1 | With "reduce motion" set, motion stops or becomes a jump. (Full pass: MAP-005; MAP-002 does the camera and the dots.) |
+| M1 | With "reduce motion" set, motion stops or becomes a jump. |
 | M2 | Motion longer than five seconds can be paused by a visible control. |
 | M3 | Animations can be interrupted by the user's input. |
 | M4 | Only `transform`, `opacity` and colour are transitioned in CSS; never `transition: all`. |
@@ -85,7 +86,7 @@ Each map story passes the list for what it adds; its receipt marks every item **
 | L2 | Safe-area insets respected where the page meets a screen edge. |
 | L3 | A loading state is shown for anything that can take a noticeable moment, and the page never jumps when it ends. |
 | L4 | Modals and drawers keep their own scrolling (`overscroll-behavior: contain`). |
-| L5 | Checked at laptop and wide-desktop widths. (Phone: MAP-005.) |
+| L5 | Checked at laptop, wide-desktop and phone widths. |
 
 ## Forms (search)
 

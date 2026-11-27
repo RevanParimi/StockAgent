@@ -9,6 +9,9 @@ const SHORT_LABEL = 24;
  *  inside code (`fallback=...`) they stay as written. */
 export const prose = (text) => String(text).replace(/(^|\s)\.{3}(?=\s|$)/g, '$1…');
 
+/** Prose whose drawn arrows (`─►`) read as arrows. */
+export const arrows = (text) => prose(String(text).replace(/\s*─►\s*/g, ' → '));
+
 /** One line of prose from a node's text: continuation lines joined, dot leaders made a dash. */
 export function cleanText(text) {
   return prose(text)

@@ -1,4 +1,6 @@
-import { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
+} from 'react';
 import { findPart, formatHash, parseHash, related, searchIndex } from './lib/select.js';
 import {
   FRONT, MARGIN, codeGraph, fileLabel, galaxyLabels, galaxyLights, layoutGalaxy, ownerName, pickOf,
@@ -7,6 +9,7 @@ import {
   MODES, beads, clockBounds, clockRing, highlighted, moments, openingPlay, ringPoint, stepsOf,
   viewOf,
 } from './lib/play.js';
+import { NARROW_QUERY, flatCodeStates, flatLayout, flatStates } from './lib/flat.js';
 import { layoutSubmodules, layoutWorld } from './lib/world.js';
 import { PLANE, SHARED, SURFACE, moduleColour, moduleOf } from './theme.js';
 import Scene from './scene/Scene.jsx';
@@ -14,6 +17,7 @@ import Panel from './ui/Panel.jsx';
 import ClockPanel from './ui/ClockPanel.jsx';
 import CodePanel from './ui/CodePanel.jsx';
 import Player from './ui/Player.jsx';
+import FlatMap from './ui/FlatMap.jsx';
 import { HelpDialog, SearchDialog } from './ui/Dialogs.jsx';
 import { Labels, Legend, Tooltip, TopBar } from './ui/Chrome.jsx';
 
@@ -25,35 +29,40 @@ const save = (value) => {
   try { window.localStorage.setItem(SAVED, value); } catch { /* a private window: not kept */ }
 };
 
-const NO_VIEW = 'The 3D view needs WebGL, which this browser does not offer here. The legend, search '
-  + 'and the panel still show every module';
+// Why the map is flat, said above it.
+function flatNote({ webgl, failed, code }) {
+  const same = `this is the flat map of the same model${
+    code ? ', and the panels list every file' : ''}.`;
+  if (!webgl) return `The 3D view needs WebGL, which this browser does not offer here: ${same}`;
+  if (failed !== null) return `The 3D view failed (${failed}): ${same}`;
+  return 'A narrow window: the flat map. A wider one shows the 3D view.';
+}
 
 function hasWebGL() {
   try { return Boolean(document.createElement('canvas').getContext('webgl2')); } catch { return false; }
 }
 
+/** A 3D view that fails is replaced by the flat map. */
 class SceneGuard extends Component {
-  constructor(props) { super(props); this.state = { error: null }; }
+  constructor(props) { super(props); this.state = { failed: false }; }
 
-  static getDerivedStateFromError(error) { return { error }; }
+  static getDerivedStateFromError() { return { failed: true }; }
 
-  render() {
-    return this.state.error
-      ? <p className="no-view" role="alert">{NO_VIEW}. ({String(this.state.error.message)})</p>
-      : this.props.children;
-  }
+  componentDidCatch(error) { this.props.onFail(String(error?.message ?? error)); }
+
+  render() { return this.state.failed ? null : this.props.children; }
 }
 
-function useReducedMotion() {
-  const query = '(prefers-reduced-motion: reduce)';
-  const [reduced, setReduced] = useState(() => window.matchMedia(query).matches);
+function useMedia(query) {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
   useEffect(() => {
     const media = window.matchMedia(query);
-    const change = () => setReduced(media.matches);
+    const change = () => setMatches(media.matches);
+    change();
     media.addEventListener('change', change);
     return () => media.removeEventListener('change', change);
-  }, []);
-  return reduced;
+  }, [query]);
+  return matches;
 }
 
 // A slider is not typing: Esc and the view keys still work while it has the focus.
@@ -82,6 +91,10 @@ function address(state, how) {
   if (hash && hash === window.location.hash) return;
   window.history[how](null, '', hash || window.location.href.split('#')[0]);
 }
+
+/** On a phone the player stands before the view, elsewhere after it: the order on the
+ *  screen is the order a keyboard reads. */
+const inOrder = (narrow, player, view) => (narrow ? [player, view] : [view, player]);
 
 export default function App({ model }) {
   const world = useMemo(() => layoutWorld(model), [model]);
@@ -113,14 +126,19 @@ export default function App({ model }) {
   const [view, setView] = useState({ preset: 'front', focus: Boolean(first.id) && !first.code,
     turn: 0 });
   const [paused, setPaused] = useState(false);
-  const reduced = useReducedMotion();
+  const reduced = useMedia('(prefers-reduced-motion: reduce)');
   const moving = !paused && !reduced;
+  const narrow = useMedia(NARROW_QUERY);
   const [dialog, setDialog] = useState(null);
   const [wide, setWide] = useState(false);
   const [hover, setHover] = useState(null);
   const [pointing, setPointing] = useState(false);
   const [webgl] = useState(hasWebGL);
+  // why the 3D view failed, once it has
+  const [failed, setFailed] = useState(null);
+  const flat = narrow || !webgl || failed !== null;
   const [nudge, setNudge] = useState(null);
+  const [flatNudge, setFlatNudge] = useState(null);
 
   const rootRef = useRef(null);
   const labels = useRef(new Map());
@@ -138,10 +156,10 @@ export default function App({ model }) {
   // laid out when first shown, and kept: the same model always gives the same galaxy
   const placed = useRef(null);
   const galaxy = useMemo(() => {
-    if (!inCode) return null;
+    if (!inCode || flat) return null;
     placed.current ??= layoutGalaxy(model, world);
     return placed.current;
-  }, [inCode, model, world]);
+  }, [flat, inCode, model, world]);
   const codeLights = useMemo(() => (galaxy ? galaxyLights(graph, { selected, file }) : null),
     [file, galaxy, graph, selected]);
 
@@ -420,13 +438,22 @@ export default function App({ model }) {
       if (event.target instanceof Element && event.target.closest(TYPING)) return;
       const inView = event.target === document.body
         || (event.target instanceof Element && Boolean(event.target.closest('.world')));
-      if (inView && (PANS[event.key] && event.shiftKey || NUDGES[event.key])) setHover(null);
-      if (inView && event.shiftKey && PANS[event.key]) {
+      // on the flat map + and − change its size, and the arrows scroll it as usual
+      if (flat) {
+        const by = { '+': 1.2, '=': 1.2, '-': 1 / 1.2 }[event.key];
+        if (inView && by) {
+          event.preventDefault();
+          setFlatNudge({ by });
+          return;
+        }
+      }
+      if (!flat && inView && (PANS[event.key] && event.shiftKey || NUDGES[event.key])) setHover(null);
+      if (!flat && inView && event.shiftKey && PANS[event.key]) {
         event.preventDefault();
         setNudge({ turn: 0, tilt: 0, zoom: 1, pan: PANS[event.key] });
         return;
       }
-      if (inView && NUDGES[event.key]) {
+      if (!flat && inView && NUDGES[event.key]) {
         event.preventDefault();
         setNudge({ ...NUDGES[event.key] });
         return;
@@ -436,7 +463,7 @@ export default function App({ model }) {
       else if (event.key === 'r' || event.key === 'R') choosePreset('front');
       else if (event.key === '/') { event.preventDefault(); setDialog('search'); }
       else if (event.key === '?') { event.preventDefault(); setDialog('help'); }
-      else if ((event.key === 'p' || event.key === 'P') && !reduced) toggleMotion();
+      else if ((event.key === 'p' || event.key === 'P') && !reduced && !flat) toggleMotion();
       else if ((event.key === 'g' || event.key === 'G') && audience === 'developer') toggleCode();
       else if (event.key === 'Escape' && play) leave();
       else if (event.key === 'Escape' && (selected || file)) close();
@@ -444,8 +471,22 @@ export default function App({ model }) {
     };
     document.addEventListener('keydown', keys);
     return () => document.removeEventListener('keydown', keys);
-  }, [audience, choosePreset, close, file, inCode, leave, play, reduced, selected, showWorld,
-    toggleCode, toggleMotion]);
+  }, [audience, choosePreset, close, file, flat, inCode, leave, play, reduced, selected,
+    showWorld, toggleCode, toggleMotion]);
+
+  // Nothing draws a first frame on the flat map: it is ready as soon as it is shown. A 3D
+  // view that comes back is ready only once it has drawn again (Projector), so the mark
+  // is taken off before that can happen.
+  const wasFlat = useRef(false);
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    if (flat) {
+      root.dataset.ready = 'true';
+      root.dataset.moving = 'false';
+    } else if (wasFlat.current) delete root.dataset.ready;
+    wasFlat.current = flat;
+  }, [flat]);
 
   // A dialog's late "closed" event must not shut the one opened since.
   const shut = useCallback((name) => setDialog((now) => (now === name ? null : now)), []);
@@ -564,13 +605,53 @@ export default function App({ model }) {
   }, [clock, lit, model, parts, preset, shown, touched, whole, world]);
 
   const panelled = part || codePanel || play?.mode === 'clock';
+
+  // On a phone what opens stands below the map: move to it. A mode someone starts moves to
+  // its player, above the map; one the page opens with moves nothing.
+  const opened = part ? selected : codePanel ? file ?? selected : null;
+  const arrived = useRef(false);
+  useEffect(() => {
+    const first_ = !arrived.current;
+    arrived.current = true;
+    if (!narrow) return;
+    const target = play ? (first_ ? null : '.player') : opened ? '.panel' : null;
+    if (target) {
+      document.querySelector(target)?.scrollIntoView({ block: 'start',
+        behavior: reduced ? 'auto' : 'smooth' });
+    }
+    // only what opens moves the page, not each step of a mode
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [narrow, opened, play?.mode]);
+
+  const flatMap = useMemo(() => (flat
+    ? flatLayout(model, world, { narrow, code: inCode ? graph : null }) : null),
+  [flat, graph, inCode, model, narrow, world]);
+  const flatShow = useMemo(() => {
+    if (!flatMap) return null;
+    if (inCode) return flatCodeStates(flatMap, file ? pickOf(graph, file) : selected);
+    return flatStates(model, flatMap, { shown, touched, lit, preset });
+  }, [file, flatMap, graph, inCode, lit, model, preset, selected, shown, touched]);
+  // the module whose parts the flat map lists under its drawing
+  const flatParts = useMemo(() => {
+    const id = inCode ? selected : shown;
+    if (!id || id === SHARED) return null;
+    const data = model.modules.find((m) => m.id === moduleOf(id));
+    return data ? { moduleId: data.id, data } : null;
+  }, [inCode, model, selected, shown]);
   const anchors = codeItems ?? items;
   const pick = (id, item) => (item?.file ? openCode({ path: item.file }) : open(id));
+  // the bar that plays a mode: under the view, but on a phone above it, where it is seen
+  const player = play ? (
+    <Player key="player" ref={primary} mode={play.mode} steps={steps} step={play.step}
+      lights={highlighted(model, stage)} lightsShown={flat} playing={playing}
+      speed={speed} onBack={() => go(play.step - 1)} onNext={() => go(play.step + 1)}
+      onPlay={togglePlaying} onSpeed={setSpeed} onSeek={go} onClose={() => leave()} />
+  ) : null;
   return (
     <div className={`app${panelled ? ' with-panel' : ''}${(part || codePanel) && wide ? ' wide' : ''}${
       play ? ' playing' : ''}`} ref={rootRef}
       data-app data-selected={selected ?? ''} data-preset={preset} data-audience={audience}
-      data-tab={tab} data-file={file ?? ''}
+      data-tab={tab} data-file={file ?? ''} data-view-kind={flat ? 'flat' : '3d'}
       data-motion={moving ? 'on' : 'off'} data-mode={play?.mode ?? ''}
       data-step={play ? play.step + 1 : ''} data-job={stage?.job?.id ?? ''}
       data-playing={playing ? 'true' : 'false'}>
@@ -583,55 +664,59 @@ export default function App({ model }) {
       <TopBar model={model} preset={play ? (play.mode === 'clock' ? 'clock' : null)
         : view.focus ? null : view.preset}
         mode={play?.mode} code={inCode} audience={audience} motion={moving}
-        reduced={reduced} onPreset={choosePreset} onReset={() => choosePreset('front')}
+        reduced={reduced} flat={flat} onPreset={choosePreset}
+        onReset={() => choosePreset('front')}
         onStory={(mode) => (play?.mode === mode ? leave() : enter(mode))} onCode={toggleCode}
         onSearch={() => setDialog('search')} onAudience={changeAudience}
         onMotion={toggleMotion} onHelp={() => setDialog('help')} />
       <Legend model={model} selected={inCode ? selected : shown} audience={audience} code={inCode}
-        onSelect={(id) => open(id)} />
-      <main className={`world${pointing ? ' pointing' : ''}`} tabIndex={0}
-        aria-label={inCode
-          ? 'Code galaxy: a 3D view of the Python files. Arrow keys turn it; plus and minus zoom. The panels list every file.'
-          : '3D view of the product. Arrow keys turn it; plus and minus zoom.'}>
-        {webgl ? (
-          <SceneGuard>
-            <Scene world={world} goal={goal} command={command} nudge={nudge} selected={shown}
-              touched={touched} lit={lit} clock={clock} parts={parts} anchors={anchors}
-              labels={labels} rootRef={rootRef} reduced={reduced} moving={moving}
-              preset={whole ? preset : null} hovered={hover?.flow?.key}
-              onSelect={(id) => open(id)}
-              onMoment={(i) => (play?.mode === 'clock' ? go(i) : enter('clock', i))}
-              onHoverFlow={setHover} onHoverBlock={setPointing} galaxy={galaxy}
-              codeLights={codeLights} hoveredFile={hover?.path ?? null}
-              onPickFile={(path) => openCode({ path })}
-              onHoverFile={(over) => { setHover(over); setPointing(Boolean(over)); }} />
-          </SceneGuard>
-        ) : (
-          <p className="no-view" role="alert">
-            {NO_VIEW}{inCode ? '; the panels list every file' : ''}.
-          </p>
-        )}
-        <Labels items={anchors.filter((i) => !i.hidden)} labels={labels} onSelect={pick} />
-        {galaxy && webgl ? (
-          <p className="ring-key code-key">
-            {galaxy.nodes.length} Python files. A dot is a file: its size, its lines; its colour, its
-            module. A line is an import. {file
-              ? <><strong>Solid</strong> lines: files it imports. <strong>Dashed</strong>: files that import it.</>
-              : 'A ring: six or more other modules import the file.'}
-          </p>
-        ) : null}
-        {clock && webgl ? (
-          <p className="ring-key">Rings, inner to outer: <strong>daily</strong>,{' '}
-            <strong>weekly</strong>, <strong>monthly and yearly</strong>. 00:00 is at the back.</p>
-        ) : null}
-        {notice ? <p className="notice" role="status">{notice}</p> : null}
-      </main>
-      {play ? (
-        <Player ref={primary} mode={play.mode} steps={steps} step={play.step}
-          lights={highlighted(model, stage)} lightsShown={!webgl} playing={playing}
-          speed={speed} onBack={() => go(play.step - 1)} onNext={() => go(play.step + 1)}
-          onPlay={togglePlaying} onSpeed={setSpeed} onSeek={go} onClose={() => leave()} />
-      ) : null}
+        flat={flat} onSelect={(id) => open(id)} />
+      {inOrder(narrow, player, (
+        <main key="view" className={`world${pointing && !flat ? ' pointing' : ''}${flat ? ' flat-world' : ''}`}
+          tabIndex={flat ? undefined : 0}
+          aria-label={flat ? 'Flat map. Tab to a card and press Enter to open it; plus and minus change its size.'
+            : inCode
+              ? 'Code galaxy: a 3D view of the Python files. Arrow keys turn it; plus and minus zoom. The panels list every file.'
+              : '3D view of the product. Arrow keys turn it; plus and minus zoom.'}>
+          {flat ? (
+            <FlatMap model={model} layout={flatMap} states={flatShow} preset={preset}
+              audience={audience} code={inCode} parts={flatParts}
+              open={inCode ? selected : shown} note={flatNote({ webgl, failed, code: inCode })}
+              noteRole={!webgl || failed !== null ? 'alert' : 'status'} nudge={flatNudge}
+              onSelect={(id) => open(id)} />
+          ) : (
+            <>
+              <SceneGuard onFail={setFailed}>
+                <Scene world={world} goal={goal} command={command} nudge={nudge} selected={shown}
+                  touched={touched} lit={lit} clock={clock} parts={parts} anchors={anchors}
+                  labels={labels} rootRef={rootRef} reduced={reduced} moving={moving}
+                  preset={whole ? preset : null} hovered={hover?.flow?.key}
+                  onSelect={(id) => open(id)}
+                  onMoment={(i) => (play?.mode === 'clock' ? go(i) : enter('clock', i))}
+                  onHoverFlow={setHover} onHoverBlock={setPointing} galaxy={galaxy}
+                  codeLights={codeLights} hoveredFile={hover?.path ?? null}
+                  onPickFile={(path) => openCode({ path })}
+                  onHoverFile={(over) => { setHover(over); setPointing(Boolean(over)); }} />
+              </SceneGuard>
+              <Labels items={anchors.filter((i) => !i.hidden)} labels={labels} onSelect={pick} />
+              {galaxy ? (
+                <p className="ring-key code-key">
+                  {galaxy.nodes.length} Python files. A dot is a file: its size, its lines; its colour,
+                  its module. A line is an import. {file
+                    ? <><strong>Solid</strong> lines: files it imports. <strong>Dashed</strong>: files
+                      that import it.</>
+                    : 'A ring: six or more other modules import the file.'}
+                </p>
+              ) : null}
+              {clock ? (
+                <p className="ring-key">Rings, inner to outer: <strong>daily</strong>,{' '}
+                  <strong>weekly</strong>, <strong>monthly and yearly</strong>. 00:00 is at the back.</p>
+              ) : null}
+            </>
+          )}
+          {notice ? <p className="notice" role="status">{notice}</p> : null}
+        </main>
+      ))}
       {part ? (
         <Panel ref={heading} model={model} part={part} audience={audience} wide={wide}
           onWide={() => setWide((w) => !w)} onClose={close} onSelect={(id) => open(id)}
@@ -648,7 +733,7 @@ export default function App({ model }) {
           names={names} audience={audience} onOpen={(id) => open(id, { focusPanel: true })}
           onMoment={go} onClose={() => leave()} />
       ) : null}
-      <Tooltip hover={hover} names={names} model={model} />
+      {flat ? null : <Tooltip hover={hover} names={names} model={model} />}
       <SearchDialog open={dialog === 'search'} index={index} onClose={() => shut('search')}
         onPick={(item) => {
           shut('search');

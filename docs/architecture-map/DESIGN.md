@@ -131,6 +131,26 @@ alone.
 | Code panel | for a lit module, part or the shared files: how many files and lines, what they import from other modules and what other modules import from them, then the files, largest first, as links | a part without a Python file says so |
 | File panel | the file's name and path, its lines and owner, “Imports” and “Imported by” as lists of links, “Show in the world” | an empty list says so in words |
 
+### The flat map (MAP-005)
+
+Shown instead of the 3D view when the browser has no WebGL, when the 3D view fails, or when the
+window is 760 px wide or less. It draws the same model; the legend, panel, keys, player and deep
+links are the same.
+
+| Component | Look | States |
+|---|---|---|
+| Flat map | one drawing (SVG) on `bg`, drawn from the model by a pure function and scaled to the width of its box; buttons Smaller, Larger and Fit above it; a wider drawing scrolls inside its box | the view keys and the tour change what is emphasised, never where anything stands |
+| Band | a full-width strip with its name in `ink2` (12 px) and a thin edge in the plane's colour: What people see (top plane and the outside parties), The product, flowing left to right, The base frame, Watching it all (the ring), Storage | the side view brightens the names and edges |
+| Module card | `panel` rounded rectangle, a 5 px bar in the module colour, ID and short name in `ink` (13 px); a real link | rest: 1 px `line` border; hover: `raised`; selected and lit: 2 px `focus` border, `raised`; unrelated: opacity 0.25 (as a label) |
+| Outside party | a pill with a dashed `edge` border and its name | as a module card |
+| Store card | rounded rectangle with a 5 px `planeStores` bar and the store's name in `ink2` (12 px); a link to the first part that writes it | rest: as drawn; unrelated, and the top view: 0.25; touched or the below view: `ink` and a `planeStores` border; lit: as a lit module card |
+| Flow arrow | a curve from card to card in the source module's colour, an arrowhead at the target; dashed when it starts or ends on the ring | rest: 0.55 (a narrow map: hidden); related or lit: 1 and twice as thick; unrelated: 0.08; the below and side views: 0.1 unless lit. Its words are its tooltip and are listed in the panel |
+| Store line | a thin line from a writer to the store, in the writer's colour | rest: hidden; the below view: 0.6; related or lit: 0.85 |
+| Count on a card (code galaxy) | the card also says how many Python files the module has; a card for the shared files | the chosen module, or the chosen file's, is selected; others as unrelated |
+| Selected module's parts | a row of links under the drawing, “Parts of M5”, one per part | the open part is marked `aria-current` |
+| Flat map note | `raised`, above the drawing, one sentence saying why it is flat | `role="alert"` without WebGL or after a 3D failure, `role="status"` on a narrow window |
+| Chosen card out of sight | a map wider than its box scrolls to the chosen card | |
+
 Shape carries meaning beside colour: pill = start or end, diamond = decision, rectangle = step,
 dashed rectangle = a list of details.
 
@@ -167,6 +187,13 @@ dashed rectangle = a list of details.
   looks down more steeply, so that balls behind one another come apart); `5` leaves it for the
   clock. Choosing a module or a file moves no camera. `Esc` closes the panel, then the galaxy.
 
+- Flat map (MAP-005): bands run top to bottom as the planes do. Wide: inside a band, a module
+  stands at its column, left to right; modules sharing a column stack; the watchers stand beside
+  the product in a dashed frame. Narrow (760 px or less): each band is a grid two abreast (the
+  stores three), in column order, the watchers in a band of their own. Stores wrap in a grid under
+  the modules, in the same left-to-right order as in the world. Every position is computed from
+  the model.
+
 ## 6. Glow and depth
 
 - Bloom is the only post-processing: intensity at most 0.7, threshold at least 0.55, so only
@@ -186,6 +213,9 @@ dashed rectangle = a list of details.
   "reduce motion" setting the dots stop and the camera jumps instead of flying.
 - Hover and focus changes are instant or at most 120 ms, on `opacity`, `background-color` and
   `border-color` only; never `transition: all`.
+- A panel, a player or a dialog appears with a 160 ms fade (`opacity` only). The flat map's cards
+  and arrows change emphasis in 120 ms (`opacity` only). With “reduce motion” set, there is no
+  fade and no transition, and nothing on the flat map ever moves.
 
 ## 8. Contrast and access
 
@@ -211,5 +241,13 @@ dashed rectangle = a list of details.
 
 ## 10. Phones and small screens
 
-Not designed yet: MAP-005 adds the phone layout and the flat 2D fallback. Until then a narrow
-window stacks the panel under the world.
+- 900 px or less: the panel stacks under the view.
+- 760 px or less (a phone): the flat map replaces the 3D view, so nothing heavy is drawn. The
+  page scrolls from top to bottom: the top bar, the modules (one row that scrolls sideways), the
+  player of a mode, the map, the panel. The key hints in buttons are hidden, controls are at least
+  36 px high, and opening something moves to its panel (a jump when motion is reduced); starting a
+  mode moves to its player. Closing a panel moves back to what opened it.
+- On a narrow map the stores stand three abreast, and flow arrows show only for a chosen or lit
+  module: at rest they would only pass behind the cards.
+- Dialogs take the width of the screen; tables and flowcharts scroll inside their own box.
+- Zoom is never disabled.

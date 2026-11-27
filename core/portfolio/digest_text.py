@@ -14,18 +14,25 @@ def render_digest_text(digest: dict) -> str:
         lines.append(row)
     for h in digest.get("holdings", []):
         row = f"{h.get('verdict', '?')}: {h.get('symbol', '?')}"
-        if h.get("reason"):
-            row += f" — {h['reason']}"
-        if h.get("top_up_skipped"):
-            row += f" ({h['top_up_skipped']})"
-        if h.get("not_reviewed"):
-            row += f" ({h['not_reviewed']})"
+        why = (h.get("plain") or {}).get("why")
+        if why:                          # PR-007: it says why no shares or no review
+            row += f" — {why}"
+        else:
+            if h.get("reason"):
+                row += f" — {h['reason']}"
+            if h.get("top_up_skipped"):
+                row += f" ({h['top_up_skipped']})"
+            if h.get("not_reviewed"):
+                row += f" ({h['not_reviewed']})"
         lines.append(row)
     esc = digest.get("escalations") or []
     if esc:
         lines.append("Escalations: " + ", ".join(esc))
     dep = digest.get("deployment")
-    if dep and dep.get("error"):
+    review = digest.get("plain_review")
+    if dep and review:
+        lines.append(f"New buys: {review['did']} {review['why']} {review['next']}")
+    elif dep and dep.get("error"):
         lines.append(f"Idle cash: nothing bought; {dep['error']}")
     elif dep:
         # SA-049: what idle cash bought, and why any of it stayed idle.

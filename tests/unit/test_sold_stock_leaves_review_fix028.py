@@ -352,8 +352,12 @@ def test_a_buy_the_cap_keeps_out_is_named_in_the_digest_and_the_brief(world, mon
     assert "NEWCO" not in _managed()
     row = next(r for r in store.load_latest_digest()["holdings"] if r["symbol"] == "NEWCO")
     assert (row["verdict"], row["not_reviewed"]) == ("NO_DATA", why)
-    assert f"NO_DATA: NEWCO — no advisor run for this holding today ({why})" in \
-        render_digest_text(store.load_latest_digest())
+    # PR-007: the screens and the text say it in plain words; the row's audit
+    # fields above are unchanged.
+    plain = ("It has not been reviewed: the daily review list is full (limit 3), so it has "
+             "no daily review or forecast yet.")
+    assert row["plain"]["why"] == plain
+    assert f"NO_DATA: NEWCO — {plain}" in render_digest_text(store.load_latest_digest())
     for name in ("_narrate_brief",):
         monkeypatch.setattr(br, name, lambda b: "h")
     monkeypatch.setattr(br, "_read_regime", lambda: {})
@@ -364,8 +368,7 @@ def test_a_buy_the_cap_keeps_out_is_named_in_the_digest_and_the_brief(world, mon
     monkeypatch.setattr(br, "_before_the_open", lambda on: [])
     monkeypatch.setattr(br, "upcoming_lockin_alerts", lambda on, symbols=None: [])
     brief = br.build_morning_brief("u", date(2026, 7, 14), store=store)
-    assert [(f["symbol"], f["reason"]) for f in brief["advisor_flags"]] == \
-        [("NEWCO", f"no advisor run for this holding today ({why})")]
+    assert [(f["symbol"], f["reason"]) for f in brief["advisor_flags"]] == [("NEWCO", plain)]
 
     pipeline.run_post_review_pipeline(date(2026, 7, 14))
     row = next(r for r in store.load_latest_digest()["holdings"] if r["symbol"] == "NEWCO")

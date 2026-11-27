@@ -19,7 +19,17 @@ function DigestView({ data }) {
           {h.pnl_pct >= 0 ? '+' : ''}{h.pnl_pct.toFixed(1)}%
         </span>
       ) : null}
-      {h.reason ? <div style={{ color: 'var(--ink-3)', fontSize: 12, marginTop: 3 }}>{h.reason}</div> : null}
+      {h.plain ? (
+        <>
+          <div style={{ color: 'var(--ink-3)', fontSize: 12, marginTop: 3, lineHeight: 1.5 }}>{h.plain.why}</div>
+          {h.reason && (
+            <details className="sa-digest-details" style={{ color: 'var(--ink-3)', fontSize: 11, marginTop: 2 }}>
+              <summary style={{ cursor: 'pointer' }}>details</summary>
+              <div style={{ marginTop: 2 }}>As recorded: {h.reason}</div>
+            </details>
+          )}
+        </>
+      ) : (h.reason ? <div style={{ color: 'var(--ink-3)', fontSize: 12, marginTop: 3 }}>{h.reason}</div> : null)}
     </div>
   );
 

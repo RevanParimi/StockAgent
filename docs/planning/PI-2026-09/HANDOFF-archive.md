@@ -14,6 +14,15 @@ this file, directly below the line that ends this note.
 
 ---
 
+## 27 Nov, evening (autopilot `1127-1707-p1`): PR-007 → ACCEPTED (light)
+
+- **Plain reasons** ([receipt](evidence/PR-007-implementation.md)): every autopilot trade, holding
+  row and review in four parts, stored beside the unchanged audit text. Code names the rule that
+  fired; only a purchase calls the model, for one checked company sentence and a warning sign.
+- **Opus check, then fixed:** a model sentence could invent a sale's cause, and the review summary
+  could replace true counts, so neither calls a model now; the review card differs from the card's
+  "one per review". Left: B-51, B-52. Opus did not read the fixed code.
+
 ## 27 Nov, afternoon (autopilot `1127-1142-p14`, `1127-1604-p1`): MAP-005 → ACCEPTED (light)
 
 - **27 Nov, MAP-005 built, not accepted** ([receipt](evidence/MAP-005.md)), uncommitted on `main`

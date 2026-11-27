@@ -79,6 +79,22 @@ async function clearOf(page, dots, among, room = 13) {
   return free;
 }
 
+/** Whether a lit import line, one with an end among `mine`, runs over this dot. The page
+ *  draws it on top, so the light measured there would be the line's, not the dot's. */
+function underLitLine(dots, files, mine, dot) {
+  const at = new Map(dots.map((d) => [d.path, d]));
+  const own = new Set(mine);
+  return files.some((f) => f.imports.some((to) => {
+    const a = at.get(f.path);
+    const b = at.get(to);
+    if (!a || !b || (!own.has(f.path) && !own.has(to))) return false;
+    const [dx, dy] = [b.x - a.x, b.y - a.y];
+    const along = ((dot.x - a.x) * dx + (dot.y - a.y) * dy) / (dx * dx + dy * dy || 1);
+    const t = Math.max(0, Math.min(1, along));
+    return Math.hypot(a.x + t * dx - dot.x, a.y + t * dy - dot.y) < dot.onScreen;
+  }));
+}
+
 /** How bright the view is at a point: the mean of a small square. */
 async function brightness(page, { x, y }) {
   const shot = await page.screenshot({ clip: { x: x - 2, y: y - 2, width: 4, height: 4 } });
@@ -162,7 +178,8 @@ test('selecting M5 lights its files, in the galaxy and back in the world', SLOW,
     .getAttribute('class'), /faded/);
   // in the narrower view: the same dots are dim now, and a dot of M5 is bright
   const after = await dotsOnScreen(page);
-  const dimmed = await clearOf(page, after, after.filter((d) => was.has(d.path)), 6);
+  const dimmed = (await clearOf(page, after, after.filter((d) => was.has(d.path)), 6))
+    .filter((d) => !underLitLine(after, inside.files, mine, d));
   assert.ok(dimmed.length >= 2, 'dots of other modules to look at again');
   // M5's dots stand close and carry names: the brightest of those in sight
   let high = 0;

@@ -2960,7 +2960,8 @@ def _chat_tool_portfolio_brief(user_id: str | None) -> str:
             for row in digest.get("holdings", [])[:10]:
                 pnl = row.get("pnl_pct")
                 pnl_s = f" ({pnl:+.1f}%)" if pnl is not None else ""
-                lines.append(f"{row['symbol']}: {row['verdict']}{pnl_s} — {row.get('reason', '')}")
+                why = (row.get("plain") or {}).get("why") or row.get("reason", "")
+                lines.append(f"{row['symbol']}: {row['verdict']}{pnl_s} — {why}")
             return "\n".join(lines)[:1800]
         return _BRIEF_NOT_YET
     except Exception as exc:

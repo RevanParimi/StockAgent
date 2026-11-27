@@ -1244,6 +1244,61 @@ test("a verdict card's Ask why opens the chat with that card's question; Open as
   } finally { await context.close(); }
 });
 
+// -- PR-007: the plain words, with the audit text one tap away -------------------
+
+const PLAIN_SALE = {
+  did: 'We sold all 10 shares of WELCORP at ₹2,700.00 (review of 26 Jan 2026).',
+  why: 'We sold because the price fell to or below our safety limit of ₹2,650.00, the most we let a holding lose.',
+  wrong_if: 'We would only buy it back after new research, done after this sale, rates it a buy again.',
+  next: 'The money goes back to cash.', source: 'template' };
+const PLAIN_REVIEW = {
+  did: 'At the review of 19 Nov 2026 we bought nothing new.',
+  why: 'No other idea passed all our checks. 4 ideas were priced above the range we planned to pay.',
+  wrong_if: 'We buy more once an idea is priced within the range we planned to pay.',
+  next: 'We wait rather than chase.', source: 'template' };
+const PLAIN_ROW = { ...PLAIN_SALE, why: 'The review supports buying more of it. No shares were bought, because the exchange\'s watch list did not clear it.' };
+
+test('a trade and the last review show plain words, the recorded text only under details', async () => {
+  const { context, page, errors } = await openTrades({
+    txns: [{ ...SOLD, plain: PLAIN_SALE }, DEPLOYED],
+    digest: { ...DIGEST, deployment: DEPLOYMENT, plain_review: PLAIN_REVIEW,
+              holdings: [{ symbol: 'WELCORP', verdict: 'ADD', reason: 'ADD code text',
+                           top_up_skipped: 'top-up skipped: under LT-ASM', plain: PLAIN_ROW }] } });
+  try {
+    const history = page.locator('.sa-trade-history');
+    let hist = await history.innerText();
+    assert.ok(hist.includes(`Why sold: ${PLAIN_SALE.why}`), hist);
+    assert.ok(!hist.includes(WHY_SOLD), hist);
+    // a trade stored before the plain words keeps its recorded reason
+    assert.ok(hist.includes(`Why bought: ${THESIS_BUY}`), hist);
+    await history.getByRole('button', { name: 'more' }).first().click();
+    hist = await history.innerText();
+    for (const [label, key] of [['What we did', 'did'], ['Why', 'why'],
+                                ['What would change our mind', 'wrong_if'], ['What happens next', 'next']]) {
+      assert.ok(hist.includes(`${label}: ${PLAIN_SALE[key]}`), `${label}\n${hist}`);
+    }
+    assert.ok(!hist.includes(WHY_SOLD), hist);
+    await history.getByRole('button', { name: 'details', exact: true }).click();
+    assert.ok((await history.innerText()).includes(`As recorded: ${WHY_SOLD}`));
+
+    const buys = page.locator('.sa-last-buys');
+    let card = await buys.innerText();
+    assert.ok(card.includes(`Why: ${PLAIN_REVIEW.why}`), card);
+    assert.ok(card.includes(`What happens next: ${PLAIN_REVIEW.next}`), card);
+    assert.ok(!/Why it stopped there|market regime|analysis verdict/i.test(card), card);
+    await buys.getByRole('button', { name: 'details', exact: true }).click();
+    card = await buys.innerText();
+    assert.match(card, /Why it stopped there/i);
+
+    // FIX-025 L3: the holdings table says no shares were bought, and why
+    const note = page.locator('.sa-row-note');
+    assert.match(await note.innerText(), /No shares bought: why/);
+    await note.locator('summary').click();
+    assert.ok((await note.innerText()).includes(PLAIN_ROW.why));
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
 describe('PR-001 screens', { concurrency: 2 }, () => {
   for (const testCase of CASES) it(...testCase);
 });

@@ -399,7 +399,7 @@
     "services/data/fetchers/macro.py",
     "src/backend/sectors/registry.py"
    ],
-   "lines": 1418,
+   "lines": 1427,
    "owner": "M9.1",
    "path": "core/delivery/brief.py"
   },
@@ -456,13 +456,14 @@
     "core/delivery/channels.py",
     "core/discovery/shelf.py",
     "core/portfolio/advisor.py",
+    "core/portfolio/explain.py",
     "core/portfolio/results.py",
     "core/portfolio/sizing.py",
     "core/portfolio/store.py",
     "services/clients/llm_client.py",
     "services/data/stores/eod_store.py"
    ],
-   "lines": 364,
+   "lines": 381,
    "owner": "M9.2",
    "path": "core/delivery/weekly.py"
   },
@@ -1644,13 +1645,13 @@
     "core/portfolio/advisor.py",
     "src/backend/shared/schemas/portfolio.py"
    ],
-   "lines": 76,
+   "lines": 99,
    "owner": "M5.7",
    "path": "core/portfolio/digest.py"
   },
   {
    "imports": [],
-   "lines": 38,
+   "lines": 45,
    "owner": "M5.7",
    "path": "core/portfolio/digest_text.py"
   },
@@ -1687,6 +1688,21 @@
    "lines": 1271,
    "owner": "M5.5",
    "path": "core/portfolio/exit_shadow.py"
+  },
+  {
+   "imports": [
+    "core/audit/benchmark.py",
+    "core/config/settings/__init__.py",
+    "core/intelligence/rl/nse_calendar.py",
+    "core/portfolio/autopilot.py",
+    "core/portfolio/cases.py",
+    "core/portfolio/plain_words.py",
+    "services/clients/llm_client.py",
+    "services/data/stores/score_store.py"
+   ],
+   "lines": 821,
+   "owner": "M5.8",
+   "path": "core/portfolio/explain.py"
   },
   {
    "imports": [
@@ -1737,6 +1753,7 @@
     "core/portfolio/deployment.py",
     "core/portfolio/digest.py",
     "core/portfolio/exit_shadow.py",
+    "core/portfolio/explain.py",
     "core/portfolio/identity_reconcile.py",
     "core/portfolio/narrator.py",
     "core/portfolio/pricing.py",
@@ -1750,9 +1767,20 @@
     "src/backend/shared/pipeline/decision_gate.py",
     "src/backend/shared/schemas/portfolio.py"
    ],
-   "lines": 616,
+   "lines": 667,
    "owner": "M5.1",
    "path": "core/portfolio/pipeline.py"
+  },
+  {
+   "imports": [
+    "core/discovery/candidates.py",
+    "core/portfolio/advisor.py",
+    "core/portfolio/cases.py",
+    "core/portfolio/sizing.py"
+   ],
+   "lines": 628,
+   "owner": "M5.8",
+   "path": "core/portfolio/plain_words.py"
   },
   {
    "imports": [
@@ -1837,7 +1865,7 @@
     "services/data/stores/atlas_store.py",
     "src/backend/shared/schemas/portfolio.py"
    ],
-   "lines": 662,
+   "lines": 673,
    "owner": "M5",
    "path": "core/portfolio/store.py"
   },
@@ -1973,6 +2001,19 @@
    "lines": 160,
    "owner": "shared",
    "path": "scripts/docs/run_kt_checks.py"
+  },
+  {
+   "imports": [
+    "core/config/settings/__init__.py",
+    "core/events/store.py",
+    "core/portfolio/cases.py",
+    "core/portfolio/exit_shadow.py",
+    "core/portfolio/explain.py",
+    "core/portfolio/store.py"
+   ],
+   "lines": 119,
+   "owner": "M5.8",
+   "path": "scripts/explain_trades.py"
   },
   {
    "imports": [],
@@ -2202,6 +2243,7 @@
     "core/portfolio/cases.py",
     "core/portfolio/costs.py",
     "core/portfolio/digest_text.py",
+    "core/portfolio/explain.py",
     "core/portfolio/pipeline.py",
     "core/portfolio/pricing.py",
     "core/portfolio/promotion.py",
@@ -2211,7 +2253,7 @@
     "src/backend/sectors/registry.py",
     "src/backend/shared/schemas/portfolio.py"
    ],
-   "lines": 622,
+   "lines": 646,
    "owner": "M10.1",
    "path": "services/api/routes/portfolio_api.py"
   },
@@ -2285,7 +2327,7 @@
     "src/backend/shared/schemas/dossier.py",
     "src/backend/shared/schemas/portfolio.py"
    ],
-   "lines": 4063,
+   "lines": 4064,
    "owner": "M10.4",
    "path": "services/api/routes/ui_data.py"
   },
@@ -3163,7 +3205,7 @@
    "imports": [
     "src/backend/shared/config/settings/loader.py"
    ],
-   "lines": 1208,
+   "lines": 1215,
    "owner": "M1.3",
    "path": "src/backend/shared/config/settings/base.py"
   },
@@ -4278,6 +4320,7 @@
     "M5.5",
     "M5.6",
     "M5.7",
+    "M5.8",
     "M6.4",
     "M7.1",
     "M9.3",
@@ -4290,7 +4333,8 @@
     "S.cases",
     "S.advice",
     "S.exit_shadow",
-    "S.history"
+    "S.history",
+    "S.explanations"
    ],
    "module": "M4.2",
    "name": "RL daily feedback review",
@@ -6846,12 +6890,17 @@
           },
           {
            "children": [],
-           "text": "10 digest for D",
+           "text": "10 digest for D, each holding row with its plain words (M5.8); a same-day\nre-run keeps the first run's record",
            "then": true
           },
           {
            "children": [],
-           "text": "11 alerts: TRIM/EXIT/SWITCH, each trade, a skipped switch buy; end-of-day\ndigest push",
+           "text": "11 plain words of each trade and of the buying, drafted once (M5.8)",
+           "then": true
+          },
+          {
+           "children": [],
+           "text": "12 alerts: TRIM/EXIT/SWITCH, each trade, a skipped switch buy; end-of-day\ndigest push",
            "then": true
           }
          ],
@@ -7404,6 +7453,91 @@
       "core/portfolio/reconcile.py"
      ],
      "summary": "corporate actions, reconciliation, identity, promotion"
+    },
+    {
+     "code": [
+      "core/portfolio/explain.py::explain_run",
+      "core/portfolio/plain_words.py::holding_parts",
+      "core/portfolio/plain_words.py::check_company_sentence"
+     ],
+     "config": [
+      "advisor.plain_reasons",
+      "advisor.narrate_model"
+     ],
+     "files": [
+      "core/portfolio/explain.py",
+      "core/portfolio/plain_words.py",
+      "scripts/explain_trades.py"
+     ],
+     "id": "M5.8",
+     "logic": [
+      {
+       "children": [
+        {
+         "children": [],
+         "text": "for a holding row and the review's buying: code only (no model call), from the\nadvice, the holding, the exit evidence and the deployment record"
+        },
+        {
+         "children": [],
+         "text": "for each autopilot trade: code writes what happened and names the rule that\nfired, first",
+         "then": true
+        },
+        {
+         "children": [],
+         "text": "a SALE then quotes the case recorded when it was bought (no model call), so no\nmodel can supply a cause for a sale",
+         "then": true
+        },
+        {
+         "children": [],
+         "text": "a PURCHASE: one reasoning call may add one sentence about the company, from its\ninvestment case (else the analysis known when bought), and a warning sign",
+         "then": true
+        },
+        {
+         "children": [
+          {
+           "children": [],
+           "text": "yes ─► added to the template"
+          },
+          {
+           "children": [],
+           "text": "no ─► dropped whole; the template stands"
+          }
+         ],
+         "kind": "decision",
+         "text": "the answer keeps every rule: no banned word, no number the facts lack\n(digits or words), no stop as a percentage, one sentence, nothing about our\naction",
+         "then": true
+        }
+       ],
+       "text": "four parts: what we did, why, what would change our mind, what happens next"
+      },
+      {
+       "children": [],
+       "text": "a row whose stock traded takes the trade's words, so digest and alert agree"
+      },
+      {
+       "children": [],
+       "text": "stored once per trade and per review in explanations.jsonl; the ledger's reason,\nthe advice narrative and the digest's record are not changed"
+      },
+      {
+       "children": [],
+       "text": "display only: no buy, sell, size or grade reads these words"
+      },
+      {
+       "children": [],
+       "text": "advisor.plain_reasons false ─► nothing drafted; screens show the audit text"
+      },
+      {
+       "children": [],
+       "text": "scripts/explain_trades.py drafts earlier trades (dry run, then --apply)"
+      }
+     ],
+     "name": "Plain words",
+     "python_files": [
+      "core/portfolio/explain.py",
+      "core/portfolio/plain_words.py",
+      "scripts/explain_trades.py"
+     ],
+     "summary": "why each buy, sell and hold, for a reader who is not an expert"
     },
     {
      "code": [
@@ -10138,8 +10272,8 @@
   ]
  },
  "stamp": {
-  "commit": "a173e22ab64b3b43434f21ba04e067c1046f5206",
-  "uncommitted_code": false
+  "commit": "a3246ae55819b3e533f524b6921001ee45b6a0d6",
+  "uncommitted_code": true
  },
  "stores": [
   {
@@ -10264,6 +10398,23 @@
     "M5.1",
     "M5.3",
     "M5.7"
+   ]
+  },
+  {
+   "code": [
+    "core/portfolio/explain.py::ExplanationStore"
+   ],
+   "holds": "each trade's and review's plain explanation, beside the audit text",
+   "id": "S.explanations",
+   "name": "Plain words",
+   "path": "data/portfolio/<user>/explanations.jsonl",
+   "readers": [
+    "M5.8",
+    "M9.2",
+    "M10.1"
+   ],
+   "writers": [
+    "M5.8"
    ]
   },
   {
@@ -10613,6 +10764,18 @@
    "default_source": "config.yaml",
    "env": null,
    "key": "advisor.min_hold_sessions"
+  },
+  {
+   "default": "",
+   "default_source": "config.yaml",
+   "env": null,
+   "key": "advisor.narrate_model"
+  },
+  {
+   "default": true,
+   "default_source": "config.yaml",
+   "env": null,
+   "key": "advisor.plain_reasons"
   },
   {
    "default": 3.0,

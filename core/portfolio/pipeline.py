@@ -18,9 +18,9 @@ from core.intelligence.rl.nse_calendar import is_trading_day
 from services.data.verdict_store import VerdictStore  # plane boundary (Atlas C2)
 from backend.shared.pipeline import decision_gate as dg
 from core.portfolio.advisor import analysed_elsewhere, build_signals, data_gate_blocks, decide
-from core.portfolio import exit_shadow
+from core.portfolio import exit_shadow, explain
 from core.portfolio.corp_actions import sync_corp_actions
-from core.portfolio.digest import build_digest
+from core.portfolio.digest import build_digest, keep_day_record
 from core.portfolio.identity_reconcile import holding_identity_issue, symbol_identity_issue
 from core.portfolio.narrator import narrate
 from core.portfolio import deployment, sizing
@@ -85,17 +85,28 @@ def capture_switch_evaluations(rec, signals, shelf_ideas, sector_weights,
     return out
 
 
-def advice_alert_fields(rec, shelf_index: dict) -> dict:
+def advice_alert_fields(rec, shelf_index: dict, plain: dict | None = None) -> dict:
     """The structured parts of an escalation alert (see core/delivery/alerts).
 
     An EXIT/TRIM/SWITCH alert used to be one sentence, so a SWITCH arrived as
     "… (switch → NEWCO)" with nothing about why you were leaving or why there.
     Both halves already exist on the record and on the shelf; this assembles
     them. Pure — `shelf_index` is passed in, never loaded here.
+
+    PR-007: with the stored plain words (`plain`, the sale's own or the
+    holding row's) the alert uses them, the same text the screens show; its
+    status is what was done, never a stop as a percentage.
     """
     from core.delivery.brief import _VERDICT_PLAIN
     from core.portfolio.advisor import explain_triggers
 
+    if plain:
+        return {
+            "title": f"{_VERDICT_PLAIN.get(rec.verdict, rec.verdict)} — {rec.symbol}",
+            "headline": plain["why"],
+            "status": plain["did"],
+            "next_step": plain["next"],
+        }
     status = (f"Unrealised {rec.unrealised_pnl_pct:+.1f}% against a "
               f"{rec.stop_pct:.1f}% stop · confidence {rec.confidence:.2f}")
     next_step = ""
@@ -308,6 +319,9 @@ def run_post_review_pipeline(review_date: date) -> dict:
                                                       cases=case_store)
                            if exit_mode != "legacy" else None)
         shadow_rows: list = []
+        # PR-007: what the run knew of each holding before it traded, for the
+        # plain words. Nothing below reads it back into a decision.
+        contexts: dict[str, explain.Context] = {}
         shelf_index = {i.symbol: i for i in shelf_ideas}
         buy_legs: dict[str, bool] = {}
 
@@ -403,6 +417,13 @@ def run_post_review_pipeline(review_date: date) -> dict:
                 except Exception as exc:
                     logger.warning("[portfolio_pipeline] switch capture failed "
                                    "for %s (non-fatal): %s", holding.symbol, exc)
+                try:                      # PR-007: last, so it can cost only words
+                    contexts[holding.symbol] = explain.Context(
+                        holding=holding.model_copy(deep=True), rec=rec, signals=signals,
+                        evidence=evidence.model_dump() if evidence is not None else None)
+                except Exception as exc:
+                    logger.warning("[portfolio_pipeline] no context for %s's plain words "
+                                   "(non-fatal): %s", holding.symbol, exc)
             except Exception as exc:
                 logger.warning(
                     "[portfolio_pipeline] advisor failed for %s/%s (non-fatal): %s",
@@ -516,30 +537,60 @@ def run_post_review_pipeline(review_date: date) -> dict:
                            user_id, exc)
 
         # Step 4 — digest.
+        digest = None
         try:
-            store.save_digest(build_digest(user_id, review_date, advice, portfolio,
-                                           closes, transactions=txns,
-                                           deployment=run_report.get("deployment"),
-                                           top_ups_skipped=run_report.get("top_ups_skipped"),
-                                           not_reviewed=run_report.get("not_reviewed")))
+            digest = build_digest(user_id, review_date, advice, portfolio,
+                                  closes, transactions=txns,
+                                  deployment=run_report.get("deployment"),
+                                  top_ups_skipped=run_report.get("top_ups_skipped"),
+                                  not_reviewed=run_report.get("not_reviewed"))
+            if not txns and not run_report:      # FIX-025 L2: a same-day re-run
+                keep_day_record(digest, store.load_digest(review_date.isoformat()))
+            if settings.ADVISOR_PLAIN_REASONS:
+                explain.plain_rows(digest, contexts, portfolio, exit_rule)
+            store.save_digest(digest)
         except Exception as exc:
             logger.warning("[portfolio_pipeline] digest failed for %s: %s", user_id, exc)
+
+        # Step 4.5 — PR-007: the plain words of the run's trades and buying,
+        # drafted once, stored beside the audit text, before delivery so the
+        # alerts say what the screens do. A failure costs only the words.
+        drafted: dict = {}
+        if settings.ADVISOR_PLAIN_REASONS:
+            try:
+                drafted = explain.explain_run(
+                    user_id, review_date, base_dir=str(store._dir.parent), txns=txns,
+                    contexts=contexts, digest=digest,
+                    ledger=store.load_transactions(limit=2000),
+                    ideas=[*all_ideas, *shelf_index.values()], case_store=case_store,
+                    exit_rule=exit_rule)
+                if digest and explain.use_trade_words(digest, drafted):
+                    store.save_digest(digest)
+            except Exception as exc:
+                logger.warning("[portfolio_pipeline] plain reasons failed for %s "
+                               "(non-fatal): %s", user_id, exc)
 
         # Step 5 — Phase C M4: escalation alerts + digest delivery. Non-fatal.
         try:
             from core.delivery.alerts import AlertEvent, emit_alerts
             from core.delivery.channels import deliver
             shelf_index = {i.symbol: i for i in (shelf_ideas or [])}
+            # PR-007: a sale's own stored words, else the holding row's.
+            plain_of = {row["symbol"]: row.get("plain")
+                        for row in (digest or {}).get("holdings", [])}
+            plain_of.update({r["symbol"]: r["parts"] for r in drafted.values()
+                             if r.get("side") == "SELL"})
             events = [
                 AlertEvent(
                     date=review_date.isoformat(),
                     kind=f"advisor_{a.verdict.lower()}",
                     symbol=a.symbol,
                     advice_ref=f"{review_date.isoformat()}|{a.symbol}|{a.rationale_hash}",
-                    message=(a.narrative or a.verdict)
+                    message=((plain_of.get(a.symbol) or {}).get("why") or a.narrative
+                             or a.verdict)
                     + (f" (switch → {a.switch_candidate})" if a.switch_candidate else ""),
                     severity="critical" if a.verdict in ("EXIT", "SWITCH") else "warning",
-                    **advice_alert_fields(a, shelf_index),
+                    **advice_alert_fields(a, shelf_index, plain_of.get(a.symbol)),
                 )
                 for a in advice if a.verdict in ("TRIM", "EXIT", "SWITCH")
             ]

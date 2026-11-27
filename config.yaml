@@ -587,6 +587,15 @@ advisor:
   # The case's invalidation price is used by the evidence rule only above the
   # stop price on the purchase day and at least this many ATR% below the entry.
   case_noise_atr_mult: 1.5
+  # PR-007: every autopilot trade, holding row and the review's buying in four
+  # plain parts (what we did, why, what would change our mind, what happens
+  # next), drafted once and stored beside the audit text, which is unchanged.
+  # Code writes what happened and the rule that fired; one call per purchase
+  # may add a sentence about the company, checked against its facts
+  # (core/portfolio/explain.py). Sales, holding rows and the review cost no call.
+  # Rollback: plain_reasons false (the screens show the audit text again).
+  plain_reasons: true
+  narrate_model: ""              # the call's model; "" = the reasoning tier
 
 # =============================================================================
 # Compass Phase B — Discovery funnel + generic sector graph (spec 2026-07-06 §6/§8)

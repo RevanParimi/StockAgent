@@ -54,6 +54,20 @@ def _latest_closes(symbols: list[str], on: date) -> dict[str, float]:
         return {}
 
 
+def _plain_sale_words(user_id: str, store) -> dict[str, str]:
+    """PR-007: {advice ref: the sale's stored plain `why`}, this user's own."""
+    if not settings.ADVISOR_PLAIN_REASONS:
+        return {}
+    try:
+        from core.portfolio.explain import ExplanationStore
+        rows = ExplanationStore(user_id, str(store._dir.parent)).load()
+        return {r["advice_ref"]: r["parts"]["why"] for r in rows.values()
+                if r.get("side") == "SELL" and r.get("advice_ref")}
+    except Exception as exc:
+        logger.warning("[weekly] plain sale words unread (non-fatal): %s", exc)
+        return {}
+
+
 def _active_shelf_ideas() -> list:
     try:
         from core.discovery.shelf import ShelfStore
@@ -247,6 +261,7 @@ def build_weekly_review(
     # stock the portfolio had sold, and is gone.
     switch_suggestions: list[dict] = []
     shelf_index = _shelf_by_symbol()
+    plain_sales = _plain_sale_words(user_id, store)
     window_start = (on - timedelta(days=_SWITCH_WINDOW_DAYS)).isoformat()
     for rec in store.load_advice(limit=500):
         if rec.date < window_start or rec.date > on.isoformat():
@@ -261,8 +276,10 @@ def build_weekly_review(
                 "date": rec.date,
                 # The advisor already narrated this call; re-deriving prose
                 # from the codes when a written reason exists would show the
-                # reader two voices for one decision.
-                "reason": rec.narrative.strip() or explain_triggers(rec.triggers),
+                # reader two voices for one decision. PR-007: the sale's own
+                # plain words, when it was made, are what the screens show.
+                "reason": (plain_sales.get(f"{rec.date}|{rec.symbol}|{rec.rationale_hash}")
+                           or rec.narrative.strip() or explain_triggers(rec.triggers)),
                 "triggers": list(rec.triggers),
                 "pnl_pct": rec.unrealised_pnl_pct,
                 "stop_pct": rec.stop_pct,

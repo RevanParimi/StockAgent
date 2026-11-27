@@ -2674,6 +2674,13 @@
       "fields": {
         "sequencing_note": "Placed 23 Nov 2026 (CLAUDE.md section 2: order is delegated): after FIX-033 (P0), PR-017's fresh review and PR-047 (the decided buy rule), which protect money; before PR-007 and the rest. PR-015's switch keeps its push window. One phase per card; the autopilot runs them. The owner may move the map first."
       }
+    },
+    {
+      "id": "PR-007",
+      "moved": "2026-11-27",
+      "fields": {
+        "sequencing_note": "Product results track, owner request 2026-10-11 (review docs/audit/2026-10-11-product-results-review.md): placed right after SA-011 in STATE order so 'continue' selects it ahead of the remaining SA reliability/learning stories. Order: FIX-007, PR-001, PR-002, PR-003, SA-050, SA-051, PR-004, PR-006, PR-011, PR-009, SA-048, SA-049, PR-005, PR-007, PR-008, PR-010, PR-012 (PR-011 moved up to follow PR-006 and made P1 on 2026-10-12, owner: 'I need more data'; order confirmed by the owner 2026-10-12: 'ya continue on the new order')."
+      }
     }
   ]
 }

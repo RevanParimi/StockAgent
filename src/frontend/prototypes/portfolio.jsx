@@ -55,7 +55,7 @@ function digestAlerts(digest) {
     .map(r => ({
       sym:  r.symbol,
       kind: esc.has(r.symbol) ? 'warn' : 'good',
-      text: r.reason,
+      text: r.plain?.why || r.reason,
     }));
 }
 
@@ -669,9 +669,17 @@ const PF_VERDICT_COLORS = {
 };
 
 // Digest advisor verdict first; composite window.TICKERS verdict as fallback.
+// PR-007: the row's plain words. FIX-025 L3, FIX-028 I-1: a top-up that was not
+// made, and a holding with no daily review, say so beside the verdict.
 function agentTake(h, digest) {
-  const drow = (digest?.holdings || []).find(r => r.symbol === h.sym && r.verdict && r.verdict !== 'NO_DATA');
-  if (drow) return { verdict: drow.verdict, reason: drow.reason, score: null };
+  const drow = (digest?.holdings || []).find(r => r.symbol === h.sym && r.verdict
+    && (r.verdict !== 'NO_DATA' || r.not_reviewed));
+  if (drow) {
+    return { verdict: drow.verdict === 'NO_DATA' ? 'NOT REVIEWED' : drow.verdict,
+             reason: drow.plain?.why || drow.reason, score: null,
+             note: drow.top_up_skipped ? 'No shares bought'
+               : drow.not_reviewed ? 'No daily review' : '' };
+  }
   if (h.verdict) return { verdict: h.verdict, reason: null, score: h.agentScore }; // demo rows
   const t = (window.TICKERS || []).find(t => t.sym === h.sym && t.hasData);
   if (t) return { verdict: t.verdict, reason: 'Latest composite agent score', score: t.score };
@@ -779,6 +787,12 @@ function HoldingsTable({ holdings, digest, isLive, onAdd, onRemoved }) {
                       </span>
                     </div>
                   ) : <span className="mono" style={{ color:'var(--ink-3)' }}>—</span>}
+                  {take?.note && (
+                    <details className="sa-row-note" style={{ fontSize:11, color:'var(--ink-3)', marginTop:4 }}>
+                      <summary style={{ cursor:'pointer' }}>{take.note}: why</summary>
+                      <div style={{ maxWidth:260, lineHeight:1.5, marginTop:2 }}>{take.reason}</div>
+                    </details>
+                  )}
                 </td>
                 {isLive && (
                   <td style={{ ...pfTd, textAlign:'right' }}>
@@ -910,8 +924,27 @@ const pfClamp = (lines) => ({ display:'-webkit-box', WebkitLineClamp:lines,
 const pfLinkBtn = { background:'none', border:'none', padding:0, cursor:'pointer',
                     fontSize:11, fontWeight:600, color:'var(--violet)' };
 
+// PR-007: the plain words of a trade or of a review's buying, drafted once on
+// the server when it happened (core/portfolio/explain.py). The stored audit
+// text stays one tap away, under "details".
+const PLAIN_PARTS = [['did', 'What we did'], ['why', 'Why'],
+                     ['wrong_if', 'What would change our mind'], ['next', 'What happens next']];
+
+function PlainParts({ plain, keys }) {
+  return (
+    <div className="sa-plain">
+      {PLAIN_PARTS.filter(([k]) => keys.includes(k) && plain[k]).map(([k, label]) => (
+        <div key={k} style={{ fontSize:12, color:'var(--ink-2)', marginTop:6, lineHeight:1.5 }}>
+          <b>{label}:</b> {plain[k]}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function TradeRow({ t, onPick }) {
   const [open, setOpen] = useStatePf(false);
+  const [details, setDetails] = useStatePf(false);
   // When the review made the trade (IST); the price's own date is the session
   // it was booked at. In the row, not a right-hand column the phone layout hides.
   const made = t.ts ? `made ${fmtIST(t.ts, '')}` : '';
@@ -988,15 +1021,29 @@ function TradeRow({ t, onPick }) {
     <div style={{ fontSize:12, color:'var(--ink-3)', marginTop:2 }}>
       {[tradeKind(t), costLine, made].filter(Boolean).join(' · ')}
     </div>
-    <div className="sa-trade-why" style={{ fontSize:12, color:'var(--ink-2)', marginTop:6, lineHeight:1.5,
-      ...(open ? {} : pfClamp(3)) }}>
-      <b>{isSell ? 'Why sold' : 'Why bought'}:</b> {why}
-    </div>
-    {open && t.note && (
+    {t.plain && open ? (
+      <PlainParts plain={t.plain} keys={['did', 'why', 'wrong_if', 'next']}/>
+    ) : (
+      <div className="sa-trade-why" style={{ fontSize:12, color:'var(--ink-2)', marginTop:6, lineHeight:1.5,
+        ...(open ? {} : pfClamp(3)) }}>
+        <b>{isSell ? 'Why sold' : 'Why bought'}:</b> {t.plain ? t.plain.why : why}
+      </div>
+    )}
+    {open && t.plain && details && (
+      <div className="sa-trade-details" style={{ fontSize:11, color:'var(--ink-3)', marginTop:6, lineHeight:1.5 }}>
+        <div>As recorded: {why}</div>
+        {t.note && <div style={{ marginTop:4 }}>Rule notes: {t.note}</div>}
+      </div>
+    )}
+    {open && !t.plain && t.note && (
       <div style={{ fontSize:11, color:'var(--ink-3)', marginTop:4, lineHeight:1.5 }}>Rule notes: {t.note}</div>
     )}
-    {long && <button onClick={() => setOpen(v => !v)} style={{ ...pfLinkBtn, marginTop:4 }}>
-      {open ? 'less' : 'more'}</button>}
+    <div style={{ display:'flex', gap:14 }}>
+      {(long || t.plain) && <button onClick={() => { setOpen(v => !v); setDetails(false); }}
+        style={{ ...pfLinkBtn, marginTop:4 }}>{open ? 'less' : 'more'}</button>}
+      {open && t.plain && <button onClick={() => setDetails(v => !v)} style={{ ...pfLinkBtn, marginTop:4 }}>
+        {details ? 'hide details' : 'details'}</button>}
+    </div>
   </>);
 }
 
@@ -1053,6 +1100,9 @@ const DEPLOY_OUTCOMES = {
 // page is the analysis's view; this card is what the portfolio did with it.
 function LastBuysCard({ digest }) {
   const [all, setAll] = useStatePf(false);
+  const [details, setDetails] = useStatePf(false);
+  const plain = digest.plain_review;
+  const showRecord = !plain || details;
   const dep = digest.deployment || {};
   const bought = dep.bought || [];
   const ideas = dep.ideas || [];
@@ -1065,14 +1115,22 @@ function LastBuysCard({ digest }) {
       <div className="eyebrow" style={{ marginBottom:4 }}>New buys at the last review</div>
       {day && <div style={{ fontSize:11, color:'var(--ink-3)', marginBottom:10 }}>
         The review of {day}: its buys are booked at that day's close.</div>}
-      {dep.error ? (
+      {dep.error && !plain ? (
         <div style={{ fontSize:14, fontWeight:700 }}>Nothing bought: {dep.error}</div>
       ) : (
         <>
           <div style={{ fontSize:16, fontWeight:800, marginBottom:6 }}>
             {bought.length ? `Bought ${bought.length}: ${bought.join(', ')}` : 'Bought nothing'}
           </div>
-          {typeof dep.invested_after_pct === 'number' && (
+          {plain && <PlainParts plain={plain} keys={['why', 'wrong_if', 'next']}/>}
+          {plain && (
+            <button onClick={() => setDetails(v => !v)} style={{ ...pfLinkBtn, marginTop:8 }}>
+              {details ? 'hide details' : 'details'}</button>
+          )}
+          {showRecord && dep.error && plain && (
+            <div style={{ fontSize:12, color:'var(--ink-3)', marginTop:6 }}>As recorded: {dep.error}</div>
+          )}
+          {showRecord && typeof dep.invested_after_pct === 'number' && (
             <div style={{ fontSize:12, color:'var(--ink-2)', lineHeight:1.5 }}>
               In stocks {pct(dep.invested_before_pct)} → {pct(dep.invested_after_pct)} of total equity,
               against a target of {pct(dep.target_pct)} ({dep.regime ? `market regime ${dep.regime}` : 'no market regime'}).
@@ -1081,7 +1139,7 @@ function LastBuysCard({ digest }) {
           )}
         </>
       )}
-      {reasons.length > 0 && !dep.error && (
+      {showRecord && reasons.length > 0 && !dep.error && (
         <>
           <div style={{ fontSize:11, fontWeight:700, color:'var(--ink-3)', textTransform:'uppercase',
             letterSpacing:'.08em', margin:'12px 0 4px' }}>Why it stopped there</div>
@@ -1090,7 +1148,7 @@ function LastBuysCard({ digest }) {
           </ul>
         </>
       )}
-      {ideas.length > 0 && (
+      {showRecord && ideas.length > 0 && (
         <>
           <div style={{ fontSize:11, fontWeight:700, color:'var(--ink-3)', textTransform:'uppercase',
             letterSpacing:'.08em', margin:'12px 0 4px' }}>Ideas it looked at, best conviction first</div>

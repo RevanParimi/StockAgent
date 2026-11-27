@@ -38,7 +38,7 @@ from core.config import settings
 from services.api.auth import get_current_user, require_owner
 from backend.sectors.registry import SectorRegistry
 from backend.shared.schemas.portfolio import Holding, TransactionRecord, WatchlistItem
-from core.portfolio import costs, results
+from core.portfolio import costs, explain, results
 from core.portfolio.autopilot import make_txn_id
 from core.portfolio.pipeline import run_post_review_pipeline
 from core.portfolio.pricing import PriceUnavailableError, close_on, session_close
@@ -59,6 +59,19 @@ def _store(user_id: str | None) -> PortfolioStore:
         return PortfolioStore(user_id=user_id)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+
+
+def _explanations(user_id: str, store: PortfolioStore) -> dict[str, dict]:
+    """PR-007: this user's stored plain words, from their own folder only.
+    None with `advisor.plain_reasons` off (the rollback), and unreadable words
+    never fail a page: the screen then shows the audit text."""
+    if not settings.ADVISOR_PLAIN_REASONS:
+        return {}
+    try:
+        return explain.ExplanationStore(user_id, str(store._dir.parent)).load()
+    except Exception as exc:
+        logger.warning("[portfolio_api] explanations unread for a user: %s", exc)
+        return {}
 
 
 def _resolve_sector(symbol: str, sector: str | None) -> str:
@@ -368,9 +381,17 @@ async def get_latest_digest(
     user: dict = Depends(get_current_user),
     format: str | None = Query(default=None, description="'text' → rendered text"),
 ) -> dict:
-    digest = _store(user["user_id"]).load_latest_digest()
+    store = _store(user["user_id"])
+    digest = store.load_latest_digest()
     if digest is None:
         raise HTTPException(status_code=404, detail="No digest yet — run the advisor first.")
+    # PR-007: the last review's buying in plain words, drafted when it ran.
+    if not settings.ADVISOR_PLAIN_REASONS:     # the rollback: rows lose theirs too
+        digest = dict(digest, holdings=[{k: v for k, v in row.items() if k != "plain"}
+                                        for row in digest.get("holdings", [])])
+    review = _explanations(user["user_id"], store).get(explain.review_key(str(digest.get("date"))))
+    if review:
+        digest = dict(digest, plain_review=explain.shown(review))
     if format == "text":
         from core.portfolio.digest_text import render_digest_text
         return {"date": digest.get("date"), "text": render_digest_text(digest)}
@@ -382,7 +403,8 @@ async def get_transactions(
     user: dict = Depends(get_current_user),
     limit: int = Query(default=50, ge=1, le=1000),
 ) -> dict:
-    records = _store(user["user_id"]).load_transactions(limit=limit)
+    store = _store(user["user_id"])
+    records = store.load_transactions(limit=limit)
     # A trade from before costs were charged shows its costs estimated, never
     # as none (SA-048); a dividend has none.
     rates = costs.cost_rates()
@@ -391,6 +413,8 @@ async def get_transactions(
         row, c = r.model_dump(), costs.costs_of(r, rates)
         row["costs"] = c.model_dump() if c is not None else None
         out.append(row)
+    # PR-007: each trade's plain words, drafted once when it was made.
+    explain.attach_transactions(out, _explanations(user["user_id"], store))
     return {"transactions": out}
 
 

@@ -446,6 +446,17 @@ class PortfolioStore:
         self._write_json(path, digest)
         return path
 
+    def load_digest(self, day: str) -> dict | None:
+        """The digest of review day `day`, or None when none is readable."""
+        path = self._dir / "digests" / f"{day}.json"
+        if not path.exists():
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.error("[PortfolioStore] failed to read digest %s: %s", path, exc)
+            return None
+
     def load_latest_digest(self) -> dict | None:
         digest_dir = self._dir / "digests"
         if not digest_dir.exists():

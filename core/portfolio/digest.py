@@ -11,6 +11,29 @@ from backend.shared.schemas.portfolio import AdviceRecord, Portfolio
 from core.portfolio.advisor import explain_triggers
 
 
+def keep_day_record(digest: dict, previous: dict | None) -> None:
+    """FIX-025 L2, FIX-028: a same-day re-run stops at the autopilot's run
+    marker, so it has no trades and no record of its own. Keep what the day's
+    first run recorded: its idle-cash record, its trades, and each row's
+    reason for no top-up or no daily review. Call only when this run's
+    execution did not run (no trades and an empty run report)."""
+    if not previous or previous.get("date") != digest.get("date"):
+        return
+    if "deployment" in previous and "deployment" not in digest:
+        digest["deployment"] = previous["deployment"]
+    if previous.get("trades") and not digest.get("trades"):
+        digest["trades"] = previous["trades"]
+    earlier = {r.get("symbol"): r for r in previous.get("holdings", [])}
+    for row in digest.get("holdings", []):
+        for key in ("top_up_skipped", "not_reviewed"):
+            kept = earlier.get(row.get("symbol"), {}).get(key)
+            # A refused top-up belongs to an ADD; a row that now says
+            # otherwise never carries it.
+            if kept and key not in row and (key != "top_up_skipped"
+                                            or row.get("verdict") == "ADD"):
+                row[key] = kept
+
+
 def build_digest(
     user_id: str,
     review_date: date,

@@ -56,7 +56,7 @@ morning_brief:
 rl_daily_review:
   module: M4.2
   does: "grades the previous session (T−1), then the portfolio (M5.1)"
-  lights: [M4.2, M4.5, M2.1, M2.2, M3, M5.1, M5.2, M5.3, M5.4, M5.5, M5.6, M5.7, M6.4, M7.1, M9.3, ext.user, S.predictions, S.regime, S.shelf, S.portfolio, S.managed, S.cases, S.advice, S.exit_shadow, S.history]
+  lights: [M4.2, M4.5, M2.1, M2.2, M3, M5.1, M5.2, M5.3, M5.4, M5.5, M5.6, M5.7, M5.8, M6.4, M7.1, M9.3, ext.user, S.predictions, S.regime, S.shelf, S.portfolio, S.managed, S.cases, S.advice, S.exit_shadow, S.history, S.explanations]
   flows: ["M2>M3", "M3>M4", "M4>M5", "M3>M5", "M6>M5", "M7>M5", "M2>M5", "M5>M9", "M9>ext.user"]
 bhavcopy_daily_sync:
   module: M2.1

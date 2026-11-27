@@ -44,6 +44,13 @@
   holds: equity at each review, the daily digest, the weekly scorecard
   writers: [M5.1, M5.3, M5.7]
   readers: [M5.7, M9.2, M10.1]
+- id: S.explanations
+  name: Plain words
+  path: data/portfolio/<user>/explanations.jsonl
+  holds: each trade's and review's plain explanation, beside the audit text
+  writers: [M5.8]
+  readers: [M5.8, M9.2, M10.1]
+  code: ["core/portfolio/explain.py::ExplanationStore"]
 - id: S.cases
   name: Investment cases
   path: data/portfolio/<user>/cases/

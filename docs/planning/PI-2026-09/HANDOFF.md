@@ -1,4 +1,4 @@
-# Current handoff - 2026-11-27 (NEXT PR-007; MAP-005 accepted; the autopilot stops here)
+# Current handoff - 2026-11-27 (NEXT PR-018; PR-007 accepted; push pending)
 
 ## Now
 
@@ -14,20 +14,22 @@
   2,734 MB (the map's page build, B-50) and 16:00 `BOOT` (the redeploy; no OOM kill; `anon` 991 MB
   just before), both seen at your word. A redeploy removes system packages: your startup script now
   reinstalls Chromium's libraries (your word; not yet proven at a boot, see `~/devbox/boot.log`).
-- **27 Nov, MAP-001 to MAP-005 done** ([receipt](evidence/MAP-005.md)): open
-  [the map](../../architecture-map/index.html) (offline; 3D, or flat on a phone; clock `5`, "Trace a
-  stock", Tour; Developer, then `G`). Code changes need the map regenerated; model or viewer changes
-  also its page rebuilt.
-- **Next `continue`:** **PR-007** (light; your order, 26 Nov). The autopilot stops after MAP-005
-  (your word): `start` it again for PR-007 once tonight's push is done.
+- **MAP-001 to MAP-005 done** ([receipt](evidence/MAP-005.md)):
+  [the map](../../architecture-map/index.html). Code changes need it regenerated; model or viewer
+  changes also its page rebuilt.
+- **PR-007** (accepted 27 Nov, [receipt](evidence/PR-007-implementation.md)): trades, holdings and
+  the last review in plain four parts, display only. A sale and the review call no model.
+- **Next `continue`:** **PR-018** (light).
 - **Production reads, your word:** `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`.
-- **Git:** `origin/main` = `69e7c28`; `main` holds its deploy record, MAP-003, MAP-004 and MAP-005,
-  unpushed. The waiting runner pushes after its guarded suite, from 00:10 IST Sat 28 Nov, if the
-  checkout is clean. Then check the deploy, `/health` and CI's browser job (B-46).
+- **Git:** `origin/main` = `69e7c28`; `main` holds its deploy record, MAP-003 to MAP-005 and
+  PR-007, unpushed: push from 00:10 IST Sat 28 Nov after the guarded suite. Then check the deploy,
+  `/health` and CI's browser job (B-46).
 
 ## Waits for you
 
 - **The map's walk-through** (guide 11-P), on a laptop and a phone.
+- **PR-007:** after its first review, read the reasons (guide 11-Q) and keep three examples; for
+  earlier trades say "run the PR-007 backfill" (a dry run, then `--apply`).
 - **PR-047's read** (read-only; from Tue 1 Dec, best Sat 12 or Sun 13 Dec, before `PR-014-R1`):
   say "run the PR-047 measure"; command in its receipt.
 - **PR-037's catch-up run**, a weekday 09:30–14:00 IST: say "run the PR-037 catch-up" in a
@@ -67,6 +69,7 @@ Each row, with its command, its pass rule and the conversation that runs it, is 
 | Thu 26 Nov | `PR-036-W5` | share invested and holdings, 5 sessions after the deposit |
 | Fri 27 Nov | `PR-042-W1` | a week of enforce: what it stopped; no exit or trim stopped |
 | Fri 27 Nov | `PR-047-W1` | after the 16:30 review: no buy whose own model did not say BUY; Sat 28 Nov: `hygiene.model_verdicts`, `not_buy_model` |
+| first review after deploy | `PR-007-W1` | the stored words, the model's share and tokens (your word) |
 | Tue 1 Dec | `PR-047-S1` | PR-047's measure, at your word; best 12-13 Dec |
 | Tue 1 Dec | `PR-014-D1` | the door read: what the buy list offered and refused (and BACKLOG B-13) |
 | Tue 1 Dec | `FIX-015-W1` | every shock sale since the deploy, read with `PR-014-D1` |

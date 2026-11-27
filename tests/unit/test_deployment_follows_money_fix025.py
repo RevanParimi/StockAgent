@@ -642,7 +642,11 @@ def test_d3_through_the_pipeline_nse_is_read_before_the_lock_and_the_digest_says
     why = "top-up skipped: under LT-ASM in NSE's surveillance report of 2026-07-10"
     assert digest["holdings"][0]["verdict"] == "ADD"
     assert digest["holdings"][0]["top_up_skipped"] == why
-    assert f"ADD: RAILCO — n ({why})" in render_digest_text(digest)
+    # PR-007: the text says why in plain words, keeping the report's date.
+    plain = digest["holdings"][0]["plain"]["why"]
+    assert plain.endswith("No shares were bought, because the exchange's watch list did not "
+                          "clear it (its report of 10 Jul 2026).")
+    assert f"ADD: RAILCO — {plain}" in render_digest_text(digest)
 
 
 def test_d3_a_digest_with_no_skipped_top_up_has_no_such_field():

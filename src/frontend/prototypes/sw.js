@@ -17,7 +17,9 @@
 // them for the owner); demo-fixtures.js is requested only with ?demo=1.
 // v12 (PR-045, PR-046): the portfolio screen's trade history and last-review card,
 // and the chat's "Ask why" question; drop the cached screens that lack them.
-const VERSION = 'v12';
+// v13 (PR-007): the plain words of each trade, holding and review; drop the
+// cached screens that show the audit text alone.
+const VERSION = 'v13';
 const SHELL_CACHE = `sa-shell-${VERSION}`;
 const RUNTIME_CACHE = `sa-runtime-${VERSION}`;
 

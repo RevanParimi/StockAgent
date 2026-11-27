@@ -268,7 +268,7 @@ evidence.
 | `data/managed_tickers.json` | The managed list: each scheduled ticker's sector and enabled flag. Disabling a ticker keeps its history; removing it deletes the history. |
 | `data/peer_profiles.json` | Yahoo industry and market cap per listing, with its date, for the valuation peers (section 4). Both workers write it: each save takes `peer_profiles.json.lock`, merges with the file and replaces it atomically. A cache: deleting it costs only lookups. |
 | `data/prediction_quarantine/<migration>/` | Stores moved out of the live tree by the ownership quarantine, with their `lineage.json`. Inside `data/`, so the nightly backup keeps them; outside the tree the evaluators walk. |
-| `data/portfolio/<user>/` | PortfolioStore: holdings/cash, advice and transaction JSONL, value history, dated digests, briefs and weekly reviews, `weekly_scorecard.jsonl` (one results row per ISO week, written once; section 7), `executable_prices.jsonl` (each autopilot trade's two real opens, one row per transaction, written once; section 7) and `exit_shadow.jsonl` (both exit rules' verdicts, one row per holding per review day, written once; section 6) and `cases/<SYMBOL>.jsonl` (each holding's investment case, every version appended, never edited; section 6). The nightly auditor's `advice_outcomes.jsonl` sits beside them. |
+| `data/portfolio/<user>/` | PortfolioStore: holdings/cash, advice and transaction JSONL, value history, dated digests, briefs and weekly reviews, `weekly_scorecard.jsonl` (one results row per ISO week, written once; section 7), `executable_prices.jsonl` (each autopilot trade's two real opens, one row per transaction, written once; section 7) and `exit_shadow.jsonl` (both exit rules' verdicts, one row per holding per review day, written once; section 6) and `cases/<SYMBOL>.jsonl` (each holding's investment case, every version appended, never edited; section 6). The nightly auditor's `advice_outcomes.jsonl` sits beside them. `explanations.jsonl` holds each trade's and review's plain words (section 6), beside the audit text. |
 | `data/discovery/` | The weekly funnel (section 8): `shelf.json`, `shelf_events.jsonl`, the dive memo `dives.json` (each stock's latest dive for 30 days), `screens/<date>_screen.json`, and two append-only records the auditor's idea lanes grade (section 7): `dives.jsonl` (every dive as issued, one run row per run) and `bare_judgements.jsonl` (the bare model's answers). |
 | `data/ipo/` | Historical issue facts and captured demand snapshots; reports derive from these records. |
 | `data/market_cache/ipo.json` and EOD parquet | Cached IPO information and exchange price history; date, source and stale state matter. |
@@ -858,8 +858,9 @@ trading days, at 08:15 and 18:30 IST
 events (section 6): it sells on them with `advisor.exit_rule: evidence`, the
 repository's setting, and with `shadow` only records what it would do. The
 investment case reads it to challenge a holding's pillars (section 6). The
-explanations and the brief's company lane are to read it (**Planned:** PR-007,
-PR-008).
+plain words of a sale by the case rule name the event that broke it (section
+6, "Plain explanations"). The brief's company lane is to read the feed
+(**Planned:** PR-008).
 
 A run:
 
@@ -1319,9 +1320,10 @@ evaluates held positions, records advice and optionally executes it.
 The LLM narrates the rule-driven decision; triggers remain available when
 narration fails. The [narrator](../core/portfolio/narrator.py) is given the
 verdict, symbol, close, regime label and rule codes only, on the bulk tier,
-so its text can restate the rule but not the company's facts. Each holding
-bought from now on carries an investment case (below); **Planned:**
-explanations grounded in it and in the company events of section 4 (PR-007).
+so its text can restate the rule but not the company's facts. That narrative
+is the audit text, kept in the ledger and the advice record. What a reader
+sees first are the plain words beside it ("Plain explanations", below), which
+read the investment case.
 
 | Research verdict | Portfolio action |
 |---|---|
@@ -1353,8 +1355,9 @@ On a day the live inputs left it open (Cash deployment, below), the review's
 feedback entry says why its label was kept, and the advisor holds the ADD
 in either gate mode with the note `REGIME_UNAVAILABLE`. The record's
 `regime_unavailable` says "market regime unavailable for 2026-10-30: India
-VIX did not answer", and so does the fallback narrative; the LLM's line gets
-only the code (**Planned:** PR-007). A holding whose own review wrote no entry
+VIX did not answer", and so does the fallback narrative; the LLM's audit line
+gets only the code, and the plain words name the day and the cause ("Plain
+explanations"). A holding whose own review wrote no entry
 for the day (an older one, or none at all) reads the market-wide record for
 that day, the label another ticker's review recorded: it replaces the older
 label for ADD, for the crisis exit and for the narrative. Example: the
@@ -1425,7 +1428,8 @@ What is computed after the close from the close itself still counts: the
 review's grade of that session and the day's regime label, which reads no bar
 after it. Not covered: the earnings-gap note (`EARNINGS_GAP_PROTECTION`, an
 annotation, not a verdict) reads the board-meeting calendar the run
-refreshes, which keeps no announcement time. **Planned:** PR-007.
+refreshes, which keeps no announcement time. The plain words of the note say
+the date may have been announced after that day's close.
 
 **The shock exit.** `shock_reforecast` sells when the latest re-forecast in
 the envelope as it stood at the close was a market or company shock, made
@@ -1838,8 +1842,11 @@ earliest week the gate could pass at it (section 7, "What waiting cost" and
   leaves it unused (above). The entry rule still reads the shelf idea's
   unadjusted level, so a stock whose price a demerger lowered after its dive
   can be refused a buy it would have passed.
-- Under `evidence`, a sale's alert and narrative name the three kinds of reason,
-  not the one that fired; `exit_shadow.jsonl` has it. **Planned:** PR-007.
+- Under `evidence`, a sale's audit narrative names the three kinds of reason,
+  not the one that fired. Its plain words, which the alert and the screens
+  show, name the one that did, from the same evidence the rule read: the event
+  and its date, the research verdict and its IST day, or the close and the
+  level; `exit_shadow.jsonl` keeps it too.
 - The TRIM-to-HOLD tax softening still reads the thesis review under both
   rules.
 - Each Sunday the scorecard fetches every graded decision's closes again, and
@@ -2180,6 +2187,76 @@ autopilot's note of an exit. `add` takes the home page's own list of stocks;
 `remove` takes any stock on the watchlist, since the page shows every one. The
 older form, the whole list, only adds: a stock it omits may be one the page
 never saw, and nothing in the list tells that apart from a removal.
+
+### Plain explanations
+
+Every autopilot trade, every holding's row in the day's digest and the
+review's buying are told in four short parts: **what we did, why, what would
+change our mind, what happens next** (words: `core/portfolio/plain_words.py`;
+drafting: `core/portfolio/explain.py`). They are for display: the ledger's
+`reason` and `note`, the advice narrative and the digest's `deployment` record
+are unchanged, they are one tap away under "details", and no buy, sell, size or
+grade reads the plain words.
+
+- **Code writes what happened and the rule that fired.** The first sentence of
+  "why" names it from the trade's own records, before any context. A sale by the
+  safety limit gives the stop as a price in rupees (the cost basis less the stop,
+  less any dividends the sale carried), never as a percentage; news that did not
+  sell it is not mentioned. A SWITCH's buy never takes the sold stock's triggers
+  as its reason. Under the case rule it names which of the three broke, with its
+  date; a news article never counts. A trigger with no plain wording says "one of
+  our selling rules was met", never its code.
+- **A sale makes no model call.** After the rule, it quotes the first clean
+  sentence of what was recorded: its investment case ("When we bought it, the
+  case was: …"; a case written after the purchase says so), else the analysis
+  that was known when it was bought, never a later one. No model can therefore
+  supply a cause for a sale. With neither, or a purchase the ledger read does
+  not hold, it adds nothing.
+- **A purchase makes one model call**, which may add one sentence about the
+  company from the same facts and one on what would prove it wrong. The model is
+  given company facts only: no price paid, quantity or stop. An answer is dropped
+  whole when it uses a banned word, has a number the facts lack (in digits or as
+  a word: "three", "doubled"), gives a stop as a percentage, runs past one
+  sentence, speaks of our action, or is not the asked JSON; the template stands,
+  quoting the recorded sentence.
+- **The review's card is code only.** Its lead is the rule that stopped the
+  buying, then the count of ideas held back by each reason (with how far above
+  the planned price), then what would change it for that rule. A goal is told
+  only on a day one is in force.
+- **Banned words** in this text: trigger, note, verdict and market-condition
+  codes, "envelope", "ATR", "reversion prior", "conviction streak", "data gate",
+  "rationale hash", "agent" and "market regime". A fact that carries one is
+  left out.
+- **Holding rows** are templates only, so a review costs no call per holding. A
+  held stock that is down says which rules have not been met, or that a reason
+  to doubt it appeared and waits for the ten-session minimum. A portfolio with no
+  cash on record is told its weight among its holdings, with nothing about
+  buying. Rows say why a top-up was not made or why there was no review.
+- **Drafted once.** The pipeline drafts after the digest and before the alerts,
+  and stores one row per trade and per review in
+  `data/portfolio/<user>/explanations.jsonl`; a re-run drafts nothing it has,
+  and no page view drafts anything. A row whose stock traded that run (a trim, a
+  top-up, a stock bought today) then takes the trade's words, so the digest and
+  the brief say what the alert and the history do. Each call has a 45-second
+  timeout, and after 180 seconds of one user's run the rest are templates. A
+  failure costs only the words. A same-day re-run, which the autopilot's run
+  marker stops from executing, keeps the first run's `deployment` record, trades
+  and per-row reasons in the digest.
+- **Where they show:** the portfolio screen's trade history and last-review
+  card, the holdings table's note, the Inbox digest, the morning brief's flags,
+  the weekly review's switch calls, the escalation alerts and the chat's
+  portfolio tool. A record with no plain words shows its audit text, as before.
+- **Settings:** `advisor.plain_reasons` (on; off, the rollback, drafts and
+  stores nothing, and the API, the brief and the weekly review show the audit
+  text again) and `advisor.narrate_model` ("" = the reasoning tier). The only
+  calls are one per purchase. `scripts/explain_trades.py` drafts earlier trades:
+  a dry run first, then `--apply`, at the owner's word in production.
+- **Not covered:** the sector's move since purchase (the product keeps no sector
+  index series); news since the last review that did not break a case is not
+  mentioned, so a sale never reads as caused by it; a sale made before this has
+  no highest price recorded, so a trailing-stop sale in the backfill names none;
+  on a purchase the checks prove a number is the facts', not that the model's
+  sentence uses it truthfully.
 
 ### Sizing every buy
 
@@ -2617,12 +2694,16 @@ functions in [results.py](../core/portfolio/results.py) (`capital_flows`,
   time it was recorded (the 16:30 review books at the session before its
   own). A sale adds the average cost of the shares sold and its result before
   costs: "Profit +₹1,000 (+3.9%)" or "Loss -₹500 (-1.9%)". Each trade shows,
-  in three lines with "more", the reason the ledger kept when it was made
-  (`reason`: the idea's thesis for a new position, the advice narrative for a
-  sale); "more" also opens the rule note. A trade with no reason kept says
-  "No reason was recorded with this trade", and a hand trade "Your own trade".
-  A reason the store cut short (an idea's thesis is kept to 800 characters)
-  ends with "…" rather than mid-word.
+  in three lines with "more", its plain "why" (section 6, "Plain
+  explanations"); "more" shows all four parts, and "details" the reason the
+  ledger kept when it was made (`reason`: the idea's thesis for a new
+  position, the advice narrative for a sale) and the rule note. A trade with no
+  plain words shows that stored reason instead, and "more" opens the rule note.
+  A trade with no reason kept says "No reason was recorded with this trade",
+  and a hand trade "Your own trade". A reason the store cut short (an idea's
+  thesis is kept to 800 characters) ends with "…" rather than mid-word. The
+  last review's card likewise shows its plain words, with the record's
+  percentages, reasons and ideas under "details".
   Tapping a stock lists only its trades, with what the sales listed there
   made before costs. The closed-trade record follows, then the verdict
   changes (section 10).
@@ -4220,9 +4301,10 @@ The planned changes connect the research to the money:
   6), so the same comparison runs with the roles swapped. The owner keeps the
   rule or rolls it back at the eight-week results, without waiting for the
   switch gate to fill.
-- **Explain like an investor.** Explanations follow the pattern "what we did,
-  why, what would change our mind, what next", grounded and free of internal
-  words (PR-007). The brief opens with your stocks (PR-008).
+- **Explain like an investor (built).** Trades, holding rows and the review's
+  buying are told as "what we did, why, what would change our mind, what next",
+  grounded and free of internal words (section 6, "Plain explanations"). The
+  brief opens with your stocks (PR-008).
 - **Show only what is real.** On top of section 10's real-figures rule,
   members see three screens and the owner an Operator menu (done); Ideas
   makes four (PR-010).
@@ -4384,7 +4466,7 @@ section 10) are part of the current design.
 | [PR-004](planning/PI-2026-09/stories/PR-004.md) | Enough researched ideas to fill 10+ positions | Done | 8 Discovery | None |
 | [PR-005](planning/PI-2026-09/stories/PR-005.md) | An investment case for every position | Done | 6 Portfolio | PR-006 |
 | [PR-006](planning/PI-2026-09/stories/PR-006.md) | A daily company-event feed for held, watched and shelf stocks | Done | 4 Research; 9 Jobs | None |
-| [PR-007](planning/PI-2026-09/stories/PR-007.md) | Plain, fact-grounded buy and sell explanations | Open | 6 Portfolio | PR-005, PR-006 |
+| [PR-007](planning/PI-2026-09/stories/PR-007.md) | Plain, fact-grounded buy and sell explanations | Done | 6 Portfolio | PR-005, PR-006 |
 | [PR-008](planning/PI-2026-09/stories/PR-008.md) | "Your stocks overnight" at the top of the morning brief | Open | 10 Delivery | PR-003, PR-006 |
 | [PR-009](planning/PI-2026-09/stories/PR-009.md) | Exit on evidence, not on a price-path miss (shadow, then switch) | Done | 6 Portfolio | PR-002, PR-006 |
 | [PR-010](planning/PI-2026-09/stories/PR-010.md) | Four screens for members; an Operator menu for the owner | Open | 10 Interface | PR-001, PR-040 |

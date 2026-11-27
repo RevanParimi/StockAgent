@@ -94,6 +94,21 @@ def _no_real_deliveries(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_plain_reasons(monkeypatch):
+    """PR-007: the pipeline drafts each trade's plain words with one model call
+    and reads the Nifty for a sale. In tests the call fails as an unreachable
+    provider does (the template stands) and the Nifty is unread; a test of the
+    drafting answers these seams itself."""
+    from core.portfolio import explain as _explain
+
+    def _offline(system, user):
+        raise RuntimeError("no model under test")
+
+    monkeypatch.setattr(_explain, "_call_model", _offline)
+    monkeypatch.setattr(_explain, "_nifty_move", lambda start, end: None)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_evidence_writes(monkeypatch, tmp_path):
     """Same rule as _no_real_deliveries, for the news-availability ledger.
 

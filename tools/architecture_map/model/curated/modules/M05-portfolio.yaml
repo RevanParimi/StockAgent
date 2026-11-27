@@ -39,8 +39,10 @@ submodules:
           > 7  case upkeep: retry a missing invalidation price; events challenge pillars
           > 8  value point: equity at D's marks ─► value history
           > 9  reconcile the ledger with portfolio.json (detects and alerts, never repairs)
-          > 10 digest for D
-          > 11 alerts: TRIM/EXIT/SWITCH, each trade, a skipped switch buy; end-of-day
+          > 10 digest for D, each holding row with its plain words (M5.8); a same-day
+          | re-run keeps the first run's record
+          > 11 plain words of each trade and of the buying, drafted once (M5.8)
+          > 12 alerts: TRIM/EXIT/SWITCH, each trade, a skipped switch buy; end-of-day
           | digest push
         Every step is non-fatal: one holding or one user failing never stops the rest.
   - id: M5.2
@@ -214,6 +216,37 @@ submodules:
       corrupt portfolio.json ─► quarantined; changes return HTTP 409
       promotion: a held or watched stock ─► managed_tickers.json (cap 60; only watchlist
       | entries are ever evicted; one nobody holds or lists is switched off)
+  - id: M5.8
+    name: Plain words
+    summary: why each buy, sell and hold, for a reader who is not an expert
+    files:
+      - core/portfolio/explain.py
+      - core/portfolio/plain_words.py
+      - scripts/explain_trades.py
+    code: ["core/portfolio/explain.py::explain_run", "core/portfolio/plain_words.py::holding_parts",
+           "core/portfolio/plain_words.py::check_company_sentence"]
+    config: [advisor.plain_reasons, advisor.narrate_model]
+    logic: |
+      four parts: what we did, why, what would change our mind, what happens next
+        for a holding row and the review's buying: code only (no model call), from the
+        | advice, the holding, the exit evidence and the deployment record
+        > for each autopilot trade: code writes what happened and names the rule that
+        | fired, first
+        > a SALE then quotes the case recorded when it was bought (no model call), so no
+        | model can supply a cause for a sale
+        > a PURCHASE: one reasoning call may add one sentence about the company, from its
+        | investment case (else the analysis known when bought), and a warning sign
+        > ? the answer keeps every rule: no banned word, no number the facts lack
+        | (digits or words), no stop as a percentage, one sentence, nothing about our
+        | action
+          yes ─► added to the template
+          no ─► dropped whole; the template stands
+      a row whose stock traded takes the trade's words, so digest and alert agree
+      stored once per trade and per review in explanations.jsonl; the ledger's reason,
+      | the advice narrative and the digest's record are not changed
+      display only: no buy, sell, size or grade reads these words
+      advisor.plain_reasons false ─► nothing drafted; screens show the audit text
+      scripts/explain_trades.py drafts earlier trades (dry run, then --apply)
   - id: M5.7
     name: Results
     summary: is it making money?

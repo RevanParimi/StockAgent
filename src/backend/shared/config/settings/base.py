@@ -904,6 +904,13 @@ ADVISOR_MIN_HOLD_SESSIONS: int = int(cfg("advisor.min_hold_sessions", fallback=1
 ADVISOR_CASE_WRITE: bool = bool(cfg("advisor.case_write", fallback=True))
 ADVISOR_CASE_MODEL: bool = bool(cfg("advisor.case_model", fallback=True))
 ADVISOR_CASE_NOISE_ATR_MULT: float = float(cfg("advisor.case_noise_atr_mult", fallback=1.5))
+# PR-007: plain four-part explanations, drafted once per trade and per review and
+# stored beside the audit text (core/portfolio/explain.py). A purchase's company
+# sentence is one call to narrate_model; "" = the reasoning tier. plain_reasons
+# false (the rollback) drafts and stores nothing, and the API, the brief and the
+# weekly review show the audit text.
+ADVISOR_PLAIN_REASONS: bool = bool(cfg("advisor.plain_reasons", fallback=True))
+ADVISOR_NARRATE_MODEL: str = cfg("advisor.narrate_model", fallback="") or LLM_MODEL_REASONING
 
 # ---------------------------------------------------------------------------
 # M0 — Multi-user foundation (spec 2026-07-26)

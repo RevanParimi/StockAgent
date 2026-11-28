@@ -1,29 +1,29 @@
-# Current handoff - 2026-11-28 (NEXT PR-008, Opus; MAP-006 accepted; push waits for its suite)
+# Current handoff - 2026-11-28 (NEXT: finish PR-041, then PR-008 on Opus; 40cc45b deployed)
 
 ## Now
 
-- **Deployed:** `69e7c28` (MAP-002), pushed 06:05 IST Fri 27 Nov (`8624f234` SUCCESS, `/health`
-  200 at 08:52, CI green); B-12's wording shows Sun 29 Nov. The evidence exit rule decides
+- **Deployed:** `40cc45b` (MAP-006; 12 commits, MAP-003 to MAP-006, PR-007, PR-018, PR-041,
+  PR-032), pushed 03:49 IST Sat 28 Nov (`3855483f` SUCCESS, `/health` 200 at 05:52; CI not read);
+  B-12's wording shows Sun 29 Nov. The evidence exit rule decides
   since 23 Nov; PR-015, PR-017, FIX-033 and PR-046 stay `pending_observation`.
 - **Accepted:** **MAP-006** ([receipt](evidence/MAP-006.md)): the map's two flaky browser tests
   are fixed (its viewer dropped a quick `/` after `Esc`). Before it: PR-032 (code), PR-047.
-- **Blocked:** **PR-032** on its bench (`PR-032-B1`; `lenses.enabled` ships off); **PR-041**
-  ([receipt](evidence/PR-041.md)) on its one production run.
+- **Blocked:** **PR-032** on its bench (`PR-032-B1`; `lenses.enabled` ships off).
+- **In progress:** **PR-041** ([receipt](evidence/PR-041.md)): its production run was done at your
+  word, 05:53 IST 28 Nov: **the cut chooses** (30 sessions: lead +2.32 mean, +2.79 median, 12 of
+  14). Left: the screen-file checks, KMEW's moves, B-57, then close W1 and the card.
 - **Box:** full suite only via `scripts/ci/guarded_suite.py`; limit 8 GB. After a redeploy
   check `~/devbox/boot.log` (the Chromium reinstall is unproven).
-- **Next `continue`:** **PR-008** (decision path: Opus). PR-044 waits for `PR-043-W2` (4 Dec),
+- **Next `continue`:** finish **PR-041** (light), then **PR-008** (decision path: Opus). PR-044 waits for `PR-043-W2` (4 Dec),
   PR-034 for PR-033.
 - **Production reads, your word:** `FIX-017-W1`, `CLEAN-004-W1`, `FIX-033-W1`, `PR-015-W1`.
-- **Git:** `origin/main` = `69e7c28`. Unpushed on `main`: its deploy record, MAP-003 to MAP-006,
-  PR-007, PR-018, PR-041 and PR-032 (B-53 failed the 00:31 and 01:21 IST pre-push suites on
-  28 Nov). The autopilot pushes in a window once its guarded suite passes on the exact commit;
-  then check the deploy, `/health` and CI's browser job (B-46).
+- **Git:** `origin/main` = `40cc45b` (B-53 had failed the 00:31 and 01:21 IST pre-push suites;
+  MAP-006 fixed it and the 03:29 suite passed). Unpushed: PR-041's run record. The autopilot pushes
+  in a window once its guarded suite passes on the exact commit; then check the deploy, `/health`
+  and CI's browser job (B-46).
 
 ## Waits for you
 
-- **PR-041's run** (read-only, once the push has deployed; not 16:25–17:15 IST on a weekday or
-  12:00–15:00 on a Saturday): say "run the PR-041 report". To change its rule, say so first
-  (B-58); silence keeps it.
 - **PR-018, before its first look** (6 Dec at the earliest): its rule counts dives, not stocks,
   and looks never stop. Keep it, count one dive per stock a look, or also cap the looks
   (B-54, B-55); silence keeps it.
